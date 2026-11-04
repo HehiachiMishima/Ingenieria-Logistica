@@ -88,7 +88,18 @@ export class SimulacionApi {
     );
   }
 
-  /** El cluster en curso vuelve a la proyección; los demás no cambian. */
+  /** Pasa una ruta a otro cluster (los dos deben seguir sin balancear). */
+  cambiarCluster(id: number, rutaId: number, clusterId: number): Observable<ConfiguracionSimulacion> {
+    return this.api.put<ConfiguracionSimulacion>(
+      `/simulacion/registros/${id}/rutas/${rutaId}/cluster`,
+      { clusterId },
+    );
+  }
+
+  /**
+   * El cluster en curso vuelve a la proyección, con las rutas que entraron o
+   * salieron de él a su cluster original; los demás no cambian.
+   */
   restablecerCluster(id: number, clusterId: number): Observable<ConfiguracionSimulacion> {
     return this.api.post<ConfiguracionSimulacion>(
       `/simulacion/registros/${id}/clusters/${clusterId}/restablecer`,

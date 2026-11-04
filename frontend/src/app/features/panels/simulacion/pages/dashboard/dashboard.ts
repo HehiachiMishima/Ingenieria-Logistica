@@ -434,6 +434,32 @@ export class SimulacionDashboard {
   });
 
   /**
+   * Rutas que cambiaron de cluster: cada cluster afectado con su carga antes
+   * (con sus rutas originales) y después (con las que tiene hoy), y cada
+   * traspaso origen → destino. Vacío si nadie cambió rutas de cluster.
+   */
+  readonly cambiosCluster = computed(() => {
+    const datos = this.dashboard();
+    const cambios = datos?.cambiosCluster ?? [];
+    if (!datos || cambios.length === 0) {
+      return null;
+    }
+    const color = (clusterId: number) =>
+      colorCluster(Math.max(0, this.olas().findIndex((ola) => ola.clusterId === clusterId)));
+    return {
+      filas: datos.clusters
+        .filter((cluster) => cluster.rutasEntraron > 0 || cluster.rutasSalieron > 0)
+        .map((cluster) => ({ cluster, color: color(cluster.id) })),
+      traspasos: cambios.map((cambio) => ({
+        ...cambio,
+        colorOrigen: color(cambio.origenId),
+        colorDestino: color(cambio.destinoId),
+      })),
+      rutas: cambios.reduce((total, cambio) => total + cambio.rutas, 0),
+    };
+  });
+
+  /**
    * Cuadro ejecutivo del resumen: carga, rutas movidas y cierre establecido
    * frente al conseguido de cada cluster. El total suma los cierres porque
    * las olas van una tras otra.

@@ -222,6 +222,94 @@
     </p>
   }
 
+  @if (cambiosCluster(); as cambios) {
+    <div class="dash-grid" [class.dash-grid--cargando]="cargando()">
+      <article class="dash-card" [class.dash-card--cargando]="cargando()">
+        <header class="dash-card__head">
+          <div class="dash-card__titulos">
+            <h2 class="dash-card__titulo">
+              <ui-icon name="analisis" [size]="18" /> Cambios de cluster: antes vs. después
+            </h2>
+            <p class="dash-card__sub">
+              {{ formatearNumero(cambios.rutas) }} ruta(s) cambiadas de cluster a mano antes de
+              balancear. «Antes» es la carga del Excel; «después», la de hoy.
+            </p>
+          </div>
+        </header>
+        <div class="dash-tabla-wrap cuadro dash-tabla-wrap--scroll">
+          <table class="dash-tabla cuadro__tabla ejecutivo">
+            <thead>
+              <tr>
+                <th rowspan="2">Cluster</th>
+                <th colspan="2" class="num">Rutas</th>
+                <th colspan="2" class="num">Bultos</th>
+                <th colspan="2" class="num">Unidades</th>
+                <th colspan="2" class="num">Líneas</th>
+                <th colspan="2" class="num">COD</th>
+                <th rowspan="2" class="num">Entraron</th>
+                <th rowspan="2" class="num">Salieron</th>
+              </tr>
+              <tr>
+                @for (columna of [1, 2, 3, 4, 5]; track columna) {
+                  <th class="num">Antes</th>
+                  <th class="num">Después</th>
+                }
+              </tr>
+            </thead>
+            <tbody>
+              @for (fila of cambios.filas; track fila.cluster.id) {
+                <tr>
+                  <td>
+                    <span class="ejecutivo__cluster" [style.--cluster-color]="fila.color">
+                      {{ fila.cluster.cluster }}
+                    </span>
+                  </td>
+                  <td class="num">{{ formatearNumero(fila.cluster.rutasOriginal) }}</td>
+                  <td class="num fuerte">{{ formatearNumero(fila.cluster.rutasBalanceado) }}</td>
+                  <td class="num">{{ formatearNumero(fila.cluster.bultosOriginal, 2) }}</td>
+                  <td class="num fuerte">{{ formatearNumero(fila.cluster.bultosBalanceado, 2) }}</td>
+                  <td class="num">{{ formatearNumero(fila.cluster.unidadesOriginal, 2) }}</td>
+                  <td class="num fuerte">
+                    {{ formatearNumero(fila.cluster.unidadesBalanceado, 2) }}
+                  </td>
+                  <td class="num">{{ formatearNumero(fila.cluster.lineasOriginal, 2) }}</td>
+                  <td class="num fuerte">{{ formatearNumero(fila.cluster.lineasBalanceado, 2) }}</td>
+                  <td class="num">{{ formatearNumero(fila.cluster.codOriginal) }}</td>
+                  <td class="num fuerte">{{ formatearNumero(fila.cluster.codBalanceado) }}</td>
+                  <td class="num cambio-cluster--entra">
+                    {{ fila.cluster.rutasEntraron ? '+' + fila.cluster.rutasEntraron : '—' }}
+                  </td>
+                  <td class="num cambio-cluster--sale">
+                    {{ fila.cluster.rutasSalieron ? '−' + fila.cluster.rutasSalieron : '—' }}
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <ul class="traspasos" aria-label="Traspasos entre clusters">
+          @for (t of cambios.traspasos; track t.origenId + '-' + t.destinoId) {
+            <li class="traspasos__item">
+              <span class="ejecutivo__cluster" [style.--cluster-color]="t.colorOrigen">
+                {{ t.origen }}
+              </span>
+              <ui-icon name="flecha" [size]="14" />
+              <span class="ejecutivo__cluster" [style.--cluster-color]="t.colorDestino">
+                {{ t.destino }}
+              </span>
+              <span class="traspasos__datos">
+                <strong>{{ formatearNumero(t.rutas) }}</strong> ruta(s) ·
+                {{ formatearNumero(t.bultos, 2) }} bultos · {{ formatearNumero(t.unidades, 2) }}
+                unidades · {{ formatearNumero(t.lineas, 2) }} líneas · {{ formatearNumero(t.cod) }}
+                COD
+              </span>
+            </li>
+          }
+        </ul>
+      </article>
+    </div>
+  }
+
   @if (olaActual(); as ola) {
     <h2 class="dash-seccion">
       <ui-icon name="paquete" [size]="18" /> 1 · Rutas de {{ ola.cluster }}

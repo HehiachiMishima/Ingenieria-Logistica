@@ -25,6 +25,12 @@ public class HistorialBalanceo {
   public static final String ACCION_MOVER_RUTA = "MOVER_RUTA";
   /** Paso 2: operarios del chute antes → después (operarios_origen → operarios_destino). */
   public static final String ACCION_ASIGNAR_OPERARIOS = "ASIGNAR_OPERARIOS";
+  /**
+   * Ruta pasada a otro cluster a mano (cluster_origen_id → cluster_destino_id).
+   * chute_origen_id guarda el chute que tenía en ese momento: restablecer la
+   * devuelve ahí.
+   */
+  public static final String ACCION_CAMBIAR_CLUSTER = "CAMBIAR_CLUSTER";
 
   public static final String MOTIVO_BALANCEO = "BALANCEO";
   public static final String MOTIVO_SEPARACION = "SEPARACION";
@@ -55,6 +61,13 @@ public class HistorialBalanceo {
 
   @Column(name = "chute_modificado_id")
   private Long chuteModificadoId;
+
+  /** CAMBIAR_CLUSTER: cluster que tenía la ruta y al que pasó. */
+  @Column(name = "cluster_origen_id")
+  private Long clusterOrigenId;
+
+  @Column(name = "cluster_destino_id")
+  private Long clusterDestinoId;
 
   @Column(name = "motivo", length = 20, nullable = false)
   private String motivo = MOTIVO_BALANCEO;

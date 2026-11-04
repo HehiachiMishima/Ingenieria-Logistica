@@ -298,8 +298,28 @@ export class SimulacionDetalleChute {
   }
 
   /** La fila abre un grupo nuevo de cluster (las rutas llegan ordenadas por cluster). */
-  iniciaGrupo(rutas: RutaSimulacion[], indice: number): boolean {
-    return indice === 0 || rutas[indice - 1].clusterId !== rutas[indice].clusterId;
+  /** Cada lado agrupa por el cluster que la ruta tenía entonces: antes, el original. */
+  iniciaGrupo(lado: LadoChute, rutas: RutaSimulacion[], indice: number): boolean {
+    return (
+      indice === 0 ||
+      this.clusterIdDe(lado, rutas[indice - 1]) !== this.clusterIdDe(lado, rutas[indice])
+    );
+  }
+
+  clusterDe(lado: LadoChute, ruta: RutaSimulacion): string {
+    return lado === 'ANTES' ? ruta.clusterOriginal : ruta.cluster;
+  }
+
+  private clusterIdDe(lado: LadoChute, ruta: RutaSimulacion): number {
+    return lado === 'ANTES' ? ruta.clusterOriginalId : ruta.clusterId;
+  }
+
+  /** La ruta se pasó a mano a otro cluster: texto del cambio visto desde cada lado. */
+  cambioDeCluster(lado: LadoChute, ruta: RutaSimulacion): string | null {
+    if (ruta.clusterId === ruta.clusterOriginalId) {
+      return null;
+    }
+    return lado === 'ANTES' ? `Pasó a ${ruta.cluster}` : `Era de ${ruta.clusterOriginal}`;
   }
 
   /** Movimiento de la ruta visto desde un lado del conjunto elegido. */

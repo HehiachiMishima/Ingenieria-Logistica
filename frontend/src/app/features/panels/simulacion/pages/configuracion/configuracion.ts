@@ -160,12 +160,23 @@ export class SimulacionConfiguracion {
   /** Paso que se está ejecutando en el cluster en curso. */
   readonly trabajando = signal<Paso | null>(null);
   readonly restableciendo = signal(false);
+  /** Ruta cuyo cambio de cluster se está guardando. */
+  readonly cambiandoCluster = signal<number | null>(null);
   /** Recarga tras un paso: hasta que llegue, las acciones siguen bloqueadas. */
   readonly recargando = signal(false);
   /** Una sola escritura a la vez: los botones de acción se deshabilitan juntos. */
   readonly ocupado = computed(
     () =>
-      this.guardando() || this.trabajando() !== null || this.restableciendo() || this.recargando(),
+      this.guardando() ||
+      this.trabajando() !== null ||
+      this.restableciendo() ||
+      this.recargando() ||
+      this.cambiandoCluster() !== null,
+  );
+
+  /** Clusters sin balancear: los únicos que pueden dar o recibir rutas de otro cluster. */
+  readonly clustersPendientes = computed(() =>
+    (this.config()?.clusters ?? []).filter((cluster) => cluster.estado === 'PENDIENTE'),
   );
 
   /** Todos los clusters cerrados: la simulación terminó. */
@@ -456,6 +467,57 @@ export class SimulacionConfiguracion {
     return control.touched && control.invalid;
   }
 
+  /** Por qué el cluster de una ruta no se puede cambiar (título del chip). */
+  motivoClusterFijo(ruta: RutaSimulacion): string {
+    const propio = this.config()?.clusters.find((cluster) => cluster.id === ruta.clusterId);
+    if (propio?.estado === 'CERRADO') {
+      return `${ruta.cluster} está cerrado: reábrelo y restablécelo para cambiar sus rutas de cluster.`;
+    }
+    if (propio && propio.estado !== 'PENDIENTE') {
+      return `${ruta.cluster} ya está balanceado: restablécelo para cambiar sus rutas de cluster.`;
+    }
+    return 'No hay otro cluster sin balancear al que pasar la ruta.';
+  }
+
+  /**
+   * Sobrescribe el cluster de la ruta desde su chip. El servidor valida todo
+   * (clusters sin balancear, CL1/CL2 en el chute, cluster sin rutas); si
+   * rechaza, el selector vuelve al cluster actual.
+   */
+  cambiarCluster(ruta: RutaSimulacion, evento: Event): void {
+    const selector = evento.target as HTMLSelectElement;
+    const destino = Number(selector.value);
+    const id = this.seleccionado();
+    const deshacer = () => (selector.value = String(ruta.clusterId));
+    if (!id || !destino || destino === ruta.clusterId) {
+      deshacer();
+      return;
+    }
+    if (this.ocupado()) {
+      deshacer();
+      this.notificaciones.advertencia('Operación en curso', 'Espera a que termine la operación.');
+      return;
+    }
+    const nombre =
+      this.config()?.clusters.find((cluster) => cluster.id === destino)?.nombre ?? `${destino}`;
+    this.cambiandoCluster.set(ruta.id);
+    this.conCambiosGuardados(id, () => this.api.cambiarCluster(id, ruta.id, destino))
+      .pipe(finalize(() => this.cambiandoCluster.set(null)))
+      .subscribe({
+        next: (config) => {
+          if (this.seleccionado() === id) {
+            this.aplicarConfiguracion(config);
+            this.rutas.recargar();
+          }
+          this.notificaciones.exito(
+            'Cluster cambiado',
+            `${ruta.codigoRuta}: ${ruta.cluster} → ${nombre}.`,
+          );
+        },
+        error: () => deshacer(),
+      });
+  }
+
   colorDeCluster(clusterId: number): string {
     const indice = (this.config()?.clusters ?? []).findIndex((cluster) => cluster.id === clusterId);
     return colorCluster(Math.max(0, indice));
@@ -706,7 +768,7 @@ export class SimulacionConfiguracion {
           }
           this.notificaciones.info(
             `${cluster.nombre} restablecido`,
-            'Sus rutas volvieron a su chute original y su ola quedó sin operarios.',
+            'Sus rutas volvieron a su chute original, las que cambiaron de cluster volvieron al suyo y su ola quedó sin operarios.',
           );
         },
       });

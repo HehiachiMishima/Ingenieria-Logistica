@@ -9,6 +9,13 @@ public record ClusterComparativoResponse(
     BigDecimal tiempoBalanceado,
     BigDecimal limiteHoras,
     boolean excede,
+    int rutasOriginal,
+    int rutasBalanceado,
+    /** Rutas que llegaron de otro cluster y las que se fueron a otro (cambio manual). */
+    int rutasEntraron,
+    int rutasSalieron,
+    BigDecimal unidadesOriginal,
+    BigDecimal unidadesBalanceado,
     BigDecimal bultosOriginal,
     BigDecimal bultosBalanceado,
     BigDecimal lineasOriginal,

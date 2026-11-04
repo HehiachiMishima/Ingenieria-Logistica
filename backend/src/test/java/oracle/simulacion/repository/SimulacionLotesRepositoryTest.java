@@ -102,6 +102,8 @@ class SimulacionLotesRepositoryTest {
     verify(ps).setString(6, "B2C");
     verify(ps).setBigDecimal(7, new BigDecimal("1.00"));
     verify(ps).setInt(10, 3);
+    // El cluster original se congela igual que el chute.
+    verify(ps).setLong(11, 11L);
 
     FilaRuta huerfana =
         new FilaRuta(

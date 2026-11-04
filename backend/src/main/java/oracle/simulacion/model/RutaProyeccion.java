@@ -43,6 +43,14 @@ public class RutaProyeccion {
   @Column(name = "cluster_id", nullable = false)
   private Long clusterId;
 
+  /** Cluster al cargar el Excel: no cambia nunca (restablecer vuelve a él). */
+  @Column(name = "cluster_original_id", nullable = false, updatable = false)
+  private Long clusterOriginalId;
+
+  /** Columna generada (STORED): cluster_id <> cluster_original_id. Solo lectura. */
+  @Column(name = "cluster_cambiado", insertable = false, updatable = false)
+  private boolean clusterCambiado;
+
   @Column(name = "codigo_ruta", length = 50, nullable = false)
   private String codigoRuta;
 

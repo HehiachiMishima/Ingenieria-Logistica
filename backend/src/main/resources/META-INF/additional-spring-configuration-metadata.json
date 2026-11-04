@@ -103,5 +103,35 @@
     "name": "app.zona-horaria",
     "type": "java.lang.String",
     "description": "A description for 'app.zona-horaria'"
+  },
+  {
+    "name": "sftp.host",
+    "type": "java.lang.String",
+    "description": "A description for 'sftp.host'"
+  },
+  {
+    "name": "sftp.username",
+    "type": "java.lang.String",
+    "description": "A description for 'sftp.username'"
+  },
+  {
+    "name": "sftp.port",
+    "type": "java.lang.String",
+    "description": "A description for 'sftp.port'"
+  },
+  {
+    "name": "sftp.password",
+    "type": "java.lang.String",
+    "description": "A description for 'sftp.password'"
+  },
+  {
+    "name": "sftp.remote-directory",
+    "type": "java.lang.String",
+    "description": "A description for 'sftp.remote-directory'"
+  },
+  {
+    "name": "sftp.local-directory",
+    "type": "java.lang.String",
+    "description": "A description for 'sftp.local-directory'"
   }
 ]}

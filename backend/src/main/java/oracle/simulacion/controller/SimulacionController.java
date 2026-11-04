@@ -9,6 +9,7 @@ import oracle.common.exception.SolicitudInvalidaException;
 import oracle.common.response.ApiResponse;
 import oracle.common.response.PaginaResponse;
 import oracle.simulacion.model.TipoRuta;
+import oracle.simulacion.request.CambiarClusterRequest;
 import oracle.simulacion.request.ConfiguracionActualizarRequest;
 import oracle.simulacion.request.FaseBalanceo;
 import oracle.simulacion.request.LadoChute;
@@ -160,6 +161,16 @@ public class SimulacionController {
       @PathVariable Long rutaId,
       @Valid @RequestBody MoverRutaRequest req) {
     return configuracionService.mover(id, rutaId, req);
+  }
+
+  /** Pasa una ruta a otro cluster (solo con ambos clusters sin balancear). */
+  @PutMapping("/registros/{id}/rutas/{rutaId}/cluster")
+  @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
+  public Mono<ApiResponse<ConfiguracionSimulacionResponse>> cambiarClusterRuta(
+      @PathVariable Long id,
+      @PathVariable Long rutaId,
+      @Valid @RequestBody CambiarClusterRequest req) {
+    return configuracionService.cambiarCluster(id, rutaId, req);
   }
 
   /** Lanza un cluster: paso 1 (RUTAS) o paso 2 (OPERARIOS) de su ola. */

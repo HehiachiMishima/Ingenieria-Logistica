@@ -263,15 +263,16 @@
               </thead>
               <tbody>
                 @for (ruta of pagina.contenido; track ruta.id; let i = $index) {
-                  @if (iniciaGrupo(pagina.contenido, i)) {
+                  @if (iniciaGrupo(lado.lado, pagina.contenido, i)) {
                     <tr class="rc-tabla__grupo">
                       <th [attr.colspan]="varios() ? 9 : 8" scope="rowgroup">
-                        {{ ruta.cluster }}
+                        {{ clusterDe(lado.lado, ruta) }}
                       </th>
                     </tr>
                   }
                   @let mov = movimiento(lado.lado, ruta);
-                  <tr [class.rc-tabla__fila--cambio]="mov.tipo !== 'quedo'">
+                  @let cambioCluster = cambioDeCluster(lado.lado, ruta);
+                  <tr [class.rc-tabla__fila--cambio]="mov.tipo !== 'quedo' || cambioCluster">
                     <td class="u-mono">{{ ruta.codigoRuta }}</td>
                     <td>
                       <span
@@ -282,7 +283,7 @@
                         {{ ruta.tipo }}
                       </span>
                     </td>
-                    <td>{{ ruta.cluster }}</td>
+                    <td>{{ clusterDe(lado.lado, ruta) }}</td>
                     @if (varios()) {
                       <td class="rc-tabla__chute">
                         {{ lado.lado === 'ANTES' ? ruta.chuteOriginal : ruta.chute }}
@@ -296,6 +297,9 @@
                       <span class="rc-mov" [class]="'rc-mov--' + mov.tipo">{{ mov.texto }}</span>
                       @if (mov.separa) {
                         <span class="rc-separa">Separa CL1/CL2</span>
+                      }
+                      @if (cambioCluster) {
+                        <span class="rc-separa">{{ cambioCluster }}</span>
                       }
                     </td>
                   </tr>

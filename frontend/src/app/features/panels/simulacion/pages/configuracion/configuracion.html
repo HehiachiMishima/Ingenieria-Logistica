@@ -401,12 +401,43 @@
                 <tr>
                   <td class="fuerte">{{ ruta.chute }}</td>
                   <td>
-                    <span
-                      class="cluster-chip"
-                      [style.--cluster-color]="colorDeCluster(ruta.clusterId)"
-                      [title]="ruta.cluster"
-                    >
-                      {{ ruta.cluster }}
+                    <span class="cluster-celda">
+                      @if (puedeModificar() && ruta.clusterEditable) {
+                        <select
+                          class="cluster-chip cluster-chip--editable"
+                          [style.--cluster-color]="colorDeCluster(ruta.clusterId)"
+                          [value]="ruta.clusterId"
+                          [disabled]="ocupado()"
+                          [attr.aria-label]="'Cluster de la ruta ' + ruta.codigoRuta"
+                          title="Cambiar el cluster de la ruta"
+                          (change)="cambiarCluster(ruta, $event)"
+                        >
+                          @for (cluster of clustersPendientes(); track cluster.id) {
+                            <option [value]="cluster.id" [selected]="cluster.id === ruta.clusterId">
+                              {{ cluster.nombre }}
+                            </option>
+                          }
+                        </select>
+                        @if (cambiandoCluster() === ruta.id) {
+                          <span class="ui-spinner cluster-spinner" aria-label="Guardando"></span>
+                        }
+                      } @else {
+                        <span
+                          class="cluster-chip"
+                          [style.--cluster-color]="colorDeCluster(ruta.clusterId)"
+                          [title]="puedeModificar() ? motivoClusterFijo(ruta) : ruta.cluster"
+                        >
+                          {{ ruta.cluster }}
+                        </span>
+                      }
+                      @if (ruta.clusterId !== ruta.clusterOriginalId) {
+                        <small
+                          class="cluster-original"
+                          [title]="'Cluster original: ' + ruta.clusterOriginal"
+                        >
+                          ← {{ ruta.clusterOriginal }}
+                        </small>
+                      }
                     </span>
                   </td>
                   <td class="u-mono">{{ ruta.codigoRuta }}</td>

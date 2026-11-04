@@ -84,6 +84,25 @@
                               >: {{ cambio.operariosOrigen ?? 0 }} →
                               {{ cambio.operariosDestino ?? 0 }} operario(s)
                             </td>
+                          } @else if (cambio.tipoAccion === 'CAMBIAR_CLUSTER') {
+                            <td><span class="ui-badge ui-badge--info">Cambio de cluster</span></td>
+                            <td class="u-mono">{{ cambio.ruta ?? '—' }}</td>
+                            <td>
+                              {{ cambio.cluster ?? '—' }}
+                              @if (cambio.tipo) {
+                                · {{ cambio.tipo }}
+                              }
+                            </td>
+                            <td class="num">
+                              {{ cambio.bultos === null ? '—' : formatearNumero(cambio.bultos, 2) }}
+                            </td>
+                            <td>
+                              De <strong>{{ cambio.clusterOrigen }}</strong> a
+                              <strong>{{ cambio.clusterDestino }}</strong>
+                              @if (cambio.chuteOrigen) {
+                                <span class="u-muted">· en {{ cambio.chuteOrigen }}</span>
+                              }
+                            </td>
                           } @else {
                             <td>
                               <span

@@ -204,6 +204,60 @@
   }
 }
 
+.cluster-celda {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cluster-spinner {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+}
+
+.cluster-original {
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+/* Chip editable: un select nativo con el aspecto del chip y una flecha. */
+.cluster-chip.cluster-chip--editable {
+  max-width: 140px;
+  padding-right: 20px;
+  font-family: inherit;
+  cursor: pointer;
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 10px) 50%,
+    calc(100% - 6px) 50%;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+
+  &:hover:not(:disabled) {
+    border-color: var(--cluster-color, var(--accent));
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cluster-color, var(--accent));
+    outline-offset: 1px;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  option {
+    color: var(--text);
+    background: var(--surface);
+  }
+}
+
 .cluster-chip {
   display: inline-flex;
   align-items: center;

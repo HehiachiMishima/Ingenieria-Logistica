@@ -163,8 +163,8 @@ public class SimulacionLotesRepository {
         """
         INSERT INTO rutas_proyeccion
             (archivo_id, chute_id, chute_original_id, cluster_id, codigo_ruta, tipo,
-             total_bultos, total_unidades, total_lineas, conteo_cod)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             total_bultos, total_unidades, total_lineas, conteo_cod, cluster_original_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         rutas,
         LOTE,
@@ -174,13 +174,16 @@ public class SimulacionLotesRepository {
           ps.setLong(2, chuteId);
           // El chute original se congela al cargar: el balanceo solo cambia chute_id.
           ps.setLong(3, chuteId);
-          ps.setLong(4, idCluster.computeIfAbsent(ruta.cluster(), (n) -> id(clusters, "cluster", n)));
+          long clusterId = idCluster.computeIfAbsent(ruta.cluster(), (n) -> id(clusters, "cluster", n));
+          ps.setLong(4, clusterId);
           ps.setString(5, SimulacionExcel.nombre(ruta.codigoRuta()));
           ps.setString(6, ruta.tipo().name());
           ps.setBigDecimal(7, ruta.bultos());
           ps.setBigDecimal(8, ruta.unidades());
           ps.setBigDecimal(9, ruta.lineas());
           ps.setInt(10, ruta.conteoCod());
+          // Igual que el chute: el cluster original se congela al cargar.
+          ps.setLong(11, clusterId);
         });
   }
 

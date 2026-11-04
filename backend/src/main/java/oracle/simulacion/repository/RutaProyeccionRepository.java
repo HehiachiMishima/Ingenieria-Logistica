@@ -35,6 +35,68 @@ public interface RutaProyeccionRepository
       @Param("archivoId") Long archivoId, @Param("chuteId") Long chuteId);
 
   /**
+   * Clusters con rutas en un chute sin contar una ruta: al cambiar esa ruta de
+   * cluster, su propio cluster actual no debe contar como conflicto.
+   */
+  @Query("""
+      SELECT DISTINCT r.clusterId
+        FROM RutaProyeccion r
+       WHERE r.archivoId = :archivoId
+         AND r.chuteId = :chuteId
+         AND r.id <> :rutaId
+      """)
+  List<Long> clustersEnChuteSinRuta(
+      @Param("archivoId") Long archivoId,
+      @Param("chuteId") Long chuteId,
+      @Param("rutaId") Long rutaId);
+
+  /** Rutas que tiene hoy un cluster (usa idx_rutas_archivo_cluster). */
+  long countByArchivoIdAndClusterId(Long archivoId, Long clusterId);
+
+  /**
+   * Rutas que cambiaron de cluster y en las que participa un cluster (como
+   * original o como actual): las que restablecer ese cluster devuelve.
+   */
+  @QueryHints(@QueryHint(name = HibernateHints.HINT_READ_ONLY, value = "true"))
+  @Query("""
+      SELECT r
+        FROM RutaProyeccion r
+       WHERE r.archivoId = :archivoId
+         AND r.clusterCambiado = true
+         AND (r.clusterId = :clusterId OR r.clusterOriginalId = :clusterId)
+       ORDER BY r.id
+      """)
+  List<RutaProyeccion> cambiadasDeCluster(
+      @Param("archivoId") Long archivoId, @Param("clusterId") Long clusterId);
+
+  /** Devuelve a su cluster original las rutas que cambiaron y en las que participa un cluster. */
+  @Modifying
+  @Query("""
+      UPDATE RutaProyeccion r
+         SET r.clusterId = r.clusterOriginalId
+       WHERE r.archivoId = :archivoId
+         AND r.clusterCambiado = true
+         AND (r.clusterId = :clusterId OR r.clusterOriginalId = :clusterId)
+      """)
+  int restaurarClusters(@Param("archivoId") Long archivoId, @Param("clusterId") Long clusterId);
+
+  /** Rutas que hoy están en otro cluster, agrupadas por (cluster original, cluster actual). */
+  @Query("""
+      SELECT r.clusterOriginalId AS origen,
+             r.clusterId AS destino,
+             COUNT(r) AS rutas,
+             COALESCE(SUM(r.totalBultos), 0) AS bultos,
+             COALESCE(SUM(r.totalUnidades), 0) AS unidades,
+             COALESCE(SUM(r.totalLineas), 0) AS lineas,
+             COALESCE(SUM(r.conteoCod), 0) AS cod
+        FROM RutaProyeccion r
+       WHERE r.archivoId = :archivoId
+         AND r.clusterCambiado = true
+       GROUP BY r.clusterOriginalId, r.clusterId
+      """)
+  List<CambioClusterRutas> cambiosClusterPorArchivo(@Param("archivoId") Long archivoId);
+
+  /**
    * Carga por (cluster, chute): la configuración y el dashboard trabajan con
    * estos agregados (decenas de filas) en lugar de traer todas las rutas.
    * Usa idx_rutas_archivo_cluster.
@@ -54,11 +116,12 @@ public interface RutaProyeccionRepository
   List<CargaRutas> cargaPorArchivo(@Param("archivoId") Long archivoId);
 
   /**
-   * Carga original por (cluster, chute original). El chute original se congela al cargar el Excel,
-   * así que el comparativo "antes" no depende de que el historial siga existiendo.
+   * Carga original por (cluster original, chute original). Ambos se congelan al cargar el Excel,
+   * así que el comparativo "antes" no depende de que el historial siga existiendo ni de los
+   * cambios de cluster.
    */
   @Query("""
-      SELECT r.clusterId AS clusterId,
+      SELECT r.clusterOriginalId AS clusterId,
              r.chuteOriginalId AS chuteId,
              COUNT(r) AS rutas,
              COALESCE(SUM(r.totalBultos), 0) AS bultos,
@@ -67,7 +130,7 @@ public interface RutaProyeccionRepository
              COALESCE(SUM(r.conteoCod), 0) AS cod
         FROM RutaProyeccion r
        WHERE r.archivoId = :archivoId
-       GROUP BY r.clusterId, r.chuteOriginalId
+       GROUP BY r.clusterOriginalId, r.chuteOriginalId
       """)
   List<CargaRutas> cargaOriginalPorArchivo(@Param("archivoId") Long archivoId);
 
@@ -99,15 +162,19 @@ public interface RutaProyeccionRepository
       """)
   List<RutasMovidasCluster> rutasMovidasPorCluster(@Param("archivoId") Long archivoId);
 
-  /** Devuelve todas las rutas del archivo a su chute original sin recorrerlas una a una. */
+  /**
+   * Devuelve todas las rutas del archivo a su chute y cluster originales (el punto de inicio) sin
+   * recorrerlas una a una.
+   */
   @Modifying
   @Query("""
       UPDATE RutaProyeccion r
-         SET r.chuteId = r.chuteOriginalId
+         SET r.chuteId = r.chuteOriginalId,
+             r.clusterId = r.clusterOriginalId
        WHERE r.archivoId = :archivoId
-         AND r.movida = true
+         AND (r.movida = true OR r.clusterCambiado = true)
       """)
-  int restaurarChutes(@Param("archivoId") Long archivoId);
+  int restaurarRutas(@Param("archivoId") Long archivoId);
 
   /**
    * Totales del detalle de rutas; cada lado añade su filtro de chute (ver abajo).
@@ -119,7 +186,7 @@ public interface RutaProyeccionRepository
       SELECT COUNT(*) AS rutas,
              COUNT(*) FILTER (WHERE tipo = 'B2C') AS rutasB2c,
              COUNT(*) FILTER (WHERE tipo = 'B2B') AS rutasB2b,
-             COUNT(*) FILTER (WHERE movida) AS cambios,
+             COUNT(*) FILTER (WHERE movida OR cluster_cambiado) AS cambios,
              COALESCE(SUM(total_bultos), 0) AS bultos,
              COALESCE(SUM(total_unidades), 0) AS unidades,
              COALESCE(SUM(total_lineas), 0) AS lineas,
@@ -128,12 +195,20 @@ public interface RutaProyeccionRepository
        WHERE archivo_id = :archivoId
          AND (CAST(:texto AS text) IS NULL OR codigo_ruta LIKE CAST(:texto AS text))
          AND (CAST(:tipo AS text) IS NULL OR tipo = CAST(:tipo AS text))
-         AND (CAST(:clusterId AS bigint) IS NULL OR cluster_id = CAST(:clusterId AS bigint))
-         AND (:soloCambios = FALSE OR movida)
+         AND (:soloCambios = FALSE OR movida OR cluster_cambiado)
       """;
 
-  /** Rutas que los chutes tenían al cargar el Excel (usa idx_rutas_archivo_chute_original). */
-  @Query(value = RESUMEN + " AND chute_original_id IN (:chuteIds)", nativeQuery = true)
+  /**
+   * Rutas que los chutes tenían al cargar el Excel, con su cluster de entonces (usa
+   * idx_rutas_archivo_chute_original).
+   */
+  @Query(
+      value =
+          RESUMEN
+              + " AND (CAST(:clusterId AS bigint) IS NULL"
+              + " OR cluster_original_id = CAST(:clusterId AS bigint))"
+              + " AND chute_original_id IN (:chuteIds)",
+      nativeQuery = true)
   ResumenRutasFiltro resumenAntes(
       @Param("archivoId") Long archivoId,
       @Param("texto") String texto,
@@ -142,8 +217,13 @@ public interface RutaProyeccionRepository
       @Param("clusterId") Long clusterId,
       @Param("soloCambios") boolean soloCambios);
 
-  /** Rutas que los chutes tienen hoy (usa idx_rutas_archivo_chute). */
-  @Query(value = RESUMEN + " AND chute_id IN (:chuteIds)", nativeQuery = true)
+  /** Rutas que los chutes tienen hoy, con su cluster actual (usa idx_rutas_archivo_chute). */
+  @Query(
+      value =
+          RESUMEN
+              + " AND (CAST(:clusterId AS bigint) IS NULL OR cluster_id = CAST(:clusterId AS bigint))"
+              + " AND chute_id IN (:chuteIds)",
+      nativeQuery = true)
   ResumenRutasFiltro resumenDespues(
       @Param("archivoId") Long archivoId,
       @Param("texto") String texto,

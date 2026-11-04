@@ -411,6 +411,38 @@
   }
 }
 
+/* ---------------- Cambios de cluster ---------------- */
+.cambio-cluster--entra {
+  font-weight: 800;
+  color: var(--success);
+}
+
+.cambio-cluster--sale {
+  font-weight: 800;
+  color: var(--danger);
+}
+
+.traspasos {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  list-style: none;
+
+  &__item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 0.82rem;
+  }
+
+  &__datos {
+    color: var(--text-2);
+  }
+}
+
 /* Dónde estuvo el equipo: número en cada celda y fondo según cuánta gente hay. */
 .matriz__celda {
   font-weight: 700;

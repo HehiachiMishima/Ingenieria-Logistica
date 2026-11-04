@@ -14,6 +14,8 @@ public record DashboardSimulacionResponse(
     List<ChuteMezcladoResponse> mezclas,
     /** Rutas movidas por (chute original, chute actual): flujo de cualquier grupo de chutes. */
     List<MovimientoChuteResponse> movimientos,
+    /** Rutas que cambiaron de cluster (original → actual); en la vista de un cluster, las suyas. */
+    List<CambioClusterResponse> cambiosCluster,
     /** Clusters en el orden de las olas con su avance: arman el selector de vistas. */
     List<OlaSimulacionResponse> olas,
     /** Paso de operarios entre olas: en la vista de un cluster, solo el que llega a él. */

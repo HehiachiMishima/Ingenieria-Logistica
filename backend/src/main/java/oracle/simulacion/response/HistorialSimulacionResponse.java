@@ -22,6 +22,9 @@ public record HistorialSimulacionResponse(
     String chuteOrigen,
     String chuteDestino,
     String chuteModificado,
+    /** CAMBIAR_CLUSTER: cluster de origen y de destino. */
+    String clusterOrigen,
+    String clusterDestino,
     /**
      * MOVER_RUTA: operarios de origen y destino; ASIGNAR_OPERARIOS: los del
      * chute en la ola antes y después.
