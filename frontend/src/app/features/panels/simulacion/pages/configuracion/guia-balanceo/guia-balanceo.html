@@ -1,0 +1,105 @@
+<ui-modal
+  [abierto]="abierto()"
+  ancho="lg"
+  titulo="¿Cómo balancea?"
+  subtitulo="Un cluster a la vez, en tres pasos."
+  (cerrar)="cerrar.emit()"
+>
+  <div class="guia">
+    <section class="olas" aria-label="Orden de trabajo">
+      <div class="olas__fila">
+        @for (ola of olas; track ola.nombre; let ultima = $last) {
+          <span class="olas__chip" [style.--cluster-color]="ola.color">{{ ola.nombre }}</span>
+          @if (!ultima) {
+            <ui-icon class="olas__flecha" name="flecha" [size]="16" />
+          }
+        }
+      </div>
+      <p class="olas__nota">
+        <ui-icon name="usuarios" [size]="15" /> El mismo equipo pasa de un cluster al siguiente
+      </p>
+    </section>
+
+    <ol class="pasos">
+      <li class="paso">
+        <span class="paso__numero">1</span>
+        <h3 class="paso__titulo">Rutas</h3>
+        <div class="viz" aria-hidden="true">
+          <div class="viz__barras viz__barras--antes">
+            @for (alto of rutasAntes; track $index) {
+              <span [style.height.%]="alto"></span>
+            }
+          </div>
+          <ui-icon class="viz__flecha" name="flecha" [size]="16" />
+          <div class="viz__barras">
+            @for (alto of rutasDespues; track $index) {
+              <span [style.height.%]="alto"></span>
+            }
+          </div>
+        </div>
+        <p class="paso__texto">Mueve rutas para que sus chutes tengan los mismos bultos.</p>
+        <span class="paso__dato">Meta: diferencia ≤ 10 %</span>
+      </li>
+
+      <li class="paso">
+        <span class="paso__numero">2</span>
+        <h3 class="paso__titulo">Operarios</h3>
+        <div class="viz viz--operarios" aria-hidden="true">
+          @for (chute of chutes; track $index) {
+            <div class="viz__chute">
+              <span class="viz__personas">
+                @for (persona of chute.personas; track persona) {
+                  <i></i>
+                }
+              </span>
+              <span class="viz__carga" [style.height.%]="chute.carga"></span>
+            </div>
+          }
+        </div>
+        <p class="paso__texto">Trabaja todo el equipo: cada operario va al chute que más tarda.</p>
+        <span class="paso__dato">tiempo = bultos ÷ (velocidad × operarios)</span>
+      </li>
+
+      <li class="paso">
+        <span class="paso__numero">3</span>
+        <h3 class="paso__titulo">Cerrar</h3>
+        <div class="viz viz--cerrar" aria-hidden="true">
+          <span class="viz__ola viz__ola--hecha" [style.--cluster-color]="olas[0].color">
+            <ui-icon name="check" [size]="14" /> CL1
+          </span>
+          <ui-icon class="viz__flecha" name="flecha" [size]="16" />
+          <span class="viz__ola" [style.--cluster-color]="olas[1].color">CL2</span>
+        </div>
+        <p class="paso__texto">El equipo pasa al siguiente cluster tal como quedó.</p>
+        <span class="paso__dato">Al cerrar el último: resumen en el dashboard</span>
+      </li>
+    </ol>
+
+    <section class="parametros" aria-label="Parámetros">
+      <div class="parametros__grupo">
+        <h4>Globales</h4>
+        <ul>
+          <li><ui-icon name="usuarios" [size]="14" /> Operarios del equipo</li>
+          <li><ui-icon name="tendencia" [size]="14" /> Velocidad (bultos/h)</li>
+          <li><ui-icon name="layers" [size]="14" /> Máximo por chute</li>
+        </ul>
+      </div>
+      <div class="parametros__grupo">
+        <h4>Por cluster</h4>
+        <ul>
+          <li><ui-icon name="reloj" [size]="14" /> Límite de horas: indica si cumple</li>
+        </ul>
+      </div>
+    </section>
+
+    <ul class="reglas">
+      <li><ui-icon name="alerta" [size]="15" /> CL1 y CL2 nunca comparten chute</li>
+      <li><ui-icon name="lock" [size]="15" /> Un cluster cerrado no cambia (salvo al reabrirlo)</li>
+      <li><ui-icon name="refresh" [size]="15" /> Restablecer vuelve todo al Excel</li>
+    </ul>
+  </div>
+
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--primary" (click)="cerrar.emit()">Entendido</button>
+  </div>
+</ui-modal>

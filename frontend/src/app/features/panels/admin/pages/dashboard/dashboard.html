@@ -1,0 +1,86 @@
+<header class="page-head">
+  <div>
+    <h1 class="page-head__title">{{ saludo }}{{ usuario() ? ', ' + usuario()!.nombre : '' }}</h1>
+    <p class="page-head__sub">
+      Estado del acceso: cuentas habilitadas, riesgos y alcance por panel.
+    </p>
+  </div>
+  <button type="button" class="ui-btn ui-btn--secondary" (click)="cargar()" [disabled]="cargando()">
+    <ui-icon name="refresh" [size]="16" />
+    Actualizar
+  </button>
+</header>
+
+@if (error() && !datos()) {
+  <div class="table-card">
+    <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="error()!">
+      <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="cargar()">
+        <ui-icon name="refresh" [size]="16" /> Reintentar
+      </button>
+    </ui-empty>
+  </div>
+} @else {
+  <section class="dash-kpis" aria-label="Indicadores clave">
+    @for (t of tarjetas(); track t.etiqueta) {
+      <ui-kpi
+        [etiqueta]="t.etiqueta"
+        [valor]="t.valor"
+        [icono]="t.icono"
+        [color]="t.color"
+        [detalle]="t.detalle"
+        [cargando]="cargando() && !datos()"
+      />
+    }
+  </section>
+
+  <div class="dash-grid">
+    <article class="dash-card dash-card--5" [class.dash-card--cargando]="cargando()">
+      <header class="dash-card__head">
+        <div class="dash-card__titulos">
+          <h2 class="dash-card__titulo">
+            <ui-icon name="usuarios" [size]="18" /> ¿Cuántas cuentas están habilitadas?
+          </h2>
+          <p class="dash-card__sub">Porcentaje de usuarios que pueden iniciar sesión.</p>
+        </div>
+      </header>
+      <div class="dash-card__body admin-centro">
+        @if (estadoCuentas().hay) {
+          <ui-gauge
+            [valor]="estadoCuentas().pct"
+            etiqueta="Cuentas activas"
+            color="var(--success)"
+            [tamano]="220"
+          />
+          <dl class="admin-estado">
+            <div>
+              <dt><i class="admin-estado__punto admin-estado__punto--ok"></i>Activas</dt>
+              <dd>{{ estadoCuentas().activos }}</dd>
+            </div>
+            <div>
+              <dt><i class="admin-estado__punto"></i>Inactivas</dt>
+              <dd>{{ estadoCuentas().inactivos }}</dd>
+            </div>
+          </dl>
+        } @else {
+          <div class="dash-card__vacio">Sin usuarios.</div>
+        }
+      </div>
+    </article>
+
+    <article class="dash-card dash-card--7" [class.dash-card--cargando]="cargando()">
+      <header class="dash-card__head">
+        <div class="dash-card__titulos">
+          <h2 class="dash-card__titulo">
+            <ui-icon name="panel" [size]="18" /> ¿Quién accede a cada panel?
+          </h2>
+          <p class="dash-card__sub">
+            Usuarios activos con acceso efectivo, en % del total de activos.
+          </p>
+        </div>
+      </header>
+      <div class="dash-card__body admin-medio">
+        <ui-bars [datos]="barrasCobertura()" [horizontal]="true" />
+      </div>
+    </article>
+  </div>
+}

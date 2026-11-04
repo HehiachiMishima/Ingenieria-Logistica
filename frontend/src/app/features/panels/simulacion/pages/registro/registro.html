@@ -1,0 +1,420 @@
+<header class="page-head">
+  <div>
+    <h1 class="page-head__title">Registro de simulación</h1>
+    <p class="page-head__sub">
+      Carga los Excel de proyección y administra sus registros de trabajo.
+    </p>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="ui-search toolbar__grow">
+    <ui-icon name="search" [size]="18" />
+    <input
+      type="search"
+      class="ui-input"
+      placeholder="Buscar por nombre, archivo o etiqueta…"
+      aria-label="Buscar registros"
+      [value]="busqueda()"
+      (input)="buscar($any($event.target).value)"
+    />
+  </div>
+  <button
+    type="button"
+    class="ui-btn ui-btn--secondary"
+    [attr.aria-expanded]="filtrosAbierto()"
+    aria-controls="simulacion-registro-filtros"
+    (click)="alternarFiltros()"
+  >
+    <ui-icon name="filtro" [size]="18" />
+    Filtros
+    @if (filtrosActivos() > 0) {
+      <span class="filtros-badge">{{ filtrosActivos() }}</span>
+    }
+  </button>
+  <button
+    type="button"
+    class="ui-btn ui-btn--secondary ui-btn--sm"
+    (click)="actualizar()"
+    [disabled]="cargando()"
+  >
+    <ui-icon name="refresh" [size]="16" />
+    Actualizar
+  </button>
+  <button
+    *hasPermiso="permisos.CREAR_REGISTRO_SIMULACION"
+    type="button"
+    class="ui-btn ui-btn--primary"
+    (click)="abrirSelectorArchivo()"
+  >
+    <ui-icon name="plus" [size]="18" />
+    Subir Excel
+  </button>
+  <input
+    #inputArchivo
+    type="file"
+    accept=".xlsx,.xls,.csv"
+    hidden
+    (change)="seleccionarArchivo($event)"
+  />
+</div>
+
+<ui-filtros-activos
+  [chips]="chips()"
+  (quitar)="quitarFiltro($event)"
+  (limpiar)="limpiarFiltros()"
+/>
+
+<ui-panel-filtros
+  id="simulacion-registro-filtros"
+  [abierto]="filtrosAbierto()"
+  [activos]="filtrosActivos()"
+  titulo="Filtrar registros"
+  (cerrar)="filtrosAbierto.set(false)"
+  (limpiar)="limpiarFiltros()"
+>
+  <section class="filtro-seccion">
+    <h3 class="filtro-seccion__titulo"><ui-icon name="power" [size]="15" /> Estado</h3>
+    <p class="filtro-nota">Puedes elegir uno o ambos.</p>
+    <div class="ui-rango" role="group" aria-label="Estado">
+      @for (estado of estados; track estado.id) {
+        <button
+          type="button"
+          class="ui-rango__btn"
+          [class.ui-rango__btn--on]="estaEstado(estado.id)"
+          [attr.aria-pressed]="estaEstado(estado.id)"
+          (click)="alternarEstado(estado.id)"
+        >
+          {{ estado.etiqueta }}
+        </button>
+      }
+    </div>
+  </section>
+</ui-panel-filtros>
+
+<div class="table-card" [class.table-card--refrescando]="refrescando()">
+  @if (cargaInicial()) {
+    <div class="loading"><span class="ui-spinner"></span> Cargando registros…</div>
+  } @else if (error()) {
+    <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="error()!">
+      <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="actualizar()">
+        <ui-icon name="refresh" [size]="16" /> Reintentar
+      </button>
+    </ui-empty>
+  } @else if (items().length === 0) {
+    <ui-empty
+      icono="almacen"
+      [titulo]="hayFiltros() ? 'Sin resultados' : 'Aún no hay registros'"
+      [mensaje]="
+        hayFiltros()
+          ? 'Ningún registro coincide con la búsqueda o los filtros.'
+          : 'Sube tu primer archivo Excel para empezar a simular.'
+      "
+    >
+      @if (hayFiltros()) {
+        <button
+          type="button"
+          class="ui-btn ui-btn--secondary ui-btn--sm"
+          (click)="limpiarBusqueda()"
+        >
+          Limpiar filtros
+        </button>
+      }
+    </ui-empty>
+  } @else {
+    <div class="ui-table-wrap">
+      <table class="ui-table" appColumnasRedimensionables>
+        <thead>
+          <tr>
+            <th>Etiqueta</th>
+            <th>Nombre</th>
+            <th class="num">Rutas</th>
+            <th class="num">Chutes</th>
+            <th class="num">Bultos</th>
+            <th class="num">Unidades</th>
+            <th class="num">Líneas</th>
+            <th class="num">COD</th>
+            <th>Estado</th>
+            <th>Creado</th>
+            <th>Creado por</th>
+            <th>Actualizado</th>
+            <th>Actualizado por</th>
+            <th class="col-actions">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (a of items(); track a.id) {
+            <tr>
+              <td>
+                <span
+                  class="registro-tag"
+                  [class.registro-tag--vacia]="!a.etiqueta"
+                  [style.--tag-color]="colorRegistro(a.colorHex)"
+                  [title]="a.etiqueta || 'Sin etiqueta'"
+                >
+                  {{ a.etiqueta || 'SIN ETIQUETA' }}
+                </span>
+              </td>
+              <td>
+                <span class="ui-table__primary" [title]="a.nombreRegistro">{{
+                  a.nombreRegistro
+                }}</span>
+                <span class="cell-sub" [title]="a.nombreArchivo">{{ a.nombreArchivo }}</span>
+              </td>
+              <td class="num">{{ formatearNumero(a.rutas) }}</td>
+              <td class="num">{{ formatearNumero(a.chutes) }}</td>
+              <td class="num">{{ formatearNumero(a.bultos, 2) }}</td>
+              <td class="num">{{ formatearNumero(a.unidades) }}</td>
+              <td class="num">{{ formatearNumero(a.lineas) }}</td>
+              <td class="num">{{ formatearNumero(a.cod) }}</td>
+              <td>
+                <span
+                  class="ui-badge"
+                  [class.ui-badge--success]="a.estado === 'FINALIZADO'"
+                  [class.ui-badge--info]="a.estado === 'EN_PROCESO'"
+                  [class.ui-badge--neutral]="a.estado === 'PROYECCION'"
+                >
+                  {{ estado(a.estado) }}
+                </span>
+              </td>
+              <td class="u-muted">{{ a.creadoEn | date: 'dd/MM/yyyy HH:mm' }}</td>
+              <td class="u-muted">{{ a.creadoPor | actorLabel }}</td>
+              <td class="u-muted">
+                {{ a.actualizadoEn ? (a.actualizadoEn | date: 'dd/MM/yyyy HH:mm') : '—' }}
+              </td>
+              <td class="u-muted">{{ a.actualizadoPor | actorLabel }}</td>
+              <td>
+                <div class="row-actions">
+                  <button
+                    *hasPermiso="permisos.VER_CONFIGURACION_SIMULACION"
+                    type="button"
+                    class="ui-icon-btn"
+                    title="Configurar y balancear"
+                    (click)="verConfiguracion(a)"
+                  >
+                    <ui-icon name="engranaje" [size]="18" />
+                  </button>
+                  <button
+                    *hasPermiso="permisos.MODIFICAR_REGISTRO_SIMULACION"
+                    type="button"
+                    class="ui-icon-btn"
+                    title="Editar registro"
+                    (click)="abrirEditar(a)"
+                  >
+                    <ui-icon name="edit" [size]="18" />
+                  </button>
+                  <button
+                    *hasPermiso="permisos.ELIMINAR_REGISTRO_SIMULACION"
+                    type="button"
+                    class="ui-icon-btn ui-icon-btn--danger"
+                    title="Eliminar registro"
+                    (click)="confirmarEliminar(a)"
+                  >
+                    <ui-icon name="trash" [size]="18" />
+                  </button>
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <ui-paginador
+      [pagina]="paginaActual()"
+      [total]="total()"
+      [porPagina]="porPagina()"
+      (paginaCambia)="cambiarPagina($event)"
+      (porPaginaCambia)="cambiarPorPagina($event)"
+    />
+  }
+</div>
+
+<ui-modal
+  [abierto]="subirAbierto()"
+  titulo="Subir Excel de proyección"
+  subtitulo="El archivo se procesa y agrupa automáticamente por ruta."
+  (cerrar)="cerrarSubida()"
+>
+  @if (archivoSeleccionado(); as archivo) {
+    <div class="archivo-chip">
+      <span class="archivo-chip__icono"><ui-icon name="almacen" [size]="20" /></span>
+      <div class="archivo-chip__datos">
+        <span class="archivo-chip__nombre">{{ archivo.name }}</span>
+        <span class="archivo-chip__meta"
+          >{{ tamanoArchivo(archivo) }} · se validará al registrar</span
+        >
+      </div>
+      <span class="ui-badge ui-badge--info">Excel</span>
+    </div>
+  }
+
+  <div class="grid-form">
+    <div class="ui-field">
+      <label class="ui-label" for="subir-nombre"
+        >Nombre del registro <span class="ui-required">*</span></label
+      >
+      <input
+        id="subir-nombre"
+        class="ui-input"
+        [class.ui-input--invalid]="campoInvalido('nombreRegistro')"
+        [formControl]="formulario.controls.nombreRegistro"
+        placeholder="Ej: Proyección enero"
+      />
+      @if (campoInvalido('nombreRegistro')) {
+        <span class="ui-error">Escribe un nombre de hasta 150 caracteres.</span>
+      }
+    </div>
+    <div class="ui-field">
+      <label class="ui-label" for="subir-etiqueta">Etiqueta</label>
+      <input
+        id="subir-etiqueta"
+        class="ui-input"
+        [formControl]="formulario.controls.etiqueta"
+        maxlength="50"
+        placeholder="Ej: URGENTE"
+      />
+      <span class="hint">Opcional. Se muestra como distintivo en el listado.</span>
+    </div>
+  </div>
+
+  <div class="ui-field">
+    <span class="ui-label" id="color-registro">Color del registro</span>
+    <div class="color-picker" role="group" aria-labelledby="color-registro">
+      @for (color of paleta; track color.hex) {
+        <button
+          type="button"
+          class="color-dot"
+          [class.color-dot--activo]="formulario.controls.colorHex.value === color.hex"
+          [style.background]="color.hex"
+          [title]="color.nombre"
+          [attr.aria-label]="color.nombre"
+          [attr.aria-pressed]="formulario.controls.colorHex.value === color.hex"
+          (click)="fijarColor(color.hex)"
+        ></button>
+      }
+    </div>
+  </div>
+
+  <p class="hint">
+    Columnas requeridas: RUTA, CLUSTER, CHUTE, TIPO (B2C o B2B) y BULTOS PROMEDIO. Opcionales: COD.,
+    UNIDADES y LÍNEAS. También se aceptan CSV.
+  </p>
+
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="cerrarSubida()">Cancelar</button>
+    <button
+      type="button"
+      class="ui-btn ui-btn--primary"
+      (click)="confirmarSubida()"
+      [disabled]="guardando()"
+    >
+      @if (guardando()) {
+        <span class="ui-spinner" style="width: 16px; height: 16px"></span>
+      }
+      Registrar
+    </button>
+  </div>
+</ui-modal>
+
+<ui-modal
+  [abierto]="editarAbierto()"
+  titulo="Editar registro"
+  subtitulo="Solo cambia la presentación; las rutas y parámetros se conservan."
+  (cerrar)="cerrarEdicion()"
+>
+  <div class="grid-form">
+    <div class="ui-field">
+      <label class="ui-label" for="editar-nombre"
+        >Nombre del registro <span class="ui-required">*</span></label
+      >
+      <input
+        id="editar-nombre"
+        class="ui-input"
+        [class.ui-input--invalid]="campoEdicionInvalido('nombreRegistro')"
+        [formControl]="formEdicion.controls.nombreRegistro"
+        maxlength="150"
+      />
+      @if (campoEdicionInvalido('nombreRegistro')) {
+        <span class="ui-error">Escribe un nombre de hasta 150 caracteres.</span>
+      }
+    </div>
+    <div class="ui-field">
+      <label class="ui-label" for="editar-etiqueta">Etiqueta</label>
+      <input
+        id="editar-etiqueta"
+        class="ui-input"
+        [formControl]="formEdicion.controls.etiqueta"
+        maxlength="50"
+      />
+    </div>
+  </div>
+
+  <div class="ui-field">
+    <span class="ui-label" id="color-registro">Color del registro</span>
+    <div class="color-picker" role="group" aria-labelledby="color-registro">
+      @for (color of paleta; track color.hex) {
+        <button
+          type="button"
+          class="color-dot"
+          [class.color-dot--activo]="formEdicion.controls.colorHex.value === color.hex"
+          [style.background]="color.hex"
+          [title]="color.nombre"
+          [attr.aria-label]="color.nombre"
+          [attr.aria-pressed]="formEdicion.controls.colorHex.value === color.hex"
+          (click)="fijarColorEdicion(color.hex)"
+        ></button>
+      }
+    </div>
+  </div>
+
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="cerrarEdicion()">Cancelar</button>
+    <button
+      type="button"
+      class="ui-btn ui-btn--primary"
+      (click)="guardarEdicion()"
+      [disabled]="guardandoEdicion()"
+    >
+      @if (guardandoEdicion()) {
+        <span class="ui-spinner" style="width: 16px; height: 16px"></span>
+      }
+      Guardar cambios
+    </button>
+  </div>
+</ui-modal>
+
+<ui-modal
+  [abierto]="eliminarAbierto()"
+  ancho="sm"
+  [compacto]="true"
+  titulo="Eliminar registro"
+  (cerrar)="eliminarAbierto.set(false)"
+>
+  @if (aEliminar(); as registro) {
+    <div class="confirm">
+      <span class="confirm__icon"><ui-icon name="trash" [size]="22" /></span>
+      <div class="confirm__text">
+        <p class="confirm__title">¿Eliminar «{{ registro.nombreRegistro }}»?</p>
+        <p class="confirm__desc">
+          Se borrarán también sus rutas, parámetros e historial de balanceo.
+        </p>
+      </div>
+    </div>
+  }
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="eliminarAbierto.set(false)">
+      Cancelar
+    </button>
+    <button
+      type="button"
+      class="ui-btn ui-btn--danger"
+      (click)="eliminar()"
+      [disabled]="eliminando()"
+    >
+      @if (eliminando()) {
+        <span class="ui-spinner" style="width: 16px; height: 16px"></span>
+      }
+      Eliminar
+    </button>
+  </div>
+</ui-modal>

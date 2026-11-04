@@ -1,0 +1,190 @@
+<header class="page-head">
+  <div>
+    <h1 class="page-head__title">Análisis de incidencias</h1>
+    <p class="page-head__sub">Qué sistemas y centros fallan, qué se repite y cuánto tardamos en resolverlo.</p>
+  </div>
+</header>
+
+<div class="toolbar toolbar--end">
+  <button type="button" class="ui-btn ui-btn--secondary" (click)="cargar()" [disabled]="cargando()">
+    <ui-icon name="refresh" [size]="16" />
+    Actualizar
+  </button>
+  <button type="button" class="ui-btn ui-btn--secondary" [attr.aria-expanded]="filtrosAbierto()"
+    aria-controls="dashboard-filtros" (click)="alternarFiltros()">
+    <ui-icon name="filtro" [size]="18" />
+    Filtros
+    @if (filtrosActivos() > 0) {
+    <span class="filtros-badge">{{ filtrosActivos() }}</span>
+    }
+  </button>
+</div>
+
+<ui-filtros-activos [chips]="chips()" (quitar)="quitarFiltro($event)" (limpiar)="limpiarFiltros()" />
+
+<ui-panel-filtros id="dashboard-filtros" [abierto]="filtrosAbierto()" [activos]="filtrosActivos()"
+  titulo="Filtrar dashboard" (cerrar)="filtrosAbierto.set(false)" (limpiar)="limpiarFiltros()">
+  <section class="filtro-seccion">
+    <h3 class="filtro-seccion__titulo"><ui-icon name="sistema" [size]="15" /> Operación</h3>
+    <div class="ui-field">
+      <label class="ui-label">Centro</label>
+      <select class="ui-select" [value]="filtroCentro() ?? ''" (change)="setFiltroCentro($event)">
+        <option value="">Todos los centros</option>
+        @for (centro of centros(); track centro.id) {
+        <option [value]="centro.id">{{ centro.centro }}</option>
+        }
+      </select>
+    </div>
+    <div class="ui-field">
+      <label class="ui-label">Sistema</label>
+      <select class="ui-select" [value]="filtroSistema() ?? ''" (change)="setFiltroSistema($event)">
+        <option value="">Todos los sistemas</option>
+        @for (sistema of sistemas(); track sistema.id) {
+        <option [value]="sistema.id">{{ sistema.sistema }}</option>
+        }
+      </select>
+    </div>
+  </section>
+
+  <section class="filtro-seccion">
+    <h3 class="filtro-seccion__titulo"><ui-icon name="responsable" [size]="15" /> Responsabilidad</h3>
+    <div class="ui-field">
+      <label class="ui-label">Área</label>
+      <select class="ui-select" [value]="filtroArea() ?? ''" (change)="setFiltroArea($event)">
+        <option value="">Todas las áreas</option>
+        @for (area of areas(); track area.id) {
+        <option [value]="area.id">{{ area.area }}</option>
+        }
+      </select>
+    </div>
+    <div class="ui-field">
+      <label class="ui-label">Responsable</label>
+      <select class="ui-select" [value]="filtroResponsable() ?? ''" (change)="setFiltroResponsable($event)"
+        [disabled]="filtroArea() === null || cargandoResponsablesFiltro()">
+        <option value="">
+          {{ filtroArea() === null ? 'Elige un área primero' : (cargandoResponsablesFiltro() ? 'Cargando…' : 'Todos') }}
+        </option>
+        @for (responsable of responsablesFiltro(); track responsable.id) {
+        <option [value]="responsable.id">{{ responsable.responsable }}</option>
+        }
+      </select>
+    </div>
+  </section>
+
+  <section class="filtro-seccion">
+    <h3 class="filtro-seccion__titulo"><ui-icon name="calendario" [size]="15" /> Periodo</h3>
+    <ui-rango-rapido [desde]="filtroDesde()" [hasta]="filtroHasta()" (rango)="setRango($event)" />
+    <div class="filtro-seccion__fila">
+      <div class="ui-field">
+        <label class="ui-label">Desde</label>
+        <input type="date" class="ui-input" [value]="filtroDesde()" (change)="setFiltroDesde($event)" />
+      </div>
+      <div class="ui-field">
+        <label class="ui-label">Hasta</label>
+        <input type="date" class="ui-input" [value]="filtroHasta()" (change)="setFiltroHasta($event)" />
+      </div>
+    </div>
+    <p class="filtro-nota">Con un rango completo, el total se compara con el periodo anterior de igual duración.</p>
+  </section>
+</ui-panel-filtros>
+
+@if (error() && !datos()) {
+<div class="table-card">
+  <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="error()!">
+    <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="cargar()">
+      <ui-icon name="refresh" [size]="16" /> Reintentar
+    </button>
+  </ui-empty>
+</div>
+} @else {
+<section class="dash-kpis" aria-label="Indicadores clave">
+  @for (t of tarjetas(); track t.etiqueta) {
+  <ui-kpi [etiqueta]="t.etiqueta" [valor]="t.valor" [icono]="t.icono" [color]="t.color" [detalle]="t.detalle"
+    [variacion]="t.variacion" [cargando]="cargando() && !datos()" />
+  }
+</section>
+
+@if (!cargando() && datos() && !hayDatos()) {
+<div class="table-card">
+  <ui-empty icono="incidencias" titulo="Sin incidencias" mensaje="No hay incidencias para los filtros aplicados." />
+</div>
+} @else {
+<div class="dash-grid">
+
+  <article class="dash-card" [class.dash-card--cargando]="cargando()">
+    <header class="dash-card__head">
+      <div class="dash-card__titulos">
+        <h2 class="dash-card__titulo"><ui-icon name="centro" [size]="18" /> ¿Qué centro falla más y en qué sistema?</h2>
+        <p class="dash-card__sub">Matriz centro × sistema: la celda remarcada es el sistema con más casos de cada
+          centro.</p>
+      </div>
+    </header>
+    <div class="dash-card__body">
+      <ui-heatmap [celdas]="matriz()" [maxFilas]="12" [maxColumnas]="10" tituloFilas="Centro"
+        tituloColumnas="Sistema" />
+    </div>
+  </article>
+  <article class="dash-card dash-card--6" [class.dash-card--cargando]="cargando()">
+    <header class="dash-card__head">
+      <div class="dash-card__titulos">
+        <h2 class="dash-card__titulo"><ui-icon name="incidencias" [size]="18" /> ¿Qué incidencias se repiten más?</h2>
+        <p class="dash-card__sub">Tipos más frecuentes con su sistema y tiempo medio de solución.</p>
+      </div>
+    </header>
+    <div class="dash-card__body">
+      <ui-ranking [items]="rankingTipos()" [maximo]="6" />
+    </div>
+  </article>
+
+  <article class="dash-card dash-card--6" [class.dash-card--cargando]="cargando()">
+    <header class="dash-card__head">
+      <div class="dash-card__titulos">
+        <h2 class="dash-card__titulo"><ui-icon name="layers" [size]="18" /> Tipos de incidencia por sistema</h2>
+        <p class="dash-card__sub">Composición de cada sistema: qué problema domina en cada uno.</p>
+      </div>
+    </header>
+    <div class="dash-card__body">
+      <ui-apiladas [grupos]="apiladas()" [maxGrupos]="8" [maxSegmentos]="5" />
+    </div>
+  </article>
+
+  <article class="dash-card dash-card--6" [class.dash-card--cargando]="cargando()">
+    <header class="dash-card__head">
+      <div class="dash-card__titulos">
+        <h2 class="dash-card__titulo"><ui-icon name="activity" [size]="18" /> ¿Dónde tardamos más en resolver?</h2>
+        <p class="dash-card__sub">MTTR de cada sistema frente al promedio general: verde dentro, ámbar por encima, rojo
+          crítico.</p>
+      </div>
+    </header>
+    <div class="dash-card__body">
+      @if (bulletMttr().length > 0) {
+      <ui-bullet [items]="bulletMttr()" [referencia]="mttrGeneral()" [textoReferencia]="mttrGeneralTexto()"
+        [maximo]="8" />
+      } @else {
+      <div class="dash-card__vacio">Aún no hay incidencias resueltas.</div>
+      }
+    </div>
+  </article>
+  <article class="dash-card dash-card--6" [class.dash-card--cargando]="cargando()">
+    <header class="dash-card__head">
+      <div class="dash-card__titulos">
+        <h2 class="dash-card__titulo"><ui-icon name="area" [size]="18" /> Áreas responsables</h2>
+        <p class="dash-card__sub">Cada celda es el 1 % de las incidencias asignadas.</p>
+      </div>
+    </header>
+    <div class="dash-card__body">
+      <ui-waffle [items]="waffleAreas()" [maximo]="6" />
+    </div>
+    <header class="dash-card__head">
+      <div class="dash-card__titulos">
+        <h2 class="dash-card__titulo"><ui-icon name="centro" [size]="18" /> Centros con más incidencias</h2>
+        <p class="dash-card__sub">Participación de cada centro; pasa el cursor para aislarlo.</p>
+      </div>
+    </header>
+    <div class="dash-card__body">
+      <ui-anillo [items]="anilloCentros()" [maximo]="7" centro="Incidencias" titulo="Incidencias por centro" />
+    </div>
+  </article>
+</div>
+}
+}

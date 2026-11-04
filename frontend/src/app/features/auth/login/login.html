@@ -1,0 +1,168 @@
+<div class="login">
+  <section #hero class="login__hero">
+    <div class="login__foto" aria-hidden="true">
+      <img src="marca/login-almacen.webp"
+        srcset="marca/login-almacen-800.webp 800w, marca/login-almacen.webp 1352w, marca/login-almacen-2704.webp 2704w"
+        sizes="(max-width: 1023px) 100vw, 69vw" alt="" width="2704" height="880" fetchpriority="high"
+        decoding="async" />
+
+      <span class="login__laser"></span>
+    </div>
+    <span class="login__cinta" aria-hidden="true"></span>
+
+    <div class="login__contenido">
+      <header class="login__marca">
+        <img class="login__fp" src="marca/fp-nombre.webp" alt="Farmacias Peruanas" width="1600" height="437" />
+        <span class="login__marca-sep" aria-hidden="true"></span>
+        <span class="login__il">
+          <span class="login__il-caja" aria-hidden="true">IL</span>
+          <span class="login__il-texto">Ingeniería Logística</span>
+        </span>
+      </header>
+
+      <div class="login__cuerpo">
+        <div class="login__copy">
+          <h1 class="login__titulo" aria-label="Atlas">
+            @for (letra of titulo; track $index) {
+            <span class="login__letra" [class.login__letra--t]="$index === 1" [class.login__letra--oro]="$index === 2"
+              [style.--i]="$index" aria-hidden="true">
+              {{ letra }}
+            </span>
+            }
+          </h1>
+          <p class="login__subtitulo">Plataforma de ingeniería logística</p>
+
+          <p class="login__concepto">
+            @for (c of concepto; track c; let i = $index) {
+            @if (i > 0) { <span class="login__concepto-sep" aria-hidden="true">·</span> }
+            <span class="login__palabra" [style.--i]="i">{{ c }}</span>
+            }
+          </p>
+
+          <p class="login__claim">
+            Tecnología y personas para una cadena de suministro
+            <strong>más eficiente.</strong>
+          </p>
+        </div>
+
+        <div class="login__mapa" aria-hidden="true">
+          <svg class="login__enlaces" viewBox="0 0 100 100" preserveAspectRatio="none" focusable="false">
+            @for (e of enlaces; track $index) {
+            <path [attr.d]="e" />
+            }
+          </svg>
+
+          <svg class="login__peru" viewBox="0 0 217 312" focusable="false">
+            <defs>
+              <pattern id="login-puntos" width="4" height="4" patternUnits="userSpaceOnUse">
+                <circle cx="2" cy="2" r="0.7" fill="#c3c9d2" />
+              </pattern>
+              <linearGradient id="login-relieve" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#ffffff" />
+                <stop offset="1" stop-color="#e3e7ec" />
+              </linearGradient>
+            </defs>
+            <path class="login__peru-base" [attr.d]="peru" />
+            <path class="login__peru-trama" [attr.d]="peru" />
+            <g class="login__rutas">
+              @for (r of rutas; track $index) {
+              <path [attr.d]="r" [style.--i]="$index" />
+              }
+            </g>
+            <g class="login__nodos">
+              @for (n of nodos; track $index) {
+              <circle [attr.cx]="n[0]" [attr.cy]="n[1]" r="2.6" [style.--i]="$index" />
+              }
+              <circle [attr.cx]="hub[0]" [attr.cy]="hub[1]" r="4.4" class="login__hub" />
+              <circle [attr.cx]="hub[0]" [attr.cy]="hub[1]" r="9" class="login__hub-halo" />
+            </g>
+          </svg>
+
+          @for (c of capas; track c.texto; let i = $index) {
+          <span class="login__pin" [style.left.%]="c.x" [style.top.%]="c.y" [style.--i]="i">
+            <span class="login__pin-ico"><ui-icon [name]="c.icono" [size]="22" /></span>
+            <span class="login__pin-texto">{{ c.texto }}</span>
+          </span>
+          }
+        </div>
+      </div>
+    </div>
+
+    <footer class="login__barra">
+      @for (p of pie; track p.texto; let i = $index) {
+      <span class="login__barra-item" [style.--i]="i">
+        <span class="login__barra-ico"><ui-icon [name]="p.icono" [size]="24" /></span>
+        <span class="login__barra-texto">{{ p.texto }}</span>
+      </span>
+      }
+    </footer>
+  </section>
+
+  <section class="login__panel">
+    <span class="login__franja login__franja--arriba" aria-hidden="true"></span>
+    <span class="login__franja login__franja--abajo" aria-hidden="true"></span>
+
+    <div class="login__card">
+      <p class="login__acceso">Acceso · Atlas</p>
+
+      <header class="login__header">
+        <h2>Inicia sesión</h2>
+        <p>Accede con tu usuario.</p>
+      </header>
+
+      @if (error()) {
+      <div class="login__alert" role="alert">
+        <ui-icon name="alertTriangle" [size]="18" />
+        <span>{{ error() }}</span>
+      </div>
+      }
+
+      <form class="login__form" [formGroup]="formulario" (ngSubmit)="enviar()" novalidate>
+        <div class="ui-field">
+          <label class="ui-label" for="usuario">Usuario</label>
+          <div class="login__control">
+            <ui-icon name="user" [size]="18" class="login__control-icon" />
+            <input id="usuario" type="text" class="ui-input" [class.ui-input--invalid]="campoInvalido('usuario')"
+              formControlName="usuario" autocomplete="username" placeholder="Tu usuario" autofocus />
+          </div>
+          @if (campoInvalido('usuario')) {
+          <span class="ui-error">Ingresa tu usuario.</span>
+          }
+        </div>
+
+        <div class="ui-field">
+          <label class="ui-label" for="contrasena">Contraseña</label>
+          <div class="login__control">
+            <ui-icon name="lock" [size]="18" class="login__control-icon" />
+            <input id="contrasena" [type]="verContrasena() ? 'text' : 'password'" class="ui-input"
+              [class.ui-input--invalid]="campoInvalido('contrasena')" formControlName="contrasena"
+              autocomplete="current-password" placeholder="Tu contraseña" />
+            <button type="button" class="login__toggle" (click)="toggleContrasena()"
+              [attr.aria-label]="verContrasena() ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+              [attr.aria-pressed]="verContrasena()">
+              <ui-icon [name]="verContrasena() ? 'ojo' : 'ojoOff'" [size]="18" />
+            </button>
+          </div>
+          @if (campoInvalido('contrasena')) {
+          <span class="ui-error">Ingresa tu contraseña.</span>
+          }
+        </div>
+
+        <button type="submit" class="ui-btn ui-btn--lg ui-btn--block login__submit" [disabled]="cargando()">
+          @if (cargando()) {
+          <span class="ui-spinner login__spinner"></span>
+          Verificando…
+          } @else {
+          Ingresar
+          <ui-icon name="flecha" [size]="18" class="login__submit-flecha" />
+          }
+        </button>
+      </form>
+
+      <footer class="login__nota">
+        <ui-icon name="shieldCheck" [size]="16" />
+        <span>Acceso restringido a personal autorizado.</span>
+      </footer>
+    </div>
+  </section>
+</div>

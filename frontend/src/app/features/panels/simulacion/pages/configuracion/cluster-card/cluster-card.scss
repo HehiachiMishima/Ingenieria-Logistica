@@ -1,0 +1,374 @@
+@use 'breakpoints' as bp;
+
+:host {
+  display: block;
+  min-width: 0;
+}
+
+/* El cluster en curso ocupa toda la fila de la rejilla. */
+:host(.en-curso) {
+  grid-column: 1 / -1;
+}
+
+.cluster-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--cluster-color, var(--accent));
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+
+  &__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  &__nombre {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--fs-sm);
+    font-weight: 800;
+    color: var(--text);
+
+    &::before {
+      content: '';
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--cluster-color, var(--accent));
+    }
+  }
+
+  &__stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-2) var(--space-2);
+    margin: 0;
+    padding-top: var(--space-3);
+    border-top: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+
+    div {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 1px;
+      min-width: 0;
+    }
+
+    dt {
+      font-size: 0.64rem;
+      line-height: 1.2;
+      color: var(--text-3);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    dd {
+      margin: 0;
+      font-size: var(--fs-sm);
+      font-weight: 700;
+      color: var(--text-2);
+      font-variant-numeric: tabular-nums;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  /* Cerrado: su resultado; en espera: cuándo se habilita. */
+  &__resumen {
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+
+    strong {
+      color: var(--text);
+    }
+  }
+
+  /* Restablecer el cluster en curso o reabrir uno cerrado. */
+  &__acciones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-top: auto;
+  }
+
+  /* El único cluster que se trabaja: resalta sobre los demás. */
+  &--en-curso {
+    border-color: color-mix(in srgb, var(--cluster-color, var(--accent)) 45%, var(--border));
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* Esperando a que se cierre el anterior. */
+  &--bloqueado {
+    opacity: 0.7;
+  }
+}
+
+/* Los tres pasos del cluster en curso: rutas, operarios y cierre. */
+.pasos {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  @include bp.down(md) {
+    grid-template-columns: 1fr;
+  }
+
+  &__item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+    min-width: 0;
+    padding: var(--space-3);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+
+    .ui-btn {
+      margin-top: auto;
+    }
+
+    &--hecho {
+      background: var(--surface);
+      border-color: color-mix(in srgb, var(--success) 35%, var(--border));
+
+      .pasos__titulo::after {
+        content: ' ✓';
+        color: var(--success);
+      }
+    }
+
+    /* El paso que toca: borde y sombra del color del cluster. */
+    &--actual {
+      background: var(--surface);
+      border-color: var(--cluster-color, var(--accent));
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--cluster-color, var(--accent)) 14%, transparent);
+    }
+
+    &--espera {
+      border-style: dashed;
+      opacity: 0.55;
+    }
+  }
+
+  &__titulo {
+    font-size: var(--fs-xs);
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-2);
+  }
+
+  /* Dato principal del paso: diferencia de bultos, cierre de la ola o a quién pasa. */
+  &__metrica {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2);
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+
+    strong {
+      font-family: var(--font-display);
+      font-size: var(--fs-2xl);
+      font-weight: 800;
+      line-height: 1.05;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .ui-badge {
+      align-self: center;
+    }
+  }
+
+  &__antes {
+    color: var(--text-3);
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__dato {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--fs-xs);
+    line-height: 1.45;
+    color: var(--text-2);
+  }
+
+  &__aviso {
+    font-size: var(--fs-xs);
+    line-height: 1.4;
+    color: var(--warning);
+  }
+
+  &__limite {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+
+    .ui-label {
+      flex: none;
+      margin: 0;
+      font-size: var(--fs-xs);
+    }
+
+    .ui-input {
+      width: 90px;
+      height: 32px;
+      padding: 0 var(--space-2);
+      text-align: center;
+      font-weight: 700;
+    }
+  }
+}
+
+.pasos__spinner {
+  width: 16px;
+  height: 16px;
+}
+
+/* Avance del cluster junto a su nombre: cerrado, en curso o en espera. */
+.cluster-estado {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-right: auto;
+  padding: 1px 8px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--text-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  white-space: nowrap;
+
+  &--cerrado {
+    color: var(--success);
+    background: var(--success-soft);
+    border-color: color-mix(in srgb, var(--success) 30%, transparent);
+  }
+
+  &--en-curso {
+    color: var(--info);
+    background: var(--info-soft);
+    border-color: color-mix(in srgb, var(--info) 30%, transparent);
+  }
+}
+
+/* Indicador de avance del cluster en curso: 1 Rutas → 2 Operarios → 3 Cerrar. */
+.avance {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  &__paso {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    padding-right: var(--space-3);
+
+    /* Línea hacia el paso siguiente. */
+    &:not(:last-child)::after {
+      content: '';
+      flex: 1 1 auto;
+      min-width: var(--space-3);
+      height: 2px;
+      background: var(--border);
+      border-radius: 1px;
+    }
+
+    &--hecho:not(:last-child)::after {
+      background: var(--success);
+    }
+  }
+
+  &__marca {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    font-size: var(--fs-xs);
+    font-weight: 800;
+    color: var(--text-3);
+    background: var(--surface-2);
+    border: 2px solid var(--border);
+    border-radius: 50%;
+  }
+
+  &__paso--actual &__marca {
+    color: var(--surface);
+    background: var(--cluster-color, var(--accent));
+    border-color: var(--cluster-color, var(--accent));
+  }
+
+  &__paso--hecho &__marca {
+    color: var(--success);
+    background: var(--success-soft);
+    border-color: var(--success);
+  }
+
+  &__texto {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+
+    strong {
+      font-size: var(--fs-sm);
+      color: var(--text);
+    }
+
+    span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+  }
+
+  @include bp.down(sm) {
+    &__texto span {
+      display: none;
+    }
+  }
+}
+
+/* Cuánto del límite usa la ola. */
+.uso {
+  display: block;
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  background: var(--surface-2);
+  border-radius: 999px;
+
+  &__barra {
+    display: block;
+    height: 100%;
+    background: var(--success);
+    border-radius: inherit;
+  }
+
+  &--excede .uso__barra {
+    background: var(--danger);
+  }
+}

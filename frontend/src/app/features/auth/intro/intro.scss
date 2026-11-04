@@ -1,0 +1,415 @@
+@use 'breakpoints' as bp;
+
+/*
+ * Tokens de la intro. La línea de tiempo (--intro-marca, --intro-salida,
+ * --intro-duracion), --intro-desfase (movimiento reducido) y las franjas de
+ * las letras (--intro-franjas) llegan desde intro-diseno.ts. La escena es
+ * siempre oscura: no depende del tema claro/oscuro de la app.
+ * Las animaciones solo corren con .intro--reproduciendo, que se pone al
+ * arrancar el reloj de la escena.
+ */
+:host {
+  --intro-fondo: #05080f;
+  --intro-telon: #020305;
+  --intro-texto: #fff;
+  --intro-lema: rgba(255, 255, 255, 0.76);
+  --intro-acento: #ff3b4e;
+  --intro-acento-oscuro: #a50d1a;
+  --intro-halo: 225, 29, 46;
+  /* Cinta roja del logotipo: degradado de la cara y capas de la extrusión. */
+  --intro-cara: #ff5566 0%, #e11d2e 40%, #b30f1f 72%, #7e0713 100%;
+  --intro-pliegue: rgba(60, 0, 8, 0.3);
+  --intro-reflejo: rgba(255, 255, 255, 0.55);
+  --intro-extrusion: #55060f;
+  --intro-extrusion-1: #6e0814;
+  --intro-extrusion-2: #5a0610;
+  --intro-extrusion-3: #46040c;
+  --intro-extrusion-4: #330309;
+  --intro-tamano-marca: clamp(64px, 21vw, 248px);
+  --intro-tamano-lema: clamp(10px, 1.2vw, 14px);
+
+  position: fixed;
+  inset: 0;
+  display: block;
+  overflow: hidden;
+  background: var(--intro-fondo);
+  color: var(--intro-texto);
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.intro__lienzo {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.intro__escena {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: clamp(18px, 3vw, 34px);
+  padding: 24px 16px;
+  pointer-events: none;
+}
+
+.intro__halo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(96vw, 1180px);
+  aspect-ratio: 2.4;
+  background: radial-gradient(
+    closest-side,
+    rgba(var(--intro-halo), 0.42),
+    rgba(var(--intro-halo), 0.12) 55%,
+    transparent
+  );
+  opacity: 0;
+  transform: translate(-50%, -56%);
+}
+
+.intro__titulo {
+  position: relative;
+  margin: 0;
+  color: var(--intro-texto);
+  font: 900 var(--intro-tamano-marca) / 0.8 var(--font-display);
+  letter-spacing: 0.02em;
+}
+
+.intro__oculto {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.intro__marca {
+  display: flex;
+  transform-origin: 50% 55%;
+}
+
+/* Cada letra: extrusión (::before), cara roja y capa de luz encima. */
+.intro__letra {
+  position: relative;
+  display: block;
+  isolation: isolate;
+  opacity: 0;
+
+  &::before {
+    content: attr(data-letra);
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    color: var(--intro-extrusion);
+    text-shadow:
+      0.008em 0.01em 0 var(--intro-extrusion-1),
+      0.016em 0.02em 0 var(--intro-extrusion-2),
+      0.024em 0.03em 0 var(--intro-extrusion-3),
+      0.032em 0.04em 0 var(--intro-extrusion-4),
+      0 0.12em 0.32em rgba(0, 0, 0, 0.7);
+  }
+}
+/* L: cinta amarilla completa (misma estructura de 3 capas que la roja). */
+.intro__letra--amarilla {
+  /* Extrusión dorada: encaja con la cara amarilla. */
+  --intro-extrusion: #7a5c00;
+  --intro-extrusion-1: #9a7500;
+  --intro-extrusion-2: #7a5c00;
+  --intro-extrusion-3: #5c4500;
+  --intro-extrusion-4: #3e2e00;
+
+  .intro__cara {
+    background-image:
+      linear-gradient(105deg, transparent 38%, var(--intro-reflejo) 50%, transparent 62%),
+      linear-gradient(100deg, transparent 46%, var(--intro-pliegue) 52%, transparent 60%),
+      linear-gradient(180deg, #fff28a 0%, #ffd93d 40%, #e0a800 72%, #8a6d00 100%);
+  }
+}
+/* T: barra superior roja / palo vertical amarillo (corte horizontal). */
+.intro__letra--mixta {
+  --intro-extrusion: #6b5600;
+  --intro-extrusion-1: #8a7000;
+  --intro-extrusion-2: #6b5600;
+  --intro-extrusion-3: #504200;
+  --intro-extrusion-4: #362c00;
+
+     .intro__cara {
+    background-image:
+      /* reflejo diagonal: se mantiene */
+      linear-gradient(105deg, transparent 38%, var(--intro-reflejo) 50%, transparent 62%),
+      /* pliegue: se mantiene */
+      linear-gradient(100deg, transparent 46%, var(--intro-pliegue) 52%, transparent 60%),
+      /* T: Corte recto y duro */
+      linear-gradient(
+        180deg,
+        #ff5566 0%,
+        #e11d2e 22%,
+        #b30f1f 24.5%, /* El rojo termina exacto aquí */
+        #ffe14d 24.5%, /* El amarillo empieza exacto aquí (mismo % = corte recto) */
+        #f5b800 60%,
+        #a87f00 100%
+      );
+  }
+}
+.intro__cara,
+.intro__luz {
+  display: block;
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+/* Cinta roja con un pliegue en sombra y un brillo que la recorre. */
+.intro__cara {
+  background-image:
+    linear-gradient(105deg, transparent 38%, var(--intro-reflejo) 50%, transparent 62%),
+    linear-gradient(100deg, transparent 46%, var(--intro-pliegue) 52%, transparent 60%),
+    linear-gradient(180deg, var(--intro-cara));
+  background-repeat: no-repeat;
+  background-size:
+    260% 100%,
+    100% 100%,
+    100% 100%;
+  background-position:
+    130% 0,
+    0 0,
+    0 0;
+}
+
+/* Las mismas franjas de la cortina de luz, que se funden en la cara roja. */
+.intro__luz {
+  position: absolute;
+  inset: 0;
+  background-image: var(--intro-franjas);
+  background-size: 200% 100%;
+}
+
+.intro__lema {
+  display: flex;
+  gap: 0.9em;
+  margin: 0;
+  padding-left: 0.42em;
+  color: var(--intro-lema);
+  font: 600 var(--intro-tamano-lema) / 1.5 var(--font-sans);
+  letter-spacing: 0.42em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  opacity: 0;
+
+  @include bp.down(sm) {
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    letter-spacing: 0.3em;
+  }
+}
+
+.intro__punto {
+  color: var(--intro-acento);
+
+  @include bp.down(sm) {
+    display: none;
+  }
+}
+
+.intro__progreso {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, var(--intro-acento-oscuro), var(--intro-acento));
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
+.intro__telon {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: var(--intro-telon);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---- Reproducción ---- */
+
+:host(.intro--reproduciendo) {
+  .intro__halo {
+    animation: intro-halo 1.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: calc(var(--intro-marca) - var(--intro-desfase));
+  }
+
+  /* Plano que se aleja despacio tras el impacto. */
+  .intro__marca {
+    animation: intro-alejar calc(var(--intro-duracion) - var(--intro-marca))
+      cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(var(--intro-marca) - var(--intro-desfase));
+  }
+
+  .intro__letra {
+    animation: intro-letra 0.62s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: calc(var(--intro-marca) + var(--i) * 0.06s - var(--intro-desfase));
+  }
+
+  .intro__luz {
+    animation: intro-luz 0.95s linear both;
+    animation-delay: calc(var(--intro-marca) + var(--i) * 0.06s - var(--intro-desfase));
+  }
+
+  .intro__cara {
+    animation: intro-brillo 1.2s cubic-bezier(0.4, 0, 0.2, 1) both;
+    animation-delay: calc(var(--intro-marca) + 1.3s + var(--i) * 0.05s - var(--intro-desfase));
+  }
+
+  .intro__lema {
+    animation: intro-lema 1.1s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: calc(var(--intro-marca) + 0.85s - var(--intro-desfase));
+  }
+
+  .intro__progreso {
+    animation: intro-progreso calc(var(--intro-duracion) - var(--intro-desfase)) linear both;
+  }
+
+  .intro__telon {
+    animation: intro-telon calc(var(--intro-duracion) - var(--intro-salida)) ease-in both;
+    animation-delay: calc(var(--intro-salida) - var(--intro-desfase));
+  }
+}
+
+/* Omitir: corte a negro inmediato. */
+:host(.intro--saliendo) .intro__telon {
+  animation: intro-telon 280ms ease-in both;
+}
+
+@keyframes intro-halo {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -56%) scale(0.5);
+  }
+  30% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.75;
+    transform: translate(-50%, -56%) scale(1);
+  }
+}
+
+@keyframes intro-alejar {
+  from {
+    transform: scale(1.12);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+/* La letra sube como una cinta, con estela de movimiento. */
+@keyframes intro-letra {
+  0% {
+    opacity: 0;
+    transform: translateY(0.28em) scaleY(1.7);
+    filter: blur(14px);
+    clip-path: inset(100% -10% -40% -10%);
+  }
+  45% {
+    opacity: 1;
+    filter: blur(3px);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+    filter: none;
+    clip-path: inset(-40% -10% -40% -10%);
+  }
+}
+
+@keyframes intro-luz {
+  0% {
+    opacity: 1;
+    background-position: 0 0;
+  }
+  40% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    background-position: -1.2em 0;
+  }
+}
+
+@keyframes intro-brillo {
+  from {
+    background-position:
+      130% 0,
+      0 0,
+      0 0;
+  }
+  to {
+    background-position:
+      -30% 0,
+      0 0,
+      0 0;
+  }
+}
+
+@keyframes intro-lema {
+  from {
+    opacity: 0;
+    letter-spacing: 0.8em;
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    filter: none;
+  }
+}
+
+@keyframes intro-aparecer {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes intro-progreso {
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes intro-telon {
+  to {
+    opacity: 1;
+  }
+}
+
+/* Movimiento reducido: sin cinta, estela ni alejamiento; solo fundidos. */
+@media (prefers-reduced-motion: reduce) {
+  :host(.intro--reproduciendo) {
+    .intro__letra,
+    .intro__lema {
+      animation-name: intro-aparecer;
+    }
+
+    .intro__marca,
+    .intro__cara {
+      animation: none;
+    }
+  }
+
+  .intro__luz {
+    display: none;
+  }
+}

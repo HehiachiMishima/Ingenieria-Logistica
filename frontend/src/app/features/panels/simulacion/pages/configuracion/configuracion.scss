@@ -1,0 +1,330 @@
+@use 'breakpoints' as bp;
+
+.config-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  margin-bottom: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+
+  /* Cuatro campos del mismo ancho: etiqueta, control y ayuda alineados en filas. */
+  &__campos {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-4);
+
+    @include bp.down(lg) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  &__campo {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  &__ayuda {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+  }
+
+  /* Ficha del registro a la izquierda y acciones a la derecha, a la misma altura. */
+  &__pie {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--border);
+
+    .config-info {
+      flex: 1 1 320px;
+      min-width: 0;
+    }
+  }
+
+  &__acciones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    justify-content: flex-end;
+  }
+
+  @include bp.down(lg) {
+    &__acciones {
+      flex: 1 1 100%;
+      justify-content: flex-start;
+    }
+  }
+
+  @include bp.down(sm) {
+    padding: var(--space-4);
+
+    &__campos {
+      grid-template-columns: 1fr;
+    }
+
+    &__acciones .ui-btn {
+      flex: 1 1 calc(50% - var(--space-2));
+    }
+  }
+}
+
+/* Avance de la simulación: clusters cerrados sobre el total. */
+.config-paso {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 var(--space-2);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--success);
+  background: var(--success-soft);
+  border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* Avance pendiente: aún faltan clusters por terminar. */
+.config-paso--pendiente {
+  color: var(--text-2);
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+.config-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+
+  &__icono {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    flex: none;
+    border-radius: var(--radius-sm);
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  &__datos {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  &__nombre {
+    overflow: hidden;
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    color: var(--text);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__meta {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+  }
+
+  &--vacio {
+    border-style: dashed;
+  }
+}
+
+.config-aviso {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  font-size: var(--fs-xs);
+  color: var(--warning);
+  background: var(--warning-soft);
+  border: 1px solid color-mix(in srgb, var(--warning) 28%, var(--border));
+}
+
+.config-aviso--info {
+  color: var(--info);
+  background: var(--info-soft);
+  border-color: color-mix(in srgb, var(--info) 28%, var(--border));
+}
+
+.cluster-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-5);
+  margin-bottom: var(--space-5);
+
+  // Cuatro columnas sólo cuando caben con holgura; así las tarjetas llenan
+  // la fila y no queda un hueco a la derecha en pantallas anchas.
+  @include bp.down(xl) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @include bp.down(sm) {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+}
+
+.toolbar__acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.ui-table {
+  .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .fuerte {
+    color: var(--text);
+    font-weight: 700;
+  }
+}
+
+.cluster-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 120px;
+  padding: 2px 8px;
+  overflow: hidden;
+  border-radius: var(--radius-xs);
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--cluster-color, var(--accent));
+  background: color-mix(in srgb, var(--cluster-color, var(--accent)) 13%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--cluster-color, var(--accent)) 30%, var(--border));
+}
+
+/* Texto de ayuda bajo un campo o en un modal (destinos excluidos, columnas del Excel). */
+.hint {
+  display: block;
+  margin-top: var(--space-2);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  color: var(--text-3);
+}
+
+.config-spinner {
+  width: 16px;
+  height: 16px;
+}
+
+.archivo-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+
+  &__icono {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    flex: none;
+    border-radius: var(--radius);
+    color: var(--success);
+    background: var(--success-soft);
+  }
+
+  &__datos {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  &__nombre {
+    overflow: hidden;
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    color: var(--text);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__meta {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+  }
+}
+
+.color-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.color-dot {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition);
+
+  &:hover {
+    transform: scale(1.08);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  &--activo {
+    border-color: var(--surface);
+    box-shadow: 0 0 0 2px var(--text);
+  }
+}
+
+/* Acciones de la cabecera: ayuda y salto al dashboard, a la derecha. */
+.page-head__acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+
+  @include bp.down(sm) {
+    flex-wrap: nowrap;
+    width: 100%;
+
+    > .ui-btn {
+      flex: 1 1 0;
+      min-width: 0;
+    }
+  }
+}

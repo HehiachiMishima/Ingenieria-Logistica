@@ -1,0 +1,92 @@
+<div class="launcher">
+  <div class="launcher__scene" aria-hidden="true"></div>
+
+  <header class="launcher__topbar">
+    <div class="launcher__brand">
+      <img class="launcher__brand-mark" src="atlasImg.png" alt="Atlas" width="44" height="44" />
+      <span class="launcher__brand-text">
+        <span class="launcher__brand-kicker">Farmacias Peruanas</span>
+        <span class="launcher__brand-name">Interfaz Atlas</span>
+      </span>
+    </div>
+
+    <div class="launcher__actions">
+      <span class="ct-live launcher__live"><span class="ct-live__dot"></span>En línea</span>
+
+      <button type="button" class="ui-icon-btn launcher__icon-btn" (click)="alternarTema($event)" aria-label="Cambiar tema">
+        <ui-icon [name]="tema.tema() === 'dark' ? 'sun' : 'moon'" [size]="18" />
+      </button>
+
+      @if (usuario(); as u) {
+        <div class="launcher__user">
+          <span class="ui-avatar">{{ iniciales() }}</span>
+          <span class="launcher__user-info">
+            <span class="launcher__user-name">{{ u.nombre }} {{ u.apellido }}</span>
+            <span class="launcher__user-mail">{{ u.email }}</span>
+          </span>
+        </div>
+      }
+
+      <button type="button" class="ui-btn ui-btn--sm launcher__logout" (click)="cerrarSesion()">
+        <ui-icon name="logout" [size]="16" />
+        Salir
+      </button>
+    </div>
+  </header>
+
+  <main class="launcher__main">
+    <section class="launcher__intro">
+      <p class="launcher__eyebrow"><ui-icon name="radar" [size]="16" /> {{ fecha }}</p>
+      <h1 class="launcher__title">
+        {{ saludo }}@if (usuario(); as u) {, <span class="launcher__title-name">{{ u.nombre }}</span>}
+      </h1>
+      <p class="launcher__subtitle">
+        Selecciona un panel de operación. Tienes acceso a
+        <strong>{{ accesibles() }}</strong> de {{ paneles.length }} paneles.
+      </p>
+    </section>
+
+    <div class="launcher__grid">
+      @for (t of tarjetas(); track t.panel.id; let i = $index) {
+        <button
+          type="button"
+          class="panel-card"
+          [class.panel-card--locked]="!t.accesible"
+          [attr.aria-disabled]="!t.accesible"
+          [style.--c]="t.panel.acento"
+          [style.--i]="i"
+          (click)="abrir(t.panel, t.accesible)"
+        >
+          <span class="panel-card__band" aria-hidden="true"></span>
+
+          <span class="panel-card__head">
+            <span class="panel-card__icon"><ui-icon [name]="t.panel.icono" [size]="24" /></span>
+            <span class="panel-card__status" [class.panel-card__status--off]="!t.accesible">
+              <ui-icon [name]="t.accesible ? 'checkCircleFilled' : 'lock'" [size]="14" />
+              {{ t.accesible ? 'Disponible' : 'Bloqueado' }}
+            </span>
+          </span>
+
+          <span class="panel-card__name">{{ t.panel.nombre }}</span>
+          <span class="panel-card__desc">{{ t.panel.descripcion }}</span>
+
+          <span class="panel-card__mods">
+            @for (modulo of t.modulos; track modulo.id) {
+              <span class="panel-card__mod">
+                <ui-icon [name]="modulo.icono" [size]="13" />
+                {{ modulo.nombre }}
+              </span>
+            }
+          </span>
+
+          <span class="panel-card__cta">
+            {{ t.accesible ? 'Entrar al panel' : 'Solicita acceso al administrador' }}
+            @if (t.accesible) {
+              <ui-icon name="flecha" [size]="16" />
+            }
+          </span>
+        </button>
+      }
+    </div>
+  </main>
+</div>

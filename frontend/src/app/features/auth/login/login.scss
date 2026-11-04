@@ -1,0 +1,990 @@
+@use 'breakpoints' as bp;
+
+/**
+ * Login "ATLAS" — Farmacias Peruanas (rojo / oro / blanco).
+ *
+ * Split-screen como el diseño de referencia: hero claro con marca, título,
+ * mapa del Perú con la red logística y pines de capas, foto del almacén en la
+ * parte baja y barra roja de capas; a la derecha, panel gris con franjas y la
+ * tarjeta de acceso. Animado (rutas, nodos, pines, luces del piso, parallax)
+ * y con colores locales: se ve igual en tema claro y oscuro. Respeta
+ * prefers-reduced-motion.
+ */
+
+$salida: cubic-bezier(0.16, 1, 0.3, 1);
+
+/* ---------------- Base ---------------- */
+.login {
+  --l-rojo: #e11d2e;
+  --l-oro: #f7c400;
+  --l-tinta: #0f1217;
+  --l-navy: #15214a;
+  --l-tinta-2: #4b5563;
+  --l-tinta-3: #8a93a0;
+  --l-panel: #f1f2f4;
+  --l-sombra: 220 25% 8%;
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(400px, 31vw, 560px);
+  min-height: 100dvh;
+  color: var(--l-tinta-2);
+  background: #fff;
+
+  @include bp.down(lg) {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------------- Hero ---------------- */
+.login__hero {
+  --mx: 0;
+  --my: 0;
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(60% 50% at 72% 22%, rgba(225, 29, 46, 0.05), transparent 70%),
+    linear-gradient(180deg, #ffffff 0%, #fafbfc 50%, #f1f3f5 100%);
+}
+
+/* Foto del almacén: ocupa la mitad baja del hero y se funde hacia arriba. */
+.login__foto {
+  position: absolute;
+  z-index: 0;
+  left: 0;
+  right: 0;
+  bottom: clamp(76px, 7vw, 104px);
+  height: 42%;
+  overflow: hidden;
+  pointer-events: none;
+  mask-image: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.6) 26%, #000 50%);
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: 38% 100%;
+    transform-origin: 40% 100%;
+    translate: calc(var(--mx) * -8px) 0;
+    transition: translate 900ms $salida;
+    animation: l-foto 14s ease-out both;
+  }
+
+  /* Velo claro arriba a la izquierda: el claim siempre se lee sobre la foto. */
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(55% 75% at 12% 0%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.5) 55%, transparent 80%);
+  }
+}
+
+@keyframes l-foto {
+  from { transform: scale(1.08); opacity: 0; }
+  12% { opacity: 1; }
+}
+
+/* Destellos rojos que recorren el piso, como las guías láser de los robots. */
+.login__laser {
+  position: absolute;
+  z-index: 1;
+  inset: 55% 0 0;
+  overflow: hidden;
+
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    left: -30%;
+    width: 30%;
+    height: 2px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, transparent, rgba(255, 60, 80, 0.95), transparent);
+    box-shadow: 0 0 14px 2px rgba(225, 29, 46, 0.6);
+    transform: rotate(-9deg);
+    animation: l-laser 5.5s linear infinite;
+  }
+
+  &::before { top: 62%; }
+  &::after { top: 88%; animation-delay: -2.7s; animation-duration: 6.5s; }
+}
+
+@keyframes l-laser {
+  to { left: 110%; }
+}
+
+/* Cuña roja diagonal en el borde derecho del hero, con brillo que la recorre. */
+.login__cinta {
+  position: absolute;
+  z-index: 1;
+  top: 34%;
+  right: 0;
+  bottom: 0;
+  width: clamp(80px, 11vw, 190px);
+  pointer-events: none;
+  overflow: hidden;
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+  background: linear-gradient(200deg, rgba(225, 29, 46, 0.18), rgba(225, 29, 46, 0.55) 55%, rgba(150, 10, 22, 0.95));
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: -20% 0;
+    background: linear-gradient(180deg, transparent 40%, rgba(255, 255, 255, 0.35) 50%, transparent 60%);
+    animation: l-brillo-v 7s ease-in-out infinite;
+  }
+}
+
+@keyframes l-brillo-v {
+  0%, 30% { transform: translateY(-60%); }
+  70%, 100% { transform: translateY(60%); }
+}
+
+.login__contenido {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(14px, 1.8vw, 28px);
+  padding: clamp(22px, 2.6vw, 44px) clamp(22px, 3.4vw, 64px) clamp(18px, 2vw, 32px);
+}
+
+/* ---------------- Marca (FP + IL) ---------------- */
+.login__marca {
+  display: flex;
+  align-items: center;
+  gap: clamp(12px, 1.2vw, 18px);
+  animation: l-subir 700ms $salida both;
+}
+
+.login__fp {
+  width: clamp(150px, 13vw, 230px);
+  height: auto;
+  filter: drop-shadow(0 6px 10px rgba(15, 18, 23, 0.08));
+}
+
+.login__marca-sep {
+  width: 1px;
+  height: clamp(28px, 2.6vw, 40px);
+  background: linear-gradient(180deg, transparent, #cfd4db, transparent);
+}
+
+.login__il {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.login__il-caja {
+  display: grid;
+  place-items: center;
+  width: clamp(32px, 2.6vw, 40px);
+  aspect-ratio: 1;
+  flex: none;
+  border-radius: 8px;
+  background: linear-gradient(160deg, #ffd84a, var(--l-oro) 55%, #e2b200);
+  color: #14161b;
+  font-family: var(--font-display);
+  font-size: clamp(0.85rem, 0.7rem + 0.3vw, 1.05rem);
+  font-weight: 900;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 1px 2px rgba(120, 90, 0, 0.3),
+    0 10px 20px -8px rgba(247, 196, 0, 0.9);
+}
+
+.login__il-texto {
+  font-size: clamp(0.7rem, 0.6rem + 0.25vw, 0.86rem);
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--l-tinta);
+}
+
+/* ---------------- Copy del hero ---------------- */
+.login__cuerpo {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  align-items: start;
+  gap: clamp(16px, 2vw, 40px);
+}
+
+.login__copy {
+  max-width: 620px;
+  container-type: inline-size;
+}
+
+.login__titulo {
+  display: flex;
+  margin: 0;
+  font-family: var(--font-display);
+  /* Escala con el ancho de su columna: nunca invade la escena. */
+  font-size: clamp(3rem, 23cqi, 9rem);
+  font-weight: 900;
+  line-height: 0.86;
+  letter-spacing: -0.035em;
+}
+
+/* Letras con volumen: canto oscuro escalonado + sombra larga suave. */
+.login__letra {
+  display: inline-block;
+  color: var(--l-rojo);
+  background: linear-gradient(180deg, #ff3448 0%, var(--l-rojo) 55%, #c8101f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter:
+    drop-shadow(0 1px 0 #b30e1c)
+    drop-shadow(0 2px 0 #9d0c18)
+    drop-shadow(0 3px 0 #860a14)
+    drop-shadow(0 18px 22px rgba(140, 8, 20, 0.28));
+  animation: l-letra 900ms calc(120ms + var(--i) * 70ms) $salida both;
+
+  &--oro {
+    background-image: linear-gradient(180deg, #ffd84a 0%, var(--l-oro) 55%, #e0ad00 100%);
+    filter:
+      drop-shadow(0 2px 0 #c79800)
+      drop-shadow(0 2px 0 #ad8400)
+      drop-shadow(0 3px 0 #926f00)
+      drop-shadow(0 18px 22px rgba(160, 120, 0, 0.3));
+  }
+    &--t {
+    /* 2 colores puros: Rojo arriba (travesaño) y Amarillo abajo (tallo) */
+    background-image: linear-gradient(
+      180deg,
+      var(--l-rojo) 0 26%,
+      var(--l-oro) 26% 100%
+    );
+
+    /* Mantenemos la sombra 3D con el tono rojo para que el volumen coincida */
+    filter:
+      drop-shadow(0 1px 0 #b30e1c)
+      drop-shadow(0 2px 0 #ad8400)
+      drop-shadow(0 3px 0 #926f00)
+      drop-shadow(0 18px 22px rgba(140, 8, 20, 0.28));
+  }
+}
+
+@keyframes l-letra {
+  from { opacity: 0; transform: translateY(40%) rotateX(-60deg); }
+}
+
+.login__subtitulo {
+  margin: clamp(10px, 1vw, 16px) 0 0;
+  font-size: clamp(0.9rem, 0.5rem + 0.75vw, 1.4rem);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--l-tinta);
+  animation: l-subir 700ms 420ms $salida both;
+}
+
+/* Acróstico: la palabra activa se resalta y subraya en ciclo (CSS puro). */
+.login__concepto {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: clamp(12px, 1.2vw, 18px) 0 0;
+  font-size: clamp(0.76rem, 0.66rem + 0.22vw, 0.92rem);
+  font-weight: 600;
+  animation: l-subir 700ms 520ms $salida both;
+}
+
+.login__concepto-sep {
+  color: #c4cad3;
+}
+
+.login__palabra {
+  position: relative;
+  padding-bottom: 5px;
+  color: var(--l-tinta-2);
+  animation: l-palabra 12.5s calc(var(--i) * 2.5s) infinite;
+
+  &::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 3px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--l-oro), #ffb800);
+    transform: scaleX(0);
+    transform-origin: left;
+    animation: l-subrayado 12.5s calc(var(--i) * 2.5s) infinite;
+  }
+}
+
+@keyframes l-palabra {
+  0%, 20% { color: var(--l-tinta); }
+  24%, 100% { color: var(--l-tinta-2); }
+}
+
+@keyframes l-subrayado {
+  0% { transform: scaleX(0); }
+  4%, 18% { transform: scaleX(1); }
+  22%, 100% { transform: scaleX(0); transform-origin: right; }
+}
+
+.login__claim {
+  margin: clamp(14px, 1.6vw, 24px) 0 0;
+  max-width: 520px;
+  font-family: var(--font-display);
+  font-size: clamp(1.3rem, 0.7rem + 1.3vw, 2.3rem);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  color: var(--l-tinta);
+  text-shadow: 0 0 18px rgba(255, 255, 255, 0.9), 0 1px 0 rgba(255, 255, 255, 0.8);
+  animation: l-subir 800ms 620ms $salida both;
+
+  strong {
+    position: relative;
+    display: inline-block;
+    color: var(--l-rojo);
+
+    &::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0.02em;
+      height: 0.14em;
+      border-radius: 4px;
+      background: rgba(225, 29, 46, 0.16);
+      transform-origin: left;
+      animation: l-trazo 900ms 1.3s $salida both;
+    }
+  }
+}
+
+@keyframes l-trazo {
+  from { transform: scaleX(0); }
+}
+
+@keyframes l-subir {
+  from { opacity: 0; transform: translateY(18px); }
+}
+
+/* ---------------- Mapa del Perú + pines ---------------- */
+.login__mapa {
+  position: relative;
+  justify-self: center;
+  width: 100%;
+  max-width: 600px;
+  aspect-ratio: 1.24;
+  margin-top: clamp(-36px, -2vw, -8px);
+  translate: calc(var(--mx) * 10px) calc(var(--my) * 6px);
+  transition: translate 1000ms $salida;
+}
+
+.login__peru {
+  position: absolute;
+  left: 22%;
+  top: 0;
+  width: 56%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 2px 2px rgba(15, 23, 42, 0.06)) drop-shadow(0 24px 30px rgba(15, 23, 42, 0.12));
+  animation: l-aparecer 1200ms 200ms ease both;
+}
+
+@keyframes l-aparecer {
+  from { opacity: 0; }
+}
+
+.login__peru-base {
+  fill: url(#login-relieve);
+  stroke: #d3d9e0;
+  stroke-width: 0.8;
+  stroke-linejoin: round;
+}
+
+.login__peru-trama {
+  fill: url(#login-puntos);
+  opacity: 0.85;
+}
+
+/* Rutas: se dibujan al entrar y luego fluyen con trazos discontinuos. */
+.login__rutas path {
+  fill: none;
+  stroke: var(--l-rojo);
+  stroke-width: 1.1;
+  stroke-linecap: round;
+  stroke-dasharray: 2.5 4;
+  opacity: 0.75;
+  animation:
+    l-aparecer 600ms calc(500ms + var(--i) * 60ms) ease both,
+    l-flujo 1.4s linear infinite;
+}
+
+@keyframes l-flujo {
+  to { stroke-dashoffset: -13; }
+}
+
+.login__nodos circle {
+  fill: var(--l-rojo);
+  stroke: #fff;
+  stroke-width: 1;
+  filter: drop-shadow(0 0 3px rgba(225, 29, 46, 0.7));
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: l-nodo 2.8s calc(var(--i) * 0.19s) ease-in-out infinite;
+}
+
+@keyframes l-nodo {
+  50% { transform: scale(1.35); }
+}
+
+.login__nodos .login__hub {
+  animation: none;
+}
+
+.login__nodos .login__hub-halo {
+  fill: none;
+  stroke: var(--l-rojo);
+  stroke-width: 1.2;
+  filter: none;
+  animation: l-halo 2.4s ease-out infinite;
+}
+
+@keyframes l-halo {
+  from { transform: scale(0.5); opacity: 0.9; }
+  to { transform: scale(2.4); opacity: 0; }
+}
+
+/* Enlaces punteados de los pines a sus ciudades. */
+.login__enlaces {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+
+  path {
+    fill: none;
+    stroke: rgba(225, 29, 46, 0.55);
+    stroke-width: 1.3;
+    stroke-dasharray: 3 5;
+    vector-effect: non-scaling-stroke;
+    animation: l-aparecer 800ms 900ms ease both, l-flujo 2s linear infinite;
+  }
+}
+
+.login__pin {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  transform: translate(-50%, -50%);
+  animation:
+    l-pin 700ms calc(700ms + var(--i) * 140ms) $salida both,
+    l-pin-flotar 5s calc(var(--i) * -1.2s) ease-in-out infinite;
+}
+
+@keyframes l-pin {
+  from { opacity: 0; transform: translate(-50%, calc(-50% + 16px)) scale(0.85); }
+}
+
+@keyframes l-pin-flotar {
+  50% { transform: translate(-50%, calc(-50% - 5px)); }
+}
+
+.login__pin-ico {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: clamp(46px, 3.6vw, 60px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  color: var(--l-rojo);
+  background: radial-gradient(circle at 50% 30%, #fff, #f5f6f8);
+  border: 2px solid var(--l-rojo);
+  box-shadow:
+    inset 0 -2px 4px rgba(15, 18, 23, 0.06),
+    0 2px 4px rgba(15, 18, 23, 0.08),
+    0 14px 28px -10px rgba(225, 29, 46, 0.45),
+    0 0 0 5px rgba(255, 255, 255, 0.85);
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: -9px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(225, 29, 46, 0.35);
+    animation: l-onda 3s calc(var(--i) * 0.7s) ease-out infinite;
+  }
+}
+
+@keyframes l-onda {
+  from { transform: scale(0.8); opacity: 0.9; }
+  to { transform: scale(1.5); opacity: 0; }
+}
+
+.login__pin-texto {
+  max-width: 130px;
+  font-size: clamp(0.62rem, 0.52rem + 0.2vw, 0.76rem);
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+  color: #1f2937;
+  text-shadow: 0 1px 0 #fff, 0 0 8px #fff;
+}
+
+/* ---------------- Barra inferior de capas ---------------- */
+.login__barra {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: stretch;
+  min-height: clamp(76px, 7vw, 104px);
+  padding: 0 clamp(96px, 7vw, 140px) 0 clamp(12px, 2.4vw, 40px);
+  overflow: hidden;
+  color: #fff;
+  background: linear-gradient(90deg, #6f0a13, #a00f1b 45%, #b8111f 70%, #8d0c16);
+  box-shadow: 0 -24px 40px -24px rgba(110, 8, 18, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  clip-path: polygon(0 0, calc(100% - 90px) 0, 100% 100%, 0 100%);
+  animation: l-barra 800ms 300ms $salida both;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(100deg, transparent 35%, rgba(255, 255, 255, 0.14) 50%, transparent 65%);
+    transform: translateX(-100%);
+    animation: l-brillo-h 9s 2s ease-in-out infinite;
+  }
+}
+
+@keyframes l-barra {
+  from { transform: translateY(100%); }
+}
+
+@keyframes l-brillo-h {
+  0%, 60% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.login__barra-item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 4px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.95);
+  animation: l-subir 600ms calc(600ms + var(--i) * 70ms) $salida both;
+
+  & + & {
+    border-left: 1px solid rgba(255, 255, 255, 0.16);
+  }
+}
+
+.login__barra-ico {
+  display: grid;
+  place-items: center;
+  transition: transform 300ms $salida;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.3));
+
+  .login__barra-item:hover & {
+    transform: translateY(-3px) scale(1.08);
+  }
+}
+
+.login__barra-texto {
+  font-size: clamp(0.56rem, 0.48rem + 0.2vw, 0.72rem);
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ---------------- Panel de acceso ---------------- */
+.login__panel {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: clamp(24px, 2.4vw, 48px);
+  overflow: hidden;
+  background:
+    repeating-linear-gradient(-45deg, rgba(15, 23, 42, 0.03) 0 1px, transparent 1px 14px),
+    linear-gradient(180deg, #f6f7f8, var(--l-panel));
+  box-shadow: inset 1px 0 0 rgba(15, 18, 23, 0.06);
+}
+
+/* Franjas diagonales de marca en las esquinas del panel. */
+.login__franja {
+  position: absolute;
+  z-index: -1;
+  width: 160%;
+  height: 120px;
+  pointer-events: none;
+  transform: rotate(-38deg);
+
+  &--arriba {
+    top: -40px;
+    right: -78%;
+    background:
+      linear-gradient(90deg, transparent, rgba(225, 29, 46, 0.1) 30%, rgba(225, 29, 46, 0.22)) top / 100% 46% no-repeat,
+      linear-gradient(90deg, transparent, rgba(225, 29, 46, 0.06) 40%, rgba(225, 29, 46, 0.12)) bottom / 100% 22% no-repeat;
+  }
+
+  &--abajo {
+    bottom: -30px;
+    left: -86%;
+    background: linear-gradient(90deg, rgba(225, 29, 46, 0.16), rgba(225, 29, 46, 0.05) 60%, transparent) center / 100% 30% no-repeat;
+  }
+}
+
+.login__card {
+  position: relative;
+  width: min(100%, 420px);
+  padding: clamp(26px, 2.6vw, 44px);
+  color: #1f2937;
+  background: linear-gradient(180deg, #ffffff, #fdfdfd);
+  border: 1px solid rgba(15, 18, 23, 0.06);
+  border-radius: 20px;
+  box-shadow:
+    inset 0 1px 0 #fff,
+    0 1px 1px hsl(var(--l-sombra) / 0.04),
+    0 2px 4px hsl(var(--l-sombra) / 0.04),
+    0 6px 12px -2px hsl(var(--l-sombra) / 0.05),
+    0 16px 32px -8px hsl(var(--l-sombra) / 0.08),
+    0 40px 80px -24px hsl(var(--l-sombra) / 0.18),
+    0 80px 120px -60px hsl(var(--l-sombra) / 0.22);
+  animation: l-tarjeta 900ms 150ms $salida both;
+
+  /* Filete superior rojo → oro. */
+  &::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: 28px;
+    right: 28px;
+    height: 3px;
+    border-radius: 0 0 3px 3px;
+    background: linear-gradient(90deg, var(--l-rojo), var(--l-oro));
+  }
+}
+
+@keyframes l-tarjeta {
+  from { opacity: 0; transform: translateY(24px) scale(0.98); }
+}
+
+.login__acceso {
+  margin: 0 0 14px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--l-rojo);
+}
+
+.login__header {
+  margin-bottom: var(--space-6);
+
+  h2 {
+    font-family: var(--font-display);
+    font-size: clamp(1.6rem, 1.3rem + 0.8vw, 2.1rem);
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    color: var(--l-navy);
+  }
+
+  p {
+    margin-top: 6px;
+    font-size: var(--fs-md);
+    line-height: 1.5;
+    color: var(--l-tinta-3);
+  }
+}
+
+.login__alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  border-radius: 10px;
+  font-size: var(--fs-sm);
+  color: #b91c1c;
+  background: #fef1f2;
+  border: 1px solid rgba(225, 29, 46, 0.25);
+  animation: ui-shake 420ms both;
+}
+
+.login__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+
+  .ui-label {
+    font-weight: 600;
+    color: #1f2937;
+  }
+}
+
+.login__control {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.login__control .ui-input {
+  min-height: 50px;
+  padding-left: 44px;
+  padding-right: 46px;
+  font-size: 0.95rem;
+  color: var(--l-tinta);
+  background: #fff;
+  border: 1px solid #e2e5e9;
+  border-radius: 12px;
+  box-shadow: inset 0 1px 2px rgba(15, 18, 23, 0.04);
+  transition: border-color 160ms ease, box-shadow 220ms ease, background-color 160ms ease;
+
+  &::placeholder { color: #9aa3af; }
+  &:hover { border-color: #c9ced6; }
+
+  &:focus {
+    border-color: var(--l-rojo);
+    box-shadow: 0 0 0 4px rgba(225, 29, 46, 0.12), 0 8px 18px -10px rgba(225, 29, 46, 0.5);
+  }
+}
+
+.login__control .ui-input.ui-input--invalid {
+  border-color: #dc2626;
+
+  &:focus {
+    border-color: #dc2626;
+    box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.16);
+  }
+}
+
+.login__control-icon {
+  position: absolute;
+  left: 15px;
+  color: #8a93a0;
+  pointer-events: none;
+  transition: color 160ms ease;
+
+  .login__control:focus-within & {
+    color: var(--l-rojo);
+  }
+}
+
+.login__toggle {
+  position: absolute;
+  right: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #8a93a0;
+  cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease;
+
+  &:hover {
+    background: rgba(225, 29, 46, 0.08);
+    color: var(--l-rojo);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--l-rojo);
+    outline-offset: 1px;
+  }
+}
+
+.login__submit {
+  position: relative;
+  overflow: hidden;
+  margin-top: var(--space-1);
+  height: 54px;
+  border: 0;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #fff;
+  background: linear-gradient(180deg, #ef2a3f, #d31125 60%, #bf0e20);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 1px 2px rgba(140, 8, 20, 0.3),
+    0 12px 24px -10px rgba(225, 29, 46, 0.7),
+    0 24px 40px -24px rgba(225, 29, 46, 0.6);
+  transition: transform 200ms $salida, box-shadow 220ms ease, filter 200ms ease;
+
+  /* Destello que cruza el botón. */
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.35) 50%, transparent 70%);
+    transform: translateX(-120%);
+    animation: l-destello 5s 2.2s ease-in-out infinite;
+  }
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    filter: brightness(1.04);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.25),
+      0 2px 4px rgba(140, 8, 20, 0.3),
+      0 18px 30px -12px rgba(225, 29, 46, 0.8),
+      0 30px 50px -26px rgba(225, 29, 46, 0.7);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  &:focus-visible {
+    outline: 3px solid rgba(247, 196, 0, 0.8);
+    outline-offset: 2px;
+  }
+}
+
+@keyframes l-destello {
+  0%, 70% { transform: translateX(-120%); }
+  100% { transform: translateX(120%); }
+}
+
+.login__submit-flecha {
+  transition: transform 260ms $salida;
+
+  .login__submit:hover & {
+    transform: translateX(4px);
+  }
+}
+
+.login__spinner {
+  width: 18px;
+  height: 18px;
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+}
+
+.login__nota {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #eceef1;
+  font-size: 0.78rem;
+  color: var(--l-tinta-3);
+
+  ui-icon { color: #7b8794; }
+}
+
+/* ---------------- Pantallas grandes (2K / 4K) ---------------- */
+@media (min-width: 1920px) {
+  .login__card { width: min(100%, 480px); }
+  .login__mapa { max-width: 720px; }
+}
+
+/* ---------------- Responsive ---------------- */
+@include bp.down(xl) {
+  .login__pin-texto { max-width: 100px; }
+}
+
+/* Tablet: una columna; el mapa sigue junto al copy con pines compactos. */
+@include bp.down(lg) {
+  .login__hero { min-height: 640px; }
+
+  .login__cuerpo { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+
+  .login__pin-texto {
+    max-width: 84px;
+    font-size: 0.58rem;
+  }
+
+  .login__panel {
+    padding: var(--space-8) var(--space-4) var(--space-10);
+    box-shadow: inset 0 1px 0 rgba(15, 18, 23, 0.06);
+  }
+
+  .login__barra {
+    padding-right: clamp(40px, 8vw, 80px);
+    overflow-x: auto;
+    clip-path: none;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar { display: none; }
+  }
+
+  .login__barra-item {
+    flex: none;
+    min-width: 108px;
+  }
+}
+
+/* Móvil: copy arriba, foto del almacén como franja inferior del hero. */
+@include bp.down(md) {
+  .login__hero { min-height: 0; }
+
+  .login__cuerpo { grid-template-columns: 1fr; }
+
+  .login__mapa,
+  .login__barra,
+  .login__cinta {
+    display: none;
+  }
+
+  .login__contenido { padding-bottom: 0; }
+
+  .login__foto {
+    position: relative;
+    z-index: 0;
+    bottom: auto;
+    order: 2;
+    height: clamp(170px, 46vw, 300px);
+    margin-top: -12px;
+    mask-image: linear-gradient(180deg, transparent, #000 35%);
+
+    &::after { display: none; }
+  }
+}
+
+@include bp.down(sm) {
+  .login__marca { gap: 10px; }
+  .login__fp { width: 128px; }
+  .login__il-texto { letter-spacing: 0.1em; }
+  .login__concepto { display: none; }
+  .login__claim { font-size: 1.3rem; }
+
+  .login__card {
+    padding: 24px 20px;
+    border-radius: 18px;
+  }
+}
+
+/* ---------------- Movimiento reducido ---------------- */
+@media (prefers-reduced-motion: reduce) {
+  .login *,
+  .login *::before,
+  .login *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

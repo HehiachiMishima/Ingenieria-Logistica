@@ -1,0 +1,116 @@
+<div
+  class="shell"
+  [class.shell--escritorio]="escritorio()"
+  [class.shell--riel]="escritorio() && !expandido()"
+  [class.shell--drawer]="!escritorio() && drawerAbierto()"
+>
+  <aside
+    id="shell-nav"
+    class="shell__sidebar"
+    aria-label="Navegación del panel"
+    [attr.inert]="!escritorio() && !drawerAbierto() ? '' : null"
+  >
+    <div class="shell__brand">
+      <img class="shell__brand-mark" src="atlasImg.png" alt="Atlas" width="40" height="40" />
+      <span class="shell__brand-text">
+        <span class="shell__brand-kicker">Farmacias Peruanas</span>
+        <span class="shell__brand-title">{{ panel().nombre }}</span>
+      </span>
+    </div>
+
+    <nav class="shell__nav">
+      <p class="shell__nav-label">Módulos</p>
+      @for (modulo of modulos(); track modulo.id) {
+        <a
+          class="shell__nav-item"
+          [routerLink]="modulo.ruta"
+          routerLinkActive="shell__nav-item--active"
+          [attr.title]="escritorio() && !expandido() ? modulo.nombre : null"
+        >
+          <span class="shell__nav-icon"><ui-icon [name]="modulo.icono" [size]="18" /></span>
+          <span class="shell__nav-text">
+            <span class="shell__nav-name">{{ modulo.nombre }}</span>
+            <span class="shell__nav-desc">{{ modulo.descripcion }}</span>
+          </span>
+        </a>
+      }
+    </nav>
+
+    <div class="shell__sidebar-foot">
+      <button
+        type="button"
+        class="shell__panel-btn"
+        (click)="irAPaneles()"
+        [attr.title]="escritorio() && !expandido() ? 'Cambiar de panel' : null"
+      >
+        <span class="shell__nav-icon"><ui-icon name="panel" [size]="18" /></span>
+        <span class="shell__nav-text"><span class="shell__nav-name">Cambiar de panel</span></span>
+      </button>
+      <p class="shell__foot-meta">Atlas · Farmacias Peruanas</p>
+    </div>
+  </aside>
+
+  <div class="shell__overlay" (click)="cerrarDrawer()" aria-hidden="true"></div>
+
+  <div class="shell__body">
+    <header class="shell__topbar">
+      <button
+        type="button"
+        class="ui-icon-btn shell__menu-btn"
+        (click)="alternarMenu()"
+        [attr.aria-label]="escritorio() ? (expandido() ? 'Contraer menú' : 'Expandir menú') : 'Abrir menú'"
+        [attr.aria-expanded]="escritorio() ? expandido() : drawerAbierto()"
+        aria-controls="shell-nav"
+      >
+        <ui-icon [name]="!escritorio() && drawerAbierto() ? 'close' : 'menu'" [size]="20" />
+      </button>
+
+      <div class="shell__topbar-title">
+        <span class="shell__crumb">{{ panel().nombre }}</span>
+        @if (moduloActual(); as modulo) {
+          <ui-icon class="shell__crumb-sep" name="chevronRight" [size]="14" />
+          <span class="shell__crumb-current">{{ modulo.nombre }}</span>
+        }
+      </div>
+
+      <div class="shell__status" aria-hidden="true">
+        <span class="ct-live"><span class="ct-live__dot"></span>En línea</span>
+        <span class="shell__clock">
+          <span class="shell__clock-time">{{ hora() }}</span>
+          <span class="shell__clock-date">{{ fecha() }}</span>
+        </span>
+      </div>
+
+      <div class="shell__topbar-actions">
+        <button type="button" class="ui-icon-btn" (click)="alternarTema($event)" aria-label="Cambiar tema">
+          <ui-icon [name]="tema.tema() === 'dark' ? 'sun' : 'moon'" [size]="18" />
+        </button>
+
+        @if (usuario(); as u) {
+          <button
+            type="button"
+            class="shell__user"
+            (click)="abrirCuenta()"
+            [attr.aria-label]="'Mi cuenta: ' + u.nombre + ' ' + u.apellido"
+          >
+            <span class="ui-avatar">{{ iniciales() }}</span>
+            <span class="shell__user-info">
+              <span class="shell__user-name">{{ u.nombre }} {{ u.apellido }}</span>
+              <span class="shell__user-mail">{{ u.email }}</span>
+            </span>
+          </button>
+        }
+
+        <button type="button" class="ui-icon-btn shell__logout" (click)="cerrarSesion()" aria-label="Cerrar sesión">
+          <ui-icon name="logout" [size]="18" />
+        </button>
+      </div>
+    </header>
+
+    <main class="shell__content">
+      <router-outlet />
+    </main>
+  </div>
+
+  <ui-mi-cuenta [abierto]="cuentaAbierta()" (cerrar)="cuentaAbierta.set(false)" />
+</div>

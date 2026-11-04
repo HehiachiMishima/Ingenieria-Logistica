@@ -1,0 +1,657 @@
+<header class="page-head">
+  <div>
+    <h1 class="page-head__title">Configuración y balanceo</h1>
+  </div>
+  <div class="page-head__acciones">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="explicacionAbierta.set(true)">
+      <ui-icon name="info" [size]="18" />
+      ¿Cómo balancea?
+    </button>
+    @if (seleccionado()) {
+      <button
+        *hasPermiso="permisos.VER_DASHBOARD_SIMULACION"
+        type="button"
+        class="ui-btn ui-btn--secondary"
+        (click)="irADashboard()"
+      >
+        <ui-icon name="dashboard" [size]="18" />
+        Ver dashboard
+      </button>
+    }
+  </div>
+</header>
+
+<input
+  #inputArchivo
+  type="file"
+  accept=".xlsx,.xls,.csv"
+  hidden
+  (change)="seleccionarArchivo($event)"
+/>
+
+<section class="config-panel">
+  <div class="config-panel__campos">
+    <div class="config-panel__campo">
+      <label class="ui-label" for="config-registro">Registro guardado</label>
+      <ui-select-buscable
+        campoId="config-registro"
+        [opciones]="opcionesRegistro()"
+        [valor]="seleccionado()"
+        [deshabilitado]="cargandoOpciones() || ocupado()"
+        placeholder="Elegir registro…"
+        (valorCambia)="seleccionarDesdeSelector($event)"
+      />
+      <span class="config-panel__ayuda">
+        {{ formatearNumero(opcionesRegistro().length) }} registro(s) disponibles
+      </span>
+    </div>
+    <div class="config-panel__campo">
+      <label class="ui-label" for="config-equipo">Operarios del equipo</label>
+      <input
+        id="config-equipo"
+        type="number"
+        class="ui-input"
+        min="1"
+        [max]="limitesValidos.equipo"
+        step="1"
+        inputmode="numeric"
+        [value]="equipo()"
+        [disabled]="!config() || !puedeModificar() || equipoBloqueado() !== null || ocupado()"
+        (change)="setEquipo($event)"
+      />
+      <span class="config-panel__ayuda">
+        @if (equipoBloqueado(); as cerrado) {
+          Ya trabajó en {{ cerrado.nombre }}: reábrelo para cambiar los parámetros globales
+        } @else {
+          Los mismos operarios pasan de un cluster al siguiente
+        }
+      </span>
+    </div>
+    <div class="config-panel__campo">
+      <label class="ui-label" for="config-velocidad">Velocidad</label>
+      <input
+        id="config-velocidad"
+        type="number"
+        class="ui-input"
+        min="0.01"
+        [max]="limitesValidos.velocidad"
+        step="any"
+        inputmode="decimal"
+        [value]="velocidad()"
+        [disabled]="!config() || !puedeModificar() || equipoBloqueado() !== null || ocupado()"
+        (change)="setVelocidad($event)"
+      />
+      <span class="config-panel__ayuda">Bultos por hora de cada operario</span>
+    </div>
+    <div class="config-panel__campo">
+      <label class="ui-label" for="config-por-chute">Máximo por chute</label>
+      <input
+        id="config-por-chute"
+        type="number"
+        class="ui-input"
+        min="1"
+        [max]="limitesValidos.operariosPorChute"
+        step="1"
+        inputmode="numeric"
+        placeholder="Sin tope propio"
+        [value]="porChute() ?? ''"
+        [disabled]="!config() || !puedeModificar() || equipoBloqueado() !== null || ocupado()"
+        (change)="setPorChute($event)"
+      />
+      <span class="config-panel__ayuda">
+        {{
+          porChute() === null
+            ? 'Vacío: un chute puede recibir hasta todo el equipo'
+            : 'Ningún chute tendrá más de ' + porChute() + ' operario(s)'
+        }}
+      </span>
+    </div>
+  </div>
+
+  <div class="config-panel__pie">
+    @if (config(); as cfg) {
+      <div class="config-info">
+        <span class="config-info__icono"><ui-icon name="paquete" [size]="18" /></span>
+        <div class="config-info__datos">
+          <span class="config-info__nombre" [title]="cfg.archivo.nombreRegistro">{{
+            cfg.archivo.nombreRegistro
+          }}</span>
+          <span class="config-info__meta">
+            {{ formatearNumero(cfg.archivo.rutas) }} rutas ·
+            {{ formatearNumero(cfg.archivo.chutes) }} chutes ·
+            {{ formatearNumero(cfg.archivo.bultos, 2) }} bultos
+          </span>
+        </div>
+        <span
+          class="ui-badge"
+          [class.ui-badge--success]="cfg.archivo.estado === 'FINALIZADO'"
+          [class.ui-badge--info]="cfg.archivo.estado === 'EN_PROCESO'"
+          [class.ui-badge--neutral]="cfg.archivo.estado === 'PROYECCION'"
+        >
+          {{ estadoRegistro(cfg.archivo.estado) }}
+        </span>
+        <span class="config-paso" [class.config-paso--pendiente]="!finalizado()">
+          @if (finalizado()) {
+            <ui-icon name="check" [size]="14" />
+          }
+          {{ clustersCerrados() }}/{{ cfg.clusters.length }} clusters cerrados
+        </span>
+        @if (dirty()) {
+          <span class="ui-badge ui-badge--warning">Cambios sin guardar</span>
+        }
+      </div>
+    } @else {
+      <div class="config-info config-info--vacio">
+        <span class="config-info__icono"><ui-icon name="paquete" [size]="18" /></span>
+        <span class="config-info__meta">Elige un registro o carga un Excel nuevo.</span>
+      </div>
+    }
+    <div class="config-panel__acciones">
+      <button
+        *hasPermiso="permisos.CREAR_REGISTRO_SIMULACION"
+        type="button"
+        class="ui-btn ui-btn--secondary"
+        [disabled]="cargandoOpciones() || ocupado()"
+        (click)="abrirSelectorArchivo()"
+      >
+        <ui-icon name="almacen" [size]="16" />
+        Cargar Excel
+      </button>
+      <button
+        type="button"
+        class="ui-btn ui-btn--secondary"
+        (click)="actualizar()"
+        [disabled]="cargandoOpciones() || ocupado()"
+      >
+        <ui-icon name="refresh" [size]="16" />
+        Actualizar
+      </button>
+      <button
+        *hasPermiso="permisos.MODIFICAR_CONFIGURACION_SIMULACION"
+        type="button"
+        class="ui-btn ui-btn--secondary"
+        (click)="guardar()"
+        [disabled]="!dirty() || ocupado()"
+      >
+        @if (guardando()) {
+          <span class="ui-spinner config-spinner"></span>
+        }
+        Guardar cambios
+      </button>
+    </div>
+  </div>
+
+  @if (config()) {
+    @if (finalizado()) {
+      <p class="config-aviso config-aviso--info">
+        <ui-icon name="lock" [size]="15" />
+        Simulación terminada: todos los clusters están cerrados. Para cambiar uno, pulsa su
+        «Reabrir»; los que se trabajaron después vuelven a la proyección.
+      </p>
+    }
+    @for (mezcla of config()?.mezclas ?? []; track mezcla.id) {
+      <p class="config-aviso">
+        <ui-icon name="alerta" [size]="15" />
+        {{ mezcla.chute }} mezcla {{ mezcla.clusters.join(' y ') }}: no pueden compartir chute. Al
+        balancear el primero de los dos, sale de ese chute el que tenga menos rutas allí.
+      </p>
+    }
+  }
+</section>
+
+@if (cargandoOpciones() && registros().length === 0) {
+  <div class="table-card">
+    <div class="loading"><span class="ui-spinner"></span> Cargando registros…</div>
+  </div>
+} @else if (registros().length === 0 && errorOpciones()) {
+  <div class="table-card">
+    <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="errorOpciones()!">
+      <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="cargarOpciones()">
+        <ui-icon name="refresh" [size]="16" /> Reintentar
+      </button>
+    </ui-empty>
+  </div>
+} @else if (registros().length === 0) {
+  <div class="table-card">
+    <ui-empty
+      icono="almacen"
+      titulo="Aún no hay registros"
+      mensaje="Sube un Excel de proyección para configurar límites y ejecutar el balanceo."
+    >
+      <button
+        *hasPermiso="permisos.VER_REGISTRO_SIMULACION"
+        type="button"
+        class="ui-btn ui-btn--primary ui-btn--sm"
+        (click)="irARegistro()"
+      >
+        Ir a Registro
+      </button>
+    </ui-empty>
+  </div>
+} @else if (cargando()) {
+  <div class="table-card">
+    <div class="loading"><span class="ui-spinner"></span> Cargando configuración…</div>
+  </div>
+} @else if (error()) {
+  <div class="table-card">
+    <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="error()!">
+      <button
+        type="button"
+        class="ui-btn ui-btn--secondary ui-btn--sm"
+        (click)="seleccionar(seleccionado())"
+      >
+        <ui-icon name="refresh" [size]="16" /> Reintentar
+      </button>
+    </ui-empty>
+  </div>
+} @else if (config(); as cfg) {
+  @if (cfg.archivo.rutas === 0) {
+    <div class="table-card">
+      <ui-empty
+        icono="paquete"
+        titulo="Registro sin rutas"
+        mensaje="El archivo no contiene rutas para simular."
+      />
+    </div>
+  } @else {
+    <section class="cluster-grid" aria-label="Clusters en el orden de las olas">
+      @for (cluster of resumenClusters(); track cluster.id) {
+        <app-simulacion-cluster-card
+          [cluster]="cluster"
+          [equipo]="equipo()"
+          [enCurso]="enCurso()?.nombre ?? null"
+          [puedeModificar]="puedeModificar()"
+          [ocupado]="ocupado()"
+          [trabajando]="trabajando()"
+          (balancear)="balancear(cluster)"
+          (asignar)="asignarOperarios(cluster)"
+          (cerrar)="cerrar(cluster)"
+          (restablecer)="confirmarRestablecerCluster(cluster)"
+          (reabrir)="confirmarReabrir(cluster)"
+          (limiteCambia)="setLimite(cluster.id, $event)"
+        />
+      }
+    </section>
+
+    <div class="toolbar">
+      <div class="ui-search toolbar__grow">
+        <ui-icon name="search" [size]="18" />
+        <input
+          type="search"
+          class="ui-input"
+          placeholder="Buscar ruta por código…"
+          aria-label="Buscar ruta por código"
+          [value]="textoBusqueda()"
+          (input)="buscarRuta($any($event.target).value)"
+        />
+      </div>
+      <button
+        type="button"
+        class="ui-btn ui-btn--secondary"
+        [attr.aria-expanded]="filtrosAbierto()"
+        aria-controls="simulacion-rutas-filtros"
+        (click)="alternarFiltros()"
+      >
+        <ui-icon name="filtro" [size]="18" />
+        Filtros
+        @if (filtrosActivos() > 0) {
+          <span class="filtros-badge">{{ filtrosActivos() }}</span>
+        }
+      </button>
+      <div class="toolbar__acciones">
+        <button
+          *hasPermiso="permisos.MODIFICAR_CONFIGURACION_SIMULACION"
+          type="button"
+          class="ui-btn ui-btn--secondary ui-btn--sm"
+          (click)="confirmarRestablecer()"
+          [disabled]="ocupado() || finalizado()"
+        >
+          <ui-icon name="refresh" [size]="16" />
+          Restablecer todo
+        </button>
+        <button
+          type="button"
+          class="ui-btn ui-btn--secondary ui-btn--sm"
+          (click)="verCambios()"
+          [disabled]="ocupado()"
+        >
+          <ui-icon name="ver" [size]="16" />
+          Mostrar cambios
+        </button>
+      </div>
+    </div>
+
+    <ui-filtros-activos
+      [chips]="chips()"
+      (quitar)="quitarFiltro($event)"
+      (limpiar)="limpiarFiltros()"
+    />
+
+    <ui-panel-filtros
+      id="simulacion-rutas-filtros"
+      [abierto]="filtrosAbierto()"
+      [activos]="filtrosActivos()"
+      titulo="Filtrar rutas"
+      (cerrar)="filtrosAbierto.set(false)"
+      (limpiar)="limpiarFiltros()"
+    >
+      <section class="filtro-seccion">
+        <h3 class="filtro-seccion__titulo"><ui-icon name="layers" [size]="15" /> Chutes</h3>
+        <div class="ui-field">
+          <label class="ui-label" for="config-filtro-chutes">Chutes</label>
+          <ui-select-multiple
+            campoId="config-filtro-chutes"
+            [opciones]="opcionesChute()"
+            [valores]="filtroChute()"
+            placeholder="Todos los chutes"
+            (valoresCambia)="setFiltroChute($event)"
+          />
+        </div>
+      </section>
+
+      <section class="filtro-seccion">
+        <h3 class="filtro-seccion__titulo"><ui-icon name="area" [size]="15" /> Clusters</h3>
+        <div class="ui-field">
+          <label class="ui-label" for="config-filtro-clusters">Clusters</label>
+          <ui-select-multiple
+            campoId="config-filtro-clusters"
+            [opciones]="opcionesCluster()"
+            [valores]="filtroCluster()"
+            placeholder="Todos los clusters"
+            (valoresCambia)="setFiltroCluster($event)"
+          />
+        </div>
+      </section>
+    </ui-panel-filtros>
+
+    <div class="table-card" [class.table-card--refrescando]="rutas.refrescando()">
+      @if (rutas.cargaInicial()) {
+        <div class="loading"><span class="ui-spinner"></span> Cargando rutas…</div>
+      } @else if (rutas.error() && rutas.items().length === 0) {
+        <ui-empty
+          icono="alerta"
+          titulo="No se pudieron cargar las rutas"
+          [mensaje]="rutas.error()!"
+        >
+          <button
+            type="button"
+            class="ui-btn ui-btn--secondary ui-btn--sm"
+            (click)="rutas.recargar()"
+          >
+            <ui-icon name="refresh" [size]="16" /> Reintentar
+          </button>
+        </ui-empty>
+      } @else {
+        <div class="ui-table-wrap">
+          <table class="ui-table" appColumnasRedimensionables>
+            <thead>
+              <tr>
+                <th>Chute</th>
+                <th>Cluster</th>
+                <th>Ruta</th>
+                <th>Tipo</th>
+                <th class="num">Bultos</th>
+                <th class="num">Unidades</th>
+                <th class="num">Líneas</th>
+                <th class="num">COD</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (ruta of rutas.items(); track ruta.id) {
+                <tr>
+                  <td class="fuerte">{{ ruta.chute }}</td>
+                  <td>
+                    <span
+                      class="cluster-chip"
+                      [style.--cluster-color]="colorDeCluster(ruta.clusterId)"
+                      [title]="ruta.cluster"
+                    >
+                      {{ ruta.cluster }}
+                    </span>
+                  </td>
+                  <td class="u-mono">{{ ruta.codigoRuta }}</td>
+                  <td>
+                    <span
+                      class="ui-badge"
+                      [class.ui-badge--info]="ruta.tipo === 'B2B'"
+                      [class.ui-badge--neutral]="ruta.tipo !== 'B2B'"
+                    >
+                      {{ ruta.tipo }}
+                    </span>
+                  </td>
+                  <td class="num">{{ formatearNumero(ruta.totalBultos, 2) }}</td>
+                  <td class="num">{{ formatearNumero(ruta.totalUnidades, 2) }}</td>
+                  <td class="num">{{ formatearNumero(ruta.totalLineas, 2) }}</td>
+                  <td class="num">{{ formatearNumero(ruta.conteoCod) }}</td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="8" class="u-muted">Ninguna ruta coincide con los filtros.</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <ui-paginador
+          [pagina]="pagina()"
+          [total]="rutas.total()"
+          [porPagina]="porPagina()"
+          (paginaCambia)="cambiarPagina($event)"
+          (porPaginaCambia)="cambiarPorPagina($event)"
+        />
+      }
+    </div>
+  }
+}
+
+<app-simulacion-historial-cambios
+  [registroId]="seleccionado()"
+  [abierto]="historialAbierto()"
+  (cerrar)="historialAbierto.set(false)"
+/>
+
+<ui-modal
+  [abierto]="restablecerAbierto()"
+  ancho="sm"
+  [compacto]="true"
+  titulo="Restablecer todo"
+  (cerrar)="restablecerAbierto.set(false)"
+>
+  <div class="confirm">
+    <span class="confirm__icon"><ui-icon name="refresh" [size]="22" /></span>
+    <div class="confirm__text">
+      <p class="confirm__title">¿Volver todo a la proyección original?</p>
+      <p class="confirm__desc">
+        Todos los clusters vuelven a empezar: cada ruta regresa a su chute original, ninguna ola
+        tiene operarios y se borra el historial. La simulación vuelve a empezar por el primero.
+      </p>
+    </div>
+  </div>
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="restablecerAbierto.set(false)">
+      Cancelar
+    </button>
+    <button
+      type="button"
+      class="ui-btn ui-btn--danger"
+      (click)="restablecer()"
+      [disabled]="ocupado()"
+    >
+      @if (restableciendo()) {
+        <span class="ui-spinner config-spinner"></span>
+      }
+      Restablecer
+    </button>
+  </div>
+</ui-modal>
+
+<ui-modal
+  [abierto]="clusterARestablecer() !== null"
+  ancho="sm"
+  [compacto]="true"
+  titulo="Restablecer cluster"
+  (cerrar)="clusterARestablecer.set(null)"
+>
+  <div class="confirm">
+    <span class="confirm__icon"><ui-icon name="refresh" [size]="22" /></span>
+    <div class="confirm__text">
+      <p class="confirm__title">¿Restablecer {{ clusterARestablecer()?.nombre }}?</p>
+      <p class="confirm__desc">
+        Sus rutas vuelven a su chute original, su ola queda sin operarios y se borra su historial.
+        Los clusters cerrados no cambian.
+      </p>
+    </div>
+  </div>
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="clusterARestablecer.set(null)">
+      Cancelar
+    </button>
+    <button
+      type="button"
+      class="ui-btn ui-btn--danger"
+      (click)="restablecerCluster()"
+      [disabled]="ocupado()"
+    >
+      @if (restableciendo()) {
+        <span class="ui-spinner config-spinner"></span>
+      }
+      Restablecer
+    </button>
+  </div>
+</ui-modal>
+
+<ui-modal
+  [abierto]="clusterAReabrir() !== null"
+  ancho="sm"
+  [compacto]="true"
+  titulo="Reabrir cluster"
+  (cerrar)="clusterAReabrir.set(null)"
+>
+  @if (clusterAReabrir(); as reabrir) {
+    <div class="confirm">
+      <span class="confirm__icon"><ui-icon name="lock" [size]="22" /></span>
+      <div class="confirm__text">
+        <p class="confirm__title">¿Reabrir {{ reabrir.nombre }}?</p>
+        <p class="confirm__desc">
+          Conserva sus rutas y operarios para que puedas cambiarlos.
+          @if (reabrir.siguientes.length > 0) {
+            Como el equipo pasaba de {{ reabrir.nombre }} a los siguientes,
+            <strong>{{ reabrir.siguientes.join(', ') }}</strong> vuelve(n) a la proyección: sus
+            rutas, operarios e historial se borran.
+          }
+        </p>
+      </div>
+    </div>
+  }
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="clusterAReabrir.set(null)">
+      Cancelar
+    </button>
+    <button type="button" class="ui-btn ui-btn--danger" (click)="reabrir()" [disabled]="ocupado()">
+      @if (restableciendo()) {
+        <span class="ui-spinner config-spinner"></span>
+      }
+      Reabrir
+    </button>
+  </div>
+</ui-modal>
+
+<ui-modal
+  [abierto]="subirAbierto()"
+  titulo="Cargar Excel de proyección"
+  subtitulo="El archivo se procesa y agrupa por ruta y tipo (B2C/B2B)."
+  (cerrar)="cerrarCarga()"
+>
+  @if (archivoSeleccionado(); as archivo) {
+    <div class="archivo-chip">
+      <span class="archivo-chip__icono"><ui-icon name="almacen" [size]="20" /></span>
+      <div class="archivo-chip__datos">
+        <span class="archivo-chip__nombre">{{ archivo.name }}</span>
+        <span class="archivo-chip__meta"
+          >{{ tamanoArchivo(archivo) }} · se validará al registrar</span
+        >
+      </div>
+      <span class="ui-badge ui-badge--info">Excel</span>
+    </div>
+  }
+
+  <div class="grid-form">
+    <div class="ui-field">
+      <label class="ui-label" for="config-subir-nombre"
+        >Nombre del registro <span class="ui-required">*</span></label
+      >
+      <input
+        id="config-subir-nombre"
+        class="ui-input"
+        [class.ui-input--invalid]="campoInvalido('nombreRegistro')"
+        [formControl]="formulario.controls.nombreRegistro"
+        maxlength="150"
+        placeholder="Ej: Proyección enero"
+      />
+      @if (campoInvalido('nombreRegistro')) {
+        <span class="ui-error">Escribe un nombre de hasta 150 caracteres.</span>
+      }
+    </div>
+    <div class="ui-field">
+      <label class="ui-label" for="config-subir-etiqueta">Etiqueta</label>
+      <input
+        id="config-subir-etiqueta"
+        class="ui-input"
+        [formControl]="formulario.controls.etiqueta"
+        maxlength="50"
+        placeholder="Ej: URGENTE"
+      />
+      <span class="hint">Opcional. Se muestra como distintivo en el listado.</span>
+    </div>
+  </div>
+
+  <div class="ui-field">
+    <span class="ui-label" id="config-color-registro">Color del registro</span>
+    <div class="color-picker" role="group" aria-labelledby="config-color-registro">
+      @for (color of paleta; track color.hex) {
+        <button
+          type="button"
+          class="color-dot"
+          [class.color-dot--activo]="formulario.controls.colorHex.value === color.hex"
+          [style.background]="color.hex"
+          [title]="color.nombre"
+          [attr.aria-label]="color.nombre"
+          [attr.aria-pressed]="formulario.controls.colorHex.value === color.hex"
+          (click)="fijarColor(color.hex)"
+        ></button>
+      }
+    </div>
+  </div>
+
+  <p class="hint">
+    Columnas requeridas: RUTA, CLUSTER, CHUTE, TIPO (B2C o B2B) y BULTOS PROMEDIO. Opcionales: COD.,
+    UNIDADES y LÍNEAS. También se aceptan CSV.
+  </p>
+
+  <div modal-footer class="modal-foot">
+    <button
+      type="button"
+      class="ui-btn ui-btn--ghost"
+      [disabled]="subiendo()"
+      (click)="cerrarCarga()"
+    >
+      Cancelar
+    </button>
+    <button
+      type="button"
+      class="ui-btn ui-btn--primary"
+      (click)="confirmarCarga()"
+      [disabled]="subiendo()"
+    >
+      @if (subiendo()) {
+        <span class="ui-spinner config-spinner"></span>
+      }
+      Registrar
+    </button>
+  </div>
+</ui-modal>
+
+<app-simulacion-guia-balanceo
+  [abierto]="explicacionAbierta()"
+  (cerrar)="explicacionAbierta.set(false)"
+/>

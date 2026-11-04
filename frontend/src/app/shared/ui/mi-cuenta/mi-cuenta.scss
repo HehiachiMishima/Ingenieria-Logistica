@@ -1,0 +1,198 @@
+@use 'breakpoints' as bp;
+
+.cuenta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* ---------------- Identidad ---------------- */
+.cuenta__identidad {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.cuenta__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  font-weight: 800;
+  color: var(--brand-contrast);
+  background: var(--gradient-brand);
+  box-shadow: 0 10px 24px -8px rgba(225, 29, 46, 0.6);
+}
+
+.cuenta__identidad-info {
+  min-width: 0;
+}
+
+.cuenta__nombre {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cuenta__usuario {
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+
+/* ---------------- Datos (solo lectura) ---------------- */
+.cuenta__datos {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+
+  @include bp.down(sm) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+
+    .cuenta__dato:first-child { grid-column: 1 / -1; }
+  }
+}
+
+.cuenta__dato {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.cuenta__dato-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.cuenta__dato-valor {
+  font-size: var(--fs-base);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &--ok {
+    color: var(--success);
+    font-weight: 600;
+  }
+}
+
+/* ---------------- Cambiar contraseña ---------------- */
+.cuenta__seccion {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.cuenta__seccion-titulo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--text);
+}
+
+.cuenta__seccion-nota {
+  margin-top: 2px;
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+
+.cuenta__alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border-radius: var(--radius);
+  font-size: var(--fs-sm);
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+}
+
+.cuenta__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.cuenta__control {
+  position: relative;
+  display: flex;
+  align-items: center;
+
+  .ui-input {
+    min-height: 44px;
+    padding-left: 42px;
+    padding-right: 44px;
+  }
+}
+
+.cuenta__control-icon {
+  position: absolute;
+  left: 14px;
+  color: var(--text-3);
+  pointer-events: none;
+}
+
+.cuenta__toggle {
+  position: absolute;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--surface-3);
+    color: var(--text);
+  }
+}
+
+.cuenta__acciones {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+
+  @include bp.down(sm) {
+    flex-direction: column-reverse;
+    align-items: stretch;
+
+    .ui-btn {
+      width: 100%;
+    }
+  }
+}
+
+.cuenta__spinner {
+  width: 16px;
+  height: 16px;
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+}

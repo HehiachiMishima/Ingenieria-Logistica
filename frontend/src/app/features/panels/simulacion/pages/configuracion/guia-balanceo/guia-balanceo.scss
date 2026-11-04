@@ -1,0 +1,282 @@
+@use 'breakpoints' as bp;
+
+.guia {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* Orden de trabajo: CL1 → CL2 → CL3 con el mismo equipo. */
+.olas {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+
+  &__fila {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+  }
+
+  &__chip {
+    padding: 4px 14px;
+    font-size: var(--fs-sm);
+    font-weight: 800;
+    color: var(--cluster-color);
+    background: color-mix(in srgb, var(--cluster-color) 12%, var(--surface));
+    border: 1.5px solid color-mix(in srgb, var(--cluster-color) 45%, var(--border));
+    border-radius: 999px;
+  }
+
+  &__flecha {
+    color: var(--text-3);
+  }
+
+  &__nota {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+  }
+}
+
+/* Los tres pasos, uno junto al otro con su dibujo. */
+.pasos {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  @include bp.down(md) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.paso {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-4) var(--space-4);
+  text-align: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+
+  &__numero {
+    position: absolute;
+    top: var(--space-3);
+    left: var(--space-3);
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    font-size: var(--fs-xs);
+    font-weight: 800;
+    color: var(--surface);
+    background: var(--accent);
+    border-radius: 50%;
+  }
+
+  &__titulo {
+    margin: 0;
+    font-size: var(--fs-base);
+    font-weight: 800;
+    color: var(--text);
+  }
+
+  &__texto {
+    margin: 0;
+    font-size: var(--fs-sm);
+    line-height: 1.45;
+    color: var(--text-2);
+  }
+
+  &__dato {
+    margin-top: auto;
+    padding: 3px 10px;
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border-radius: 999px;
+  }
+}
+
+/* Dibujo de cada paso. */
+.viz {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: var(--space-3);
+  width: 100%;
+  height: 84px;
+  padding: var(--space-2) 0;
+
+  &__flecha {
+    align-self: center;
+    color: var(--text-3);
+  }
+
+  /* Paso 1: chutes desparejos → parejos. */
+  &__barras {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    height: 100%;
+
+    span {
+      width: 14px;
+      background: var(--success);
+      border-radius: 3px 3px 0 0;
+    }
+
+    &--antes span {
+      background: color-mix(in srgb, var(--text-3) 50%, transparent);
+    }
+  }
+
+  /* Paso 2: más gente donde hay más carga. */
+  &--operarios {
+    gap: var(--space-2);
+  }
+
+  &__chute {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    width: 30px;
+    height: 100%;
+  }
+
+  &__personas {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 2px;
+    width: 100%;
+
+    i {
+      width: 7px;
+      height: 7px;
+      background: var(--violet);
+      border-radius: 50%;
+    }
+  }
+
+  &__carga {
+    width: 100%;
+    max-height: 60%;
+    background: color-mix(in srgb, var(--accent) 55%, transparent);
+    border-radius: 3px 3px 0 0;
+  }
+
+  /* Paso 3: el cluster cerrado pasa el equipo al siguiente. */
+  &--cerrar {
+    align-items: center;
+  }
+
+  &__ola {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    font-size: var(--fs-sm);
+    font-weight: 800;
+    color: var(--cluster-color);
+    background: var(--surface);
+    border: 1.5px dashed color-mix(in srgb, var(--cluster-color) 55%, var(--border));
+    border-radius: var(--radius);
+
+    &--hecha {
+      color: var(--surface);
+      background: var(--cluster-color);
+      border-style: solid;
+      border-color: var(--cluster-color);
+    }
+  }
+}
+
+/* Qué se configura: lo global y lo de cada cluster. */
+.parametros {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--space-3);
+
+  @include bp.down(md) {
+    grid-template-columns: 1fr;
+  }
+
+  &__grupo {
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+
+    h4 {
+      margin: 0 0 var(--space-2);
+      font-size: var(--fs-xs);
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-3);
+    }
+
+    ul {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    li {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      font-size: var(--fs-xs);
+      font-weight: 600;
+      color: var(--text);
+      background: var(--surface-2);
+      border-radius: 999px;
+
+      ui-icon {
+        color: var(--accent);
+      }
+    }
+  }
+}
+
+/* Reglas que siempre se respetan. */
+.reglas {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--fs-xs);
+    color: var(--text-2);
+
+    ui-icon {
+      color: var(--warning);
+    }
+  }
+}

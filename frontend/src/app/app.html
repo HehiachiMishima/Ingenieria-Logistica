@@ -1,0 +1,6 @@
+<router-outlet />
+<ui-loader />
+<ui-toast-host />
+@if (sesionBloqueada()) {
+  <ui-bloqueo-sesion />
+}

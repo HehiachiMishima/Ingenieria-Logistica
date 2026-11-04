@@ -1,0 +1,977 @@
+<header class="page-head">
+  <div>
+    <h1 class="page-head__title">Configuración de la malla</h1>
+  </div>
+  <div class="page-head__acciones">
+    <button type="button" class="ui-btn ui-btn--secondary" (click)="irAMalla()">
+      <ui-icon name="calendario" [size]="18" />
+      Ver malla
+    </button>
+  </div>
+</header>
+
+<input #inputArchivo type="file" accept=".xlsx" hidden (change)="importar($event)" />
+
+<section class="barra">
+  <div class="barra__campo">
+    <label class="ui-label" for="malla-centro">Centro de distribución</label>
+    <ui-select-buscable
+      campoId="malla-centro"
+      [opciones]="opcionesCentro()"
+      [valor]="seleccionado()"
+      placeholder="Elegir centro…"
+      (valorCambia)="elegir($event)"
+    />
+  </div>
+  <div class="barra__acciones">
+    @if (puedeModificar()) {
+      <button type="button" class="ui-btn ui-btn--secondary" (click)="nuevo()">
+        <ui-icon name="plus" [size]="16" /> Nuevo centro
+      </button>
+      <button
+        type="button"
+        class="ui-btn ui-btn--secondary"
+        [disabled]="importando()"
+        (click)="abrirSelectorArchivo()"
+      >
+        @if (importando()) {
+          <span class="ui-spinner barra__spinner"></span>
+        } @else {
+          <ui-icon name="almacen" [size]="16" />
+        }
+        Importar Excel
+      </button>
+      <button type="button" class="ui-btn ui-btn--ghost" (click)="descargarPlantilla()">
+        <ui-icon name="descargar" [size]="16" /> Plantilla
+      </button>
+    }
+    @if (seleccionado() !== null) {
+      <button
+        *hasPermiso="permisos.EXPORTAR_MALLA"
+        type="button"
+        class="ui-btn ui-btn--ghost"
+        (click)="exportar()"
+      >
+        <ui-icon name="descargar" [size]="16" /> Exportar
+      </button>
+    }
+  </div>
+</section>
+
+@if (importado(); as archivo) {
+  <p class="aviso" role="status">
+    <ui-icon name="info" [size]="16" />
+    Datos leídos de <strong>{{ archivo }}</strong
+    >: revísalos y pulsa «Guardar» para aplicarlos.
+  </p>
+}
+
+@if (error()) {
+  <div class="table-card">
+    <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="error()!" />
+  </div>
+} @else if (cargando()) {
+  <div class="table-card">
+    <div class="loading"><span class="ui-spinner"></span> Cargando la malla…</div>
+  </div>
+} @else {
+  <form class="malla-form" [formGroup]="form" (ngSubmit)="guardar()">
+    <div class="tarjetas-3">
+      <section class="tarjeta">
+        <h2 class="tarjeta__titulo"><ui-icon name="centro" [size]="16" /> Centro</h2>
+        <div class="campos">
+          <div class="ui-field">
+            <label class="ui-label" for="centro-codigo"
+              >Código <span class="ui-required">*</span></label
+            >
+            <input
+              id="centro-codigo"
+              class="ui-input"
+              formControlName="codigo"
+              maxlength="20"
+              placeholder="9040"
+              [class.ui-input--invalid]="
+                form.controls.codigo.touched && form.controls.codigo.invalid
+              "
+            />
+          </div>
+          <div class="ui-field">
+            <label class="ui-label" for="centro-nombre"
+              >Nombre <span class="ui-required">*</span></label
+            >
+            <input
+              id="centro-nombre"
+              class="ui-input"
+              formControlName="nombre"
+              maxlength="80"
+              placeholder="Punta Negra"
+              [class.ui-input--invalid]="
+                form.controls.nombre.touched && form.controls.nombre.invalid
+              "
+            />
+          </div>
+        </div>
+        @if (actualizadoEn(); as fecha) {
+          <p class="tarjeta__nota">Guardado el {{ fecha | date: 'dd/MM/yyyy HH:mm' }}</p>
+        } @else {
+          <p class="tarjeta__nota">Centro nuevo: se crea al guardar.</p>
+        }
+      </section>
+
+      <section class="tarjeta" formGroupName="capacidad">
+        <h2 class="tarjeta__titulo"><ui-icon name="paquete" [size]="16" /> Capacidad diaria</h2>
+        <div class="campos campos--2">
+          <div class="ui-field">
+            <label class="ui-label" for="cap-unidades">Unidades / día</label>
+            <input
+              id="cap-unidades"
+              class="ui-input"
+              type="number"
+              min="0"
+              formControlName="unidadesDia"
+              placeholder="Por definir"
+            />
+          </div>
+          <div class="ui-field">
+            <label class="ui-label" for="cap-lineas">Líneas / día</label>
+            <input
+              id="cap-lineas"
+              class="ui-input"
+              type="number"
+              min="0"
+              formControlName="lineasDia"
+              placeholder="Por definir"
+            />
+          </div>
+          <div class="ui-field">
+            <label class="ui-label" for="cap-bultos">Bultos de recepción / día</label>
+            <input
+              id="cap-bultos"
+              class="ui-input"
+              type="number"
+              min="0"
+              formControlName="bultosRecepcionDia"
+              placeholder="Por definir"
+            />
+          </div>
+          <div class="ui-field">
+            <label class="ui-label" for="cap-proveedores">Proveedores / día</label>
+            <input
+              id="cap-proveedores"
+              class="ui-input"
+              type="number"
+              min="0"
+              formControlName="proveedoresDia"
+              placeholder="Por definir"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section class="tarjeta" formGroupName="dotacionReal">
+        <h2 class="tarjeta__titulo"><ui-icon name="usuarios" [size]="16" /> Dotación real</h2>
+        <div class="campos campos--2">
+          <div class="ui-field">
+            <label class="ui-label" for="real-inbound">Inbound</label>
+            <input
+              id="real-inbound"
+              class="ui-input"
+              type="number"
+              min="0"
+              formControlName="inbound"
+            />
+          </div>
+          <div class="ui-field">
+            <label class="ui-label" for="real-outbound">Outbound</label>
+            <input
+              id="real-outbound"
+              class="ui-input"
+              type="number"
+              min="0"
+              formControlName="outbound"
+            />
+          </div>
+          <div class="ui-field">
+            <label class="ui-label" for="real-despacho">Despacho</label>
+            <input
+              id="real-despacho"
+              class="ui-input"
+              type="number"
+              min="0"
+              formControlName="despacho"
+            />
+          </div>
+          <div class="ui-field">
+            <label class="ui-label" for="real-total">Total</label>
+            <input id="real-total" class="ui-input" type="number" min="0" formControlName="total" />
+          </div>
+          <div class="ui-field">
+            <label class="ui-label" for="real-semana">Semana</label>
+            <input
+              id="real-semana"
+              class="ui-input"
+              formControlName="semana"
+              maxlength="10"
+              placeholder="S44"
+            />
+          </div>
+        </div>
+        @if (descuadreDotacionReal(); as d) {
+          <p class="tarjeta__nota tarjeta__nota--aviso">
+            <ui-icon name="alerta" [size]="14" /> Inbound + Outbound + Despacho suman {{ d.suma }},
+            pero el total dice {{ d.total }}.
+          </p>
+        }
+      </section>
+    </div>
+
+    <section class="tarjeta">
+      <header class="tarjeta__cabecera">
+        <h2 class="tarjeta__titulo"><ui-icon name="reloj" [size]="16" /> Turnos</h2>
+        @if (puedeModificar()) {
+          <button
+            type="button"
+            class="ui-btn ui-btn--ghost ui-btn--sm"
+            (click)="formulario.agregarTurno()"
+          >
+            <ui-icon name="plus" [size]="14" /> Turno
+          </button>
+        }
+      </header>
+      <div class="ui-table-wrap">
+        <table class="ui-table tabla-form" formArrayName="turnos">
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Nombre</th>
+              <th>Inicio</th>
+              <th>Fin</th>
+              <th>Refrigerio</th>
+              <th>Tipo</th>
+              <th>Nota</th>
+              <th class="centro">Confirmado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (turno of formulario.turnos.controls; track turno; let i = $index) {
+              <tr [formGroupName]="i">
+                <td>
+                  <input
+                    class="ui-input corto"
+                    formControlName="codigo"
+                    maxlength="8"
+                    aria-label="Código del turno"
+                    [class.ui-input--invalid]="
+                      turno.controls.codigo.touched && turno.controls.codigo.invalid
+                    "
+                  />
+                </td>
+                <td>
+                  <input
+                    class="ui-input"
+                    formControlName="nombre"
+                    maxlength="40"
+                    aria-label="Nombre del turno"
+                    [class.ui-input--invalid]="
+                      turno.controls.nombre.touched && turno.controls.nombre.invalid
+                    "
+                  />
+                </td>
+                <td>
+                  <input
+                    class="ui-input"
+                    appHora24
+                    formControlName="inicio"
+                    aria-label="Inicio"
+                    [class.ui-input--invalid]="
+                      turno.controls.inicio.touched && turno.controls.inicio.invalid
+                    "
+                  />
+                </td>
+                <td>
+                  <input
+                    class="ui-input"
+                    appHora24
+                    formControlName="fin"
+                    aria-label="Fin"
+                    [class.ui-input--invalid]="
+                      turno.controls.fin.touched &&
+                      (turno.controls.fin.invalid || turno.hasError('mismaHora'))
+                    "
+                    [title]="
+                      turno.hasError('mismaHora') ? 'Inicio y fin no pueden ser iguales' : ''
+                    "
+                  />
+                </td>
+                <td>
+                  <input
+                    class="ui-input"
+                    appHora24
+                    formControlName="refrigerio"
+                    aria-label="Refrigerio"
+                    [class.ui-input--invalid]="
+                      turno.controls.refrigerio.touched && turno.controls.refrigerio.invalid
+                    "
+                  />
+                </td>
+                <td>
+                  <input
+                    class="ui-input"
+                    formControlName="tipoRefrigerio"
+                    maxlength="24"
+                    placeholder="Almuerzo"
+                    aria-label="Tipo de refrigerio"
+                  />
+                </td>
+                <td>
+                  <input
+                    class="ui-input"
+                    formControlName="nota"
+                    maxlength="200"
+                    aria-label="Nota"
+                  />
+                </td>
+                <td class="centro">
+                  <input type="checkbox" formControlName="confirmado" aria-label="Confirmado" />
+                </td>
+                <td class="acciones">
+                  @if (puedeModificar()) {
+                    <button
+                      type="button"
+                      class="quitar"
+                      (click)="formulario.quitar(formulario.turnos, i)"
+                      aria-label="Quitar turno"
+                    >
+                      <ui-icon name="trash" [size]="14" />
+                    </button>
+                  }
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="9" class="u-muted">Sin turnos. Agrega al menos uno.</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="tarjeta">
+      <header class="tarjeta__cabecera">
+        <h2 class="tarjeta__titulo">
+          <ui-icon name="usuarios" [size]="16" /> Dotación planificada
+        </h2>
+        <span class="tarjeta__sub">Personas por proceso en cada turno · vacío = por definir</span>
+      </header>
+      <div class="ui-table-wrap">
+        <table class="ui-table tabla-form dotacion" formArrayName="turnos">
+          <thead>
+            <tr>
+              <th>Proceso</th>
+              @for (turno of formulario.turnos.controls; track turno) {
+                <th class="num">{{ turno.controls.codigo.value || '—' }}</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (p of procesos; track p.id) {
+              <tr>
+                <td>
+                  <span class="proceso" [style.--proceso]="p.color">{{ p.nombre }}</span>
+                </td>
+                @for (turno of formulario.turnos.controls; track turno; let i = $index) {
+                  <td class="num" [formGroupName]="i">
+                    <span formGroupName="personas">
+                      <input
+                        class="ui-input numero"
+                        type="number"
+                        min="0"
+                        [formControlName]="p.id"
+                        [attr.aria-label]="p.nombre + ' en ' + turno.controls.codigo.value"
+                      />
+                    </span>
+                  </td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="tarjeta">
+      <header class="tarjeta__cabecera">
+        <h2 class="tarjeta__titulo"><ui-icon name="flecha" [size]="16" /> Flujo de procesos</h2>
+        <span class="tarjeta__sub"
+          >IL corre la tarea en el sistema; OPS la ejecuta en piso. Sin «fin», es un hito.</span
+        >
+      </header>
+      <nav class="pestanas" aria-label="Procesos">
+        @for (p of procesos; track p.id) {
+          <button
+            type="button"
+            class="pestanas__opcion"
+            [class.pestanas__opcion--activa]="proceso() === p.id"
+            [style.--proceso]="p.color"
+            [attr.aria-pressed]="proceso() === p.id"
+            (click)="proceso.set(p.id)"
+          >
+            <i></i>{{ p.nombre }}
+            <small>{{ pasosPorProceso()[p.id] }}</small>
+          </button>
+        }
+      </nav>
+      <div class="ui-table-wrap">
+        <table class="ui-table tabla-form" formArrayName="flujos">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Responsable</th>
+              <th>Inicio</th>
+              <th>Fin</th>
+              <th>Actividad</th>
+              <th class="centro">Confirmado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (fila of pasos(); track fila.paso) {
+              <tr [formGroupName]="fila.indice">
+                <td class="mover">
+                  @if (puedeModificar()) {
+                    <button
+                      type="button"
+                      [disabled]="fila.primero"
+                      (click)="formulario.moverPaso(fila.indice, -1)"
+                      aria-label="Subir paso"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      [disabled]="fila.ultimo"
+                      (click)="formulario.moverPaso(fila.indice, 1)"
+                      aria-label="Bajar paso"
+                    >
+                      ↓
+                    </button>
+                  }
+                </td>
+                <td>
+                  <select class="ui-input" formControlName="responsable" aria-label="Responsable">
+                    @for (r of responsables; track r.id) {
+                      <option [value]="r.id">{{ r.nombre }}</option>
+                    }
+                  </select>
+                </td>
+                <td>
+                  <input
+                    class="ui-input"
+                    appHora24
+                    formControlName="inicio"
+                    aria-label="Inicio"
+                    [class.ui-input--invalid]="
+                      fila.paso.controls.inicio.touched && fila.paso.controls.inicio.invalid
+                    "
+                  />
+                </td>
+                <td>
+                  <input
+                    class="ui-input"
+                    appHora24
+                    formControlName="fin"
+                    aria-label="Fin"
+                    [class.ui-input--invalid]="
+                      fila.paso.controls.fin.touched &&
+                      (fila.paso.controls.fin.invalid || fila.paso.hasError('mismaHora'))
+                    "
+                    [title]="
+                      fila.paso.hasError('mismaHora') ? 'Inicio y fin no pueden ser iguales' : ''
+                    "
+                  />
+                </td>
+                <td>
+                  <input
+                    class="ui-input ancho"
+                    formControlName="actividad"
+                    maxlength="200"
+                    aria-label="Actividad"
+                    [class.ui-input--invalid]="
+                      fila.paso.controls.actividad.touched && fila.paso.controls.actividad.invalid
+                    "
+                  />
+                </td>
+                <td class="centro">
+                  <input type="checkbox" formControlName="confirmado" aria-label="Confirmado" />
+                </td>
+                <td class="acciones">
+                  @if (puedeModificar()) {
+                    <button
+                      type="button"
+                      class="quitar"
+                      (click)="formulario.quitar(formulario.flujos, fila.indice)"
+                      aria-label="Quitar paso"
+                    >
+                      <ui-icon name="trash" [size]="14" />
+                    </button>
+                  }
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="7" class="u-muted">Sin pasos en este proceso.</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (puedeModificar()) {
+        <button
+          type="button"
+          class="ui-btn ui-btn--ghost ui-btn--sm agregar"
+          (click)="formulario.agregarPaso(proceso())"
+        >
+          <ui-icon name="plus" [size]="14" /> Paso
+        </button>
+      }
+    </section>
+
+    <div class="tarjetas-2">
+      <section class="tarjeta">
+        <header class="tarjeta__cabecera">
+          <h2 class="tarjeta__titulo"><ui-icon name="layers" [size]="16" /> Olas por cluster</h2>
+          @if (puedeModificar()) {
+            <button
+              type="button"
+              class="ui-btn ui-btn--ghost ui-btn--sm"
+              (click)="formulario.agregarOla()"
+            >
+              <ui-icon name="plus" [size]="14" /> Ola
+            </button>
+          }
+        </header>
+        <div class="ui-table-wrap">
+          <table class="ui-table tabla-form" formArrayName="olas">
+            <thead>
+              <tr>
+                <th>Cluster</th>
+                <th>Ola</th>
+                <th>Caída de pedidos</th>
+                <th>Lanzamiento</th>
+                <th>Cierre de picking</th>
+                <th>Despacho</th>
+                <th class="centro">Confirmada</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (ola of formulario.olas.controls; track ola; let i = $index) {
+                <tr [formGroupName]="i">
+                  <td>
+                    <input
+                      class="ui-input corto"
+                      formControlName="cluster"
+                      maxlength="10"
+                      aria-label="Cluster"
+                      [class.ui-input--invalid]="
+                        ola.controls.cluster.touched && ola.controls.cluster.invalid
+                      "
+                    />
+                  </td>
+                  <td>
+                    <input
+                      class="ui-input"
+                      formControlName="nombre"
+                      maxlength="20"
+                      aria-label="Ola"
+                      [class.ui-input--invalid]="
+                        ola.controls.nombre.touched && ola.controls.nombre.invalid
+                      "
+                    />
+                  </td>
+                  <td>
+                    <input
+                      class="ui-input"
+                      appHora24
+                      formControlName="caidaPedidos"
+                      aria-label="Caída de pedidos"
+                      [class.ui-input--invalid]="
+                        ola.controls.caidaPedidos.touched && ola.controls.caidaPedidos.invalid
+                      "
+                    />
+                  </td>
+                  <td>
+                    <input
+                      class="ui-input"
+                      appHora24
+                      formControlName="lanzamiento"
+                      aria-label="Lanzamiento"
+                      [class.ui-input--invalid]="
+                        ola.controls.lanzamiento.touched && ola.controls.lanzamiento.invalid
+                      "
+                    />
+                  </td>
+                  <td>
+                    <input
+                      class="ui-input"
+                      appHora24
+                      formControlName="cierrePicking"
+                      aria-label="Cierre de picking"
+                      [class.ui-input--invalid]="
+                        ola.controls.cierrePicking.touched && ola.controls.cierrePicking.invalid
+                      "
+                    />
+                  </td>
+                  <td>
+                    <input
+                      class="ui-input"
+                      appHora24
+                      formControlName="despacho"
+                      aria-label="Despacho"
+                      [class.ui-input--invalid]="
+                        ola.controls.despacho.touched && ola.controls.despacho.invalid
+                      "
+                    />
+                  </td>
+                  <td class="centro">
+                    <input type="checkbox" formControlName="confirmado" aria-label="Confirmada" />
+                  </td>
+                  <td class="acciones">
+                    @if (puedeModificar()) {
+                      <button
+                        type="button"
+                        class="quitar"
+                        (click)="formulario.quitar(formulario.olas, i)"
+                        aria-label="Quitar ola"
+                      >
+                        <ui-icon name="trash" [size]="14" />
+                      </button>
+                    }
+                  </td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="8" class="u-muted">Sin olas.</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="tarjeta">
+        <header class="tarjeta__cabecera">
+          <h2 class="tarjeta__titulo"><ui-icon name="almacen" [size]="16" /> Zonas</h2>
+          @if (puedeModificar()) {
+            <button
+              type="button"
+              class="ui-btn ui-btn--ghost ui-btn--sm"
+              (click)="formulario.agregarZona()"
+            >
+              <ui-icon name="plus" [size]="14" /> Zona
+            </button>
+          }
+        </header>
+        <div class="ui-table-wrap">
+          <table class="ui-table tabla-form" formArrayName="zonas">
+            <thead>
+              <tr>
+                <th>Zona</th>
+                <th class="num">LPH real</th>
+                <th class="num">LPH diseño</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (zona of formulario.zonas.controls; track zona; let i = $index) {
+                <tr [formGroupName]="i">
+                  <td>
+                    <input
+                      class="ui-input"
+                      formControlName="nombre"
+                      maxlength="80"
+                      aria-label="Zona"
+                      [class.ui-input--invalid]="
+                        zona.controls.nombre.touched && zona.controls.nombre.invalid
+                      "
+                    />
+                  </td>
+                  <td class="num">
+                    <input
+                      class="ui-input numero"
+                      type="number"
+                      min="0"
+                      formControlName="lphReal"
+                      aria-label="LPH real"
+                    />
+                  </td>
+                  <td class="num">
+                    <input
+                      class="ui-input numero"
+                      type="number"
+                      min="0"
+                      formControlName="lphDiseno"
+                      aria-label="LPH de diseño"
+                    />
+                  </td>
+                  <td class="acciones">
+                    @if (puedeModificar()) {
+                      <button
+                        type="button"
+                        class="quitar"
+                        (click)="formulario.quitar(formulario.zonas, i)"
+                        aria-label="Quitar zona"
+                      >
+                        <ui-icon name="trash" [size]="14" />
+                      </button>
+                    }
+                  </td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="4" class="u-muted">Sin zonas.</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    @if (puedeModificar()) {
+      <footer class="guardar" [class.guardar--pendiente]="pendiente()">
+        <span class="guardar__estado">
+          @if (pendiente()) {
+            <i></i> Cambios sin guardar
+          } @else {
+            <ui-icon name="check" [size]="15" /> Todo guardado
+          }
+        </span>
+        @if (seleccionado() !== null) {
+          <button
+            type="button"
+            class="ui-btn ui-btn--ghost guardar__eliminar"
+            (click)="eliminarAbierto.set(true)"
+          >
+            <ui-icon name="trash" [size]="16" /> Eliminar centro
+          </button>
+        }
+        <button
+          type="button"
+          class="ui-btn ui-btn--secondary"
+          [disabled]="!pendiente() || guardando()"
+          (click)="descartar()"
+        >
+          Descartar
+        </button>
+        <button
+          type="submit"
+          class="ui-btn ui-btn--primary"
+          [disabled]="!pendiente() || guardando()"
+        >
+          @if (guardando()) {
+            <span class="ui-spinner barra__spinner"></span>
+          }
+          Guardar
+        </button>
+      </footer>
+    }
+  </form>
+
+  @if (evaluacion(); as ev) {
+    <section class="tarjeta validacion">
+      <header class="tarjeta__cabecera">
+        <h2 class="tarjeta__titulo">
+          <ui-icon name="shield" [size]="16" /> Validación de la malla
+        </h2>
+        <span class="tarjeta__sub"
+          >Reglas evaluadas por el servidor sobre la malla guardada de este centro</span
+        >
+      </header>
+      <ul class="resumen">
+        <li class="resumen__item resumen__item--ok">
+          <strong>{{ ev.resumen.cumplen }}</strong> cumplen
+        </li>
+        <li class="resumen__item resumen__item--mal">
+          <strong>{{ ev.resumen.noCumplen }}</strong> no cumplen
+        </li>
+        <li class="resumen__item">
+          <strong>{{ ev.resumen.hallazgos }}</strong> hallazgos
+        </li>
+        <li class="resumen__item">
+          <strong>{{ ev.resumen.inactivas }}</strong> inactivas
+        </li>
+      </ul>
+      <ul class="reglas">
+        @for (regla of ev.reglas; track regla.id) {
+          <li class="regla" [class.regla--abierta]="reglaAbierta() === regla.id">
+            <button
+              type="button"
+              class="regla__cabecera"
+              [attr.aria-expanded]="reglaAbierta() === regla.id"
+              (click)="alternarRegla(regla)"
+            >
+              <span
+                class="ui-badge"
+                [class.ui-badge--success]="regla.estado === 'CUMPLE'"
+                [class.ui-badge--danger]="regla.estado === 'NO_CUMPLE'"
+                [class.ui-badge--neutral]="
+                  regla.estado !== 'CUMPLE' && regla.estado !== 'NO_CUMPLE'
+                "
+              >
+                {{
+                  regla.estado === 'CUMPLE'
+                    ? 'Cumple'
+                    : regla.estado === 'NO_CUMPLE'
+                      ? regla.hallazgos + ' hallazgo(s)'
+                      : regla.estado === 'INACTIVA'
+                        ? 'Inactiva'
+                        : 'Sin datos'
+                }}
+              </span>
+              <span class="regla__nombre">{{ regla.nombre }}</span>
+              <span
+                class="regla__severidad regla__severidad--{{ regla.severidad.toLowerCase() }}"
+                >{{ regla.severidad }}</span
+              >
+            </button>
+            @if (reglaAbierta() === regla.id) {
+              <div class="regla__cuerpo">
+                <p class="regla__descripcion">{{ regla.descripcion }}</p>
+                @if (puedeConfigurarReglas()) {
+                  <div class="regla__ajustes">
+                    <label class="regla__activa">
+                      <input
+                        type="checkbox"
+                        [checked]="regla.activa"
+                        (change)="activarRegla(regla, $any($event.target).checked)"
+                      />
+                      Activa
+                    </label>
+                    @for (p of regla.parametros; track p.clave) {
+                      @switch (p.tipo) {
+                        @case ('BOOLEANO') {
+                          <label class="regla__activa">
+                            <input
+                              type="checkbox"
+                              [checked]="p.valor === 'true'"
+                              (change)="
+                                cambiarParametro(regla, p.clave, '' + $any($event.target).checked)
+                              "
+                            />
+                            {{ p.etiqueta }}
+                          </label>
+                        }
+                        @case ('ENTERO') {
+                          <label class="regla__parametro">
+                            {{ p.etiqueta }}
+                            <input
+                              class="ui-input"
+                              type="number"
+                              step="1"
+                              [min]="p.min"
+                              [max]="p.max"
+                              [value]="p.valor"
+                              (change)="cambiarParametro(regla, p.clave, $any($event.target).value)"
+                            />
+                            <small>Entre {{ p.min }} y {{ p.max }}</small>
+                          </label>
+                        }
+                        @default {
+                          <label class="regla__parametro">
+                            {{ p.etiqueta }}
+                            <input
+                              class="ui-input"
+                              [value]="p.valor"
+                              (change)="cambiarParametro(regla, p.clave, $any($event.target).value)"
+                            />
+                            @if (p.tipo === 'LISTA_HORAS') {
+                              <small>Horas HH:mm separadas por coma, en orden de ola</small>
+                            }
+                          </label>
+                        }
+                      }
+                    }
+                  </div>
+                }
+                @if (regla.detalles.length > 0) {
+                  <div class="ui-table-wrap">
+                    <table class="ui-table">
+                      <thead>
+                        <tr>
+                          <th>Centro</th>
+                          <th>Dónde</th>
+                          <th>Detalle</th>
+                          <th>Esperado</th>
+                          <th>Obtenido</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (h of regla.detalles; track $index) {
+                          <tr>
+                            <td>{{ h.centroCodigo }}</td>
+                            <td>{{ h.entidad }}</td>
+                            <td>{{ h.detalle }}</td>
+                            <td>{{ h.esperado }}</td>
+                            <td class="fuerte">{{ h.obtenido }}</td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                }
+              </div>
+            }
+          </li>
+        }
+      </ul>
+    </section>
+  }
+
+  @if (historial().length > 0) {
+    <section class="tarjeta historial">
+      <header class="tarjeta__cabecera">
+        <h2 class="tarjeta__titulo"><ui-icon name="reloj" [size]="16" /> Últimos cambios</h2>
+      </header>
+      <ul class="historial__lista">
+        @for (c of historial(); track $index) {
+          <li>
+            <span class="ui-badge ui-badge--neutral">{{ nombreAccion[c.accion] ?? c.accion }}</span>
+            <span class="historial__resumen">{{ c.resumen }}</span>
+            <span class="historial__quien"
+              >{{ quien(c.creadoPor) }} · {{ c.creadoEn | date: 'dd/MM/yyyy HH:mm' }}</span
+            >
+          </li>
+        }
+      </ul>
+    </section>
+  }
+}
+
+<ui-modal
+  [abierto]="eliminarAbierto()"
+  ancho="sm"
+  [compacto]="true"
+  titulo="Eliminar centro"
+  (cerrar)="eliminarAbierto.set(false)"
+>
+  <div class="confirm">
+    <span class="confirm__icon"><ui-icon name="trash" [size]="22" /></span>
+    <div class="confirm__text">
+      <p class="confirm__title">
+        ¿Eliminar {{ form.controls.codigo.value }} · {{ form.controls.nombre.value }}?
+      </p>
+      <p class="confirm__desc">
+        Se borran sus turnos, flujos, olas, zonas, capacidad y dotación. No se puede deshacer.
+      </p>
+    </div>
+  </div>
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="eliminarAbierto.set(false)">
+      Cancelar
+    </button>
+    <button type="button" class="ui-btn ui-btn--danger" (click)="eliminar()">Eliminar</button>
+  </div>
+</ui-modal>

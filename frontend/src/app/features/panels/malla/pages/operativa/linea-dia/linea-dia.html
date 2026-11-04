@@ -1,0 +1,80 @@
+@let l = linea();
+<div class="linea" role="img" aria-label="Malla del día por turno, proceso y cluster">
+  <div class="linea__fila linea__fila--horas">
+    <span class="linea__etiqueta"></span>
+    <div class="linea__pista linea__pista--horas">
+      @for (h of l.horas; track h.posicion) {
+        <span class="linea__hora" [style.left.%]="h.posicion">{{ h.texto }}</span>
+      }
+    </div>
+  </div>
+  <div class="linea__cuerpo">
+    @for (fila of l.filas; track fila.etiqueta) {
+      <div class="linea__fila" [class.linea__fila--turno]="!fila.proceso">
+        @if (fila.proceso) {
+          <button
+            type="button"
+            class="linea__etiqueta linea__etiqueta--proceso"
+            (click)="verProceso.emit(fila.proceso)"
+          >
+            <i [style.background]="fila.color"></i>{{ fila.etiqueta }}
+          </button>
+        } @else {
+          <span class="linea__etiqueta">{{ fila.etiqueta }}</span>
+        }
+        <div class="linea__pista">
+          @for (b of fila.barras; track $index) {
+            <span
+              class="linea__barra"
+              [class.linea__barra--pendiente]="b.pendiente"
+              [class.linea__barra--il]="b.il"
+              [style.left.%]="b.izquierda"
+              [style.width.%]="b.ancho"
+              [style.--color]="b.color"
+              [title]="b.titulo"
+            >
+              @if (b.texto) {
+                <em>{{ b.texto }}</em>
+              }
+            </span>
+          }
+          @for (m of fila.marcas; track $index) {
+            <span
+              class="linea__marca linea__marca--{{ m.tipo }}"
+              [style.left.%]="m.posicion"
+              [style.--color]="m.color"
+              [title]="m.titulo"
+            ></span>
+          }
+        </div>
+      </div>
+    }
+    <div class="linea__capa" aria-hidden="true">
+      <span class="linea__etiqueta"></span>
+      <div class="linea__pista">
+        @if (l.ahora; as ahora) {
+          <span class="linea__ahora" [style.left.%]="ahora.posicion"
+            ><b>{{ ahora.texto }}</b></span
+          >
+        }
+        @for (v of l.ventana; track $index) {
+          <span
+            class="linea__ventana"
+            [style.left.%]="v.izquierda"
+            [style.width.%]="v.ancho"
+          ></span>
+        }
+      </div>
+    </div>
+  </div>
+</div>
+@if (!compacta()) {
+  <ul class="leyenda">
+    <li><i class="leyenda__pedido"></i>Caída de pedidos</li>
+    <li><i class="leyenda__barra"></i>Picking / ejecución</li>
+    <li><i class="leyenda__despacho"></i>Despacho</li>
+    <li><i class="leyenda__il"></i>Ing. Logística</li>
+    <li><i class="leyenda__refrigerio"></i>Refrigerio</li>
+    <li><i class="leyenda__pendiente"></i>Por confirmar</li>
+  </ul>
+}

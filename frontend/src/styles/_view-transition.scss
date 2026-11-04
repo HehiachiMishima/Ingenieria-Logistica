@@ -1,0 +1,30 @@
+/**
+ * Transición de tema (View Transitions API)
+ * El tema se revela con un círculo que nace en el control pulsado
+ * (--vt-x / --vt-y, anclados por TemaService). Los navegadores sin soporte o
+ * con "reducir movimiento" cambian de tema de forma directa.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-group(root),
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+  }
+
+  ::view-transition-old(root) {
+    z-index: 0;
+  }
+
+  ::view-transition-new(root) {
+    z-index: 1;
+    clip-path: circle(0% at var(--vt-x, 50%) var(--vt-y, 50%));
+    animation: ui-tema-revelar var(--transition-slow) both;
+  }
+
+  @keyframes ui-tema-revelar {
+    to {
+      clip-path: circle(150% at var(--vt-x, 50%) var(--vt-y, 50%));
+    }
+  }
+}

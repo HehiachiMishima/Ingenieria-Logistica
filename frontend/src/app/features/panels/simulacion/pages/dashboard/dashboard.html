@@ -1,0 +1,703 @@
+<header class="page-head">
+  <div>
+    <h1 class="page-head__title">Dashboard de simulación</h1>
+    <p class="page-head__sub">
+      Cada cluster por separado: primero sus rutas y luego sus operarios. Al cerrar el último, el
+      resumen de todas las olas.
+    </p>
+  </div>
+  @if (seleccionado()) {
+    <button
+      *hasPermiso="permisos.VER_CONFIGURACION_SIMULACION"
+      type="button"
+      class="ui-btn ui-btn--secondary"
+      (click)="irAConfiguracion()"
+    >
+      <ui-icon name="control" [size]="18" />
+      Ver configuración
+    </button>
+  }
+</header>
+
+<section class="selector-panel">
+  <div class="selector-panel__campo">
+    <label class="ui-label" for="dashboard-registro">Registro</label>
+    <ui-select-buscable
+      campoId="dashboard-registro"
+      [opciones]="opcionesRegistro()"
+      [valor]="seleccionado()"
+      [deshabilitado]="cargandoOpciones()"
+      placeholder="Elegir registro…"
+      (valorCambia)="seleccionar($event)"
+    />
+  </div>
+  @if (vista() !== null) {
+    <button
+      type="button"
+      class="ui-btn ui-btn--secondary"
+      [attr.aria-expanded]="filtrosAbierto()"
+      aria-controls="simulacion-dashboard-filtros"
+      (click)="alternarFiltros()"
+    >
+      <ui-icon name="filtro" [size]="18" />
+      Filtros
+      @if (filtrosActivos() > 0) {
+        <span class="filtros-badge">{{ filtrosActivos() }}</span>
+      }
+    </button>
+  }
+  <button
+    type="button"
+    class="ui-btn ui-btn--secondary"
+    (click)="actualizar()"
+    [disabled]="!seleccionado() || cargando() || cargandoOpciones()"
+  >
+    <ui-icon name="refresh" [size]="16" />
+    Actualizar
+  </button>
+</section>
+
+<ui-filtros-activos
+  [chips]="chips()"
+  (quitar)="quitarFiltro($event)"
+  (limpiar)="limpiarFiltros()"
+/>
+
+<ui-panel-filtros
+  id="simulacion-dashboard-filtros"
+  [abierto]="filtrosAbierto()"
+  [activos]="filtrosActivos()"
+  titulo="Filtrar dashboard"
+  (cerrar)="filtrosAbierto.set(false)"
+  (limpiar)="limpiarFiltros()"
+>
+  @if (vista() === null) {
+    <section class="filtro-seccion">
+      <h3 class="filtro-seccion__titulo"><ui-icon name="area" [size]="15" /> Clusters</h3>
+      <div class="ui-field">
+        <label class="ui-label" for="dashboard-filtro-clusters">Clusters</label>
+        <ui-select-multiple
+          campoId="dashboard-filtro-clusters"
+          [opciones]="opcionesCluster()"
+          [valores]="filtroClusters()"
+          placeholder="Todos los clusters"
+          (valoresCambia)="setFiltroClusters($event)"
+        />
+      </div>
+    </section>
+  }
+
+  <section class="filtro-seccion">
+    <h3 class="filtro-seccion__titulo"><ui-icon name="layers" [size]="15" /> Chutes</h3>
+    <div class="ui-field">
+      <label class="ui-label" for="dashboard-filtro-chutes">Chutes</label>
+      <ui-select-multiple
+        campoId="dashboard-filtro-chutes"
+        [opciones]="opcionesChute()"
+        [valores]="filtroChutes()"
+        placeholder="Todos los chutes"
+        (valoresCambia)="setFiltroChutes($event)"
+      />
+    </div>
+  </section>
+</ui-panel-filtros>
+
+@if (cargandoOpciones() && registros().length === 0) {
+  <div class="table-card">
+    <div class="loading"><span class="ui-spinner"></span> Cargando registros…</div>
+  </div>
+} @else if (registros().length === 0 && errorOpciones()) {
+  <div class="table-card">
+    <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="errorOpciones()!">
+      <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="cargarOpciones()">
+        <ui-icon name="refresh" [size]="16" /> Reintentar
+      </button>
+    </ui-empty>
+  </div>
+} @else if (registros().length === 0) {
+  <div class="table-card">
+    <ui-empty
+      icono="almacen"
+      titulo="Aún no hay registros"
+      mensaje="Sube un Excel y ejecuta el balanceo para ver el comparativo."
+    >
+      <button
+        *hasPermiso="permisos.VER_REGISTRO_SIMULACION"
+        type="button"
+        class="ui-btn ui-btn--primary ui-btn--sm"
+        (click)="irARegistro()"
+      >
+        Ir a Registro
+      </button>
+    </ui-empty>
+  </div>
+} @else if (!estaBalanceado()) {
+  <div class="table-card">
+    <ui-empty
+      icono="dashboard"
+      titulo="Sin ajustes que comparar"
+      mensaje="Este registro sigue en proyección. En Configuración, pulsa «Balancear rutas» en un cluster para ver cómo queda repartida su carga."
+    >
+      <button
+        *hasPermiso="permisos.VER_CONFIGURACION_SIMULACION"
+        type="button"
+        class="ui-btn ui-btn--primary ui-btn--sm"
+        (click)="irAConfiguracion()"
+      >
+        Ir a Configuración
+      </button>
+    </ui-empty>
+  </div>
+} @else if (cargando() && !dashboard()) {
+  <div class="table-card">
+    <div class="loading"><span class="ui-spinner"></span> Calculando comparativo…</div>
+  </div>
+} @else if (error()) {
+  <div class="table-card">
+    <ui-empty icono="alerta" titulo="No se pudo cargar el dashboard" [mensaje]="error()!">
+      <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="cargar()">
+        <ui-icon name="refresh" [size]="16" /> Reintentar
+      </button>
+    </ui-empty>
+  </div>
+} @else if (dashboard(); as datos) {
+  <nav class="dash-vistas" aria-label="Vista del dashboard">
+    <div class="segmento" role="tablist" aria-label="Lanzamiento">
+      @for (ola of datos.olas; track ola.clusterId) {
+        <button
+          type="button"
+          role="tab"
+          class="segmento__opcion"
+          [class.segmento__opcion--activa]="vista() === ola.clusterId"
+          [attr.aria-selected]="vista() === ola.clusterId"
+          [disabled]="ola.estado === 'PENDIENTE'"
+          [title]="ola.cluster + ': ' + estadoCluster(ola.estado)"
+          (click)="elegirVista(ola.clusterId)"
+        >
+          <span
+            class="dash-vistas__punto"
+            [class.dash-vistas__punto--rutas]="ola.estado === 'RUTAS' || ola.estado === 'LISTO'"
+            [class.dash-vistas__punto--listo]="ola.estado === 'CERRADO'"
+            aria-hidden="true"
+          ></span>
+          {{ ola.cluster }}
+        </button>
+      }
+      <button
+        type="button"
+        role="tab"
+        class="segmento__opcion"
+        [class.segmento__opcion--activa]="vista() === null"
+        [attr.aria-selected]="vista() === null"
+        [disabled]="!finalizado()"
+        [title]="finalizado() ? 'Todas las olas juntas' : 'Disponible al cerrar el último cluster'"
+        (click)="elegirVista(null)"
+      >
+        Resumen
+      </button>
+    </div>
+    <span class="dash-vistas__nota">
+      @if (olaActual(); as ola) {
+        {{ ola.cluster }} por separado: primero sus rutas y luego sus operarios.
+      } @else {
+        Resumen de la simulación: todas las olas, una tras otra.
+      }
+    </span>
+  </nav>
+
+  @if (filtrosActivos() > 0) {
+    <p class="filtro-nota dash-nota-global">
+      <ui-icon name="info" [size]="14" />
+      Los indicadores son del registro completo; los filtros se aplican a los gráficos y cuadros.
+    </p>
+  }
+  @for (mezcla of datos.mezclas; track mezcla.id) {
+    <p class="dash-mezcla" role="alert">
+      <ui-icon name="alerta" [size]="16" />
+      <span>
+        <strong>{{ mezcla.chute }}</strong> junta {{ mezcla.clusters.join(' y ') }}, que no pueden
+        compartir chute. No hubo otro chute libre para separarlos: mueve sus rutas desde
+        Configuración.
+      </span>
+    </p>
+  }
+
+  @if (olaActual(); as ola) {
+    <h2 class="dash-seccion">
+      <ui-icon name="paquete" [size]="18" /> 1 · Rutas de {{ ola.cluster }}
+      <span class="dash-seccion__sub">Reparto por bultos entre sus chutes</span>
+    </h2>
+  }
+  @if (olaActual()) {
+    <section class="dash-kpis" aria-label="Rutas">
+      @for (tarjeta of tarjetas(); track tarjeta.etiqueta) {
+        <ui-kpi
+          [etiqueta]="tarjeta.etiqueta"
+          [valor]="tarjeta.valor"
+          [icono]="tarjeta.icono"
+          [color]="tarjeta.color"
+          [detalle]="tarjeta.detalle"
+        />
+      }
+    </section>
+  }
+
+  @if (olaActual()) {
+    <div class="dash-grid" [class.dash-grid--cargando]="cargando()">
+      <ng-container [ngTemplateOutlet]="cargaPorChute" />
+    </div>
+  }
+
+  @if (olaActual(); as ola) {
+    <h2 class="dash-seccion">
+      <ui-icon name="usuarios" [size]="18" /> 2 · Operarios de {{ ola.cluster }}
+      <span class="dash-seccion__sub">
+        {{
+          olaPrevia()
+            ? 'El equipo llega de ' + olaPrevia() + ' y se reacomoda'
+            : 'Primera ola: el equipo empieza aquí'
+        }}
+      </span>
+    </h2>
+    @if (operariosListos()) {
+      <section class="dash-kpis" aria-label="Operarios">
+        @for (tarjeta of tarjetasOperarios(); track tarjeta.etiqueta) {
+          <ui-kpi
+            [etiqueta]="tarjeta.etiqueta"
+            [valor]="tarjeta.valor"
+            [icono]="tarjeta.icono"
+            [color]="tarjeta.color"
+            [detalle]="tarjeta.detalle"
+          />
+        }
+      </section>
+      <div class="dash-grid" [class.dash-grid--cargando]="cargando()">
+        <article class="dash-card" [class.dash-card--cargando]="cargando()">
+          <header class="dash-card__head">
+            <div class="dash-card__titulos">
+              <h2 class="dash-card__titulo">
+                <ui-icon name="usuarios" [size]="18" /> Dotación por chute
+              </h2>
+              <p class="dash-card__sub">
+                @if (olaPrevia(); as previa) {
+                  Cuántos operarios tenía cada chute al terminar {{ previa }} y cuántos tiene en
+                  {{ olaActual()?.cluster }}. La barra es el tiempo del chute; la línea, el límite;
+                  el trazo gris, cuánto tardaría si nadie se moviera.
+                } @else {
+                  Operarios de cada chute en la primera ola. La barra es el tiempo del chute y la
+                  línea, el límite de la ola.
+                }
+              </p>
+              @if (dotacionOla().paso; as paso) {
+                <ul class="flujo-resumen" aria-label="Paso del equipo desde {{ paso.origen }}">
+                  <li class="flujo-dato flujo-dato--quedan">
+                    <strong>{{ formatearNumero(paso.quedan) }}</strong> se quedan
+                  </li>
+                  <li class="flujo-dato flujo-dato--salen">
+                    <strong>{{ formatearNumero(paso.salen) }}</strong> salen
+                  </li>
+                  <li class="flujo-dato flujo-dato--llegan">
+                    <strong>{{ formatearNumero(paso.llegan) }}</strong> llegan
+                  </li>
+                </ul>
+              }
+            </div>
+            <span class="flujo-total">
+              {{ formatearNumero(dotacionOla().asignados) }} de
+              {{ formatearNumero(dashboard()?.equipo ?? 0) }} operarios
+              @if (dashboard()?.maximoPorChute; as maximo) {
+                · máx. {{ maximo }} por chute
+              }
+            </span>
+          </header>
+          <div class="dash-tabla-wrap cuadro dash-tabla-wrap--scroll">
+            <table class="dash-tabla cuadro__tabla dotacion">
+              <thead>
+                <tr>
+                  <th>Chute</th>
+                  <th class="num">Bultos</th>
+                  <th class="num">Operarios</th>
+                  <th>Movimiento</th>
+                  <th class="dotacion__tiempo-col">
+                    Tiempo vs. límite
+                    @if (dotacionOla().limite > 0) {
+                      ({{ formatearHoras(dotacionOla().limite) }})
+                    }
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (fila of dotacionOla().filas; track fila.id) {
+                  <tr>
+                    <td class="fuerte">{{ fila.nombre }}</td>
+                    <td class="num">
+                      {{ formatearNumero(fila.bultos) }}
+                    </td>
+                    <td class="num">
+                      @if (olaPrevia()) {
+                        <span class="u-muted">{{ fila.recibidos }} →</span>
+                      }
+                      <strong>{{ fila.asignados }}</strong>
+                    </td>
+                    <td>
+                      @if (!olaPrevia()) {
+                        <span class="u-muted">Primera ola</span>
+                      } @else if (fila.movimiento > 0) {
+                        <span class="flujo-mov flujo-mov--llegan"
+                          >Llegan {{ fila.movimiento }}</span
+                        >
+                      } @else if (fila.movimiento < 0) {
+                        <span class="flujo-mov flujo-mov--salen">Salen {{ -fila.movimiento }}</span>
+                      } @else {
+                        <span class="flujo-mov">Se quedan</span>
+                      }
+                    </td>
+                    <td>
+                      @if (fila.bultos === 0) {
+                        <span class="u-muted">Sin carga en {{ ola.cluster }}</span>
+                      } @else {
+                        <div class="tiempo" [class.tiempo--excede]="fila.excede">
+                          <span class="tiempo__pista">
+                            @if (olaPrevia() && fila.sinMover !== null) {
+                              <span
+                                class="tiempo__sin-mover"
+                                [style.width.%]="fila.barraSinMover"
+                                [title]="'Si nadie se moviera: ' + formatearHoras(fila.sinMover)"
+                              ></span>
+                            }
+                            <span class="tiempo__barra" [style.width.%]="fila.barra"></span>
+                            @if (dotacionOla().limite > 0) {
+                              <span
+                                class="tiempo__limite"
+                                [style.left.%]="dotacionOla().posLimite"
+                                aria-hidden="true"
+                              ></span>
+                            }
+                          </span>
+                          <span class="tiempo__texto">{{ formatearHoras(fila.tiempo) }}</span>
+                        </div>
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    } @else {
+      <p class="dash-paso" role="status">
+        <ui-icon name="info" [size]="16" />
+        <span>
+          <strong>Operarios pendientes:</strong> asigna los operarios de {{ ola.cluster }} en
+          Configuración (paso 2). Sus rutas ya están balanceadas.
+        </span>
+        <button
+          *hasPermiso="permisos.VER_CONFIGURACION_SIMULACION"
+          type="button"
+          class="ui-btn ui-btn--secondary ui-btn--sm"
+          (click)="irAConfiguracion()"
+        >
+          Ir a Configuración
+        </button>
+      </p>
+    }
+  } @else {
+    <div class="dash-grid" [class.dash-grid--cargando]="cargando()">
+      <article class="dash-card" [class.dash-card--cargando]="cargando()">
+        <header class="dash-card__head">
+          <div class="dash-card__titulos">
+            <h2 class="dash-card__titulo">
+              <ui-icon name="analisis" [size]="18" /> Resumen por cluster
+            </h2>
+            <p class="dash-card__sub">
+              Carga de cada cluster, rutas movidas y su cierre establecido frente al conseguido.
+            </p>
+          </div>
+        </header>
+        <div class="dash-tabla-wrap cuadro dash-tabla-wrap--scroll">
+          <table class="dash-tabla cuadro__tabla ejecutivo">
+            <thead>
+              <tr>
+                <th>Cluster</th>
+                <th class="num">Bultos</th>
+                <th class="num">Líneas</th>
+                <th class="num">Unidades</th>
+                <th class="num">COD</th>
+                <th class="num">Cierre establecido</th>
+                <th class="num">Cierre conseguido</th>
+                <th class="num">Rutas movidas</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (fila of cuadro().filas; track fila.ola.clusterId) {
+                <tr>
+                  <td>
+                    <span class="ejecutivo__cluster" [style.--cluster-color]="fila.color">
+                      {{ fila.ola.cluster }}
+                    </span>
+                  </td>
+                  <td class="num">{{ formatearNumero(fila.ola.bultos) }}</td>
+                  <td class="num">{{ formatearNumero(fila.ola.lineas) }}</td>
+                  <td class="num">{{ formatearNumero(fila.ola.unidades) }}</td>
+                  <td class="num">{{ formatearNumero(fila.ola.cod) }}</td>
+                  <td class="num">
+                    {{ fila.limite === null ? '—' : formatearHoras(fila.limite) }}
+                  </td>
+                  <td
+                    class="num ejecutivo__cierre"
+                    [class.ejecutivo__cierre--excede]="fila.excede"
+                    [class.ejecutivo__cierre--cumple]="fila.limite !== null && !fila.excede"
+                  >
+                    {{ formatearHoras(fila.cierre) }}
+                  </td>
+                  <td class="num">{{ formatearNumero(fila.ola.rutasMovidas) }}</td>
+                </tr>
+              }
+            </tbody>
+            <tfoot>
+              <tr>
+                <td>Total</td>
+                <td class="num">{{ formatearNumero(cuadro().total.bultos) }}</td>
+                <td class="num">{{ formatearNumero(cuadro().total.lineas) }}</td>
+                <td class="num">{{ formatearNumero(cuadro().total.unidades) }}</td>
+                <td class="num">{{ formatearNumero(cuadro().total.cod) }}</td>
+                <td class="num">
+                  {{ cuadro().total.limite === null ? '—' : formatearHoras(cuadro().total.limite) }}
+                </td>
+                <td class="num">
+                  {{ formatearHoras(cuadro().total.cierre) }}
+                </td>
+                <td class="num">{{ formatearNumero(cuadro().total.rutasMovidas) }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </article>
+
+      <ng-container [ngTemplateOutlet]="cargaPorChute" />
+
+      <article class="dash-card" [class.dash-card--cargando]="cargando()">
+        <header class="dash-card__head">
+          <div class="dash-card__titulos">
+            <h2 class="dash-card__titulo">
+              <ui-icon name="usuarios" [size]="18" /> Dónde estuvo el equipo
+            </h2>
+            <p class="dash-card__sub">
+              Operarios de cada chute en cada ola. Entre una ola y la siguiente, los que no
+              coinciden de chute son los que se movieron.
+            </p>
+          </div>
+          @if (operariosEntreOlas() > 0) {
+            <span class="flujo-total">
+              {{ formatearNumero(operariosEntreOlas()) }} cambio(s) de chute en total
+            </span>
+          }
+        </header>
+        @if (dotacion().filas.length === 0) {
+          <div class="dash-card__vacio">Ninguna ola tiene operarios asignados.</div>
+        } @else {
+          <div class="dash-tabla-wrap cuadro dash-tabla-wrap--scroll">
+            <table class="dash-tabla cuadro__tabla matriz">
+              <thead>
+                <tr>
+                  <th>Chute</th>
+                  @for (ola of olas(); track ola.clusterId) {
+                    <th class="num">{{ ola.cluster }}</th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (fila of dotacion().filas; track fila.chute) {
+                  <tr>
+                    <td class="fuerte">{{ fila.chute }}</td>
+                    @for (celda of fila.celdas; track $index) {
+                      <td class="num matriz__celda" [style.--intensidad.%]="celda.intensidad">
+                        {{ celda.operarios === 0 ? '·' : celda.operarios }}
+                      </td>
+                    }
+                  </tr>
+                }
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td class="fuerte">Total</td>
+                  @for (total of dotacion().totales; track $index) {
+                    <td class="num fuerte">{{ formatearNumero(total) }}</td>
+                  }
+                </tr>
+                <tr>
+                  <td>Cambian de chute</td>
+                  @for (cambio of dotacion().cambios; track $index) {
+                    <td class="num">
+                      @if (cambio) {
+                        {{ formatearNumero(cambio.cambian) }}
+                        <span class="u-muted"
+                          >· {{ formatearNumero(cambio.quedan) }} se quedan</span
+                        >
+                      } @else {
+                        <span class="u-muted">inicio</span>
+                      }
+                    </td>
+                  }
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        }
+      </article>
+    </div>
+  }
+
+  <ui-modal
+    [abierto]="detalleChute() !== null"
+    ancho="xxl"
+    [titulo]="tituloDetalle()"
+    [subtitulo]="subtituloDetalle"
+    (cerrar)="cerrarDetalle()"
+  >
+    @if (detalleChute()) {
+      <app-simulacion-detalle-chute
+        [registroId]="seleccionado()"
+        [chutes]="chutesModal()"
+        [clusters]="datos.clusters"
+        [movimientos]="datos.movimientos"
+        [clusterFijo]="vista()"
+      />
+    }
+  </ui-modal>
+}
+
+<!-- Carga por chute antes vs. después: la usan la vista de cada cluster y el resumen. -->
+<ng-template #cargaPorChute>
+  <article class="dash-card" [class.dash-card--cargando]="cargando()">
+    <header class="dash-card__head">
+      <div class="dash-card__titulos">
+        <h2 class="dash-card__titulo">
+          <ui-icon name="paquete" [size]="18" /> Carga por chute: antes vs. después
+        </h2>
+        <p class="dash-card__sub">
+          @if (olaActual(); as ola) {
+            Cómo cambió la carga de {{ ola.cluster }} en cada chute al mover sus rutas.
+          } @else {
+            Todos los chutes con la carga de todos los clusters: cómo cambió al mover rutas.
+          }
+          Elige la métrica y pulsa un chute para ver sus rutas antes y después.
+        </p>
+      </div>
+      <div class="segmento" role="tablist" aria-label="Métrica de carga">
+        @for (m of metricas; track m.id) {
+          <button
+            type="button"
+            role="tab"
+            class="segmento__opcion"
+            [class.segmento__opcion--activa]="metrica() === m.id"
+            [attr.aria-selected]="metrica() === m.id"
+            (click)="metrica.set(m.id)"
+          >
+            {{ m.nombre }}
+          </button>
+        }
+      </div>
+    </header>
+    <div class="dash-card__body">
+      @if (gruposChute().length > 0) {
+        <ui-comparativo
+          [datos]="gruposChute()"
+          [formato]="formatoCarga"
+          etiquetaAntes="Antes del balanceo"
+          etiquetaDespues="Después del balanceo"
+          color="var(--accent)"
+          [altura]="320"
+        />
+      } @else {
+        <div class="dash-card__vacio">Sin chutes para comparar.</div>
+      }
+    </div>
+
+    <div class="dash-tabla-wrap cuadro dash-tabla-wrap--scroll">
+      <table class="dash-tabla cuadro__tabla">
+        <thead>
+          <tr>
+            <th rowspan="2">Chute</th>
+            @if (vista() === null) {
+              <th rowspan="2">Clusters</th>
+            }
+            @for (m of metricas; track m.id) {
+              <th
+                colspan="2"
+                class="cuadro__grupo"
+                [class.cuadro__grupo--activo]="metrica() === m.id"
+              >
+                {{ m.nombre }}
+              </th>
+            }
+          </tr>
+          <tr>
+            @for (m of metricas; track m.id) {
+              <th class="num" [class.cuadro__col--activa]="metrica() === m.id">Antes</th>
+              <th class="num" [class.cuadro__col--activa]="metrica() === m.id">Después</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (chute of chutesVisibles(); track chute.chute) {
+            <tr>
+              <td class="fuerte">
+                <button
+                  type="button"
+                  class="cuadro__chute"
+                  [attr.title]="tituloDetalleChute(chute)"
+                  [attr.aria-label]="tituloDetalleChute(chute)"
+                  (click)="abrirDetalle(chute)"
+                >
+                  {{ chute.chute }}
+                </button>
+              </td>
+              @if (vista() === null) {
+                <td class="cuadro__clusters">{{ clustersDeChute(chute) }}</td>
+              }
+              @for (m of metricas; track m.id) {
+                <td class="num u-muted" [class.cuadro__col--activa]="metrica() === m.id">
+                  {{ formatearNumero(m.antes(chute), m.decimales) }}
+                </td>
+                <td class="num" [class.cuadro__col--activa]="metrica() === m.id">
+                  <span class="fuerte">{{ formatearNumero(m.despues(chute), m.decimales) }}</span>
+                  <span
+                    class="cuadro__delta"
+                    [class]="claseVariacion(m.antes(chute), m.despues(chute), false)"
+                  >
+                    {{ variacion(m.antes(chute), m.despues(chute)) }}
+                  </span>
+                </td>
+              }
+            </tr>
+          }
+        </tbody>
+        <tfoot>
+          <tr>
+            <td class="fuerte">Total</td>
+            @if (vista() === null) {
+              <td class="u-muted">{{ formatearNumero(chutesVisibles().length) }} chutes</td>
+            }
+            @for (total of totalesChute(); track $index) {
+              <td class="num">
+                {{ formatearNumero(total.antes, metricas[$index].decimales) }}
+              </td>
+              <td class="num fuerte">
+                {{ formatearNumero(total.despues, metricas[$index].decimales) }}
+              </td>
+            }
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    @if (vista() === null && filtroClusters().length > 0) {
+      <p class="filtro-nota cuadro__nota">
+        <ui-icon name="info" [size]="14" />
+        Con filtro de cluster se listan los chutes que lo atienden, con toda su carga (también la de
+        otros clusters en ese chute).
+      </p>
+    }
+  </article>
+</ng-template>

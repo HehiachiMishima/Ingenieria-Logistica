@@ -1,0 +1,68 @@
+@use 'breakpoints' as bp;
+
+/* Piezas compartidas por los módulos de la malla. */
+
+/* Acciones de la cabecera, a la derecha. */
+.page-head__acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+
+  @include bp.down(sm) {
+    width: 100%;
+
+    > .ui-btn {
+      flex: 1 1 0;
+    }
+  }
+}
+
+/* Tarjeta de contenido: título con icono, subtítulo y cuerpo. */
+.tarjeta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4) var(--space-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+
+  @include bp.down(sm) {
+    padding: var(--space-4);
+  }
+
+  &__cabecera {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-3);
+  }
+
+  &__titulo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+    font-size: var(--fs-base);
+    font-weight: 800;
+    color: var(--text);
+
+    ui-icon {
+      color: var(--accent);
+    }
+  }
+
+  &__sub,
+  &__nota {
+    margin: 0;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+  }
+
+  &__nota {
+    margin-top: auto;
+  }
+}

@@ -1,0 +1,30 @@
+# Secretos: nunca copiar .env al contexto de build.
+**/.env
+**/.env.*
+!**/.env.example
+
+# Dependencias y artefactos de build (se regeneran dentro de la imagen).
+**/node_modules
+**/dist
+**/.angular
+**/target
+
+# Control de versiones y metadatos de IDE.
+.git
+.gitignore
+**/.idea
+**/*.iml
+**/.vscode
+
+# Documentacion.
+**/*.md
+
+# Scripts SQL y certificados: se aplican fuera de la imagen.
+backend/*.sql
+backend/certs
+**/*.pem
+
+# Herramientas locales.
+.claude
+**/.DS_Store
+docker-compose.yml

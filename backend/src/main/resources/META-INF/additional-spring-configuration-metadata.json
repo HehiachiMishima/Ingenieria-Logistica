@@ -1,0 +1,107 @@
+{"properties": [
+  {
+    "name": "app.jwt.issuer",
+    "type": "java.lang.String",
+    "description": "A description for 'app.jwt.issuer'"
+  },
+  {
+    "name": "app.jwt.secret",
+    "type": "java.lang.String",
+    "description": "A description for 'app.jwt.secret'"
+  },
+  {
+    "name": "app.jwt.ttl-ms",
+    "type": "java.lang.Long",
+    "description": "A description for 'app.jwt.ttl-ms'"
+  },
+  {
+    "name": "app.seed.usuario",
+    "type": "java.lang.String",
+    "description": "A description for 'app.seed.usuario'"
+  },
+  {
+    "name": "app.seed.contrasena",
+    "type": "java.lang.String",
+    "description": "A description for 'app.seed.contrasena'"
+  },
+  {
+    "name": "app.seed.nombre",
+    "type": "java.lang.String",
+    "description": "A description for 'app.seed.nombre'"
+  },
+  {
+    "name": "app.seed.apellido",
+    "type": "java.lang.String",
+    "description": "A description for 'app.seed.apellido'"
+  },
+  {
+    "name": "app.seed.email",
+    "type": "java.lang.String",
+    "description": "A description for 'app.seed.email'"
+  },
+  {
+    "name": "app.seed.telefono",
+    "type": "java.lang.String",
+    "description": "A description for 'app.seed.telefono'"
+  },
+  {
+    "name": "app.seed.rol",
+    "type": "java.lang.String",
+    "description": "A description for 'app.seed.rol'"
+  },
+  {
+    "name": "app.seed.activo",
+    "type": "java.lang.Boolean",
+    "description": "A description for 'app.seed.activo'"
+  },
+  {
+    "name": "app.cors.allowed-origins",
+    "type": "java.util.List<java.lang.String>",
+    "description": "Origenes CORS permitidos (frontend Angular), separados por comas."
+  },
+  {
+    "name": "app.cors.max-age",
+    "type": "java.lang.Long",
+    "description": "Segundos de cache del preflight CORS."
+  },
+  {
+    "name": "app.security.permission-cache.enabled",
+    "type": "java.lang.String",
+    "description": "A description for 'app.security.permission-cache.enabled'"
+  },
+  {
+    "name": "app.catalogo.cache.refresh-ms",
+    "type": "java.lang.String",
+    "description": "A description for 'app.catalogo.cache.refresh-ms'"
+  },
+  {
+    "name": "app.stats-cache.max-size",
+    "type": "java.lang.String",
+    "description": "A description for 'app.stats-cache.max-size'"
+  },
+  {
+    "name": "app.stats-cache.enabled",
+    "type": "java.lang.String",
+    "description": "A description for 'app.stats-cache.enabled'"
+  },
+  {
+    "name": "app.stats-cache.ttl-ms",
+    "type": "java.lang.String",
+    "description": "A description for 'app.stats-cache.ttl-ms'"
+  },
+  {
+    "name": "app.security.permission-cache.ttl-ms",
+    "type": "java.lang.String",
+    "description": "A description for 'app.security.permission-cache.ttl-ms'"
+  },
+  {
+    "name": "app.security.permission-cache.max-size",
+    "type": "java.lang.String",
+    "description": "A description for 'app.security.permission-cache.max-size'"
+  },
+  {
+    "name": "app.zona-horaria",
+    "type": "java.lang.String",
+    "description": "A description for 'app.zona-horaria'"
+  }
+]}

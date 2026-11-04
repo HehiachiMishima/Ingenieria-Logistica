@@ -1,0 +1,122 @@
+/* Por encima de los modales (para cubrir uno abierto) y por debajo de los avisos. */
+.bloqueo {
+  z-index: calc(var(--z-modal) + 5);
+}
+
+.bloqueo__caja {
+  max-width: 400px;
+}
+
+.bloqueo__cuerpo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-6);
+  text-align: center;
+}
+
+.bloqueo__icono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: 50%;
+}
+
+.bloqueo__titulo {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 800;
+  color: var(--text);
+}
+
+.bloqueo__texto {
+  margin: calc(-1 * var(--space-2)) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.bloqueo__cuenta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  text-align: left;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.bloqueo__avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  font-size: var(--fs-sm);
+  font-weight: 800;
+  color: #fff;
+  background: var(--accent);
+  border-radius: 50%;
+}
+
+.bloqueo__nombre {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+
+  b,
+  small {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  b {
+    font-size: var(--fs-sm);
+    color: var(--text);
+  }
+
+  small {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+  }
+}
+
+.bloqueo__oculto {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ui-field {
+  text-align: left;
+}
+
+.bloqueo__clave {
+  position: relative;
+
+  .ui-input {
+    width: 100%;
+    padding-right: 44px;
+  }
+}
+
+.bloqueo__ver {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+}
+
+.bloqueo__continuar {
+  width: 100%;
+}

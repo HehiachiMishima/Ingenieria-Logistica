@@ -1,0 +1,489 @@
+@use 'breakpoints' as bp;
+@use '../../comun';
+
+/* Centro que se edita y acciones sobre él (nuevo, importar, plantilla, exportar). */
+.barra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+
+  &__campo {
+    display: flex;
+    flex: 1 1 280px;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+    max-width: 420px;
+  }
+
+  &__acciones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-left: auto;
+
+    @include bp.down(sm) {
+      width: 100%;
+      margin-left: 0;
+
+      > .ui-btn {
+        flex: 1 1 auto;
+      }
+    }
+  }
+
+  &__spinner {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.aviso {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--fs-sm);
+  color: var(--info);
+  background: var(--info-soft);
+  border: 1px solid color-mix(in srgb, var(--info) 28%, var(--border));
+  border-radius: var(--radius-lg);
+}
+
+.malla-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.tarjetas-3,
+.tarjetas-2 {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.tarjetas-3 {
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1.2fr);
+
+  @include bp.down(lg) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Olas y zonas lado a lado solo en pantallas muy anchas: la tabla de olas es larga. */
+.tarjetas-2 {
+  grid-template-columns: minmax(0, 1fr);
+
+  @media (min-width: 1680px) {
+    grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr);
+  }
+}
+
+.campos {
+  display: grid;
+  gap: var(--space-3);
+
+  &--2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Tablas editables: una fila por elemento y controles compactos. */
+.tabla-form {
+  th {
+    white-space: nowrap;
+  }
+
+  td {
+    padding-top: 6px;
+    padding-bottom: 6px;
+    vertical-align: middle;
+  }
+
+  .ui-input {
+    height: 34px;
+    min-width: 96px;
+    padding: 0 var(--space-2);
+    font-size: var(--fs-sm);
+  }
+
+  .corto {
+    min-width: 64px;
+    width: 72px;
+  }
+
+  .ancho {
+    min-width: 260px;
+  }
+
+  .numero {
+    min-width: 72px;
+    width: 88px;
+    text-align: right;
+  }
+
+  .num {
+    text-align: right;
+  }
+
+  .centro {
+    text-align: center;
+  }
+
+  input[type='checkbox'] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent);
+  }
+
+  .acciones {
+    width: 1%;
+    text-align: right;
+  }
+
+  .mover {
+    width: 1%;
+    white-space: nowrap;
+
+    button {
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      color: var(--text-2);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+
+      & + button {
+        margin-left: 4px;
+      }
+
+      &:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
+    }
+  }
+}
+
+.quitar {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--text-3);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
+  }
+}
+
+.agregar {
+  align-self: flex-start;
+}
+
+/* Nombre de un proceso con su color. */
+.proceso {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 700;
+  color: var(--text);
+
+  &::before {
+    content: '';
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    background: var(--proceso);
+  }
+}
+
+/* Pestañas de proceso del flujo. */
+.pestanas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+
+  &__opcion {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    color: var(--text-2);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    cursor: pointer;
+
+    i {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--proceso);
+    }
+
+    small {
+      font-size: var(--fs-xs);
+      color: var(--text-3);
+    }
+
+    &--activa {
+      color: var(--text);
+      background: color-mix(in srgb, var(--proceso) 14%, var(--surface));
+      border-color: var(--proceso);
+    }
+  }
+}
+
+/* Barra de guardado: queda a la vista al final del formulario. */
+.guardar {
+  position: sticky;
+  bottom: var(--space-3);
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md, var(--shadow-sm));
+
+  &__estado {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-right: auto;
+    font-size: var(--fs-sm);
+    color: var(--success);
+
+    i {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--warning);
+    }
+  }
+
+  &--pendiente &__estado {
+    font-weight: 700;
+    color: var(--warning);
+  }
+
+  &__eliminar {
+    color: var(--danger);
+  }
+
+  @include bp.down(sm) {
+    &__estado {
+      width: 100%;
+    }
+
+    .ui-btn {
+      flex: 1 1 auto;
+    }
+  }
+}
+
+/* Validación de la malla: resumen y una fila desplegable por regla. */
+.validacion {
+  margin-top: var(--space-4);
+}
+
+.resumen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  &__item {
+    padding: 4px 12px;
+    font-size: var(--fs-xs);
+    color: var(--text-2);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+
+    strong {
+      font-size: var(--fs-sm);
+      color: var(--text);
+    }
+
+    &--ok strong {
+      color: var(--success);
+    }
+
+    &--mal strong {
+      color: var(--danger);
+    }
+  }
+}
+
+.reglas {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.regla {
+  & + & {
+    border-top: 1px solid var(--border);
+  }
+
+  &__cabecera {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    padding: var(--space-3) var(--space-4);
+    text-align: left;
+    color: inherit;
+    background: var(--surface);
+    border: 0;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--surface-2);
+    }
+  }
+
+  &__nombre {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  &__severidad {
+    font-size: 0.66rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    color: var(--text-3);
+
+    &--alta {
+      color: var(--danger);
+    }
+
+    &--media {
+      color: var(--warning);
+    }
+  }
+
+  &__cuerpo {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: 0 var(--space-4) var(--space-4);
+  }
+
+  &__descripcion {
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+  }
+
+  &__ajustes {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-3);
+  }
+
+  &__activa,
+  &__parametro {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    color: var(--text-2);
+  }
+
+  &__parametro {
+    flex-direction: column;
+    align-items: flex-start;
+
+    .ui-input {
+      height: 32px;
+      width: 160px;
+    }
+
+    small {
+      font-weight: 400;
+      color: var(--text-3);
+    }
+  }
+}
+
+.tarjeta__nota--aviso {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--space-3);
+  color: var(--warning);
+}
+
+/* Historial: quién guardó qué y cuándo. */
+.historial {
+  margin-top: var(--space-4);
+
+  &__lista {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+
+    li {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--space-1) var(--space-3);
+      padding: var(--space-2) 0;
+
+      & + li {
+        border-top: 1px solid var(--border);
+      }
+    }
+  }
+
+  &__resumen {
+    flex: 1 1 240px;
+    min-width: 0;
+    font-size: var(--fs-sm);
+    color: var(--text);
+  }
+
+  &__quien {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+    font-variant-numeric: tabular-nums;
+  }
+}

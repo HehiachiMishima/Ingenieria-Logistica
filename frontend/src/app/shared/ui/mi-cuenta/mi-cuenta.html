@@ -1,0 +1,139 @@
+<ui-modal [abierto]="abierto()" titulo="Mi cuenta" subtitulo="Tus datos y tu contraseña" ancho="md" (cerrar)="cerrar.emit()">
+  @if (usuario(); as u) {
+    <section class="cuenta">
+      <header class="cuenta__identidad">
+        <span class="cuenta__avatar">{{ iniciales() }}</span>
+        <div class="cuenta__identidad-info">
+          <p class="cuenta__nombre">{{ u.nombre }} {{ u.apellido }}</p>
+          <p class="cuenta__usuario">&#64;{{ u.usuario }}</p>
+        </div>
+      </header>
+
+      <div class="cuenta__datos">
+        <div class="cuenta__dato">
+          <span class="cuenta__dato-label"><ui-icon name="mail" [size]="15" /> Email</span>
+          <span class="cuenta__dato-valor">{{ u.email }}</span>
+        </div>
+        <div class="cuenta__dato">
+          <span class="cuenta__dato-label"><ui-icon name="user" [size]="15" /> Teléfono</span>
+          <span class="cuenta__dato-valor">{{ u.telefono || '—' }}</span>
+        </div>
+        <div class="cuenta__dato">
+          <span class="cuenta__dato-label"><ui-icon name="shieldCheck" [size]="15" /> Estado</span>
+          <span class="cuenta__dato-valor" [class.cuenta__dato-valor--ok]="u.activo">
+            {{ u.activo ? 'Activo' : 'Inactivo' }}
+          </span>
+        </div>
+      </div>
+
+      <section class="cuenta__seccion">
+        <h3 class="cuenta__seccion-titulo"><ui-icon name="key" [size]="16" /> Cambiar contraseña</h3>
+        <p class="cuenta__seccion-nota">Confirma tu contraseña actual para establecer una nueva.</p>
+
+        @if (errorContrasena()) {
+          <div class="cuenta__alert" role="alert">
+            <ui-icon name="alertTriangle" [size]="18" />
+            <span>{{ errorContrasena() }}</span>
+          </div>
+        }
+
+        <form class="cuenta__form" [formGroup]="formulario" (ngSubmit)="cambiarContrasena()" novalidate>
+          <div class="ui-field">
+            <label class="ui-label" for="contrasenaActual">Contraseña actual</label>
+            <div class="cuenta__control">
+              <ui-icon name="lock" [size]="18" class="cuenta__control-icon" />
+              <input
+                id="contrasenaActual"
+                [type]="verActual() ? 'text' : 'password'"
+                class="ui-input"
+                [class.ui-input--invalid]="campoInvalido('contrasenaActual')"
+                formControlName="contrasenaActual"
+                autocomplete="current-password"
+                placeholder="••••••••"
+              />
+              <button
+                type="button"
+                class="cuenta__toggle"
+                (click)="alternarVer('actual')"
+                [attr.aria-label]="verActual() ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+              >
+                <ui-icon [name]="verActual() ? 'ojoOff' : 'ojo'" [size]="18" />
+              </button>
+            </div>
+            @if (campoInvalido('contrasenaActual')) {
+              <span class="ui-error">Ingresa tu contraseña actual.</span>
+            }
+          </div>
+
+          <div class="ui-field">
+            <label class="ui-label" for="contrasenaNueva">Nueva contraseña</label>
+            <div class="cuenta__control">
+              <ui-icon name="key" [size]="18" class="cuenta__control-icon" />
+              <input
+                id="contrasenaNueva"
+                [type]="verNueva() ? 'text' : 'password'"
+                class="ui-input"
+                [class.ui-input--invalid]="campoInvalido('contrasenaNueva')"
+                formControlName="contrasenaNueva"
+                autocomplete="new-password"
+                placeholder="Mínimo 10 caracteres"
+              />
+              <button
+                type="button"
+                class="cuenta__toggle"
+                (click)="alternarVer('nueva')"
+                [attr.aria-label]="verNueva() ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+              >
+                <ui-icon [name]="verNueva() ? 'ojoOff' : 'ojo'" [size]="18" />
+              </button>
+            </div>
+            @if (campoInvalido('contrasenaNueva')) {
+              <span class="ui-error">Entre 10 y 72 caracteres.</span>
+            }
+          </div>
+
+          <div class="ui-field">
+            <label class="ui-label" for="contrasenaConfirmar">Confirmar nueva contraseña</label>
+            <div class="cuenta__control">
+              <ui-icon name="key" [size]="18" class="cuenta__control-icon" />
+              <input
+                id="contrasenaConfirmar"
+                [type]="verConfirmar() ? 'text' : 'password'"
+                class="ui-input"
+                [class.ui-input--invalid]="confirmacionNoCoincide() && formulario.controls.contrasenaConfirmar.touched"
+                formControlName="contrasenaConfirmar"
+                autocomplete="new-password"
+                placeholder="Repite la nueva contraseña"
+              />
+              <button
+                type="button"
+                class="cuenta__toggle"
+                (click)="alternarVer('confirmar')"
+                [attr.aria-label]="verConfirmar() ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+              >
+                <ui-icon [name]="verConfirmar() ? 'ojoOff' : 'ojo'" [size]="18" />
+              </button>
+            </div>
+            @if (confirmacionNoCoincide() && formulario.controls.contrasenaConfirmar.touched) {
+              <span class="ui-error">La confirmación no coincide.</span>
+            }
+          </div>
+
+          <div class="cuenta__acciones">
+            <button type="button" class="ui-btn ui-btn--secondary" (click)="cerrar.emit()" [disabled]="cambiando()">
+              Cancelar
+            </button>
+            <button type="submit" class="ui-btn ui-btn--primary" [disabled]="cambiando()">
+              @if (cambiando()) {
+                <span class="ui-spinner cuenta__spinner"></span>
+                Guardando…
+              } @else {
+                Guardar contraseña
+              }
+            </button>
+          </div>
+        </form>
+      </section>
+    </section>
+  }
+</ui-modal>

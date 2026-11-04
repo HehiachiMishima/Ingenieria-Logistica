@@ -1,0 +1,394 @@
+@use 'breakpoints' as bp;
+
+/**
+ * Launcher "Atlas": cabecera navy con la escena de marca y tarjetas
+ * de panel con color de señal propio (--c) que reflejan los módulos
+ * habilitados para el usuario.
+ */
+:host {
+  display: block;
+  min-height: 100dvh;
+}
+
+.launcher {
+  position: relative;
+  isolation: isolate;
+  min-height: 100dvh;
+  background: var(--bg);
+}
+
+.launcher__scene {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 340px;
+  z-index: -1;
+  background:
+    radial-gradient(60% 120% at 0% 0%, rgba(225, 29, 46, 0.45), transparent 60%),
+    radial-gradient(50% 110% at 100% 0%, rgba(29, 99, 237, 0.45), transparent 60%),
+    linear-gradient(180deg, #0a1628 0%, #0f2140 100%);
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    background-size: 40px 40px;
+    mask-image: linear-gradient(180deg, #000 30%, transparent);
+  }
+}
+
+.launcher__topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  height: 64px;
+  padding: 0 clamp(var(--space-4), 4vw, var(--space-10));
+  color: #fff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.launcher__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.launcher__brand-mark {
+  width: 46px;
+  height: 46px;
+  flex: none;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 18px rgba(214, 140, 74, 0.4));
+}
+
+.launcher__brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  min-width: 0;
+}
+
+.launcher__brand-kicker {
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #ff6b78;
+}
+
+.launcher__brand-name {
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.launcher__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.launcher__live {
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.12);
+
+  @include bp.down(md) {
+    display: none;
+  }
+}
+
+.launcher__icon-btn {
+  color: #c9d6ea;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+  }
+}
+
+.launcher__user {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 4px var(--space-3) 4px 4px;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+
+  .ui-avatar {
+    width: 32px;
+    height: 32px;
+    font-size: var(--fs-xs);
+  }
+
+  @include bp.down(md) {
+    display: none;
+  }
+}
+
+.launcher__user-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  max-width: 200px;
+}
+
+.launcher__user-name {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.launcher__user-mail {
+  font-size: var(--fs-xs);
+  color: #9fb0cb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.launcher__logout {
+  --btn-bg: rgba(255, 255, 255, 0.08);
+  --btn-fg: #fff;
+  --btn-border: rgba(255, 255, 255, 0.14);
+
+  &:hover {
+    --btn-bg: var(--brand);
+    --btn-border: var(--brand);
+  }
+}
+
+.launcher__main {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: clamp(var(--space-8), 5vw, var(--space-12)) clamp(var(--space-4), 4vw, var(--space-10)) var(--space-16);
+}
+
+.launcher__intro {
+  color: #fff;
+  animation: ui-rise 600ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.launcher__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #9fb0cb;
+}
+
+.launcher__title {
+  margin-top: var(--space-3);
+  font-size: var(--fs-3xl);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  color: #fff;
+}
+
+.launcher__title-name {
+  background: linear-gradient(100deg, #ff6b78, #7c8dff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.launcher__subtitle {
+  margin-top: var(--space-2);
+  color: #b4c1d6;
+
+  strong {
+    color: #fff;
+  }
+}
+
+.launcher__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-5);
+  margin-top: var(--space-10);
+
+  @include bp.down(sm) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.panel-card {
+  --c: var(--brand);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-height: 280px;
+  padding: var(--space-6);
+  text-align: left;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  overflow: hidden;
+  animation: ui-rise 600ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(120ms + var(--i, 0) * 80ms);
+  transition: transform var(--transition), box-shadow var(--transition), border-color var(--transition);
+
+  &::after {
+    content: '';
+    position: absolute;
+    right: -60px;
+    top: -60px;
+    width: 200px;
+    height: 200px;
+    border-radius: 50%;
+    background: radial-gradient(circle, color-mix(in srgb, var(--c) 22%, transparent), transparent 70%);
+    pointer-events: none;
+    transition: transform var(--transition-slow);
+  }
+
+  &:hover:not(.panel-card--locked) {
+    transform: translateY(-4px);
+    border-color: color-mix(in srgb, var(--c) 55%, var(--border));
+    box-shadow: 0 22px 44px -18px color-mix(in srgb, var(--c) 60%, transparent), var(--shadow-sm);
+
+    &::after {
+      transform: scale(1.4);
+    }
+
+    .panel-card__cta {
+      gap: var(--space-3);
+    }
+  }
+
+  &:focus-visible {
+    outline: 3px solid var(--c);
+    outline-offset: 3px;
+  }
+}
+
+.panel-card__band {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--c), color-mix(in srgb, var(--c) 30%, transparent));
+}
+
+.panel-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.panel-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 14px;
+  color: #fff;
+  background: var(--c);
+  box-shadow: 0 12px 26px -10px var(--c);
+}
+
+.panel-card__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--success);
+  background: var(--success-soft);
+
+  &--off {
+    color: var(--text-3);
+    background: var(--surface-3);
+  }
+}
+
+.panel-card__name {
+  margin-top: var(--space-2);
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.panel-card__desc {
+  color: var(--text-3);
+  font-size: var(--fs-md);
+  line-height: 1.5;
+}
+
+.panel-card__mods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.panel-card__mod {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: var(--radius-xs);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.panel-card__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: auto;
+  padding-top: var(--space-3);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--c);
+  transition: gap var(--transition);
+}
+
+.panel-card--locked {
+  cursor: not-allowed;
+  background: var(--surface-2);
+
+  .panel-card__icon {
+    background: var(--surface-3);
+    color: var(--text-3);
+    box-shadow: none;
+  }
+
+  .panel-card__band {
+    background: var(--border-strong);
+  }
+
+  .panel-card__name,
+  .panel-card__desc {
+    opacity: 0.7;
+  }
+
+  .panel-card__cta {
+    color: var(--text-3);
+    font-weight: 600;
+  }
+
+  &::after {
+    display: none;
+  }
+}

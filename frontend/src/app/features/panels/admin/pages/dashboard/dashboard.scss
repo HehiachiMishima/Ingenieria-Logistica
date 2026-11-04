@@ -1,0 +1,62 @@
+/* Layout común de dashboards en styles/_components.scss (.dash-*). */
+
+/* Gauge centrado con su desglose debajo; no se estira con la altura de la fila. */
+.admin-centro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+
+  ui-gauge {
+    width: 100%;
+    max-width: 220px;
+  }
+}
+
+/* Barras centradas verticalmente para que la pareja de tarjetas se vea pareja. */
+.admin-medio {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.admin-estado {
+  display: flex;
+  gap: var(--space-6);
+  margin: 0;
+
+  div {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+
+  dt {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+  }
+
+  dd {
+    margin: 0;
+    font-size: var(--fs-lg);
+    font-weight: 800;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.admin-estado__punto {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+
+  &--ok {
+    background: var(--success);
+  }
+}

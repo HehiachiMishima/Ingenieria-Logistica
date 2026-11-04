@@ -1,0 +1,266 @@
+@use 'breakpoints' as bp;
+
+:host {
+  display: block;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.linea {
+  min-width: 640px;
+
+  &__fila {
+    display: grid;
+    grid-template-columns: 128px minmax(0, 1fr);
+    align-items: center;
+    min-height: 30px;
+
+    & + & {
+      border-top: 1px dashed color-mix(in srgb, var(--border) 70%, transparent);
+    }
+
+    &--horas {
+      min-height: 22px;
+      border: 0;
+    }
+
+    &--turno .linea__barra {
+      color: var(--text);
+    }
+  }
+
+  &__cuerpo {
+    position: relative;
+  }
+
+  &__etiqueta {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding-right: var(--space-2);
+    overflow: hidden;
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: var(--text-2);
+    background: none;
+    border: 0;
+
+    i {
+      flex: none;
+      width: 9px;
+      height: 9px;
+      border-radius: 3px;
+    }
+
+    &--proceso {
+      cursor: pointer;
+
+      &:hover {
+        color: var(--text);
+        text-decoration: underline;
+      }
+    }
+  }
+
+  &__pista {
+    position: relative;
+    height: 100%;
+    min-height: 24px;
+
+    &--horas {
+      min-height: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+  }
+
+  &__hora {
+    position: absolute;
+    top: 2px;
+    transform: translateX(-50%);
+    font-size: 0.66rem;
+    color: var(--text-3);
+    font-variant-numeric: tabular-nums;
+
+    &:first-child {
+      transform: none;
+    }
+
+    &:last-child {
+      transform: translateX(-100%);
+    }
+  }
+
+  &__barra {
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    display: flex;
+    align-items: center;
+    min-width: 3px;
+    padding: 0 6px;
+    overflow: hidden;
+    color: #fff;
+    background: var(--color);
+    border-radius: 5px;
+
+    em {
+      overflow: hidden;
+      font-size: 0.66rem;
+      font-style: normal;
+      font-weight: 700;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    /* Lo que corre Ing. Logística: contorno en lugar de relleno. */
+    &--il {
+      color: var(--text);
+      background: color-mix(in srgb, var(--color) 18%, var(--surface));
+      border: 1.5px solid var(--color);
+    }
+
+    &--pendiente {
+      background-image: repeating-linear-gradient(
+        135deg,
+        transparent 0 5px,
+        rgb(255 255 255 / 0.28) 5px 9px
+      );
+    }
+  }
+
+  &__marca {
+    position: absolute;
+    top: 50%;
+    width: 10px;
+    height: 10px;
+    transform: translate(-50%, -50%);
+    background: var(--color);
+    border: 2px solid var(--surface);
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px var(--color);
+
+    &--pedido {
+      border-radius: 2px;
+      transform: translate(-50%, -50%) rotate(45deg);
+    }
+
+    &--despacho {
+      border-radius: 2px;
+    }
+
+    &--il {
+      background: var(--surface);
+    }
+
+    &--refrigerio {
+      width: 8px;
+      height: 8px;
+    }
+  }
+
+  /* Capa superior: la hora actual o la ventana elegida. */
+  &__capa {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    grid-template-columns: 128px minmax(0, 1fr);
+    pointer-events: none;
+  }
+
+  &__ahora {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--accent);
+
+    b {
+      position: absolute;
+      top: -18px;
+      left: 50%;
+      padding: 0 5px;
+      transform: translateX(-50%);
+      font-size: 0.64rem;
+      color: #fff;
+      background: var(--accent);
+      border-radius: 4px;
+    }
+  }
+
+  &__ventana {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    border-inline: 1.5px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+}
+
+:host(.compacta) .linea {
+  min-width: 420px;
+
+  &__fila {
+    grid-template-columns: 92px minmax(0, 1fr);
+    min-height: 22px;
+  }
+
+  &__capa {
+    grid-template-columns: 92px minmax(0, 1fr);
+  }
+}
+
+.leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+  }
+
+  i {
+    display: inline-block;
+    width: 12px;
+    height: 10px;
+    border-radius: 3px;
+  }
+
+  &__pedido {
+    width: 9px !important;
+    height: 9px !important;
+    background: var(--text-2);
+    transform: rotate(45deg);
+  }
+
+  &__barra {
+    background: var(--danger);
+  }
+
+  &__despacho {
+    background: var(--info);
+  }
+
+  &__il {
+    border: 1.5px solid var(--text-2);
+  }
+
+  &__refrigerio {
+    width: 9px !important;
+    height: 9px !important;
+    background: var(--text-2);
+    border-radius: 50% !important;
+  }
+
+  &__pendiente {
+    background: repeating-linear-gradient(135deg, var(--text-3) 0 3px, transparent 3px 6px);
+  }
+}

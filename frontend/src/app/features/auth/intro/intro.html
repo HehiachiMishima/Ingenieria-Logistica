@@ -1,0 +1,32 @@
+<canvas #lienzo class="intro__lienzo" aria-hidden="true"></canvas>
+
+<div class="intro__escena">
+  <span class="intro__halo" aria-hidden="true"></span>
+  <h1 #titulo class="intro__titulo">
+    <span class="intro__oculto">{{ marca.nombre }}</span>
+    <span class="intro__marca" aria-hidden="true">
+  @for (item of letras; track $index) {
+    <span
+      class="intro__letra"
+      [class.intro__letra--amarilla]="item.tono === 'amarilla'"
+      [class.intro__letra--mixta]="item.tono === 'mixta'"
+      [attr.data-letra]="item.letra"
+      [style.--i]="$index">
+      <span class="intro__cara">{{ item.letra }}</span>
+      <span class="intro__luz">{{ item.letra }}</span>
+    </span>
+  }
+</span>
+  </h1>
+  <p class="intro__lema">
+    @for (linea of marca.lema; track linea; let primera = $first) {
+      @if (!primera) {
+        <span class="intro__punto" aria-hidden="true">·</span>
+      }
+      <span>{{ linea }}</span>
+    }
+  </p>
+</div>
+
+<span class="intro__progreso" aria-hidden="true"></span>
+<span class="intro__telon" aria-hidden="true"></span>

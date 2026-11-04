@@ -1,0 +1,85 @@
+<div class="ui-modal-backdrop bloqueo">
+  <section
+    class="ui-modal ui-modal--sm bloqueo__caja"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="bloqueo-titulo"
+    aria-describedby="bloqueo-texto"
+  >
+    <form class="bloqueo__cuerpo" [formGroup]="formulario" (ngSubmit)="continuar()" novalidate>
+      <span class="bloqueo__icono" aria-hidden="true"><ui-icon name="lock" [size]="22" /></span>
+      <h2 id="bloqueo-titulo" class="bloqueo__titulo">Tu sesión se pausó</h2>
+      <p id="bloqueo-texto" class="bloqueo__texto">
+        Por seguridad, escribe tu contraseña para seguir donde estabas. No perderás lo que tenías
+        abierto.
+      </p>
+
+      @if (usuario(); as u) {
+        <div class="bloqueo__cuenta">
+          <span class="bloqueo__avatar" aria-hidden="true">{{ iniciales() }}</span>
+          <span class="bloqueo__nombre">
+            <b>{{ u.nombre }} {{ u.apellido }}</b>
+            <small>{{ u.usuario }}</small>
+          </span>
+        </div>
+      }
+
+      <!-- Ayuda a los gestores de contraseñas a reconocer la cuenta. -->
+      <input
+        type="text"
+        class="bloqueo__oculto"
+        autocomplete="username"
+        [value]="usuario()?.usuario ?? ''"
+        tabindex="-1"
+        aria-hidden="true"
+        readonly
+      />
+
+      <div class="ui-field">
+        <label class="ui-label" for="bloqueo-contrasena">Contraseña</label>
+        <div class="bloqueo__clave">
+          <input
+            #campo
+            id="bloqueo-contrasena"
+            class="ui-input"
+            [type]="visible() ? 'text' : 'password'"
+            autocomplete="current-password"
+            maxlength="100"
+            formControlName="contrasena"
+            [class.ui-input--invalid]="!!error() || (contrasena.touched && contrasena.invalid)"
+            [attr.aria-invalid]="!!error() || (contrasena.touched && contrasena.invalid)"
+            [attr.aria-describedby]="error() ? 'bloqueo-error' : null"
+          />
+          <button
+            type="button"
+            class="ui-icon-btn bloqueo__ver"
+            [attr.aria-label]="visible() ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+            [attr.aria-pressed]="visible()"
+            (click)="visible.set(!visible())"
+          >
+            <ui-icon [name]="visible() ? 'ojoOff' : 'ojo'" [size]="17" />
+          </button>
+        </div>
+        @if (error(); as mensaje) {
+          <span id="bloqueo-error" class="ui-error" role="alert">{{ mensaje }}</span>
+        } @else if (contrasena.touched && contrasena.invalid) {
+          <span class="ui-error" role="alert">Escribe tu contraseña.</span>
+        }
+      </div>
+
+      <button
+        type="submit"
+        class="ui-btn ui-btn--primary bloqueo__continuar"
+        [disabled]="enviando()"
+      >
+        @if (enviando()) {
+          <span class="ui-spinner" aria-hidden="true"></span>
+        }
+        Continuar
+      </button>
+      <button type="button" class="ui-btn ui-btn--ghost" (click)="cerrarSesion()">
+        <ui-icon name="logout" [size]="16" /> Cerrar sesión
+      </button>
+    </form>
+  </section>
+</div>

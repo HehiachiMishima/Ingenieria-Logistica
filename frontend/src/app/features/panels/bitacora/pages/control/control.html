@@ -1,0 +1,23 @@
+<header class="page-head">
+  <div>
+    <h1 class="page-head__title">Control</h1>
+    <p class="page-head__sub">Centros, sistemas, áreas y responsables.</p>
+  </div>
+</header>
+
+<nav class="control-tabs">
+  <a class="control-tabs__tab" routerLink="centros" routerLinkActive="control-tabs__tab--active">
+    <ui-icon name="centro" [size]="16" />
+    Centros
+  </a>
+  <a class="control-tabs__tab" routerLink="sistemas" routerLinkActive="control-tabs__tab--active">
+    <ui-icon name="sistema" [size]="16" />
+    Sistemas
+  </a>
+  <a class="control-tabs__tab" routerLink="areas" routerLinkActive="control-tabs__tab--active">
+    <ui-icon name="area" [size]="16" />
+    Áreas
+  </a>
+</nav>
+
+<router-outlet />

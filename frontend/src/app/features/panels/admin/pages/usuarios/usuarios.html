@@ -1,0 +1,443 @@
+<header class="page-head">
+  <div>
+    <h1 class="page-head__title">Usuarios</h1>
+    <p class="page-head__sub">Altas, edición, estado y asignación de roles.</p>
+  </div>
+  <button
+    *hasPermiso="permisos.CREAR_USUARIOS"
+    type="button"
+    class="ui-btn ui-btn--primary"
+    (click)="abrirCrear()"
+  >
+    <ui-icon name="plus" [size]="18" />
+    Nuevo usuario
+  </button>
+</header>
+
+<div class="toolbar">
+  <div class="ui-search toolbar__grow">
+    <ui-icon name="search" [size]="18" />
+    <input
+      type="search"
+      class="ui-input"
+      placeholder="Buscar por usuario, nombre o email…"
+      [value]="listado.busqueda()"
+      (input)="listado.buscar($any($event.target).value)"
+    />
+  </div>
+  <button
+    type="button"
+    class="ui-btn ui-btn--secondary ui-btn--sm"
+    (click)="cargar()"
+    [disabled]="listado.cargando()"
+  >
+    <ui-icon name="refresh" [size]="16" />
+    Actualizar
+  </button>
+  <button
+    type="button"
+    class="ui-btn ui-btn--secondary ui-btn--sm"
+    [attr.aria-expanded]="listado.filtrosAbierto()"
+    aria-controls="usuarios-filtros"
+    (click)="listado.alternarFiltros()"
+  >
+    <ui-icon name="filtro" [size]="16" />
+    Filtros
+    @if (listado.filtrosActivos() > 0) {
+      <span class="filtros-badge">{{ listado.filtrosActivos() }}</span>
+    }
+  </button>
+</div>
+
+<ui-filtros-activos
+  [chips]="listado.chips()"
+  (quitar)="listado.quitarFiltro($event)"
+  (limpiar)="listado.limpiarFiltros()"
+/>
+
+<ui-panel-filtros
+  id="usuarios-filtros"
+  [abierto]="listado.filtrosAbierto()"
+  [activos]="listado.filtrosActivos()"
+  titulo="Filtrar usuarios"
+  (cerrar)="listado.filtrosAbierto.set(false)"
+  (limpiar)="listado.limpiarFiltros()"
+>
+  <section class="filtro-seccion">
+    <h3 class="filtro-seccion__titulo"><ui-icon name="power" [size]="15" /> Estado</h3>
+    <div class="ui-rango" role="group" aria-label="Estado">
+      @for (e of listado.estados; track e.id) {
+        <button
+          type="button"
+          class="ui-rango__btn"
+          [class.ui-rango__btn--on]="listado.filtroEstado() === e.id"
+          [attr.aria-pressed]="listado.filtroEstado() === e.id"
+          (click)="listado.setEstado(e.id)"
+        >
+          {{ e.etiqueta }}
+        </button>
+      }
+    </div>
+  </section>
+  <section class="filtro-seccion">
+    <h3 class="filtro-seccion__titulo"><ui-icon name="roles" [size]="15" /> Rol</h3>
+    <div class="ui-field">
+      <label class="ui-label" for="usuarios-filtro-rol">Rol asignado</label>
+      <select
+        id="usuarios-filtro-rol"
+        class="ui-select"
+        [value]="filtroRol() ?? ''"
+        [disabled]="!resumenDisponible()"
+        (change)="setRol($event)"
+      >
+        <option value="">Todos los roles</option>
+        <option [value]="sinRol">Sin rol (riesgo)</option>
+        @for (rol of opcionesRol(); track rol) {
+          <option [value]="rol">{{ rol }}</option>
+        }
+      </select>
+      @if (errorResumen()) {
+        <span class="filtro-nota">No se pudieron cargar los roles: el filtro por rol no está disponible.</span>
+      } @else if (cargandoResumen()) {
+        <span class="filtro-nota">Cargando roles…</span>
+      }
+    </div>
+  </section>
+  <section class="filtro-seccion">
+    <h3 class="filtro-seccion__titulo"><ui-icon name="calendario" [size]="15" /> Periodo</h3>
+    <ui-rango-rapido [desde]="listado.filtroDesde()" [hasta]="listado.filtroHasta()" (rango)="listado.setRango($event)" />
+    <div class="filtro-seccion__fila">
+      <div class="ui-field">
+        <label class="ui-label" for="usuarios-filtro-desde">Creado desde</label>
+        <input
+          id="usuarios-filtro-desde"
+          type="date"
+          class="ui-input"
+          [max]="listado.filtroHasta()"
+          [value]="listado.filtroDesde()"
+          (change)="listado.setFiltroDesde($event)"
+        />
+      </div>
+      <div class="ui-field">
+        <label class="ui-label" for="usuarios-filtro-hasta">Hasta</label>
+        <input
+          id="usuarios-filtro-hasta"
+          type="date"
+          class="ui-input"
+          [min]="listado.filtroDesde()"
+          [value]="listado.filtroHasta()"
+          (change)="listado.setFiltroHasta($event)"
+        />
+      </div>
+    </div>
+  </section>
+</ui-panel-filtros>
+
+<div class="table-card" [class.table-card--refrescando]="listado.cargando() && listado.filtrados().length > 0">
+  @if (listado.cargando() && listado.filtrados().length === 0) {
+    <div class="loading">
+      <span class="ui-spinner"></span>
+      Cargando usuarios…
+    </div>
+  } @else if (listado.error()) {
+    <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="listado.error()!">
+      <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="cargar()">
+        <ui-icon name="refresh" [size]="16" /> Reintentar
+      </button>
+    </ui-empty>
+  } @else if (listado.filtrados().length === 0) {
+    <ui-empty
+      icono="usuarios"
+      [titulo]="listado.busqueda() || listado.filtrosActivos() ? 'Sin resultados' : 'Aún no hay usuarios'"
+      [mensaje]="
+        listado.busqueda() || listado.filtrosActivos()
+          ? 'Ningún usuario coincide con la búsqueda o los filtros.'
+          : 'Crea el primer usuario para empezar.'
+      "
+    ></ui-empty>
+  } @else {
+    <div class="ui-table-wrap">
+      <table class="ui-table" appColumnasRedimensionables>
+        <thead>
+          <tr>
+            <th>Usuario</th>
+            <th>Email</th>
+            <th>Estado</th>
+            <th>Rol</th>
+            <th>Permisos</th>
+            <th>Teléfono</th>
+            <th>Creado por</th>
+            <th>Actualizado por</th>
+            <th>Creado</th>
+            <th>Actualizado</th>
+            <th class="col-actions">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (fila of filas(); track fila.usuario.id) {
+            @let usuario = fila.usuario;
+            <tr>
+              <td>
+                <div class="ui-person">
+                  <span class="ui-avatar">{{ fila.iniciales }}</span>
+                  <span class="ui-stack">
+                    <span class="ui-table__primary"
+                      >{{ usuario.nombre }} {{ usuario.apellido }}</span
+                    >
+                    <span class="u-muted">{{ usuario.usuario }}</span>
+                  </span>
+                </div>
+              </td>
+              <td>{{ usuario.email }}</td>
+              <td>
+                @if (usuario.activo) {
+                  <span class="ui-badge ui-badge--success"
+                    ><span class="ui-dot"></span> Activo</span
+                  >
+                } @else {
+                  <span class="ui-badge ui-badge--neutral"
+                    ><span class="ui-dot"></span> Inactivo</span
+                  >
+                }
+              </td>
+              <td>
+                @if (!fila.conResumen) {
+                  <span class="u-muted">—</span>
+                } @else if (fila.roles.length) {
+                  <span class="tag-list">
+                    @for (rol of fila.roles; track rol) {
+                      <span class="ui-badge ui-badge--brand">{{ rol }}</span>
+                    }
+                  </span>
+                } @else {
+                  <span class="u-muted">Sin rol</span>
+                }
+              </td>
+              <td>
+                @if (!fila.conResumen) {
+                  <span class="u-muted">—</span>
+                } @else if (fila.permisos.length) {
+                  <span class="ui-badge ui-badge--info" [title]="fila.permisosTitulo">
+                    {{ fila.permisos.length }}
+                  </span>
+                } @else {
+                  <span class="u-muted">Sin permisos</span>
+                }
+              </td>
+              <td>{{ usuario.telefono || '—' }}</td>
+              <td class="u-muted">{{ usuario.creadoPor | actorLabel }}</td>
+              <td class="u-muted">{{ usuario.actualizadoPor | actorLabel }}</td>
+              <td class="u-muted">{{ usuario.creadoEn | date: 'dd/MM/yyyy HH:mm' }}</td>
+              <td class="u-muted">
+                {{
+                  usuario.actualizadoEn ? (usuario.actualizadoEn | date: 'dd/MM/yyyy HH:mm') : '—'
+                }}
+              </td>
+              <td>
+                <div class="row-actions">
+                  <button
+                    *hasPermiso="permisos.ASIGNAR_ROLES"
+                    type="button"
+                    class="ui-icon-btn"
+                    title="Roles"
+                    (click)="usuarioRoles.set(usuario)"
+                  >
+                    <ui-icon name="shieldCheck" [size]="18" />
+                  </button>
+                  <button
+                    *hasPermiso="permisos.ASIGNAR_PERMISOS"
+                    type="button"
+                    class="ui-icon-btn"
+                    title="Permisos individuales"
+                    (click)="usuarioPermisos.set(usuario)"
+                  >
+                    <ui-icon name="key" [size]="18" />
+                  </button>
+                  <button
+                    *hasPermiso="permisos.MODIFICAR_USUARIOS"
+                    type="button"
+                    class="ui-icon-btn"
+                    title="Editar"
+                    (click)="abrirEditar(usuario)"
+                  >
+                    <ui-icon name="edit" [size]="18" />
+                  </button>
+                  <button
+                    *hasPermiso="permisos.MODIFICAR_USUARIOS"
+                    type="button"
+                    class="ui-icon-btn"
+                    [class.ui-icon-btn--danger]="usuario.activo"
+                    [title]="usuario.activo ? 'Desactivar' : 'Activar'"
+                    (click)="alternarActivo(usuario)"
+                  >
+                    <ui-icon name="power" [size]="18" />
+                  </button>
+                  <button
+                    *hasPermiso="permisos.ELIMINAR_USUARIOS"
+                    type="button"
+                    class="ui-icon-btn ui-icon-btn--danger"
+                    title="Eliminar"
+                    (click)="confirmarEliminar(usuario)"
+                  >
+                    <ui-icon name="trash" [size]="18" />
+                  </button>
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <ui-paginador
+      [pagina]="listado.paginaActual()"
+      [total]="listado.filtrados().length"
+      [porPagina]="listado.porPagina()"
+      (paginaCambia)="listado.pagina.set($event)"
+      (porPaginaCambia)="listado.cambiarPorPagina($event)"
+    />
+  }
+</div>
+
+<ui-modal
+  [abierto]="formAbierto()"
+  [titulo]="editando() ? 'Editar usuario' : 'Nuevo usuario'"
+  [subtitulo]="editando() ? 'Actualiza los datos del usuario.' : ''"
+  (cerrar)="cerrarForm()"
+>
+  <form class="grid-form" [formGroup]="formulario" (ngSubmit)="guardar()" novalidate>
+    <div class="ui-field">
+      <label class="ui-label">Usuario <span class="ui-required">*</span></label>
+      <input
+        class="ui-input"
+        [class.ui-input--invalid]="campoInvalido('usuario')"
+        formControlName="usuario"
+        placeholder="jperez"
+      />
+      @if (campoInvalido('usuario')) {
+        <span class="ui-error">El usuario es obligatorio.</span>
+      }
+    </div>
+
+    <div class="ui-field">
+      <label class="ui-label">
+        Contraseña
+        @if (!editando()) {
+          <span class="ui-required">*</span>
+        }
+      </label>
+      <input
+        type="password"
+        class="ui-input"
+        [class.ui-input--invalid]="campoInvalido('contrasena')"
+        formControlName="contrasena"
+        [placeholder]="editando() ? 'Dejar en blanco para no cambiar' : 'Mínimo 10 caracteres'"
+      />
+      @if (campoInvalido('contrasena')) {
+        <span class="ui-error">Entre 10 y 72 caracteres.</span>
+      }
+    </div>
+
+    <div class="ui-field">
+      <label class="ui-label">Nombre <span class="ui-required">*</span></label>
+      <input
+        class="ui-input"
+        [class.ui-input--invalid]="campoInvalido('nombre')"
+        formControlName="nombre"
+      />
+      @if (campoInvalido('nombre')) {
+        <span class="ui-error">El nombre es obligatorio.</span>
+      }
+    </div>
+
+    <div class="ui-field">
+      <label class="ui-label">Apellido <span class="ui-required">*</span></label>
+      <input
+        class="ui-input"
+        [class.ui-input--invalid]="campoInvalido('apellido')"
+        formControlName="apellido"
+      />
+      @if (campoInvalido('apellido')) {
+        <span class="ui-error">El apellido es obligatorio.</span>
+      }
+    </div>
+
+    <div class="ui-field">
+      <label class="ui-label">Email <span class="ui-required">*</span></label>
+      <input
+        type="email"
+        class="ui-input"
+        [class.ui-input--invalid]="campoInvalido('email')"
+        formControlName="email"
+        placeholder="correo@dominio.com"
+      />
+      @if (campoInvalido('email')) {
+        <span class="ui-error">Ingresa un email válido.</span>
+      }
+    </div>
+
+    <div class="ui-field">
+      <label class="ui-label">Teléfono</label>
+      <input class="ui-input" formControlName="telefono" placeholder="Opcional" />
+    </div>
+
+    <label class="check">
+      <input type="checkbox" formControlName="activo" />
+      <span class="check__box"><ui-icon name="check" [size]="14" /></span>
+      <span>Usuario activo</span>
+    </label>
+  </form>
+
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="cerrarForm()">Cancelar</button>
+    <button
+      type="button"
+      class="ui-btn ui-btn--primary"
+      (click)="guardar()"
+      [disabled]="guardando()"
+    >
+      @if (guardando()) {
+        <span class="ui-spinner" style="width: 16px; height: 16px"></span>
+      }
+      {{ editando() ? 'Guardar cambios' : 'Crear usuario' }}
+    </button>
+  </div>
+</ui-modal>
+
+<ui-modal
+  [abierto]="eliminarAbierto()"
+  ancho="sm"
+  [compacto]="true"
+  titulo="Eliminar usuario"
+  (cerrar)="eliminarAbierto.set(false)"
+>
+  @if (aEliminar(); as usuario) {
+    <div class="confirm">
+      <span class="confirm__icon"><ui-icon name="trash" [size]="22" /></span>
+      <div class="confirm__text">
+        <p class="confirm__title">¿Eliminar a {{ usuario.nombre }} {{ usuario.apellido }}?</p>
+        <p class="confirm__desc">&#64;{{ usuario.usuario }} · Esta acción no se puede deshacer.</p>
+      </div>
+    </div>
+  }
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="eliminarAbierto.set(false)">
+      Cancelar
+    </button>
+    <button
+      type="button"
+      class="ui-btn ui-btn--danger"
+      (click)="eliminar()"
+      [disabled]="eliminando()"
+    >
+      @if (eliminando()) {
+        <span class="ui-spinner" style="width: 16px; height: 16px"></span>
+      }
+      Eliminar
+    </button>
+  </div>
+</ui-modal>
+
+<app-roles-usuario [usuario]="usuarioRoles()" (cerrar)="cerrarAsignaciones($event)" />
+
+<app-permisos-usuario [usuario]="usuarioPermisos()" (cerrar)="cerrarAsignaciones($event)" />

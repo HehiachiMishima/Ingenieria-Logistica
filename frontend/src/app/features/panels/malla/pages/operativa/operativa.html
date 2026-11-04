@@ -1,0 +1,521 @@
+<header class="page-head">
+  <div>
+    <h1 class="page-head__title">Malla operativa</h1>
+    <p class="page-head__sub">
+      Qué pasa en cada centro: turnos, procesos y olas a lo largo del día.
+    </p>
+  </div>
+  <div class="page-head__acciones">
+    @if (centro()) {
+      <button
+        *hasPermiso="permisos.EXPORTAR_MALLA"
+        type="button"
+        class="ui-btn ui-btn--ghost"
+        (click)="exportar()"
+      >
+        <ui-icon name="descargar" [size]="18" /> Excel
+      </button>
+    }
+    <button type="button" class="ui-btn ui-btn--secondary" (click)="irAConfiguracion()">
+      <ui-icon name="control" [size]="18" /> Ver configuración
+    </button>
+  </div>
+</header>
+
+@if (error()) {
+  <div class="table-card">
+    <ui-empty icono="alerta" titulo="No se pudo cargar la malla" [mensaje]="error()!">
+      <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="cargarCentros()">
+        <ui-icon name="refresh" [size]="16" /> Reintentar
+      </button>
+    </ui-empty>
+  </div>
+} @else if (!cargando() && centros().length === 0) {
+  <div class="table-card">
+    <ui-empty
+      icono="calendario"
+      titulo="Aún no hay centros"
+      mensaje="Carga la malla de un centro en Configuración."
+    >
+      <button type="button" class="ui-btn ui-btn--primary ui-btn--sm" (click)="irAConfiguracion()">
+        Ir a Configuración
+      </button>
+    </ui-empty>
+  </div>
+} @else {
+  <section class="selector">
+    <nav class="segmento" aria-label="Centro">
+      @for (c of centros(); track c.id) {
+        <button
+          type="button"
+          class="segmento__opcion"
+          [class.segmento__opcion--activa]="seleccion() === c.id"
+          [attr.aria-pressed]="seleccion() === c.id"
+          (click)="elegir(c.id)"
+        >
+          <span class="segmento__codigo">{{ c.codigo }}</span
+          >{{ c.nombre }}
+        </button>
+      }
+      @if (centros().length > 1) {
+        <button
+          type="button"
+          class="segmento__opcion"
+          [class.segmento__opcion--activa]="seleccion() === 'comparar'"
+          [attr.aria-pressed]="seleccion() === 'comparar'"
+          (click)="elegir('comparar')"
+        >
+          <ui-icon name="analisis" [size]="15" /> Comparar
+        </button>
+      }
+    </nav>
+    <div class="selector__vista">
+      <nav class="segmento" aria-label="Momento del día">
+        <button
+          type="button"
+          class="segmento__opcion"
+          [class.segmento__opcion--activa]="vista().modo === 'ahora'"
+          (click)="verAhora()"
+        >
+          <i class="pulso"></i> Ahora
+        </button>
+        @for (t of turnosDelCentro(); track t.codigo) {
+          <button
+            type="button"
+            class="segmento__opcion"
+            [class.segmento__opcion--activa]="esTurno(t.codigo)"
+            [title]="t.nombre + ' · ' + t.inicio + '–' + t.fin"
+            (click)="verTurno(t.codigo)"
+          >
+            {{ t.codigo }}
+          </button>
+        }
+      </nav>
+      <select class="ui-input selector__hora" aria-label="Ver una hora" (change)="verHora($event)">
+        <option value="" [selected]="horaElegida() === null">Hora</option>
+        @for (h of horas(); track h) {
+          <option [value]="h" [selected]="horaElegida() === h">{{ hora(h * 60) }}</option>
+        }
+      </select>
+    </div>
+  </section>
+
+  @if (cargando() && !centro() && comparativo().length === 0) {
+    <div class="table-card">
+      <div class="loading"><span class="ui-spinner"></span> Cargando la malla…</div>
+    </div>
+  } @else if (seleccion() === 'comparar') {
+    <div class="comparar">
+      @for (item of comparativo(); track item.centro.id) {
+        <article class="tarjeta">
+          <header class="tarjeta__cabecera">
+            <h2 class="tarjeta__titulo">{{ item.centro.nombre }} · {{ item.centro.codigo }}</h2>
+            <button type="button" class="enlace" (click)="elegir(item.centro.id)">Ver →</button>
+          </header>
+          <dl class="cifras">
+            @for (cifra of item.cifras; track cifra.etiqueta) {
+              <div>
+                <dt>{{ cifra.etiqueta }}</dt>
+                <dd>{{ cifra.valor }}</dd>
+              </div>
+            }
+            <div>
+              <dt>Turno</dt>
+              <dd>{{ item.turno }}</dd>
+            </div>
+            <div>
+              <dt>{{ item.siguiente.titulo }}</dt>
+              <dd>{{ item.siguiente.valor }}</dd>
+              @if (item.siguiente.detalle) {
+                <small>{{ item.siguiente.detalle }}</small>
+              }
+            </div>
+          </dl>
+          <app-malla-linea-dia [linea]="item.linea" [compacta]="true" />
+        </article>
+      }
+    </div>
+  } @else if (centro(); as c) {
+    @if (detalle(); as d) {
+      <nav class="procesos" aria-label="Procesos">
+        <button type="button" class="enlace" (click)="procesoAbierto.set(null)">
+          ← {{ c.nombre }}
+        </button>
+        <span class="procesos__espacio"></span>
+        @for (p of procesos; track p.id) {
+          <button
+            type="button"
+            class="procesos__opcion"
+            [class.procesos__opcion--activa]="p.id === d.id"
+            [style.--proceso]="p.color"
+            (click)="procesoAbierto.set(p.id)"
+          >
+            <i></i>{{ p.nombre }}
+          </button>
+        }
+      </nav>
+
+      <section class="detalle-cifras" [style.--proceso]="d.color">
+        <div>
+          <small>Ventana</small><b>{{ d.ventana }}</b>
+        </div>
+        <div>
+          <small>Estado</small><b [class.activo]="d.activo">{{ d.estado }}</b>
+        </div>
+        <div>
+          <small>Ing. Logística</small><b>{{ d.il }}</b>
+        </div>
+        <div>
+          <small>Operaciones</small><b>{{ d.ops }}</b>
+        </div>
+        <div>
+          <small>Personas</small><b>{{ d.personas ? formatearNumero(d.personas) : '—' }}</b>
+        </div>
+      </section>
+
+      @if (d.capacidades.length > 0) {
+        <section class="dash-kpis kpis-2" aria-label="Capacidad del proceso">
+          @for (k of d.capacidades; track k.etiqueta) {
+            <ui-kpi
+              [etiqueta]="'Capacidad · ' + k.etiqueta"
+              [valor]="k.valor"
+              [icono]="k.icono"
+              [color]="k.color"
+              [detalle]="k.detalle"
+            />
+          }
+        </section>
+      }
+
+      <article class="tarjeta">
+        <header class="tarjeta__cabecera">
+          <h2 class="tarjeta__titulo">Flujo de {{ d.nombre.toLowerCase() }}</h2>
+          <span class="carriles-leyenda">
+            <span><i class="il"></i>Ing. Logística corre</span>
+            <span><i class="ops"></i>Operaciones ejecuta</span>
+            <span><i class="pendiente"></i>Por confirmar</span>
+          </span>
+        </header>
+        @if (d.pasos.length === 0) {
+          <p class="u-muted">Sin pasos definidos para este proceso.</p>
+        } @else {
+          <div class="carriles" [style.--pasos]="d.pasos.length" [style.--proceso]="d.color">
+            <span class="carriles__nombre carriles__nombre--il">Ingeniería<br />Logística</span>
+            <span class="carriles__nombre carriles__nombre--ops">Operaciones</span>
+            @for (paso of d.pasos; track $index; let ultimo = $last) {
+              <div
+                class="paso"
+                [class.paso--il]="paso.responsable === 'IL'"
+                [class.paso--ops]="paso.responsable === 'OPS'"
+                [class.paso--activo]="paso.activo"
+                [class.paso--pendiente]="!paso.confirmado"
+                [class.paso--ultimo]="ultimo"
+                [style.grid-column]="paso.columna"
+              >
+                <span class="paso__hora"
+                  >{{ paso.inicio }}
+                  @if (paso.fin) {
+                    <small>–{{ paso.fin }}</small>
+                  }
+                </span>
+                <b>{{ paso.actividad }}</b>
+              </div>
+            }
+          </div>
+        }
+      </article>
+
+      @if (d.id === 'OLA') {
+        <div class="dos-columnas">
+          <article class="tarjeta">
+            <h2 class="tarjeta__titulo">Olas por cluster</h2>
+            <div class="ui-table-wrap">
+              <table class="ui-table">
+                <thead>
+                  <tr>
+                    <th>Cluster</th>
+                    <th>Ola</th>
+                    <th class="num">Caída pedidos</th>
+                    <th class="num">Lanzamiento</th>
+                    <th class="num">Cierre picking</th>
+                    <th class="num">Despacho</th>
+                    <th class="num">Ventana</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (o of d.olas; track $index) {
+                    <tr [class.pendiente]="!o.confirmado">
+                      @if (o.primeraDelCluster) {
+                        <td class="fuerte" [attr.rowspan]="o.filasCluster">C{{ o.cluster }}</td>
+                      }
+                      <td>
+                        {{ o.nombre }}
+                        @if (!o.confirmado) {
+                          <i class="punto-pendiente" title="Por confirmar"></i>
+                        }
+                      </td>
+                      <td class="num">{{ o.caidaPedidos ?? '—' }}</td>
+                      <td class="num fuerte">{{ o.lanzamiento ?? '—' }}</td>
+                      <td class="num">{{ o.cierrePicking ?? '—' }}</td>
+                      <td class="num">{{ o.despacho ?? '—' }}</td>
+                      <td class="num">{{ o.duracion }}</td>
+                    </tr>
+                  } @empty {
+                    <tr>
+                      <td colspan="7" class="u-muted">Sin olas.</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="tarjeta">
+            <header class="tarjeta__cabecera">
+              <h2 class="tarjeta__titulo">Capacidad por zona</h2>
+              <span class="tarjeta__sub"
+                >Líneas por hora{{ d.semana ? ' · real ' + d.semana : '' }}</span
+              >
+            </header>
+            <div class="ui-table-wrap">
+              <table class="ui-table">
+                <thead>
+                  <tr>
+                    <th>Zona</th>
+                    <th class="num">Real</th>
+                    <th class="num">Diseño</th>
+                    <th class="zona-col"></th>
+                    <th class="num">Uso</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (z of d.zonas; track z.nombre) {
+                    <tr>
+                      <td class="fuerte">{{ z.nombre }}</td>
+                      <td class="num">{{ formatearNumero(z.lphReal) }}</td>
+                      <td class="num">{{ formatearNumero(z.lphDiseno) }}</td>
+                      <td>
+                        <span class="zona">
+                          <i class="zona__real" [style.width.%]="z.barra"></i>
+                          @if (z.diseno !== null) {
+                            <i class="zona__diseno" [style.left.%]="z.diseno"></i>
+                          }
+                        </span>
+                      </td>
+                      <td class="num">
+                        @if (z.uso !== null) {
+                          <b class="uso uso--{{ z.nivel }}">{{ z.uso }} %</b>
+                        } @else {
+                          —
+                        }
+                      </td>
+                    </tr>
+                  } @empty {
+                    <tr>
+                      <td colspan="5" class="u-muted">Sin zonas.</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+      }
+
+      <article class="tarjeta">
+        <header class="tarjeta__cabecera">
+          <h2 class="tarjeta__titulo">Personas por turno</h2>
+          <span class="tarjeta__sub">{{
+            d.personas ? formatearNumero(d.personas) + ' en el día' : 'Por definir'
+          }}</span>
+        </header>
+        <div class="personas">
+          @for (x of d.personasPorTurno; track x.turno.codigo) {
+            <div>
+              <small>{{ x.turno.nombre }}</small>
+              <b>{{ x.personas === null ? '—' : formatearNumero(x.personas) }}</b>
+            </div>
+          }
+        </div>
+      </article>
+
+      <nav class="procesos-pie">
+        @if (d.anterior; as a) {
+          <button type="button" class="ui-btn ui-btn--secondary" (click)="procesoAbierto.set(a.id)">
+            ← {{ a.nombre }}
+          </button>
+        } @else {
+          <span></span>
+        }
+        @if (d.siguiente; as s) {
+          <button type="button" class="ui-btn ui-btn--secondary" (click)="procesoAbierto.set(s.id)">
+            {{ s.nombre }} →
+          </button>
+        }
+      </nav>
+    } @else {
+      <section class="dash-kpis" aria-label="Capacidad diaria">
+        @for (k of kpis(); track k.etiqueta) {
+          <ui-kpi
+            [etiqueta]="k.etiqueta"
+            [valor]="k.valor"
+            [icono]="k.icono"
+            [color]="k.color"
+            [detalle]="k.detalle"
+          />
+        }
+      </section>
+
+      @if (resumen(); as r) {
+        <section class="ahora" [attr.aria-label]="ventana() ? 'Ventana elegida' : 'Ahora'">
+          <div class="ahora__celda">
+            <small>{{ ventana() ? (ventana()!.turno ? 'Turno' : 'Hora') : 'Turno' }}</small>
+            <b>{{ ventana()?.etiqueta ?? r.turno }}</b>
+            <span>{{ r.sub }}{{ r.refrigerio ? ' · ' + r.refrigerio : '' }}</span>
+          </div>
+          <div class="ahora__celda">
+            <small>Personas</small>
+            <b>{{ r.personas ? formatearNumero(r.personas) : '—' }}</b>
+            <span>{{ r.turno !== '—' ? r.turno : '' }}</span>
+          </div>
+          <div class="ahora__celda ahora__celda--ancha">
+            <small>{{ ventana() ? 'Activos' : 'En curso' }}</small>
+            <div class="chips">
+              @for (a of r.activos; track a.proceso) {
+                <button
+                  type="button"
+                  class="chip"
+                  [style.--proceso]="a.color"
+                  (click)="procesoAbierto.set(a.proceso)"
+                >
+                  <i></i>{{ a.texto }}
+                </button>
+              } @empty {
+                <span class="u-muted">Nada en curso</span>
+              }
+            </div>
+          </div>
+          <div class="ahora__celda">
+            @if (ventana()) {
+              <small>Hitos · {{ r.hitos.length }}</small>
+              @if (r.hitos.length) {
+                <ul class="hitos">
+                  @for (h of r.hitos.slice(0, 4); track $index) {
+                    <li>
+                      <b>{{ hora(h.minuto) }}</b> {{ h.texto }}
+                    </li>
+                  }
+                </ul>
+                @if (r.hitos.length > 4) {
+                  <span>+{{ r.hitos.length - 4 }} más</span>
+                }
+              } @else {
+                <b>—</b>
+              }
+            } @else if (r.proximo; as p) {
+              <small>Próximo</small>
+              <b>{{ hora(p.minuto) }}</b>
+              <span>en {{ formatearDuracion(p.faltan) }}</span>
+              <span class="ahora__detalle"
+                >{{ p.textos.slice(0, 2).join(' · ')
+                }}{{ p.textos.length > 2 ? ' +' + (p.textos.length - 2) : '' }}</span
+              >
+            } @else {
+              <small>Próximo</small>
+              <b>—</b>
+            }
+          </div>
+        </section>
+      }
+
+      <section class="flujo" aria-label="Flujo de procesos">
+        @for (t of tarjetas(); track t.id; let i = $index) {
+          @if (i > 0) {
+            <span class="flujo__flecha" aria-hidden="true">›</span>
+          }
+          <button
+            type="button"
+            class="flujo__proceso"
+            [class.flujo__proceso--activo]="t.activo"
+            [style.--proceso]="t.color"
+            (click)="procesoAbierto.set(t.id)"
+          >
+            <span class="flujo__nombre"><i></i>{{ t.nombre }}</span>
+            <span class="flujo__ventana">{{ t.ventana }}</span>
+            <span class="flujo__estado">
+              <em [class.activo]="t.activo">{{ t.estado }}</em>
+              @if (t.pendientes > 0) {
+                <em class="pendiente" title="Por confirmar">● {{ t.pendientes }}</em>
+              }
+            </span>
+            <span class="flujo__pie">
+              <span title="Ingeniería Logística">IL {{ t.il }}</span>
+              <span title="Operaciones">OPS {{ t.ops }}</span>
+              @if (t.personas) {
+                <span>{{ formatearNumero(t.personas) }} pers.</span>
+              }
+            </span>
+          </button>
+        }
+      </section>
+
+      @if (dotacion(); as dot) {
+        <article class="tarjeta">
+          <header class="tarjeta__cabecera">
+            <h2 class="tarjeta__titulo">
+              <ui-icon name="usuarios" [size]="16" /> Dotación planificada vs real
+            </h2>
+            <span class="tarjeta__sub"
+              >Planificada: suma de los turnos · Real{{
+                dot.semana ? ' (' + dot.semana + ')' : ''
+              }}: declarada en Configuración</span
+            >
+          </header>
+          <div class="ui-table-wrap">
+            <table class="ui-table dotacion">
+              <thead>
+                <tr>
+                  <th>Flujo</th>
+                  <th class="num">Planificada</th>
+                  <th class="num">Real</th>
+                  <th class="num">Diferencia</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (f of dot.filas; track f.etiqueta; let ultima = $last) {
+                  <tr [class.dotacion__total]="ultima">
+                    <td>
+                      <b>{{ f.etiqueta }}</b> <small>{{ f.procesos }}</small>
+                    </td>
+                    <td class="num">{{ formatearNumero(f.planificada) }}</td>
+                    <td class="num">{{ formatearNumero(f.real) }}</td>
+                    <td
+                      class="num"
+                      [class.dotacion__falta]="f.diferencia !== null && f.diferencia < 0"
+                    >
+                      {{
+                        f.diferencia === null
+                          ? '—'
+                          : (f.diferencia > 0 ? '+' : '') + formatearNumero(f.diferencia)
+                      }}
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </article>
+      }
+
+      @if (linea(); as l) {
+        <article class="tarjeta">
+          <header class="tarjeta__cabecera">
+            <h2 class="tarjeta__titulo"><ui-icon name="reloj" [size]="16" /> Malla del día</h2>
+            <span class="tarjeta__sub">Pulsa un proceso para ver su flujo</span>
+          </header>
+          <app-malla-linea-dia [linea]="l" (verProceso)="procesoAbierto.set($event)" />
+        </article>
+      }
+    }
+  }
+}

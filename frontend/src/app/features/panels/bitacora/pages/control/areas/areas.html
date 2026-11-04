@@ -1,0 +1,267 @@
+<div class="toolbar">
+  <div class="ui-search toolbar__grow">
+    <ui-icon name="search" [size]="18" />
+    <input
+      type="search"
+      class="ui-input"
+      placeholder="Buscar área…"
+      [value]="busqueda()"
+      (input)="buscar($any($event.target).value)"
+    />
+  </div>
+  <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="cargar()" [disabled]="cargando()">
+    <ui-icon name="refresh" [size]="16" />
+    Actualizar
+  </button>
+  <button *hasPermiso="permisos.CREAR_CONTROL" type="button" class="ui-btn ui-btn--primary" (click)="abrirCrear()">
+    <ui-icon name="plus" [size]="18" />
+    Nueva área
+  </button>
+</div>
+
+<div class="table-card" [class.table-card--refrescando]="cargando() && filtrados().length > 0">
+  @if (cargando() && filtrados().length === 0) {
+    <div class="loading"><span class="ui-spinner"></span> Cargando áreas…</div>
+  } @else if (error()) {
+    <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="error()!">
+      <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="cargar()">
+        <ui-icon name="refresh" [size]="16" /> Reintentar
+      </button>
+    </ui-empty>
+  } @else if (filtrados().length === 0) {
+    <ui-empty
+      icono="area"
+      [titulo]="busqueda() ? 'Sin resultados' : 'Aún no hay áreas'"
+      [mensaje]="busqueda() ? 'Ninguna área coincide con la búsqueda.' : 'Crea la primera área del catálogo.'"
+    ></ui-empty>
+  } @else {
+    <div class="ui-table-wrap">
+      <table class="ui-table" appColumnasRedimensionables>
+        <thead>
+          <tr>
+            <th>Área</th>
+            <th>Creado por</th>
+            <th>Actualizado por</th>
+            <th>Creado</th>
+            <th>Actualizado</th>
+            <th class="col-actions">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (area of paginados(); track area.id) {
+            <tr>
+              <td><span class="ui-table__primary">{{ area.area }}</span></td>
+              <td class="u-muted">{{ area.creadoPor | actorLabel }}</td>
+              <td class="u-muted">{{ area.actualizadoPor | actorLabel }}</td>
+              <td class="u-muted">{{ area.creadoEn | date: 'dd/MM/yyyy HH:mm' }}</td>
+              <td class="u-muted">{{ area.actualizadoEn ? (area.actualizadoEn | date: 'dd/MM/yyyy HH:mm') : '—' }}</td>
+              <td>
+                <div class="row-actions">
+                  <button
+                    *hasPermiso="permisos.VER_CONTROL"
+                    type="button"
+                    class="ui-icon-btn"
+                    title="Responsables"
+                    (click)="abrirHijos(area)"
+                  >
+                    <ui-icon name="responsable" [size]="18" />
+                  </button>
+                  <button
+                    *hasPermiso="permisos.MODIFICAR_CONTROL"
+                    type="button"
+                    class="ui-icon-btn"
+                    title="Editar"
+                    (click)="abrirEditar(area)"
+                  >
+                    <ui-icon name="edit" [size]="18" />
+                  </button>
+                  <button
+                    *hasPermiso="permisos.ELIMINAR_CONTROL"
+                    type="button"
+                    class="ui-icon-btn ui-icon-btn--danger"
+                    title="Eliminar"
+                    (click)="confirmarEliminar(area)"
+                  >
+                    <ui-icon name="trash" [size]="18" />
+                  </button>
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <ui-paginador
+      [pagina]="paginaActual()"
+      [total]="filtrados().length"
+      [porPagina]="porPagina()"
+      (paginaCambia)="pagina.set($event)"
+      (porPaginaCambia)="cambiarPorPagina($event)"
+    />
+  }
+</div>
+
+<ui-modal
+  [abierto]="formAbierto()"
+  [titulo]="editando() ? 'Editar área' : 'Nueva área'"
+  (cerrar)="cerrarForm()"
+>
+  <form class="grid-form" [formGroup]="formulario" (ngSubmit)="guardar()" novalidate>
+    <div class="ui-field" style="grid-column: 1 / -1">
+      <label class="ui-label">Nombre <span class="ui-required">*</span></label>
+      <input
+        class="ui-input"
+        [class.ui-input--invalid]="campoInvalido('area')"
+        formControlName="area"
+        placeholder="SISTEMAS, LOGÍSTICA…"
+      />
+      @if (campoInvalido('area')) { <span class="ui-error">El nombre es obligatorio.</span> }
+    </div>
+  </form>
+
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="cerrarForm()">Cancelar</button>
+    <button type="button" class="ui-btn ui-btn--primary" (click)="guardar()" [disabled]="guardando()">
+      @if (guardando()) { <span class="ui-spinner" style="width:16px;height:16px"></span> }
+      {{ editando() ? 'Guardar cambios' : 'Crear área' }}
+    </button>
+  </div>
+</ui-modal>
+
+<ui-modal [abierto]="eliminarAbierto()" ancho="sm" [compacto]="true" titulo="Eliminar área" (cerrar)="eliminarAbierto.set(false)">
+  @if (aEliminar(); as area) {
+    <div class="confirm">
+      <span class="confirm__icon"><ui-icon name="trash" [size]="22" /></span>
+      <div class="confirm__text">
+        <p class="confirm__title">¿Eliminar el área <span class="u-mono">{{ area.area }}</span>?</p>
+        <p class="confirm__desc">Esta acción no se puede deshacer.</p>
+      </div>
+    </div>
+  }
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="eliminarAbierto.set(false)">Cancelar</button>
+    <button type="button" class="ui-btn ui-btn--danger" (click)="eliminar()" [disabled]="eliminando()">
+      @if (eliminando()) { <span class="ui-spinner" style="width:16px;height:16px"></span> }
+      Eliminar
+    </button>
+  </div>
+</ui-modal>
+
+<ui-modal
+  [abierto]="hijosAbierto()"
+  ancho="xl"
+  titulo="Responsables"
+  [subtitulo]="areaHijos()?.area ?? ''"
+  (cerrar)="hijosAbierto.set(false)"
+>
+  <div class="child-head">
+    <p class="modal-hint">Responsables asociados a esta área.</p>
+    <button *hasPermiso="permisos.CREAR_CONTROL" type="button" class="ui-btn ui-btn--primary ui-btn--sm" (click)="abrirHijoCrear()">
+      <ui-icon name="plus" [size]="16" />
+      Nuevo responsable
+    </button>
+  </div>
+
+  @if (hijoFormAbierto()) {
+    <form class="child-form" [formGroup]="hijoFormulario" (ngSubmit)="guardarHijo()" novalidate>
+      <div class="ui-field child-grow">
+        <label class="ui-label">
+          {{ hijoEditando() ? 'Editar responsable' : 'Nuevo responsable' }}
+          <span class="ui-required">*</span>
+        </label>
+        <input
+          class="ui-input"
+          [class.ui-input--invalid]="campoHijoInvalido()"
+          formControlName="responsable"
+          placeholder="Nombre del responsable"
+        />
+        @if (campoHijoInvalido()) { <span class="ui-error">El responsable es obligatorio.</span> }
+      </div>
+      <div class="child-actions">
+        <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm" (click)="cerrarHijoForm()">Cancelar</button>
+        <button type="submit" class="ui-btn ui-btn--primary ui-btn--sm" [disabled]="hijoGuardando()">
+          @if (hijoGuardando()) { <span class="ui-spinner" style="width:14px;height:14px"></span> }
+          {{ hijoEditando() ? 'Guardar' : 'Agregar' }}
+        </button>
+      </div>
+    </form>
+  }
+
+  @if (cargandoHijos()) {
+    <div class="loading"><span class="ui-spinner"></span> Cargando…</div>
+  } @else if (hijosLista().length === 0) {
+    <ui-empty icono="responsable" titulo="Sin responsables" mensaje="Esta área aún no tiene responsables." />
+  } @else {
+    <div class="ui-table-wrap">
+      <table class="ui-table">
+        <thead>
+          <tr>
+            <th>Responsable</th>
+            <th>Creado por</th>
+            <th>Actualizado por</th>
+            <th>Creado</th>
+            <th>Actualizado</th>
+            <th class="col-actions">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (responsable of hijosLista(); track responsable.id) {
+            <tr>
+              <td><span class="ui-table__primary">{{ responsable.responsable }}</span></td>
+              <td class="u-muted">{{ responsable.creadoPor | actorLabel }}</td>
+              <td class="u-muted">{{ responsable.actualizadoPor | actorLabel }}</td>
+              <td class="u-muted">{{ responsable.creadoEn | date: 'dd/MM/yyyy HH:mm' }}</td>
+              <td class="u-muted">{{ responsable.actualizadoEn ? (responsable.actualizadoEn | date: 'dd/MM/yyyy HH:mm') : '—' }}</td>
+              <td>
+                <div class="row-actions">
+                  <button
+                    *hasPermiso="permisos.MODIFICAR_CONTROL"
+                    type="button"
+                    class="ui-icon-btn"
+                    title="Editar"
+                    (click)="abrirHijoEditar(responsable)"
+                  >
+                    <ui-icon name="edit" [size]="16" />
+                  </button>
+                  <button
+                    *hasPermiso="permisos.ELIMINAR_CONTROL"
+                    type="button"
+                    class="ui-icon-btn ui-icon-btn--danger"
+                    title="Eliminar"
+                    (click)="confirmarEliminarHijo(responsable)"
+                  >
+                    <ui-icon name="trash" [size]="16" />
+                  </button>
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--primary" (click)="hijosAbierto.set(false)">Cerrar</button>
+  </div>
+</ui-modal>
+
+<ui-modal [abierto]="hijoEliminarAbierto()" ancho="sm" [compacto]="true" titulo="Eliminar responsable" (cerrar)="hijoEliminarAbierto.set(false)">
+  @if (hijoAEliminar(); as responsable) {
+    <div class="confirm">
+      <span class="confirm__icon"><ui-icon name="trash" [size]="22" /></span>
+      <div class="confirm__text">
+        <p class="confirm__title">¿Eliminar a <span class="u-mono">{{ responsable.responsable }}</span>?</p>
+        <p class="confirm__desc">Esta acción no se puede deshacer.</p>
+      </div>
+    </div>
+  }
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="hijoEliminarAbierto.set(false)">Cancelar</button>
+    <button type="button" class="ui-btn ui-btn--danger" (click)="eliminarHijo()" [disabled]="hijoEliminando()">
+      @if (hijoEliminando()) { <span class="ui-spinner" style="width:16px;height:16px"></span> }
+      Eliminar
+    </button>
+  </div>
+</ui-modal>

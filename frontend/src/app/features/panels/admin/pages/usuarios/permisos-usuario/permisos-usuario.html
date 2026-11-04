@@ -1,0 +1,118 @@
+<ui-modal
+  [abierto]="usuario() !== null"
+  ancho="lg"
+  titulo="Permisos individuales"
+  [subtitulo]="usuario() ? usuario()!.usuario + ' · herencia del rol + overrides' : ''"
+  (cerrar)="cerrarModal()"
+>
+  <p class="modal-hint">
+    <strong>Heredar</strong>: usa lo que conceden sus roles · <strong>Conceder</strong>: permite
+    este permiso aunque el rol no lo dé · <strong>Denegar</strong>: bloquea este permiso aunque el
+    rol lo dé.
+  </p>
+  @if (cargando()) {
+    <div class="loading"><span class="ui-spinner"></span> Cargando permisos…</div>
+  } @else if (error()) {
+    <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="error()!" />
+  } @else if (catalogo().length === 0) {
+    <ui-empty icono="permisos" titulo="Sin permisos" mensaje="No hay permisos en el catálogo." />
+  } @else {
+    <div class="perm-panel">
+      <div class="perm-toolbar">
+        <div class="ui-search perm-toolbar__grow">
+          <ui-icon name="search" [size]="18" />
+          <input
+            type="search"
+            class="ui-input"
+            placeholder="Buscar permiso…"
+            [value]="busqueda()"
+            (input)="busqueda.set($any($event.target).value)"
+          />
+        </div>
+      </div>
+
+      <div class="perm-summary">
+        <span class="ui-badge ui-badge--brand"
+          ><span class="ui-dot"></span> {{ resumen().efectivos }} efectivos</span
+        >
+        <span class="ui-badge ui-badge--success">+{{ resumen().concedidos }} concedidos</span>
+        <span class="ui-badge ui-badge--danger">−{{ resumen().denegados }} denegados</span>
+      </div>
+
+      @if (filas().length === 0) {
+        <ui-empty
+          icono="search"
+          titulo="Sin resultados"
+          mensaje="Ningún permiso coincide con la búsqueda."
+        />
+      } @else {
+        <ul class="perm-list">
+          @for (fila of filas(); track fila.permiso.id) {
+            <li class="perm-item" [class]="'perm-item--' + fila.origen">
+              <span class="perm-item__text">
+                <span class="perm-item__name">{{ fila.permiso.nombre }}</span>
+                <span class="perm-item__desc">
+                  {{ fila.permiso.descripcion || 'Sin descripción' }}
+                  @switch (fila.origen) {
+                    @case ('heredado') {
+                      · heredado del rol
+                    }
+                    @case ('concedido') {
+                      · concedido a este usuario
+                    }
+                    @case ('denegado') {
+                      · denegado a este usuario
+                    }
+                    @default {
+                      · sin acceso
+                    }
+                  }
+                  @if (!fila.permiso.activo) {
+                    · permiso inactivo
+                  }
+                </span>
+              </span>
+
+              <div
+                class="perm-seg"
+                role="group"
+                [attr.aria-label]="'Permiso ' + fila.permiso.nombre"
+              >
+                <button
+                  type="button"
+                  class="perm-seg__btn perm-seg__btn--inherit"
+                  [class.perm-seg__btn--on]="fila.origen === 'heredado'"
+                  [disabled]="cambiando() === fila.permiso.id || !permiteOverride()"
+                  (click)="heredar(fila.permiso)"
+                >
+                  Heredar
+                </button>
+                <button
+                  type="button"
+                  class="perm-seg__btn perm-seg__btn--grant"
+                  [class.perm-seg__btn--on]="fila.origen === 'concedido'"
+                  [disabled]="cambiando() === fila.permiso.id || !permiteOverride()"
+                  (click)="conceder(fila.permiso)"
+                >
+                  Conceder
+                </button>
+                <button
+                  type="button"
+                  class="perm-seg__btn perm-seg__btn--deny"
+                  [class.perm-seg__btn--on]="fila.origen === 'denegado'"
+                  [disabled]="cambiando() === fila.permiso.id || !permiteOverride()"
+                  (click)="denegar(fila.permiso)"
+                >
+                  Denegar
+                </button>
+              </div>
+            </li>
+          }
+        </ul>
+      }
+    </div>
+  }
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--primary" (click)="cerrarModal()">Listo</button>
+  </div>
+</ui-modal>
