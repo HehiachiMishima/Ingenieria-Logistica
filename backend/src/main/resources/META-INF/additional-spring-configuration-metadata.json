@@ -133,5 +133,25 @@
     "name": "sftp.local-directory",
     "type": "java.lang.String",
     "description": "A description for 'sftp.local-directory'"
+  },
+  {
+    "name": "app.auth.refresh.inactividad-s",
+    "type": "java.lang.String",
+    "description": "A description for 'app.auth.refresh.inactividad-s'"
+  },
+  {
+    "name": "app.auth.refresh.maximo-s",
+    "type": "java.lang.String",
+    "description": "A description for 'app.auth.refresh.maximo-s'"
+  },
+  {
+    "name": "app.auth.refresh.cookie",
+    "type": "java.lang.String",
+    "description": "A description for 'app.auth.refresh.cookie'"
+  },
+  {
+    "name": "app.auth.refresh.cookie-secure",
+    "type": "java.lang.String",
+    "description": "A description for 'app.auth.refresh.cookie-secure'"
   }
 ]}

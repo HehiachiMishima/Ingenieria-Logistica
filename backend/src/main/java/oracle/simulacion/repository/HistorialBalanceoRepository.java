@@ -75,22 +75,27 @@ public interface HistorialBalanceoRepository extends JpaRepository<HistorialBala
 
   /**
    * Primer cambio de cluster de cada ruta que hoy está fuera de su cluster original y en la que
-   * participa el cluster indicado (como original o actual).
+   * participa el cluster indicado (como original o actual). Parte de las rutas cambiadas (índice
+   * parcial idx_rutas_cluster_cambiado, pocas filas) y entra al historial por
+   * idx_historial_cambio_cluster: no recorre el historial del registro, que tras varios balanceos
+   * tiene miles de movimientos.
    */
   String PRIMEROS_CAMBIOS =
       """
-      SELECT DISTINCT ON (h.ruta_id)
-             h.ruta_id AS rutaId,
-             h.chute_origen_id AS chuteId,
-             h.id AS historialId
-        FROM historial_balanceo h
-        JOIN rutas_proyeccion r ON r.id = h.ruta_id
-       WHERE h.archivo_id = :archivoId
-         AND h.tipo_accion = 'CAMBIAR_CLUSTER'
-         AND r.archivo_id = :archivoId
+      SELECT r.id AS rutaId,
+             p.chute_origen_id AS chuteId,
+             p.id AS historialId
+        FROM rutas_proyeccion r
+        CROSS JOIN LATERAL (
+              SELECT h.id, h.chute_origen_id
+                FROM historial_balanceo h
+               WHERE h.ruta_id = r.id
+                 AND h.tipo_accion = 'CAMBIAR_CLUSTER'
+               ORDER BY h.id
+               LIMIT 1) p
+       WHERE r.archivo_id = :archivoId
          AND r.cluster_cambiado
          AND (r.cluster_id = :clusterId OR r.cluster_original_id = :clusterId)
-       ORDER BY h.ruta_id, h.id
       """;
 
   @Query(value = PRIMEROS_CAMBIOS, nativeQuery = true)

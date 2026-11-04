@@ -1238,7 +1238,9 @@ class SimulacionBalanceoTest {
         List.of(chute(1L, "CHUTE 1"), chute(2L, "CHUTE 2")));
     RutaProyeccion ruta = ruta(1L, CL3, 1L, "3030", "10");
     lenient().when(rutaRepo.findByIdAndArchivoId(1L, 10L)).thenReturn(Optional.of(ruta));
-    lenient().when(rutaRepo.countByArchivoIdAndClusterId(10L, CL3)).thenReturn(4L);
+    lenient()
+        .when(rutaRepo.existsByArchivoIdAndClusterIdAndIdNot(10L, CL3, 1L))
+        .thenReturn(true);
     lenient().when(rutaRepo.cargaPorArchivo(10L)).thenReturn(List.of());
     return ruta;
   }
@@ -1252,7 +1254,6 @@ class SimulacionBalanceoTest {
   @Test
   void cambiarClusterSobrescribeElClusterYGuardaElOriginalEnElHistorial() {
     RutaProyeccion ruta = prepararCambio(limite(CL1, "2"), limite(CL3, "2"));
-    when(rutaRepo.clustersEnChuteSinRuta(10L, 1L, 1L)).thenReturn(List.of(CL3));
     ArgumentCaptor<HistorialBalanceo> log = ArgumentCaptor.forClass(HistorialBalanceo.class);
 
     servicio.cambiarCluster(10L, 1L, new CambiarClusterRequest(CL1)).block();
@@ -1269,6 +1270,8 @@ class SimulacionBalanceoTest {
     // El chute del momento del cambio: restablecer devuelve la ruta ahí.
     assertEquals(1L, log.getValue().getChuteOrigenId());
     verify(archivoRepo).save(any());
+    // Sin CL2 en el registro, CL1 no tiene incompatibles: no se consulta el chute.
+    verify(rutaRepo, never()).clusterEnChute(any(), any(), any(), any());
   }
 
   @Test
@@ -1310,7 +1313,7 @@ class SimulacionBalanceoTest {
   @Test
   void cambiarClusterNoDejaUnClusterSinRutas() {
     RutaProyeccion ruta = prepararCambio(limite(CL1, "2"), limite(CL3, "2"));
-    when(rutaRepo.countByArchivoIdAndClusterId(10L, CL3)).thenReturn(1L);
+    when(rutaRepo.existsByArchivoIdAndClusterIdAndIdNot(10L, CL3, 1L)).thenReturn(false);
 
     ConflictoException error = cambioRechazado(CL1);
 
@@ -1322,7 +1325,7 @@ class SimulacionBalanceoTest {
   void cambiarClusterNoJuntaCl1YCl2EnElChute() {
     RutaProyeccion ruta = prepararCambio(limite(CL1, "2"), limite(CL2, "2"), limite(CL3, "2"));
     // CHUTE 1 tiene rutas de CL2: la ruta no puede pasar a CL1 quedándose ahí.
-    when(rutaRepo.clustersEnChuteSinRuta(10L, 1L, 1L)).thenReturn(List.of(CL2, CL3));
+    when(rutaRepo.clusterEnChute(10L, 1L, java.util.Set.of(CL2), 1L)).thenReturn(Optional.of(CL2));
 
     ConflictoException error = cambioRechazado(CL1);
 

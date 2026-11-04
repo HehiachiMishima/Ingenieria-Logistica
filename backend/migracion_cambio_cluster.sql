@@ -68,4 +68,15 @@ ALTER TABLE simulacion.historial_balanceo
             AND cluster_origen_id IS NOT NULL AND cluster_destino_id IS NOT NULL
             AND cluster_origen_id <> cluster_destino_id));
 
+-- 3. Índices para que el cambio de cluster y restablecer no recorran tablas grandes.
+--    (archivo_id, chute_id, cluster_id) reemplaza a (archivo_id, chute_id): sirve
+--    a las mismas consultas y además responde qué clusters hay en un chute.
+CREATE INDEX IF NOT EXISTS idx_rutas_archivo_chute_cluster
+    ON simulacion.rutas_proyeccion (archivo_id, chute_id, cluster_id);
+DROP INDEX IF EXISTS simulacion.idx_rutas_archivo_chute;
+
+CREATE INDEX IF NOT EXISTS idx_historial_cambio_cluster
+    ON simulacion.historial_balanceo (ruta_id, id)
+    WHERE tipo_accion = 'CAMBIAR_CLUSTER';
+
 COMMIT;

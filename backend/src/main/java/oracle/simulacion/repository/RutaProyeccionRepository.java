@@ -1,6 +1,7 @@
 package oracle.simulacion.repository;
 
 import jakarta.persistence.QueryHint;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import oracle.simulacion.model.RutaProyeccion;
@@ -35,23 +36,33 @@ public interface RutaProyeccionRepository
       @Param("archivoId") Long archivoId, @Param("chuteId") Long chuteId);
 
   /**
-   * Clusters con rutas en un chute sin contar una ruta: al cambiar esa ruta de
-   * cluster, su propio cluster actual no debe contar como conflicto.
+   * Algún cluster de la lista con rutas en el chute, sin contar una ruta (la que
+   * cambia de cluster). Se detiene en la primera fila: usa
+   * idx_rutas_archivo_chute_cluster sin recorrer todas las rutas del chute.
    */
-  @Query("""
-      SELECT DISTINCT r.clusterId
-        FROM RutaProyeccion r
-       WHERE r.archivoId = :archivoId
-         AND r.chuteId = :chuteId
-         AND r.id <> :rutaId
-      """)
-  List<Long> clustersEnChuteSinRuta(
+  @Query(
+      value =
+          """
+          SELECT cluster_id
+            FROM rutas_proyeccion
+           WHERE archivo_id = :archivoId
+             AND chute_id = :chuteId
+             AND cluster_id IN (:clusterIds)
+             AND id <> :rutaId
+           LIMIT 1
+          """,
+      nativeQuery = true)
+  Optional<Long> clusterEnChute(
       @Param("archivoId") Long archivoId,
       @Param("chuteId") Long chuteId,
+      @Param("clusterIds") Collection<Long> clusterIds,
       @Param("rutaId") Long rutaId);
 
-  /** Rutas que tiene hoy un cluster (usa idx_rutas_archivo_cluster). */
-  long countByArchivoIdAndClusterId(Long archivoId, Long clusterId);
+  /**
+   * El cluster tiene otra ruta además de la indicada. EXISTS con LIMIT 1 sobre
+   * idx_rutas_archivo_cluster: no cuenta todas las rutas del cluster.
+   */
+  boolean existsByArchivoIdAndClusterIdAndIdNot(Long archivoId, Long clusterId, Long id);
 
   /**
    * Rutas que cambiaron de cluster y en las que participa un cluster (como
@@ -217,7 +228,7 @@ public interface RutaProyeccionRepository
       @Param("clusterId") Long clusterId,
       @Param("soloCambios") boolean soloCambios);
 
-  /** Rutas que los chutes tienen hoy, con su cluster actual (usa idx_rutas_archivo_chute). */
+  /** Rutas que los chutes tienen hoy, con su cluster actual (usa idx_rutas_archivo_chute_cluster). */
   @Query(
       value =
           RESUMEN

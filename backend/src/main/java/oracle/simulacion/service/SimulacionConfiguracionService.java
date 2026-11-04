@@ -559,7 +559,7 @@ public class SimulacionConfiguracionService {
           }
           exigirSinBalancear(ctx, origen);
           exigirSinBalancear(ctx, destino);
-          if (rutaRepo.countByArchivoIdAndClusterId(archivoId, origen) <= 1) {
+          if (!rutaRepo.existsByArchivoIdAndClusterIdAndIdNot(archivoId, origen, rutaId)) {
             throw new ConflictoException(
                 "La ruta "
                     + ruta.getCodigoRuta()
@@ -567,12 +567,15 @@ public class SimulacionConfiguracionService {
                     + ctx.nombreCluster(origen)
                     + ": un cluster no puede quedarse sin rutas.");
           }
-          // La ruta sigue en su chute: con su nuevo cluster tampoco puede juntar CL1 y CL2.
+          // La ruta sigue en su chute: con su nuevo cluster tampoco puede juntar CL1 y
+          // CL2. Solo se consulta si el destino tiene incompatibles (CL1 o CL2).
+          Set<Long> incompatibles = incompatiblesDe(destino, numerosCluster(ctx.clusters()));
           Long conflicto =
-              clusterEnConflicto(
-                  rutaRepo.clustersEnChuteSinRuta(archivoId, ruta.getChuteId(), rutaId),
-                  destino,
-                  numerosCluster(ctx.clusters()));
+              incompatibles.isEmpty()
+                  ? null
+                  : rutaRepo
+                      .clusterEnChute(archivoId, ruta.getChuteId(), incompatibles, rutaId)
+                      .orElse(null);
           if (conflicto != null) {
             throw new ConflictoException(
                 "El chute "
@@ -2289,6 +2292,22 @@ public class SimulacionConfiguracionService {
       }
     }
     return null;
+  }
+
+  /** Clusters que no pueden compartir chute con el indicado (CL1 ↔ CL2); vacío si no es CL1/CL2. */
+  private static Set<Long> incompatiblesDe(Long cluster, Map<Long, Integer> numeros) {
+    Integer numero = numeros.get(cluster);
+    if (numero == null || !CLUSTERS_INCOMPATIBLES.contains(numero)) {
+      return Set.of();
+    }
+    Set<Long> otros = new HashSet<>();
+    numeros.forEach(
+        (id, otro) -> {
+          if (!otro.equals(numero) && CLUSTERS_INCOMPATIBLES.contains(otro)) {
+            otros.add(id);
+          }
+        });
+    return otros;
   }
 
   private static boolean mezclaRestringida(
