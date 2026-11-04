@@ -13,11 +13,11 @@
 
 services:
   - type: web
-    name: farmacias-peruanas
+    name: ingenieria-logistica
     runtime: docker
     plan: free
     region: oregon
-    branch: farmacias_peruanas
+    branch: ingenieria_logistica
     autoDeploy: true
     dockerfilePath: ./Dockerfile
     dockerContext: .
@@ -43,10 +43,10 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_ISSUER
-        value: "hehiachi-mishima"
+        value: "ingenieria-logistica"
       # SPA y API comparten origen (nginx), asi que CORS no interviene en el
       # navegador. Si sirves el frontend desde otro dominio, ponlo aqui:
-      # p. ej. https://farmacias-peruanas.onrender.com
+      # p. ej. https://ingenieria-logistica.onrender.com
       - key: CORS_ALLOWED_ORIGINS
         sync: false
 
