@@ -170,6 +170,42 @@ export const PANEL_MALLA: PanelDef = {
   ],
 };
 
+export const PANEL_PICKING: PanelDef = {
+  id: 'picking',
+  nombre: 'Picking',
+  descripcion: 'Avance del picking del día: órdenes, SKU y cumplimiento por área y cluster.',
+  icono: 'paquete',
+  ruta: '/picking',
+  permiso: PERMISOS.PANEL_PICKING,
+  acento: 'var(--warning)',
+  modulos: [
+    {
+      id: 'resumen',
+      nombre: 'Resumen',
+      descripcion: 'Avance del día por área, cluster, ruta y hora.',
+      icono: 'dashboard',
+      ruta: 'resumen',
+      permiso: PERMISOS.VER_RESUMEN_PICKING,
+    },
+    {
+      id: 'ordenes',
+      nombre: 'Órdenes',
+      descripcion: 'Control de órdenes: estado, unidades y detalle por cartón.',
+      icono: 'logistica',
+      ruta: 'ordenes',
+      permiso: PERMISOS.VER_ORDENES_PICKING,
+    },
+    {
+      id: 'sku',
+      nombre: 'SKU',
+      descripcion: 'Detalle por SKU: unidades solicitadas, asignadas y empacadas.',
+      icono: 'almacen',
+      ruta: 'sku',
+      permiso: PERMISOS.VER_SKU_PICKING,
+    },
+  ],
+};
+
 /**
  * Paneles en construcción: misma estructura que los paneles reales (permiso,
  * módulos, acento), pero marcados como `publico` mientras no tengan lógica,
@@ -285,6 +321,7 @@ export const PANELES: PanelDef[] = [
   PANEL_BITACORA,
   PANEL_SIMULACION,
   PANEL_MALLA,
+  PANEL_PICKING,
   PANEL_ANALISIS,
   PANEL_TRAZABILIDAD,
   PANEL_LOGISTICA,

@@ -107,32 +107,27 @@
   {
     "name": "sftp.host",
     "type": "java.lang.String",
-    "description": "A description for 'sftp.host'"
+    "description": "Servidor SFTP del WMS (panel Picking)."
   },
   {
     "name": "sftp.username",
     "type": "java.lang.String",
-    "description": "A description for 'sftp.username'"
+    "description": "Usuario del SFTP."
   },
   {
     "name": "sftp.port",
     "type": "java.lang.String",
-    "description": "A description for 'sftp.port'"
+    "description": "Puerto del SFTP (22 por defecto)."
   },
   {
     "name": "sftp.password",
     "type": "java.lang.String",
-    "description": "A description for 'sftp.password'"
+    "description": "Clave del SFTP."
   },
   {
     "name": "sftp.remote-directory",
     "type": "java.lang.String",
-    "description": "A description for 'sftp.remote-directory'"
-  },
-  {
-    "name": "sftp.local-directory",
-    "type": "java.lang.String",
-    "description": "A description for 'sftp.local-directory'"
+    "description": "Carpeta remota donde el WMS deja el archivo."
   },
   {
     "name": "app.auth.refresh.inactividad-s",
@@ -153,5 +148,30 @@
     "name": "app.auth.refresh.cookie-secure",
     "type": "java.lang.String",
     "description": "A description for 'app.auth.refresh.cookie-secure'"
+  },
+  {
+    "name": "sftp.filename",
+    "type": "java.lang.String",
+    "description": "Nombre del archivo que se trae (siempre el mismo)."
+  },
+  {
+    "name": "sftp.known-hosts",
+    "type": "java.lang.String",
+    "description": "Línea known_hosts del servidor SFTP para verificar su identidad."
+  },
+  {
+    "name": "picking.data-dir",
+    "type": "java.lang.String",
+    "description": "Carpeta con el único archivo del panel Picking."
+  },
+  {
+    "name": "picking.sync.cron",
+    "type": "java.lang.String",
+    "description": "Cron (hora de Lima) de la revisión del SFTP."
+  },
+  {
+    "name": "picking.sync.timeout-ms",
+    "type": "java.lang.Integer",
+    "description": "Tiempo máximo de conexión al SFTP, en ms."
   }
 ]}

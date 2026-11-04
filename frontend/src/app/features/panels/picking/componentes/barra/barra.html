@@ -1,0 +1,136 @@
+<header class="page-head">
+  <div>
+    <h1 class="page-head__title">{{ titulo() }}</h1>
+    @if (meta(); as m) {
+      <p class="page-head__sub meta">
+        <span>Día operativo <b>{{ m.dia }}</b></span>
+        <span>Corte del archivo <b>{{ m.corte }}</b></span>
+        <span>Hora Lima <b>{{ m.hora }}</b></span>
+      </p>
+    } @else {
+      <p class="page-head__sub">{{ subtitulo() }}</p>
+    }
+  </div>
+  @if (meta(); as m) {
+    <span [class]="'ui-badge ui-badge--' + m.nivel" title="Antigüedad del archivo del WMS">
+      <ui-icon [name]="m.nivel === 'success' ? 'check' : 'alerta'" [size]="13" />
+      Datos WMS {{ m.corte }} · {{ m.antiguedad }}
+    </span>
+  }
+</header>
+
+@if (meta()?.otroDia) {
+  <p class="aviso" role="status">
+    <ui-icon name="alerta" [size]="16" />
+    El archivo trae el día operativo {{ meta()!.dia }}, pero en Lima ya corre otro día. Revisa que el WMS esté
+    enviando el reporte del día.
+  </p>
+}
+@if (aviso(); as texto) {
+  <p class="aviso" role="status"><ui-icon name="info" [size]="16" /> {{ texto }}</p>
+}
+
+<div class="toolbar">
+  <div class="ui-search toolbar__grow">
+    <ui-icon name="search" [size]="18" />
+    <input
+      type="search"
+      class="ui-input"
+      placeholder="Buscar orden, cartón, SKU, EAN o producto…"
+      [value]="store.filtros().busqueda"
+      (input)="buscar($any($event.target).value)"
+    />
+  </div>
+  @if (meta()?.arrastre) {
+    <label class="arrastre">
+      <input
+        type="checkbox"
+        [checked]="store.filtros().arrastre"
+        (change)="store.setArrastre($any($event.target).checked)"
+      />
+      Incluir {{ nf(meta()!.arrastre) }} órdenes de días anteriores
+    </label>
+  }
+  <button
+    type="button"
+    class="ui-btn ui-btn--secondary ui-btn--sm"
+    [disabled]="store.cargando()"
+    (click)="store.cargar(true)"
+  >
+    <ui-icon name="refresh" [size]="16" />
+    {{ store.cargando() ? 'Revisando…' : 'Actualizar' }}
+  </button>
+  <button
+    type="button"
+    class="ui-btn ui-btn--secondary"
+    [attr.aria-expanded]="filtrosAbierto()"
+    aria-controls="picking-filtros"
+    (click)="filtrosAbierto.set(!filtrosAbierto())"
+  >
+    <ui-icon name="filtro" [size]="18" />
+    Filtros
+    @if (store.filtrosActivos() > 0) {
+      <span class="filtros-badge">{{ store.filtrosActivos() }}</span>
+    }
+  </button>
+</div>
+
+<ui-filtros-activos [chips]="chips()" (quitar)="quitar($event)" (limpiar)="store.limpiar()" />
+
+<ui-panel-filtros
+  id="picking-filtros"
+  [abierto]="filtrosAbierto()"
+  [activos]="store.filtrosActivos()"
+  titulo="Filtrar picking"
+  (cerrar)="filtrosAbierto.set(false)"
+  (limpiar)="store.limpiar()"
+>
+  <section class="filtro-seccion">
+    <h3 class="filtro-seccion__titulo"><ui-icon name="filtro" [size]="15" /> Operación</h3>
+    @for (campo of campos; track campo.k) {
+      <div class="ui-field">
+        <label class="ui-label" [for]="'pk-' + campo.k">{{ campo.l }}</label>
+        <ui-select-multiple
+          [campoId]="'pk-' + campo.k"
+          [opciones]="store.opciones()[campo.k]"
+          [valores]="store.filtros().campos[campo.k] ?? []"
+          (valoresCambia)="setCampo(campo.k, $event)"
+        />
+      </div>
+    }
+  </section>
+  <section class="filtro-seccion">
+    <h3 class="filtro-seccion__titulo"><ui-icon name="reloj" [size]="15" /> Hora de inicio de pick</h3>
+    <div class="filtro-seccion__fila">
+      <div class="ui-field">
+        <label class="ui-label" for="pk-desde">Desde</label>
+        <select
+          id="pk-desde"
+          class="ui-select"
+          [value]="store.filtros().horas?.[0] ?? ''"
+          (change)="setHora(0, $any($event.target).value)"
+        >
+          <option value="">—</option>
+          @for (h of horas; track h.valor) {
+            <option [value]="h.valor">{{ h.etiqueta }}</option>
+          }
+        </select>
+      </div>
+      <div class="ui-field">
+        <label class="ui-label" for="pk-hasta">Hasta</label>
+        <select
+          id="pk-hasta"
+          class="ui-select"
+          [value]="store.filtros().horas?.[1] ?? ''"
+          (change)="setHora(1, $any($event.target).value)"
+        >
+          <option value="">—</option>
+          @for (h of horas; track h.valor) {
+            <option [value]="h.valor">{{ h.etiqueta }}</option>
+          }
+        </select>
+      </div>
+    </div>
+    <p class="filtro-nota">Deja fuera los cartones que aún no tienen inicio de pick.</p>
+  </section>
+</ui-panel-filtros>

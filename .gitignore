@@ -20,3 +20,6 @@ Thumbs.db
 *.log
 postgresql.sql
 datos.sql
+# --- Datos desechables del panel Picking (los trae el SFTP) ---
+data/
+backend/data/

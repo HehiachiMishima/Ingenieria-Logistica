@@ -1,0 +1,61 @@
+@use '../../picking';
+
+.cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.ui-table {
+  white-space: nowrap;
+}
+
+th.ordenable {
+  cursor: pointer;
+  user-select: none;
+
+  span {
+    margin-left: 4px;
+    font-size: 0.7em;
+  }
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.fuerte {
+  color: var(--text);
+  font-weight: 800;
+}
+
+.marca {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--warning);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.dash-kpis {
+  margin-bottom: 0;
+}
+
+.nota {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}

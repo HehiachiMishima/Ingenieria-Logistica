@@ -1,0 +1,247 @@
+@use 'breakpoints' as bp;
+
+/* Piezas compartidas por los módulos de Picking (sobre el sistema de diseño de la app). */
+
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Selector de opciones con contador (estado de órdenes / SKU, métricas). */
+.segmento {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.segmento__opcion {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--text);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--ring);
+  }
+
+  &--activa {
+    background: var(--surface);
+    color: var(--accent);
+    box-shadow: var(--shadow-xs);
+  }
+
+  small {
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: var(--text-3);
+  }
+}
+
+/* Barra de avance: empacado (lleno) y pendiente (claro). */
+.avance {
+  display: inline-flex;
+  width: 64px;
+  height: 6px;
+  margin-right: 8px;
+  vertical-align: middle;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface-3));
+  overflow: hidden;
+
+  span {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+  }
+}
+
+/* Filas de barras apiladas (área, negocio, tipo): clic para filtrar. */
+.barras {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.barra {
+  display: grid;
+  grid-template-columns: minmax(110px, 30%) 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 6px var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--table-hover);
+  }
+
+  &--activa {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    color: var(--text);
+    font-weight: 700;
+  }
+
+  &__etiqueta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__pista {
+    display: flex;
+    height: 12px;
+    border-radius: 4px;
+    background: var(--surface-2);
+    overflow: hidden;
+  }
+
+  &__hecho {
+    background: var(--accent);
+  }
+
+  &__pend {
+    background: color-mix(in srgb, var(--accent) 35%, var(--surface-3));
+  }
+
+  &__valor {
+    min-width: 110px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+
+    small {
+      margin-left: 6px;
+      color: var(--text-3);
+    }
+  }
+}
+
+.leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+
+  i {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    margin-right: 6px;
+    border-radius: 3px;
+    vertical-align: -1px;
+  }
+
+  .hecho {
+    background: var(--accent);
+  }
+
+  .pend {
+    background: color-mix(in srgb, var(--accent) 35%, var(--surface-3));
+  }
+
+  .falta {
+    background: var(--text-3);
+  }
+}
+
+/* Marca a la izquierda de las filas pendientes. */
+tr.fila--proceso td:first-child {
+  box-shadow: inset 3px 0 0 var(--info);
+}
+
+tr.fila--pendiente td:first-child {
+  box-shadow: inset 3px 0 0 var(--warning);
+}
+
+tr.clic {
+  cursor: pointer;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+.muted {
+  color: var(--text-3);
+}
+
+.vacio {
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+
+@include bp.down(sm) {
+  .barra {
+    grid-template-columns: 1fr auto;
+
+    &__pista {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+  }
+}
+
+/* Botón con aspecto de enlace (acciones dentro de tablas y tarjetas). */
+.enlace {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+/* Controles a la derecha de la cabecera de una tarjeta. */
+.herramientas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ui-select--sm {
+  width: auto;
+  height: 32px;
+  padding-block: 0;
+  font-size: var(--fs-sm);
+}
+
+/* Fila que coincide con un filtro activo. */
+tr.seleccionada td {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}

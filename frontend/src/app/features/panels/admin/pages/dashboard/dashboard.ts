@@ -16,6 +16,7 @@ const NOMBRE_PANEL: Record<string, string> = {
   PANEL_BITACORA: 'Bitácora',
   PANEL_SIMULACION: 'Simulación',
   PANEL_MALLA: 'Malla',
+  PANEL_PICKING: 'Picking',
 };
 
 const COLOR_PANEL: Record<string, string> = {
@@ -23,6 +24,7 @@ const COLOR_PANEL: Record<string, string> = {
   PANEL_BITACORA: 'var(--brand)',
   PANEL_SIMULACION: 'var(--cyan)',
   PANEL_MALLA: 'var(--success)',
+  PANEL_PICKING: 'var(--warning)',
 };
 
 /**

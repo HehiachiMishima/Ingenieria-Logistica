@@ -1,0 +1,111 @@
+<app-picking-barra titulo="SKU" subtitulo="Detalle de picking por SKU." />
+
+@if (!store.datos()) {
+  @if (store.cargando()) {
+    <div class="table-card"><div class="loading"><span class="ui-spinner"></span> Cargando el archivo del WMS…</div></div>
+  } @else {
+    <ui-empty icono="paquete" titulo="Sin datos de picking" [mensaje]="store.error() ?? ''" />
+  }
+} @else {
+  <section class="dash-kpis" aria-label="Indicadores por SKU">
+    @for (k of kpis(); track k.etiqueta) {
+      <ui-kpi [etiqueta]="k.etiqueta" [valor]="k.valor" [icono]="k.icono" [color]="k.color" [detalle]="k.detalle" />
+    }
+  </section>
+
+  <div class="table-card">
+    <div class="cabecera">
+      <div class="segmento" role="group" aria-label="Estado del SKU">
+        @for (e of estados; track e[0]) {
+          <button
+            type="button"
+            class="segmento__opcion"
+            [class.segmento__opcion--activa]="estado() === e[0]"
+            [attr.aria-pressed]="estado() === e[0]"
+            (click)="setEstado(e[0])"
+          >
+            {{ e[1] }} <small>{{ nf(cuentas()[e[0]]) }}</small>
+          </button>
+        }
+      </div>
+      <div class="herramientas">
+        <div class="ui-search">
+          <ui-icon name="search" [size]="16" />
+          <input type="search" class="ui-input" placeholder="SKU, EAN o producto…" (input)="buscar($any($event.target).value)" />
+        </div>
+        <button
+          *hasPermiso="permisos.EXPORTAR_PICKING"
+          type="button"
+          class="ui-btn ui-btn--secondary ui-btn--sm"
+          [disabled]="!lista().length"
+          (click)="exportar()"
+        >
+          <ui-icon name="descargar" [size]="16" /> Exportar
+        </button>
+      </div>
+    </div>
+
+    @if (!lista().length) {
+      <p class="vacio">Ningún SKU cumple los filtros y el estado seleccionados.</p>
+    } @else {
+      <div class="ui-table-wrap">
+        <table class="ui-table">
+          <thead>
+            <tr>
+              @for (c of columnas; track c.k) {
+                <th
+                  class="ordenable"
+                  [class.num]="c.num"
+                  tabindex="0"
+                  [attr.aria-sort]="orden().k === c.k ? (orden().dir === 1 ? 'ascending' : 'descending') : 'none'"
+                  (click)="ordenar(c.k)"
+                  (keydown.enter)="ordenar(c.k)"
+                >
+                  {{ c.l }}
+                  @if (orden().k === c.k) {
+                    <span aria-hidden="true">{{ orden().dir === 1 ? '▲' : '▼' }}</span>
+                  }
+                </th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (s of visibles(); track s.sku) {
+              <tr
+                class="clic"
+                tabindex="0"
+                [class.fila--pendiente]="s.conFalt"
+                [class.fila--proceso]="!s.conFalt && s.conPend"
+                (click)="abrir(s)"
+                (keydown.enter)="abrir(s)"
+              >
+                <td class="mono fuerte">{{ s.sku }}</td>
+                <td>{{ s.producto }}</td>
+                <td class="mono">{{ s.ean }}</td>
+                <td class="num">{{ nf(s.ordenes.size) }}</td>
+                <td class="num">{{ nf(s.cart) }}@if (s.cartPend) {<span class="muted"> · {{ nf(s.cartPend) }} pend.</span>}</td>
+                <td class="num">{{ nf(s.solic) }}</td>
+                <td class="num">{{ nf(s.asig) }}</td>
+                <td class="num">{{ nf(s.emp) }}</td>
+                <td class="num">{{ nf(s.falt) }}</td>
+                <td class="num fuerte">{{ nf(s.pend) }}</td>
+                <td class="num">{{ pct(s.solic ? s.asig / s.solic : 0) }}</td>
+                <td class="num"><span class="avance"><span [style.width.%]="(s.asig ? s.emp / s.asig : 0) * 100"></span></span>{{ pct(s.asig ? s.emp / s.asig : 0) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <ui-paginador [pagina]="pagina()" [total]="lista().length" [porPagina]="porPagina" (paginaCambia)="pagina.set($event)" />
+    }
+    @if (store.skus().multi.cart; as multi) {
+      <p class="nota">
+        Marca ámbar: faltante de asignación; azul: pendiente de empacar. Los {{ nf(multi) }} cartones multi-SKU
+        ({{ nf(store.skus().multi.asig) }} und. asignadas, {{ nf(store.skus().multi.emp) }} empacadas) no se reparten por
+        SKU porque el archivo trae un solo SKU por cartón: están en los indicadores, pero no en la tabla.
+      </p>
+    }
+  </div>
+}
+
+<app-picking-detalle />

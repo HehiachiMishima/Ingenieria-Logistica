@@ -1,0 +1,175 @@
+@use 'breakpoints' as bp;
+@use '../../picking';
+
+.dash-kpis {
+  margin-bottom: 0;
+}
+
+/* Cantidades: operación y traslados lado a lado. */
+.cantidades {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-5);
+
+  @include bp.down(lg) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cantidad {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+
+  h3 {
+    font-size: var(--fs-sm);
+    font-weight: 800;
+    color: var(--text);
+  }
+
+  &__cifras {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-2);
+
+    div {
+      display: flex;
+      flex-direction: column;
+      padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius);
+      background: var(--surface-2);
+    }
+
+    small,
+    span {
+      font-size: var(--fs-xs);
+      color: var(--text-3);
+    }
+
+    b {
+      font-size: 1.25rem;
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+    }
+  }
+
+  &__barra {
+    height: 14px;
+  }
+
+  &__falta {
+    background: var(--text-3);
+  }
+
+  &__brechas {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: var(--fs-sm);
+
+    li {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: var(--space-1) var(--space-3);
+    }
+
+    b {
+      color: var(--text);
+    }
+
+    .acciones {
+      display: inline-flex;
+      gap: var(--space-3);
+      margin-left: auto;
+    }
+  }
+}
+
+/* MZ TITAN: medidor a la izquierda, tabla a la derecha, por sección (B2C, B2B). */
+.mz {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+
+  &__seccion {
+    display: grid;
+    grid-template-columns: 200px minmax(0, 1fr);
+    gap: var(--space-4);
+    align-items: center;
+
+    @include bp.down(lg) {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  &__lado {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+    text-align: center;
+  }
+
+  &__tabla {
+    margin: 0;
+  }
+
+  &__ok {
+    color: var(--success);
+    font-weight: 700;
+  }
+
+  tfoot td {
+    border-top: 1px solid var(--border);
+  }
+}
+
+.pila {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  grid-column: span 5;
+  min-width: 0;
+
+  @include bp.down(xl) {
+    grid-column: span 12;
+  }
+}
+
+tr.grupo td:first-child {
+  white-space: nowrap;
+}
+
+tr.sub td:first-child {
+  padding-left: calc(var(--space-5) + 18px);
+  color: var(--text-2);
+}
+
+.chevron {
+  display: inline-block;
+  width: 16px;
+  color: var(--text-3);
+  transition: transform var(--transition-fast);
+
+  &--abierto {
+    transform: rotate(90deg);
+  }
+}
+
+.alta {
+  max-height: 460px;
+  overflow-y: auto;
+}
+
+.subtitulo {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}

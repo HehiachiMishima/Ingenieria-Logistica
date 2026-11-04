@@ -95,7 +95,7 @@ server {
     gzip_min_length 1024;
     gzip_proxied any;
     gzip_vary on;
-    gzip_types text/plain text/css text/javascript application/javascript application/json application/xml image/svg+xml font/woff2;
+    gzip_types text/plain text/csv text/css text/javascript application/javascript application/json application/xml image/svg+xml font/woff2;
 
     include /etc/nginx/seguridad.conf;
 

@@ -1,0 +1,154 @@
+<ui-modal
+  [abierto]="store.detalle() !== null"
+  ancho="xxl"
+  [titulo]="titulo()"
+  [subtitulo]="subtitulo()"
+  (cerrar)="store.detalle.set(null)"
+>
+  @if (orden(); as d) {
+    @if (store.detalle()?.volverSku; as sku) {
+      <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm volver" (click)="volver()">
+        ← Volver al SKU {{ sku }}
+      </button>
+    }
+    <div class="cabecera">
+      <span class="ui-badge" [class]="'ui-badge ' + estados[d.o.estado].badge">{{ estados[d.o.estado].texto }}</span>
+      <span class="muted">{{ d.o.segmento }}</span>
+    </div>
+    <div class="tiles">
+      <div><small>Und. solicitadas</small><b>{{ nf(d.o.solic) }}</b></div>
+      <div><small>Und. asignadas</small><b>{{ nf(d.o.asig) }}</b></div>
+      <div><small>Und. empacadas</small><b>{{ nf(d.o.emp) }}</b></div>
+      <div><small>Pendiente de empacar</small><b>{{ nf(d.o.asig - d.o.emp) }}</b></div>
+      <div><small>Avance</small><b>{{ pct(d.o.asig ? d.o.emp / d.o.asig : 0) }}</b></div>
+      <div><small>Cartones ({{ nf(d.o.pend) }} pend.)</small><b>{{ nf(d.o.cart) }}</b></div>
+      <div><small>Líneas completadas de {{ nf(d.o.lin) }}</small><b>{{ nf(d.o.linDone) }}</b></div>
+    </div>
+    @if (d.o.problemas.length) {
+      <p class="alerta">Registro incompleto: {{ d.o.problemas.join('; ') }}.</p>
+    }
+    <dl class="datos">
+      <div><dt>Cluster</dt><dd>{{ d.cluster }}</dd></div>
+      <div><dt>Olas</dt><dd class="mono">{{ d.olas }}</dd></div>
+      <div><dt>Áreas</dt><dd>{{ d.areas }}</dd></div>
+      <div><dt>Estado de asignación</dt><dd>{{ d.estAsig }}</dd></div>
+      <div><dt>Estado de los cartones</dt><dd>{{ d.estCart }}</dd></div>
+      <div><dt>Sucursal destino</dt><dd>{{ d.o.suc }} · {{ d.o.sucNom }}</dd></div>
+      <div><dt>Ruta principal</dt><dd>{{ d.rutaP }}</dd></div>
+      <div><dt>Ruta final</dt><dd>{{ d.rutaF }}</dd></div>
+      <div><dt>Parada</dt><dd>{{ d.paradas }}</dd></div>
+      <div><dt>Nro. carga</dt><dd class="mono">{{ d.cargas }}</dd></div>
+      <div><dt>Fecha de orden</dt><dd>{{ d.o.fecha }}</dd></div>
+      <div><dt>Creación</dt><dd>{{ fechaHora(d.o.creacion) }}</dd></div>
+      <div><dt>Primer inicio de pick</dt><dd>{{ fechaHora(d.o.ini) }}</dd></div>
+      <div><dt>Último inicio de pick</dt><dd>{{ fechaHora(d.o.fin) }}</dd></div>
+      <div><dt>Usuarios de pick</dt><dd class="mono">{{ d.usuarios }}</dd></div>
+    </dl>
+
+    <h3 class="seccion">SKU de la orden ({{ nf(d.skus.length) }})</h3>
+    <p class="muted nota">
+      UND. ORIG. se toma una vez por SKU.
+      @if (d.multi) {
+        Hay {{ nf(d.multi) }} cartón(es) multi-SKU: el archivo muestra un solo SKU por cartón, así que van aparte.
+      }
+    </p>
+    <div class="ui-table-wrap">
+      <table class="ui-table">
+        <thead>
+          <tr>
+            <th>SKU</th><th>EAN</th><th>Producto</th>
+            <th class="num">Und. solicitadas</th><th class="num">Und. asignadas</th>
+            <th class="num">Und. empacadas</th><th class="num">Cartones</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (s of d.skus; track s.sku) {
+            <tr>
+              <td class="mono">{{ s.sku }}</td><td class="mono">{{ s.ean }}</td><td>{{ s.producto }}</td>
+              <td class="num">{{ nf(s.solic) }}</td><td class="num">{{ nf(s.asig) }}</td>
+              <td class="num">{{ nf(s.emp) }}</td><td class="num">{{ nf(s.cart) }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="seccion">Cartones ({{ nf(d.cartones.length) }})</h3>
+    <div class="ui-table-wrap">
+      <table class="ui-table">
+        <thead>
+          <tr>
+            <th>Cartón</th><th>Área</th><th>Ola</th><th>Estado cartón</th><th>Estado asignación</th>
+            <th>SKU</th><th>Descripción</th><th class="num">Und. asig.</th><th class="num">Und. empac.</th>
+            <th class="num">Líneas</th><th>Usuario</th><th>Inicio pick</th><th>Ubic. inicial</th>
+            <th>Ubic. final</th><th>Pallet</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (r of d.cartones; track trackCarton($index, r)) {
+            <tr [class.fila--pendiente]="!r.done">
+              <td class="mono">{{ r.carton || '—' }}</td><td>{{ r.area }}</td><td class="mono">{{ r.ola }}</td>
+              <td>{{ r.estCarton }}</td><td>{{ r.estAsig }}</td>
+              <td class="mono">{{ r.multi ? 'varios' : r.sku }}</td>
+              <td>{{ r.multi ? 'Multi-SKU (' + nf(r.lin) + ' líneas)' : r.producto }}</td>
+              <td class="num">{{ nf(r.asig) }}</td><td class="num">{{ nf(r.emp) }}</td><td class="num">{{ nf(r.lin) }}</td>
+              <td class="mono">{{ r.usuario || '—' }}</td><td>{{ fechaHora(r.inicio) }}</td>
+              <td class="mono">{{ r.ubicI || '—' }}</td><td class="mono">{{ r.ubicF || '—' }}</td>
+              <td class="mono">{{ r.pallet || '—' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    @if (d.cancelados) {
+      <p class="muted nota">{{ nf(d.cancelados) }} registro(s) cancelado(s) de esta orden no se cuentan.</p>
+    }
+  } @else if (sku(); as s) {
+    <div class="tiles">
+      <div><small>Und. solicitadas</small><b>{{ nf(s.t.solic) }}</b></div>
+      <div><small>Und. asignadas</small><b>{{ nf(s.t.asig) }}</b></div>
+      <div><small>Und. empacadas</small><b>{{ nf(s.t.emp) }}</b></div>
+      <div><small>No asignadas</small><b>{{ nf(s.t.falt) }}</b></div>
+      <div><small>Pendientes de empacar</small><b>{{ nf(s.t.pend) }}</b></div>
+      <div><small>Órdenes</small><b>{{ nf(s.ordenes.length) }}</b></div>
+    </div>
+    <h3 class="seccion">Órdenes con este SKU ({{ nf(s.ordenes.length) }})</h3>
+    <p class="muted nota">Primero las que tienen unidades sin asignar o sin empacar. Clic en una orden para ver su detalle.</p>
+    <div class="ui-table-wrap">
+      <table class="ui-table">
+        <thead>
+          <tr>
+            <th>Orden</th><th>Estado</th><th>Tipo de orden</th><th>Sucursal destino</th>
+            <th class="num">Cartones</th><th class="num">Und. solicitadas</th><th class="num">Und. asignadas</th>
+            <th class="num">Und. empacadas</th><th class="num">No asignadas</th><th class="num">Pend. de empacar</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (o of s.ordenes; track o.orden) {
+            @let est = estadoDe(o.orden);
+            <tr
+              class="clic"
+              tabindex="0"
+              [class.fila--pendiente]="o.falt > 0.5"
+              [class.fila--proceso]="o.falt <= 0.5 && o.pend > 0"
+              (click)="abrirOrden(o.orden)"
+              (keydown.enter)="abrirOrden(o.orden)"
+            >
+              <td class="mono">{{ o.orden }}</td>
+              <td>
+                @if (est) {
+                  <span [class]="'ui-badge ' + estados[est].badge">{{ estados[est].texto }}</span>
+                }
+              </td>
+              <td>{{ o.tipo }}</td>
+              <td><span class="mono">{{ o.suc }}</span> {{ o.sucNom }}</td>
+              <td class="num">{{ nf(o.cart) }}@if (o.cartPend) {<span class="muted"> · {{ nf(o.cartPend) }} pend.</span>}</td>
+              <td class="num">{{ nf(o.solic) }}</td><td class="num">{{ nf(o.asig) }}</td>
+              <td class="num">{{ nf(o.emp) }}</td><td class="num">{{ nf(o.falt) }}</td><td class="num">{{ nf(o.pend) }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</ui-modal>
