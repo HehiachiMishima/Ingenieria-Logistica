@@ -12,10 +12,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import oracle.admin.repository.ResolucionRepository;
+import oracle.admin.response.ActorResponse;
 import oracle.admin.response.UsuarioResumenResponse;
 import oracle.common.exception.ConflictoException;
 import oracle.common.exception.OperacionNoPermitidaException;
 import oracle.common.exception.RecursoNoEncontradoException;
+import oracle.common.exception.SolicitudInvalidaException;
 import oracle.admin.model.Usuario;
 import oracle.admin.repository.UsuarioRepository;
 import oracle.admin.request.CambiarEstadoRequest;
@@ -72,6 +74,32 @@ public class UsuarioService {
         this.resumenes = new SnapshotCache<>("resumen-usuarios",
                 () -> transacciones.consultar(this::armarResumen));
         autorizacionCache.alInvalidar(resumenes::invalidar);
+    }
+
+    /** Tope de ids por petición: una página de auditoría trae pocos actores distintos. */
+    private static final int MAX_ACTORES = 200;
+
+    /**
+     * Login de los usuarios indicados, para mostrar quién creó o modificó un
+     * registro. Solo id y nombre de usuario (nada sensible), así lo puede pedir
+     * cualquier sesión aunque no tenga VER_USUARIOS. Los ids que no existen
+     * (usuarios eliminados) simplemente no vuelven.
+     */
+    public Mono<ApiResponse<List<ActorResponse>>> actores(List<Long> ids) {
+        List<Long> unicos = ids == null ? List.of()
+                : ids.stream().filter((id) -> id != null && id > 0).distinct().toList();
+        if (unicos.size() > MAX_ACTORES) {
+            return Mono.error(new SolicitudInvalidaException(
+                    "Se pueden consultar como máximo " + MAX_ACTORES + " usuarios por petición."));
+        }
+        if (unicos.isEmpty()) {
+            return Mono.just(ApiResponse.ok("Actores resueltos.", List.of()));
+        }
+        return Mono.fromCallable(() -> transacciones.consultar(() -> usuarioRepository.findByIdIn(unicos).stream()
+                        .map((a) -> new ActorResponse(a.getId(), a.getUsuario()))
+                        .toList()))
+                .subscribeOn(Schedulers.boundedElastic())
+                .map(lista -> ApiResponse.ok("Actores resueltos.", lista));
     }
 
     public Mono<ApiResponse<List<UsuarioResponse>>> listar() {

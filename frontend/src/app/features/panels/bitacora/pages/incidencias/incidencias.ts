@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Subject, debounceTime, finalize } from 'rxjs';
+import { Subject, concatMap, debounceTime, finalize, from, map } from 'rxjs';
 import { PERMISOS } from '../../../../../core/config/permisos';
 import { mensajeDeError } from '../../../../../core/errors/error.util';
 import { exportarCsv } from '../../../../../core/utils/csv.util';
@@ -265,7 +265,15 @@ export class Incidencias {
     this.exportando.set(true);
     this.incidenciasApi
       .exportar(this.filtros())
-      .pipe(finalize(() => this.exportando.set(false)))
+      .pipe(
+        // Nombres de quien creó o editó: se piden los que falten antes de armar el CSV.
+        concatMap((lista) =>
+          from(
+            this.directorio.resolver(new Set(lista.flatMap((i) => [i.creadoPor, i.actualizadoPor]))),
+          ).pipe(map(() => lista)),
+        ),
+        finalize(() => this.exportando.set(false)),
+      )
       .subscribe({
         next: (lista) => {
           const filas = lista.map((incidencia) =>

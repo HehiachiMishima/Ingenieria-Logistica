@@ -158,11 +158,13 @@ export class ListadoRegistros<T extends Registro> {
    * Descarga en CSV lo que muestra la tabla con la búsqueda y los filtros
    * vigentes (todas las páginas, no solo la visible).
    */
-  exportar({ archivo, singular, plural, columnas }: Exportacion<T>): void {
+  async exportar({ archivo, singular, plural, columnas }: Exportacion<T>): Promise<void> {
     const lista = this.filtrados();
     if (!lista.length) {
       return;
     }
+    // Los nombres de auditoría que aún no están en el directorio se piden antes de armar el CSV.
+    await this.directorio.resolver(lista.flatMap((item) => [item.creadoPor, item.actualizadoPor]));
     const fecha = (valor: string | null) => (valor ? fechaHoraNegocio(valor, this.locale) : '');
     const todas: ColumnaCsv<T>[] = [
       ...columnas,

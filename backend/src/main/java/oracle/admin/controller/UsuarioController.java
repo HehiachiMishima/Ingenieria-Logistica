@@ -5,6 +5,7 @@ import oracle.admin.request.CambiarEstadoRequest;
 import oracle.admin.request.UsuarioActualizarRequest;
 import oracle.admin.request.UsuarioCrearRequest;
 import oracle.common.response.ApiResponse;
+import oracle.admin.response.ActorResponse;
 import oracle.admin.response.UsuarioResponse;
 import oracle.admin.response.UsuarioResumenResponse;
 import oracle.admin.service.UsuarioService;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 
@@ -37,6 +39,16 @@ public class UsuarioController {
     @PreAuthorize("hasAuthority('VER_USUARIOS')")
     public Mono<ApiResponse<List<UsuarioResponse>>> listar() {
         return usuarioService.listar();
+    }
+
+    /**
+     * Login de quien creó o modificó registros (?ids=1,12). Basta con estar
+     * autenticado: lo usan todos los paneles para sus columnas de auditoría.
+     */
+    @GetMapping("/actores")
+    @PreAuthorize("isAuthenticated()")
+    public Mono<ApiResponse<List<ActorResponse>>> actores(@RequestParam List<Long> ids) {
+        return usuarioService.actores(ids);
     }
 
     /** Roles y permisos efectivos de todos los usuarios para el listado (evita N+1 peticiones). */
