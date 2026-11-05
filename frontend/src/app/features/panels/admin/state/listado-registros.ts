@@ -1,6 +1,10 @@
-import { Signal, computed, signal } from '@angular/core';
+import { LOCALE_ID, Signal, computed, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
+import { DirectorioUsuarios } from '../../../../core/services/directorio-usuarios';
+import { Notificaciones } from '../../../../core/services/notificaciones';
+import { exportarCsv } from '../../../../core/utils/csv.util';
 import { valorTexto } from '../../../../core/utils/evento.util';
+import { fechaHoraNegocio, hoy } from '../../../../core/utils/fecha.util';
 import { RecursoRemoto } from '../../../../core/utils/listado-remoto';
 import { PaginacionLocal } from '../../../../core/utils/paginacion-local';
 import { contieneTexto } from '../../../../core/utils/texto.util';
@@ -20,6 +24,24 @@ export interface Registro {
   id: number;
   activo: boolean;
   creadoEn: string;
+  actualizadoEn: string | null;
+  creadoPor: number | null;
+  actualizadoPor: number | null;
+}
+
+/** Columna del CSV: título y cómo sacar su valor de cada registro. */
+export interface ColumnaCsv<T> {
+  titulo: string;
+  valor: (item: T) => string | number | null | undefined;
+}
+
+/** Nombre del archivo y del registro en singular/plural para el aviso. */
+export interface Exportacion<T> {
+  archivo: string;
+  singular: string;
+  plural: string;
+  /** Columnas propias de la página; estado y auditoría se agregan al final. */
+  columnas: ColumnaCsv<T>[];
 }
 
 /** Filtro propio de una página (p. ej. el rol en Usuarios), con su chip. */
@@ -53,6 +75,9 @@ export interface OpcionesListado<T> {
  */
 export class ListadoRegistros<T extends Registro> {
   private readonly recurso: RecursoRemoto<T[]>;
+  private readonly locale = inject(LOCALE_ID);
+  private readonly directorio = inject(DirectorioUsuarios);
+  private readonly notificaciones = inject(Notificaciones);
   private readonly extra: FiltroExtra<T> | undefined;
   private readonly campos: OpcionesListado<T>['campos'];
 
@@ -127,6 +152,35 @@ export class ListadoRegistros<T extends Registro> {
   /** Quita un elemento eliminado sin volver a pedir la lista. */
   quitar(id: number): void {
     this.recurso.valor.update((lista) => lista?.filter((item) => item.id !== id) ?? null);
+  }
+
+  /**
+   * Descarga en CSV lo que muestra la tabla con la búsqueda y los filtros
+   * vigentes (todas las páginas, no solo la visible).
+   */
+  exportar({ archivo, singular, plural, columnas }: Exportacion<T>): void {
+    const lista = this.filtrados();
+    if (!lista.length) {
+      return;
+    }
+    const fecha = (valor: string | null) => (valor ? fechaHoraNegocio(valor, this.locale) : '');
+    const todas: ColumnaCsv<T>[] = [
+      ...columnas,
+      { titulo: 'Estado', valor: (item) => (item.activo ? 'Activo' : 'Inactivo') },
+      { titulo: 'Creado por', valor: (item) => this.directorio.etiqueta(item.creadoPor) },
+      { titulo: 'Actualizado por', valor: (item) => this.directorio.etiqueta(item.actualizadoPor) },
+      { titulo: 'Creado', valor: (item) => fecha(item.creadoEn) },
+      { titulo: 'Actualizado', valor: (item) => fecha(item.actualizadoEn) },
+    ];
+    exportarCsv(
+      `${archivo}_${hoy()}.csv`,
+      todas.map((c) => c.titulo),
+      lista.map((item) => todas.map((c) => c.valor(item))),
+    );
+    this.notificaciones.exito(
+      'Exportado',
+      `Se exportaron ${lista.length} ${lista.length === 1 ? singular : plural} a Excel (CSV).`,
+    );
   }
 
   buscar(valor: string): void {

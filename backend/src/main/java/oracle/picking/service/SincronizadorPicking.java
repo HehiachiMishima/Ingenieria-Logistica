@@ -11,6 +11,8 @@ import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.sshd.sftp.client.SftpClient;
 import org.apache.sshd.sftp.common.SftpConstants;
@@ -52,6 +54,15 @@ public class SincronizadorPicking {
     private final String directorio;
     private final DefaultSftpSessionFactory fabrica;
     private final ReentrantLock enCurso = new ReentrantLock();
+    /**
+     * Hilo de plataforma propio, de baja prioridad: descifrar y calcular la
+     * huella de varios MB es trabajo de CPU, y en un hilo virtual ocuparía el
+     * hilo portador que comparten las peticiones (con 1 CPU, como en Render,
+     * las frenaría cientos de ms). El sistema operativo sí reparte un hilo de
+     * plataforma con los demás.
+     */
+    private final ExecutorService hilo = Executors.newSingleThreadExecutor(
+            Thread.ofPlatform().name("picking-sync").daemon().priority(Thread.MIN_PRIORITY).factory());
     private volatile Estado estado;
 
     public SincronizadorPicking(
@@ -99,12 +110,12 @@ public class SincronizadorPicking {
     public void alArrancar() {
         archivo.borrarTemporal();
         // Sin esperar al primer ciclo, y sin demorar el arranque.
-        Thread.ofVirtual().name("picking-sync-inicio").start(this::sincronizar);
+        hilo.execute(this::sincronizar);
     }
 
     @Scheduled(cron = "${picking.sync.cron:0 5,35 * * * *}", zone = "America/Lima")
     public void programado() {
-        sincronizar();
+        hilo.execute(this::sincronizar);
     }
 
     /** Una sola sincronización a la vez; si ya hay una en curso, esta se omite. */
@@ -182,6 +193,7 @@ public class SincronizadorPicking {
 
     @PreDestroy
     public void cerrar() {
+        hilo.shutdownNow();
         if (fabrica != null) {
             fabrica.destroy();
         }

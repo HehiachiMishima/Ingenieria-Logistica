@@ -35,6 +35,17 @@
     Actualizar
   </button>
   <button
+    *hasPermiso="permisos.EXPORTAR_ROLES"
+    type="button"
+    class="ui-btn ui-btn--secondary ui-btn--sm"
+    title="Exportar a Excel (CSV) con la búsqueda y los filtros aplicados"
+    (click)="exportar()"
+    [disabled]="listado.cargando() || !listado.filtrados().length"
+  >
+    <ui-icon name="descargar" [size]="16" />
+    Exportar
+  </button>
+  <button
     type="button"
     class="ui-btn ui-btn--secondary ui-btn--sm"
     [attr.aria-expanded]="listado.filtrosAbierto()"

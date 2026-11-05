@@ -58,6 +58,10 @@ export const PERMISOS = {
   VER_SKU_PICKING: 'VER_SKU_PICKING',
   EXPORTAR_PICKING: 'EXPORTAR_PICKING',
 
+  EXPORTAR_USUARIOS: 'EXPORTAR_USUARIOS',
+  EXPORTAR_ROLES: 'EXPORTAR_ROLES',
+  EXPORTAR_PERMISOS: 'EXPORTAR_PERMISOS',
+
   // Paneles en construcción (sin lógica todavía). Quedan públicos hasta que se
   // les asigne permisos reales en el backend.
   PANEL_ANALISIS: 'PANEL_ANALISIS',

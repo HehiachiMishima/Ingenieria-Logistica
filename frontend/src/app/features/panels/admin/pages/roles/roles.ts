@@ -91,6 +91,18 @@ export class Roles {
     this.listado.recargar();
   }
 
+  exportar(): void {
+    this.listado.exportar({
+      archivo: 'roles',
+      singular: 'rol',
+      plural: 'roles',
+      columnas: [
+        { titulo: 'Rol', valor: (r) => r.nombre },
+        { titulo: 'Descripción', valor: (r) => r.descripcion },
+      ],
+    });
+  }
+
   campoInvalido(campo: 'nombre' | 'descripcion'): boolean {
     const control = this.formulario.controls[campo];
     return control.touched && control.invalid;

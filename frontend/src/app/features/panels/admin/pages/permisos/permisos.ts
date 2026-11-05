@@ -87,6 +87,18 @@ export class Permisos {
     this.listado.recargar();
   }
 
+  exportar(): void {
+    this.listado.exportar({
+      archivo: 'permisos',
+      singular: 'permiso',
+      plural: 'permisos',
+      columnas: [
+        { titulo: 'Permiso', valor: (p) => p.nombre },
+        { titulo: 'Descripción', valor: (p) => p.descripcion },
+      ],
+    });
+  }
+
   campoInvalido(campo: 'nombre'): boolean {
     const control = this.formulario.controls[campo];
     return control.touched && control.invalid;

@@ -162,6 +162,24 @@ export class Usuarios {
     this.listado.recargar();
   }
 
+  exportar(): void {
+    const resumen = this.resumen();
+    this.listado.exportar({
+      archivo: 'usuarios',
+      singular: 'usuario',
+      plural: 'usuarios',
+      columnas: [
+        { titulo: 'Usuario', valor: (u) => u.usuario },
+        { titulo: 'Nombre', valor: (u) => u.nombre },
+        { titulo: 'Apellido', valor: (u) => u.apellido },
+        { titulo: 'Email', valor: (u) => u.email },
+        { titulo: 'Teléfono', valor: (u) => u.telefono },
+        { titulo: 'Roles', valor: (u) => resumen.get(u.id)?.roles.join(', ') },
+        { titulo: 'Permisos efectivos', valor: (u) => resumen.get(u.id)?.permisos.join(', ') },
+      ],
+    });
+  }
+
   setRol(evento: Event): void {
     const valor = (evento.target as HTMLSelectElement).value;
     this.filtroRol.set(valor || null);

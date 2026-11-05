@@ -2,7 +2,10 @@
   <div>
     <h1 class="page-head__title">{{ saludo }}{{ usuario() ? ', ' + usuario()!.nombre : '' }}</h1>
     <p class="page-head__sub">
-      Estado del acceso: cuentas habilitadas, riesgos y alcance por panel.
+      Gobierno de accesos: salud del modelo de roles, riesgos abiertos y alcance por panel.
+      @if (corte(); as c) {
+        <span class="admin-corte">· Actualizado {{ c | date: 'HH:mm' }}</span>
+      }
     </p>
   </div>
   <button type="button" class="ui-btn ui-btn--secondary" (click)="cargar()" [disabled]="cargando()">
@@ -20,6 +23,20 @@
     </ui-empty>
   </div>
 } @else {
+  @if (lecturas().length) {
+    <section class="dash-insights" aria-label="Lectura ejecutiva">
+      @for (l of lecturas(); track l.kicker) {
+        <div class="dash-insight" [style.--c]="l.color">
+          <span class="dash-insight__icon"><ui-icon [name]="l.icono" [size]="18" /></span>
+          <div>
+            <span class="dash-insight__kicker">{{ l.kicker }}</span>
+            <p class="dash-insight__texto" [innerHTML]="l.texto"></p>
+          </div>
+        </div>
+      }
+    </section>
+  }
+
   <section class="dash-kpis" aria-label="Indicadores clave">
     @for (t of tarjetas(); track t.etiqueta) {
       <ui-kpi
@@ -28,6 +45,8 @@
         [icono]="t.icono"
         [color]="t.color"
         [detalle]="t.detalle"
+        [variacion]="t.variacion"
+        [subirEsMalo]="t.subirEsMalo"
         [cargando]="cargando() && !datos()"
       />
     }
@@ -38,31 +57,25 @@
       <header class="dash-card__head">
         <div class="dash-card__titulos">
           <h2 class="dash-card__titulo">
-            <ui-icon name="usuarios" [size]="18" /> ¿Cuántas cuentas están habilitadas?
+            <ui-icon name="shieldCheck" [size]="18" /> ¿El acceso está bajo control?
           </h2>
-          <p class="dash-card__sub">Porcentaje de usuarios que pueden iniciar sesión.</p>
+          <p class="dash-card__sub">Cuentas activas que se rigen solo por su rol, sin excepciones. Meta: 90 %.</p>
         </div>
       </header>
       <div class="dash-card__body admin-centro">
-        @if (estadoCuentas().hay) {
-          <ui-gauge
-            [valor]="estadoCuentas().pct"
-            etiqueta="Cuentas activas"
-            color="var(--success)"
-            [tamano]="220"
-          />
-          <dl class="admin-estado">
-            <div>
-              <dt><i class="admin-estado__punto admin-estado__punto--ok"></i>Activas</dt>
-              <dd>{{ estadoCuentas().activos }}</dd>
-            </div>
-            <div>
-              <dt><i class="admin-estado__punto"></i>Inactivas</dt>
-              <dd>{{ estadoCuentas().inactivos }}</dd>
-            </div>
-          </dl>
+        @if (gobierno().hay) {
+          <ui-gauge [valor]="gobierno().pct" etiqueta="Gobierno por rol" [color]="gobierno().color" [tamano]="200" />
+          <ul class="admin-particion">
+            @for (d of gobierno().desglose; track d.etiqueta) {
+              <li>
+                <span class="admin-particion__punto" [style.background]="d.color"></span>
+                <span class="admin-particion__etiqueta">{{ d.etiqueta }}</span>
+                <strong>{{ d.valor }}</strong>
+              </li>
+            }
+          </ul>
         } @else {
-          <div class="dash-card__vacio">Sin usuarios.</div>
+          <div class="dash-card__vacio">Sin cuentas activas.</div>
         }
       </div>
     </article>
@@ -70,16 +83,78 @@
     <article class="dash-card dash-card--7" [class.dash-card--cargando]="cargando()">
       <header class="dash-card__head">
         <div class="dash-card__titulos">
-          <h2 class="dash-card__titulo">
-            <ui-icon name="panel" [size]="18" /> ¿Quién accede a cada panel?
-          </h2>
-          <p class="dash-card__sub">
-            Usuarios activos con acceso efectivo, en % del total de activos.
-          </p>
+          <h2 class="dash-card__titulo"><ui-icon name="tendencia" [size]="18" /> ¿Cómo crece la base de usuarios?</h2>
+          <p class="dash-card__sub">Últimos 12 meses: cuentas registradas al cierre de cada mes y altas del mes.</p>
+        </div>
+      </header>
+      <div class="dash-card__body admin-medio">
+        @if (crecimiento().hay) {
+          <ui-linea [etiquetas]="crecimiento().etiquetas" [series]="crecimiento().series" [altura]="230" />
+        } @else {
+          <div class="dash-card__vacio">Sin cuentas registradas en el último año.</div>
+        }
+      </div>
+    </article>
+
+    <article class="dash-card" [class.dash-card--cargando]="cargando()">
+      <header class="dash-card__head">
+        <div class="dash-card__titulos">
+          <h2 class="dash-card__titulo"><ui-icon name="alertTriangle" [size]="18" /> ¿Qué hay que atender?</h2>
+          <p class="dash-card__sub">Controles de higiene del acceso: en verde los que están en orden.</p>
+        </div>
+        @if (datos()) {
+          <span class="admin-abiertas" [class.admin-abiertas--ok]="!alertasAbiertas()">
+            {{ alertasAbiertas() ? alertasAbiertas() + ' abiertas' : 'Todo en orden' }}
+          </span>
+        }
+      </header>
+      <div class="dash-card__body">
+        <ul class="admin-alertas">
+          @for (a of alertas(); track a.titulo) {
+            <li class="admin-alerta" [style.--c]="colorNivel[a.nivel]">
+              <span class="admin-alerta__valor">{{ a.valor }}</span>
+              <div class="admin-alerta__texto">
+                <strong>{{ a.titulo }}</strong>
+                <span>{{ a.texto }}</span>
+              </div>
+              @if (a.nivel !== 'ok') {
+                <a class="admin-alerta__ir" [routerLink]="['/admin', a.ruta]" [attr.aria-label]="'Revisar ' + a.titulo">
+                  Revisar <ui-icon name="chevronRight" [size]="14" />
+                </a>
+              } @else {
+                <ui-icon class="admin-alerta__ok" name="check" [size]="18" />
+              }
+            </li>
+          }
+        </ul>
+      </div>
+    </article>
+
+    <article class="dash-card dash-card--6" [class.dash-card--cargando]="cargando()">
+      <header class="dash-card__head">
+        <div class="dash-card__titulos">
+          <h2 class="dash-card__titulo"><ui-icon name="panel" [size]="18" /> ¿Quién accede a cada panel?</h2>
+          <p class="dash-card__sub">Usuarios activos con acceso efectivo, en % del total de activos.</p>
         </div>
       </header>
       <div class="dash-card__body admin-medio">
         <ui-bars [datos]="barrasCobertura()" [horizontal]="true" />
+      </div>
+    </article>
+
+    <article class="dash-card dash-card--6" [class.dash-card--cargando]="cargando()">
+      <header class="dash-card__head">
+        <div class="dash-card__titulos">
+          <h2 class="dash-card__titulo"><ui-icon name="roles" [size]="18" /> ¿Cómo se reparten los roles?</h2>
+          <p class="dash-card__sub">Usuarios activos por rol activo (los 8 con más usuarios).</p>
+        </div>
+      </header>
+      <div class="dash-card__body admin-medio">
+        @if (barrasRoles().length) {
+          <ui-bars [datos]="barrasRoles()" [horizontal]="true" />
+        } @else {
+          <div class="dash-card__vacio">Sin roles activos.</div>
+        }
       </div>
     </article>
   </div>

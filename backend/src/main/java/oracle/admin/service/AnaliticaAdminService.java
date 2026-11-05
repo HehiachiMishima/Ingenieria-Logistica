@@ -12,7 +12,7 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
-/** Dashboard ejecutivo de Administracion: 2 agregaciones en paralelo, cacheadas (TTL). */
+/** Dashboard ejecutivo de Administracion: 4 agregaciones en paralelo, cacheadas (TTL). */
 @Slf4j
 @Service
 public class AnaliticaAdminService {
@@ -38,7 +38,8 @@ public class AnaliticaAdminService {
     }
 
     private Mono<AnaliticaAdminResponse> calcular() {
-        return Mono.zip(ejecutor.consulta(repo::kpis), ejecutor.consulta(repo::coberturaPaneles))
-                .map(r -> new AnaliticaAdminResponse(r.getT1(), r.getT2()));
+        return Mono.zip(ejecutor.consulta(repo::kpis), ejecutor.consulta(repo::coberturaPaneles),
+                        ejecutor.consulta(repo::usuariosPorRol), ejecutor.consulta(repo::crecimiento))
+                .map(r -> new AnaliticaAdminResponse(r.getT1(), r.getT2(), r.getT3(), r.getT4()));
     }
 }
