@@ -1,33 +1,29 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { PanelDef } from '../../../core/config/paneles';
 import { EmptyState } from '../../../shared/ui/empty-state/empty-state';
-import { Icon } from '../../../shared/ui/icon/icon';
 
 /**
- * Vista común de los paneles que aún no tienen lógica. Cada panel la usa desde
- * su propia página (`pages/resumen`), que es donde se agregará la lógica real.
+ * Vista base de los paneles que todavía no exponen módulos con datos. Muestra
+ * un estado vacío neutro: el usuario final no debe ver el estado de desarrollo
+ * del panel.
  */
 @Component({
-  selector: 'app-en-construccion',
+  selector: 'app-panel-vacio',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, EmptyState],
+  imports: [EmptyState],
   template: `
     <header class="page-head">
       <div>
         <h1 class="page-head__title">{{ panel().nombre }}</h1>
         <p class="page-head__sub">{{ panel().descripcion }}</p>
       </div>
-      <span class="ui-badge ui-badge--warning">
-        <ui-icon name="reloj" [size]="14" />
-        En construcción
-      </span>
     </header>
 
     <div class="table-card">
       <ui-empty
         [icono]="panel().icono"
-        titulo="Panel en construcción"
-        mensaje="Este panel todavía no tiene módulos con datos. Estará disponible próximamente."
+        titulo="Sin información disponible"
+        mensaje="No hay datos para mostrar en este módulo por el momento."
       />
     </div>
   `,
@@ -37,6 +33,6 @@ import { Icon } from '../../../shared/ui/icon/icon';
     }
   `,
 })
-export class EnConstruccion {
+export class PanelVacio {
   readonly panel = input.required<PanelDef>();
 }

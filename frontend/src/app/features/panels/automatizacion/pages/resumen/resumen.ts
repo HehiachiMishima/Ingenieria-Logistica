@@ -1,13 +1,13 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { PANEL_AUTOMATIZACION } from '../../../../../core/config/paneles';
-import { EnConstruccion } from '../../../en-construccion/en-construccion';
+import { PanelVacio } from '../../../panel-vacio/panel-vacio';
 
-/** Resumen del panel automatizacion: sin lógica todavía, muestra la vista en construcción. */
+/** Resumen del panel automatizacion: vista base mientras no exponga módulos con datos. */
 @Component({
   selector: 'app-automatizacion-resumen',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [EnConstruccion],
-  template: `<app-en-construccion [panel]="panel" />`,
+  imports: [PanelVacio],
+  template: `<app-panel-vacio [panel]="panel" />`,
 })
 export class AutomatizacionResumen {
   protected readonly panel = PANEL_AUTOMATIZACION;

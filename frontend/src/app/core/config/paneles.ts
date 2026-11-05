@@ -16,11 +16,6 @@ export interface PanelDef {
   icono: string;
   ruta: string;
   permiso: string;
-  /**
-   * Panel sin lógica todavía: visible y accesible para cualquier usuario
-   * autenticado, sin exigir permiso. Quitar cuando tenga permisos reales.
-   */
-  publico?: boolean;
   /** Color de señal del panel (CSS): tarjeta del launcher y detalles del panel. */
   acento: string;
   modulos: ModuloPanel[];
@@ -207,9 +202,9 @@ export const PANEL_PICKING: PanelDef = {
 };
 
 /**
- * Paneles en construcción: misma estructura que los paneles reales (permiso,
- * módulos, acento), pero marcados como `publico` mientras no tengan lógica,
- * para que se visualicen sin exigir permisos.
+ * Paneles que todavía no tienen módulos con lógica propia: misma estructura
+ * que los paneles reales (permiso, módulos, acento) para que su acceso se
+ * valide igual que el resto.
  */
 export const PANEL_ANALISIS: PanelDef = {
   id: 'analisis',
@@ -218,7 +213,6 @@ export const PANEL_ANALISIS: PanelDef = {
   icono: 'analisis',
   ruta: '/analisis',
   permiso: PERMISOS.PANEL_ANALISIS,
-  publico: true,
   acento: 'var(--brand)',
   modulos: [
     {
@@ -239,7 +233,6 @@ export const PANEL_TRAZABILIDAD: PanelDef = {
   icono: 'trazabilidad',
   ruta: '/trazabilidad',
   permiso: PERMISOS.PANEL_TRAZABILIDAD,
-  publico: true,
   acento: 'var(--accent)',
   modulos: [
     {
@@ -260,7 +253,6 @@ export const PANEL_LOGISTICA: PanelDef = {
   icono: 'logistica',
   ruta: '/logistica',
   permiso: PERMISOS.PANEL_LOGISTICA,
-  publico: true,
   acento: 'var(--success)',
   modulos: [
     {
@@ -281,7 +273,6 @@ export const PANEL_AUTOMATIZACION: PanelDef = {
   icono: 'automatizacion',
   ruta: '/automatizacion',
   permiso: PERMISOS.PANEL_AUTOMATIZACION,
-  publico: true,
   acento: 'var(--violet)',
   modulos: [
     {
@@ -302,7 +293,6 @@ export const PANEL_SINCRONIZACION: PanelDef = {
   icono: 'sincronizacion',
   ruta: '/sincronizacion',
   permiso: PERMISOS.PANEL_SINCRONIZACION,
-  publico: true,
   acento: '#f59e0b',
   modulos: [
     {
@@ -329,11 +319,8 @@ export const PANELES: PanelDef[] = [
   PANEL_SINCRONIZACION,
 ];
 
-/** Módulos del panel que el usuario puede abrir (todos si el panel es público). */
+/** Módulos del panel que el usuario puede abrir. */
 export function modulosAccesibles(panel: PanelDef, permisos: readonly string[]): ModuloPanel[] {
-  if (panel.publico) {
-    return panel.modulos;
-  }
   return panel.modulos.filter((modulo) => permisos.includes(modulo.permiso));
 }
 
@@ -342,7 +329,7 @@ export function primerModuloAccesible(panel: PanelDef, permisos: readonly string
 }
 
 export function panelAccesible(panel: PanelDef, permisos: readonly string[]): boolean {
-  return panel.publico === true || permisos.includes(panel.permiso);
+  return permisos.includes(panel.permiso);
 }
 
 export function tienePermiso(permisos: readonly string[], permiso: string): boolean {

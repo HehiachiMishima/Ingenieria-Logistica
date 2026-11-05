@@ -1,16 +1,9 @@
 import { Routes } from '@angular/router';
-import {
-  PANEL_ANALISIS,
-  PANEL_AUTOMATIZACION,
-  PANEL_LOGISTICA,
-  PANEL_SINCRONIZACION,
-  PANEL_TRAZABILIDAD,
-} from './core/config/paneles';
 import { PERMISOS } from './core/config/permisos';
 import { authGuard } from './core/guards/auth.guard';
 import { guestGuard } from './core/guards/guest.guard';
 import { introGuard } from './core/guards/intro.guard';
-import { panelGuard, permisoGuard } from './core/guards/permiso.guard';
+import { permisoGuard } from './core/guards/permiso.guard';
 
 /**
  * Los paneles se protegen con `canMatch`: la sesión y el permiso se comprueban
@@ -67,13 +60,13 @@ export const routes: Routes = [
   },
   {
     path: 'analisis',
-    canMatch: [panelGuard(PANEL_ANALISIS)],
+    canMatch: [permisoGuard(PERMISOS.PANEL_ANALISIS)],
     loadChildren: () =>
       import('./features/panels/analisis/analisis.routes').then((m) => m.ANALISIS_ROUTES),
   },
   {
     path: 'trazabilidad',
-    canMatch: [panelGuard(PANEL_TRAZABILIDAD)],
+    canMatch: [permisoGuard(PERMISOS.PANEL_TRAZABILIDAD)],
     loadChildren: () =>
       import('./features/panels/trazabilidad/trazabilidad.routes').then(
         (m) => m.TRAZABILIDAD_ROUTES,
@@ -81,13 +74,13 @@ export const routes: Routes = [
   },
   {
     path: 'logistica',
-    canMatch: [panelGuard(PANEL_LOGISTICA)],
+    canMatch: [permisoGuard(PERMISOS.PANEL_LOGISTICA)],
     loadChildren: () =>
       import('./features/panels/logistica/logistica.routes').then((m) => m.LOGISTICA_ROUTES),
   },
   {
     path: 'automatizacion',
-    canMatch: [panelGuard(PANEL_AUTOMATIZACION)],
+    canMatch: [permisoGuard(PERMISOS.PANEL_AUTOMATIZACION)],
     loadChildren: () =>
       import('./features/panels/automatizacion/automatizacion.routes').then(
         (m) => m.AUTOMATIZACION_ROUTES,
@@ -95,7 +88,7 @@ export const routes: Routes = [
   },
   {
     path: 'sincronizacion',
-    canMatch: [panelGuard(PANEL_SINCRONIZACION)],
+    canMatch: [permisoGuard(PERMISOS.PANEL_SINCRONIZACION)],
     loadChildren: () =>
       import('./features/panels/sincronizacion/sincronizacion.routes').then(
         (m) => m.SINCRONIZACION_ROUTES,

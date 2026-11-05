@@ -62,8 +62,7 @@ export const PERMISOS = {
   EXPORTAR_ROLES: 'EXPORTAR_ROLES',
   EXPORTAR_PERMISOS: 'EXPORTAR_PERMISOS',
 
-  // Paneles en construcción (sin lógica todavía). Quedan públicos hasta que se
-  // les asigne permisos reales en el backend.
+  // Paneles con permisos propios aunque todavía no expongan módulos con datos.
   PANEL_ANALISIS: 'PANEL_ANALISIS',
   PANEL_TRAZABILIDAD: 'PANEL_TRAZABILIDAD',
   PANEL_LOGISTICA: 'PANEL_LOGISTICA',

@@ -1,13 +1,13 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { PANEL_LOGISTICA } from '../../../../../core/config/paneles';
-import { EnConstruccion } from '../../../en-construccion/en-construccion';
+import { PanelVacio } from '../../../panel-vacio/panel-vacio';
 
-/** Resumen del panel logistica: sin lógica todavía, muestra la vista en construcción. */
+/** Resumen del panel logistica: vista base mientras no exponga módulos con datos. */
 @Component({
   selector: 'app-logistica-resumen',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [EnConstruccion],
-  template: `<app-en-construccion [panel]="panel" />`,
+  imports: [PanelVacio],
+  template: `<app-panel-vacio [panel]="panel" />`,
 })
 export class LogisticaResumen {
   protected readonly panel = PANEL_LOGISTICA;

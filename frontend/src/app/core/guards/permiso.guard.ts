@@ -43,16 +43,3 @@ function comprobar(
 export function permisoGuard(permiso: string): GuardAcceso {
   return () => comprobar((sesion) => sesion.tienePermiso(permiso), permiso);
 }
-
-/**
- * Guard de acceso a un panel. A diferencia de permisoGuard, permite el paso a
- * los paneles marcados como `publico` (aún sin permisos), exigiendo solo estar
- * autenticado.
- */
-export function panelGuard(panel: { permiso: string; publico?: boolean }): GuardAcceso {
-  return () =>
-    comprobar(
-      (sesion) => panel.publico === true || sesion.tienePermiso(panel.permiso),
-      panel.permiso,
-    );
-}

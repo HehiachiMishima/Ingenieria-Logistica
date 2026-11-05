@@ -1,5 +1,7 @@
 import { Routes } from '@angular/router';
 import { PANEL_LOGISTICA } from '../../../core/config/paneles';
+import { PERMISOS } from '../../../core/config/permisos';
+import { permisoGuard } from '../../../core/guards/permiso.guard';
 import { PanelShell } from '../panel-shell';
 import { aPrimerModulo } from '../panel-rutas';
 
@@ -12,6 +14,7 @@ export const LOGISTICA_ROUTES: Routes = [
       { path: '', pathMatch: 'full', redirectTo: aPrimerModulo(PANEL_LOGISTICA) },
       {
         path: 'resumen',
+        canActivate: [permisoGuard(PERMISOS.PANEL_LOGISTICA)],
         loadComponent: () => import('./pages/resumen/resumen').then((m) => m.LogisticaResumen),
       },
     ],

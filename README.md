@@ -25,11 +25,15 @@ cada usuario. Su nombre es un acróstico:
 | Bitácora | `/bitacora` | Incidencias, Control (centros, sistemas, áreas, responsables), Dashboard | `PANEL_BITACORA` |
 | Simulación | `/simulacion` | Registro (Excel), Configuración (clusters, chutes, balanceo), Dashboard | `PANEL_SIMULACION` |
 | Malla Operativa | `/malla` | Malla (turnos, flujos de proceso, olas, zonas, capacidad) | `PANEL_MALLA` |
-| Análisis | `/analisis` | Resumen *(en construcción)* | `PANEL_ANALISIS` |
-| Trazabilidad | `/trazabilidad` | Resumen *(en construcción)* | `PANEL_TRAZABILIDAD` |
-| Logística | `/logistica` | Resumen *(en construcción)* | `PANEL_LOGISTICA` |
-| Automatización | `/automatizacion` | Resumen *(en construcción)* | `PANEL_AUTOMATIZACION` |
-| Sincronización | `/sincronizacion` | Resumen *(en construcción)* | `PANEL_SINCRONIZACION` |
+| Análisis | `/analisis` | Resumen | `PANEL_ANALISIS` |
+| Trazabilidad | `/trazabilidad` | Resumen | `PANEL_TRAZABILIDAD` |
+| Logística | `/logistica` | Resumen | `PANEL_LOGISTICA` |
+| Automatización | `/automatizacion` | Resumen | `PANEL_AUTOMATIZACION` |
+| Sincronización | `/sincronizacion` | Resumen | `PANEL_SINCRONIZACION` |
+
+Los paneles Análisis, Trazabilidad, Logística, Automatización y Sincronización
+exigen su permiso de entrada igual que el resto. Su módulo Resumen muestra un
+estado vacío neutro mientras se implementa la lógica del panel.
 
 El *launcher* (`/`) muestra los paneles y, en cada uno, los módulos habilitados
 para el usuario. Cada ruta protegida valida su permiso con `permisoGuard`, y

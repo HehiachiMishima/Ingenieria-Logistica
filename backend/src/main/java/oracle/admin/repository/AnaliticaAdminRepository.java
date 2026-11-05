@@ -86,7 +86,9 @@ public class AnaliticaAdminRepository {
                 JOIN usuarios u ON u.id = v.usuario_id AND u.activo = TRUE
                 WHERE v.permitido = TRUE
                   AND p.nombre IN ('PANEL_ADMIN', 'PANEL_BITACORA', 'PANEL_SIMULACION',
-                                   'PANEL_MALLA', 'PANEL_PICKING')
+                                   'PANEL_MALLA', 'PANEL_PICKING', 'PANEL_ANALISIS',
+                                   'PANEL_TRAZABILIDAD', 'PANEL_LOGISTICA',
+                                   'PANEL_AUTOMATIZACION', 'PANEL_SINCRONIZACION')
                 GROUP BY p.nombre
                 ORDER BY p.nombre
                 """, CONTEO);
