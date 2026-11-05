@@ -3,10 +3,6 @@
 .env.*
 !.env.example
 
-# --- Certificados (CA TLS de Aiven) ---
-certs/
-*.pem
-
 # --- Sistema operativo / editores ---
 .DS_Store
 Thumbs.db
@@ -18,8 +14,7 @@ Thumbs.db
 
 # --- Logs ---
 *.log
-postgresql.sql
-datos.sql
+*.sql
 # --- Datos desechables del panel Picking (los trae el SFTP) ---
-data/
-backend/data/
+/data/
+/backend/data/

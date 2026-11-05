@@ -1,4 +1,4 @@
--- Active: 1793813862107@@localhost@5432@ingenieria_logistica
+-- Active: 1793765968991@@dpg-dblama6417fc7380aqog-a.oregon-postgres.render.com@5432@ingenieria_logistica
 -- ============================================================
 -- MIGRACIÓN: panel Picking (permisos)
 -- ============================================================
