@@ -23,7 +23,6 @@ import oracle.simulacion.response.DashboardSimulacionResponse;
 import oracle.simulacion.response.HistorialRegistroResponse;
 import oracle.simulacion.response.HistorialSimulacionResponse;
 import oracle.simulacion.response.PaginaRutasResponse;
-import oracle.simulacion.response.RutaSimulacionResponse;
 import oracle.simulacion.response.RutasDashboardResponse;
 import oracle.simulacion.service.SimulacionConfiguracionService;
 import oracle.simulacion.service.SimulacionExcel;
@@ -47,7 +46,7 @@ import reactor.core.publisher.Mono;
 
 /** Registro, configuración y dashboard del panel Simulación. */
 @RestController
-@RequestMapping("/api/simulacion")
+@RequestMapping("/api/simulacion/registros")
 public class SimulacionController {
 
   /** Timeout de la carga de archivos; el proxy nginx corta a los 60 s. */
@@ -63,7 +62,7 @@ public class SimulacionController {
     this.configuracionService = configuracionService;
   }
 
-  @GetMapping("/registros")
+  @GetMapping
   @PreAuthorize("hasAuthority('VER_REGISTRO_SIMULACION')")
   public Mono<ApiResponse<PaginaResponse<ArchivoSimulacionResponse>>> listar(
       @RequestParam(defaultValue = "1") int pagina,
@@ -73,7 +72,7 @@ public class SimulacionController {
     return registroService.listar(pagina, tamano, texto, estados);
   }
 
-  @GetMapping("/registros/opciones")
+  @GetMapping("/opciones")
   @PreAuthorize(
       "hasAnyAuthority('VER_REGISTRO_SIMULACION','VER_CONFIGURACION_SIMULACION','VER_DASHBOARD_SIMULACION')")
   public Mono<ApiResponse<List<ArchivoSimulacionResponse>>> opciones() {
@@ -89,7 +88,7 @@ public class SimulacionController {
    * responde con su 4xx (400/413/415/422) y el mismo cuerpo ApiError; el resto de errores sigue en
    * el GlobalExceptionHandler.
    */
-  @PostMapping(value = "/registros", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
   @PreAuthorize("hasAuthority('CREAR_REGISTRO_SIMULACION')")
   public DeferredResult<ResponseEntity<?>> subir(
       @RequestPart("archivo") MultipartFile archivo,
@@ -117,33 +116,33 @@ public class SimulacionController {
     return resultado;
   }
 
-  @PutMapping("/registros/{id}")
+  @PutMapping("/{id}")
   @PreAuthorize("hasAuthority('MODIFICAR_REGISTRO_SIMULACION')")
   public Mono<ApiResponse<ArchivoSimulacionResponse>> actualizar(
       @PathVariable Long id, @Valid @RequestBody RegistroActualizarRequest req) {
     return registroService.actualizar(id, req);
   }
 
-  @DeleteMapping("/registros/{id}")
+  @DeleteMapping("/{id}")
   @PreAuthorize("hasAuthority('ELIMINAR_REGISTRO_SIMULACION')")
   public Mono<ApiResponse<Void>> eliminar(@PathVariable Long id) {
     return registroService.eliminar(id);
   }
 
-  @GetMapping("/registros/{id}/configuracion")
+  @GetMapping("/{id}/configuracion")
   @PreAuthorize("hasAuthority('VER_CONFIGURACION_SIMULACION')")
   public Mono<ApiResponse<ConfiguracionSimulacionResponse>> configuracion(@PathVariable Long id) {
     return configuracionService.obtener(id);
   }
 
-  @PutMapping("/registros/{id}/configuracion")
+  @PutMapping("/{id}/configuracion")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
   public Mono<ApiResponse<ConfiguracionSimulacionResponse>> guardarConfiguracion(
       @PathVariable Long id, @Valid @RequestBody ConfiguracionActualizarRequest req) {
     return configuracionService.guardar(id, req);
   }
 
-  @GetMapping("/registros/{id}/rutas")
+  @GetMapping("/{id}/rutas")
   @PreAuthorize("hasAuthority('VER_CONFIGURACION_SIMULACION')")
   public Mono<ApiResponse<PaginaRutasResponse>> rutas(
       @PathVariable Long id,
@@ -155,7 +154,7 @@ public class SimulacionController {
     return configuracionService.rutas(id, despues, tamano, texto, clusterIds, chuteIds);
   }
 
-  @PutMapping("/registros/{id}/rutas/{rutaId}/mover")
+  @PutMapping("/{id}/rutas/{rutaId}/mover")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
   public Mono<ApiResponse<ConfiguracionSimulacionResponse>> moverRuta(
       @PathVariable Long id,
@@ -165,7 +164,7 @@ public class SimulacionController {
   }
 
   /** Pasa una ruta a otro cluster (solo con ambos clusters sin balancear). */
-  @PutMapping("/registros/{id}/rutas/{rutaId}/cluster")
+  @PutMapping("/{id}/rutas/{rutaId}/cluster")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
   public Mono<ApiResponse<ConfiguracionSimulacionResponse>> cambiarClusterRuta(
       @PathVariable Long id,
@@ -175,28 +174,28 @@ public class SimulacionController {
   }
 
   /** Lanza un cluster: paso 1 (RUTAS) o paso 2 (OPERARIOS) de su ola. */
-  @PostMapping("/registros/{id}/clusters/{clusterId}/balancear")
+  @PostMapping("/{id}/clusters/{clusterId}/balancear")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
   public Mono<ApiResponse<BalanceoResponse>> balancear(
       @PathVariable Long id, @PathVariable Long clusterId, @RequestParam FaseBalanceo fase) {
     return configuracionService.balancear(id, clusterId, fase);
   }
 
-  @PostMapping("/registros/{id}/clusters/{clusterId}/restablecer")
+  @PostMapping("/{id}/clusters/{clusterId}/restablecer")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
   public Mono<ApiResponse<ConfiguracionSimulacionResponse>> restablecerCluster(
       @PathVariable Long id, @PathVariable Long clusterId) {
     return configuracionService.restablecerCluster(id, clusterId);
   }
 
-  @PostMapping("/registros/{id}/restablecer")
+  @PostMapping("/{id}/restablecer")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
   public Mono<ApiResponse<Void>> restablecer(@PathVariable Long id) {
     return configuracionService.restablecer(id);
   }
 
   /** Cierra el cluster en curso: el equipo pasa al siguiente con esta dotación. */
-  @PostMapping("/registros/{id}/clusters/{clusterId}/cerrar")
+  @PostMapping("/{id}/clusters/{clusterId}/cerrar")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
   public Mono<ApiResponse<ConfiguracionSimulacionResponse>> cerrar(
       @PathVariable Long id, @PathVariable Long clusterId) {
@@ -204,21 +203,21 @@ public class SimulacionController {
   }
 
   /** Reabre un cluster cerrado; los siguientes vuelven a la proyección. */
-  @PostMapping("/registros/{id}/clusters/{clusterId}/reabrir")
+  @PostMapping("/{id}/clusters/{clusterId}/reabrir")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
   public Mono<ApiResponse<ConfiguracionSimulacionResponse>> reabrir(
       @PathVariable Long id, @PathVariable Long clusterId) {
     return configuracionService.reabrir(id, clusterId);
   }
 
-  @GetMapping("/registros/{id}/historial")
+  @GetMapping("/{id}/historial")
   @PreAuthorize("hasAuthority('VER_CONFIGURACION_SIMULACION')")
   public Mono<ApiResponse<HistorialRegistroResponse>> historial(@PathVariable Long id) {
     return configuracionService.historial(id);
   }
 
   /** Cambios de un lanzamiento (sin lanzamientoId: los que no tienen), paginados. */
-  @GetMapping("/registros/{id}/historial/cambios")
+  @GetMapping("/{id}/historial/cambios")
   @PreAuthorize("hasAuthority('VER_CONFIGURACION_SIMULACION')")
   public Mono<ApiResponse<PaginaResponse<HistorialSimulacionResponse>>> historialCambios(
       @PathVariable Long id,
@@ -229,14 +228,14 @@ public class SimulacionController {
   }
 
   /** Sin clusterId, el resumen del registro; con él, la vista de ese cluster. */
-  @GetMapping("/registros/{id}/dashboard")
+  @GetMapping("/{id}/dashboard")
   @PreAuthorize("hasAuthority('VER_DASHBOARD_SIMULACION')")
   public Mono<ApiResponse<DashboardSimulacionResponse>> dashboard(
       @PathVariable Long id, @RequestParam(required = false) Long clusterId) {
     return configuracionService.dashboard(id, clusterId);
   }
 
-  @GetMapping("/registros/{id}/dashboard/rutas")
+  @GetMapping("/{id}/dashboard/rutas")
   @PreAuthorize("hasAuthority('VER_DASHBOARD_SIMULACION')")
   public Mono<ApiResponse<RutasDashboardResponse>> rutasDashboard(
       @PathVariable Long id,
