@@ -10,29 +10,40 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute, Router } from '@angular/router';
-import { Observable, Subject, debounceTime, finalize, map, of, switchMap, tap } from 'rxjs';
+import {
+  EMPTY,
+  Observable,
+  Subject,
+  catchError,
+  debounceTime,
+  expand,
+  finalize,
+  map,
+  of,
+  scan,
+  switchMap,
+  tap,
+} from 'rxjs';
 import { PERMISOS } from '../../../../../core/config/permisos';
 import { mensajeDeError } from '../../../../../core/errors/error.util';
 import {
   ArchivoSimulacion,
+  CargaSimulacion,
   ConfiguracionSimulacion,
   ConfiguracionSimulacionRequest,
   RutaSimulacion,
 } from '../../data/simulacion.model';
-import { Pagina } from '../../../../../core/models';
 import { Notificaciones } from '../../../../../core/services/notificaciones';
 import { SesionStore } from '../../../../../core/services/sesion';
 import { SimulacionApi } from '../../data/simulacion.api';
-import { ListadoRemoto } from '../../../../../core/utils/listado-remoto';
 import { DirectorioUsuarios } from '../../../../../core/services/directorio-usuarios';
-import { ColumnasRedimensionables } from '../../../../../shared/directives/columnas-redimensionables.directive';
 import { HasPermiso } from '../../../../../shared/directives/has-permiso.directive';
 import { EmptyState } from '../../../../../shared/ui/empty-state/empty-state';
 import { Icon } from '../../../../../shared/ui/icon/icon';
 import { Modal } from '../../../../../shared/ui/modal/modal';
-import { Paginador } from '../../../../../shared/ui/paginador/paginador';
 import { ChipFiltro, FiltrosActivos } from '../../../../../shared/ui/panel-filtros/filtros-activos';
 import { PanelFiltros } from '../../../../../shared/ui/panel-filtros/panel-filtros';
 import { SelectBuscable } from '../../../../../shared/ui/select-buscable/select-buscable';
@@ -41,7 +52,6 @@ import {
   LIMITES,
   PALETA_REGISTROS,
   VELOCIDAD_INICIAL,
-  colorCluster,
   compararNombre,
   datosCarga,
   etiquetaEstado,
@@ -51,16 +61,75 @@ import {
   problemaArchivoExcel,
   tamanoArchivo,
 } from '../../simulacion-formato';
-import { SimulacionClusterCard } from './cluster-card/cluster-card';
 import {
   Paso,
+  ResumenCluster,
   normalizarEquipo,
+  normalizarLimite,
   normalizarPorChute,
   normalizarVelocidad,
   resumirClusters,
 } from './configuracion.logica';
 import { SimulacionGuiaBalanceo } from './guia-balanceo/guia-balanceo';
 import { SimulacionHistorialCambios } from './historial-cambios/historial-cambios';
+import { ArrastreRutas, DestinoRuta } from './arrastre-rutas.directive';
+import { ScrollMatriz } from './scroll-matriz.directive';
+import { HorasPipe, NumeroPipe } from '../../numero.pipe';
+
+/** Ruta lista para pintar: el título y los permisos ya calculados (sin métodos en la plantilla). */
+interface CeldaRuta {
+  ruta: RutaSimulacion;
+  titulo: string;
+  /** Se puede arrastrar: hay permiso y su cluster no está cerrado. */
+  movible: boolean;
+  /** Ya no está en el chute o cluster del Excel. */
+  movida: boolean;
+  cambioCluster: boolean;
+}
+
+/** Un cluster de la matriz: una fila por nivel de apilado y una celda por chute. */
+interface BloqueMatriz {
+  cluster: ResumenCluster;
+  /** filas[f][c]: ruta en la fila f del chute c (en el orden de `chutesMatriz`), o null. */
+  filas: (CeldaRuta | null)[][];
+}
+
+/**
+ * Filas mínimas de cada bloque: dejan sitio al panel del cluster y huecos
+ * libres donde soltar una ruta aunque el chute ya esté lleno.
+ */
+const MIN_FILAS = 8;
+
+/** Motivo interno: soltar la ruta en su misma celda no hace nada (y no avisa). */
+const SIN_CAMBIO = 'sin-cambio';
+
+type CampoCarga = 'rutas' | 'operarios' | 'bultos' | 'unidades' | 'lineas' | 'cod';
+
+/** Un valor por chute, en el orden de las columnas de la matriz. */
+type CampoTotal = 'operarios' | 'bultos' | 'unidades' | 'lineas' | 'cod';
+
+/**
+ * Totales por chute y, para colorearlos, el nivel de cada valor dentro de su
+ * fila: 0 = el menor (color claro) … 1 = el mayor (color oscuro); null = vacío.
+ */
+type TotalesChute = Record<CampoTotal, number[]> & {
+  niveles: Record<CampoTotal, (number | null)[]>;
+};
+
+interface MetricasCluster {
+  rutas: number;
+  bultos: number;
+  lineas: number;
+  unidades: number;
+  cod: number;
+  porChute: TotalesChute;
+}
+
+/** Progreso de la carga completa de rutas para la matriz. */
+interface EstadoRutasMatriz {
+  rutas: RutaSimulacion[];
+  total: number;
+}
 
 /**
  * Simulación cluster por cluster, en el orden de las olas. El cluster en
@@ -72,21 +141,23 @@ import { SimulacionHistorialCambios } from './historial-cambios/historial-cambio
   selector: 'app-simulacion-configuracion',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    NgTemplateOutlet,
     ReactiveFormsModule,
     HasPermiso,
-    ColumnasRedimensionables,
     EmptyState,
     Icon,
     Modal,
-    Paginador,
     SelectBuscable,
     SelectMultiple,
     PanelFiltros,
     FiltrosActivos,
-    SimulacionClusterCard,
     SimulacionHistorialCambios,
     SimulacionGuiaBalanceo,
-  ],
+    ScrollMatriz,
+    ArrastreRutas,
+    NumeroPipe,
+    HorasPipe,
+],
   templateUrl: './configuracion.html',
   styleUrl: './configuracion.scss',
 })
@@ -107,7 +178,6 @@ export class SimulacionConfiguracion {
   readonly puedeModificar = computed(() =>
     this.sesion.permisos().includes(PERMISOS.MODIFICAR_CONFIGURACION_SIMULACION),
   );
-  readonly formatearNumero = formatearNumero;
   readonly estadoRegistro = etiquetaEstado;
   readonly limitesValidos = LIMITES;
 
@@ -137,10 +207,13 @@ export class SimulacionConfiguracion {
       return false;
     }
     const limites = this.limites();
+    // Se compara con la configuración normalizada igual que al aplicarla: un 0 o
+    // un nulo del servidor no dejan «Cambios sin guardar» fijo.
+    const guardado = equipoNormalizado(cfg);
     return (
-      Number(cfg.velocidadBase) !== this.velocidad() ||
-      Number(cfg.operariosMaximos) !== this.equipo() ||
-      (cfg.operariosPorChute ?? null) !== this.porChute() ||
+      guardado.velocidad !== this.velocidad() ||
+      guardado.equipo !== this.equipo() ||
+      guardado.porChute !== this.porChute() ||
       cfg.clusters.some((cluster) => Number(cluster.limiteHoras) !== (limites[cluster.id] ?? 0))
     );
   });
@@ -153,15 +226,27 @@ export class SimulacionConfiguracion {
   readonly filtrosAbierto = signal(false);
   private readonly busqueda$ = new Subject<string>();
 
-  readonly pagina = signal(1);
-  readonly porPagina = signal(25);
+  /**
+   * La matriz necesita todas las rutas del registro, no una página suelta.
+   * El servidor limita cada respuesta a 100 filas, así que se piden en cadena
+   * y se van acumulando; el scroll de cada cluster reparte esa lista.
+   */
+  private static readonly TAMANO_PAGINA_RUTAS = 100;
+  /** true = recarga suave (tras un paso): la planilla actual se mantiene hasta que llega la nueva. */
+  private readonly recargarRutas$ = new Subject<boolean>();
+  private generacionRutas = 0;
+  readonly rutasMatriz = signal<RutaSimulacion[]>([]);
+  readonly cargandoRutas = signal(false);
+  readonly rutasCargadas = signal(0);
+  readonly totalRutas = signal(0);
+  readonly errorRutas = signal<string | null>(null);
 
   readonly guardando = signal(false);
   /** Paso que se está ejecutando en el cluster en curso. */
   readonly trabajando = signal<Paso | null>(null);
   readonly restableciendo = signal(false);
-  /** Ruta cuyo cambio de cluster se está guardando. */
-  readonly cambiandoCluster = signal<number | null>(null);
+  /** Ruta cuyo movimiento (de chute o de cluster) se está guardando. */
+  readonly rutaGuardando = signal<number | null>(null);
   /** Recarga tras un paso: hasta que llegue, las acciones siguen bloqueadas. */
   readonly recargando = signal(false);
   /** Una sola escritura a la vez: los botones de acción se deshabilitan juntos. */
@@ -171,12 +256,7 @@ export class SimulacionConfiguracion {
       this.trabajando() !== null ||
       this.restableciendo() ||
       this.recargando() ||
-      this.cambiandoCluster() !== null,
-  );
-
-  /** Clusters sin balancear: los únicos que pueden dar o recibir rutas de otro cluster. */
-  readonly clustersPendientes = computed(() =>
-    (this.config()?.clusters ?? []).filter((cluster) => cluster.estado === 'PENDIENTE'),
+      this.rutaGuardando() !== null,
   );
 
   /** Todos los clusters cerrados: la simulación terminó. */
@@ -223,11 +303,187 @@ export class SimulacionConfiguracion {
     colorHex: [PALETA_REGISTROS[0].hex],
   });
 
-  /** Rutas paginadas en el servidor: un registro puede tener decenas de miles. */
-  readonly rutas = new ListadoRemoto<RutaSimulacion>(
-    () => this.fuenteRutas(),
-    (ultima) => this.pagina.set(ultima),
+  /** Chutes de la matriz, en orden natural (CHUTE 2 antes que CHUTE 10). */
+  readonly chutesMatriz = computed(() =>
+    [...(this.config()?.chutes ?? [])]
+      .sort((a, b) => compararNombre(a.nombre, b.nombre))
+      .map((chute) => ({ ...chute, etiqueta: etiquetaChute(chute.nombre) })),
   );
+
+  /**
+   * Rutas agrupadas por cluster y chute. Cada bloque ocupa tantas filas como
+   * la celda más cargada, para que las rutas se apilen en su columna como en
+   * el Excel de referencia.
+   */
+  /**
+   * Celdas de cada cluster (filas × chutes). Solo dependen de las rutas, los
+   * chutes y qué clusters están cerrados: cambiar un límite o la velocidad
+   * (que sí cambian el panel) no vuelve a armar miles de celdas.
+   */
+  private readonly celdasPorCluster = computed(() => {
+    const chutes = this.chutesMatriz();
+    const cerrados = new Set(
+      (this.config()?.clusters ?? []).filter((c) => c.estado === 'CERRADO').map((c) => c.id),
+    );
+    const editable = this.puedeModificar();
+    const porCluster = new Map<number, Map<number, RutaSimulacion[]>>();
+
+    for (const ruta of this.rutasMatriz()) {
+      let celdas = porCluster.get(ruta.clusterId);
+      if (!celdas) {
+        celdas = new Map<number, RutaSimulacion[]>();
+        porCluster.set(ruta.clusterId, celdas);
+      }
+      const lista = celdas.get(ruta.chuteId);
+      if (lista) {
+        lista.push(ruta);
+      } else {
+        celdas.set(ruta.chuteId, [ruta]);
+      }
+    }
+
+    const vista = (ruta: RutaSimulacion): CeldaRuta => ({
+      ruta,
+      titulo: this.tituloEnCache(ruta),
+      movible: editable && !cerrados.has(ruta.clusterId),
+      movida: ruta.chuteId !== ruta.chuteOriginalId || ruta.clusterId !== ruta.clusterOriginalId,
+      cambioCluster: ruta.clusterId !== ruta.clusterOriginalId,
+    });
+
+    const resultado = new Map<number, (CeldaRuta | null)[][]>();
+    for (const [clusterId, celdas] of porCluster) {
+      // Las rutas llegan por id (keyset): dentro de cada chute se apilan por código.
+      const columnas = chutes.map((chute) =>
+        (celdas.get(chute.id) ?? [])
+          .sort((a, b) => (a.codigoRuta < b.codigoRuta ? -1 : a.codigoRuta > b.codigoRuta ? 1 : a.id - b.id))
+          .map(vista),
+      );
+      const alto = Math.max(MIN_FILAS, ...columnas.map((columna) => columna.length));
+      resultado.set(
+        clusterId,
+        Array.from({ length: alto }, (_, f) => columnas.map((columna) => columna[f] ?? null)),
+      );
+    }
+    return resultado;
+  });
+
+  readonly bloquesMatriz = computed<BloqueMatriz[]>(() => {
+    const celdas = this.celdasPorCluster();
+    const vacias = (): (CeldaRuta | null)[][] => {
+      const columnas = this.chutesMatriz().length;
+      return Array.from({ length: MIN_FILAS }, () => Array<CeldaRuta | null>(columnas).fill(null));
+    };
+    return this.resumenClusters().map((cluster) => ({
+      cluster,
+      filas: celdas.get(cluster.id) ?? vacias(),
+    }));
+  });
+
+  /** Títulos por ruta: cada objeto ruta es inmutable (moverla crea otro), así que se calculan una vez. */
+  private readonly titulos = new WeakMap<RutaSimulacion, string>();
+
+  private tituloEnCache(ruta: RutaSimulacion): string {
+    let titulo = this.titulos.get(ruta);
+    if (titulo === undefined) {
+      titulo = this.tituloRuta(ruta);
+      this.titulos.set(ruta, titulo);
+    }
+    return titulo;
+  }
+
+  /**
+   * Totales por chute de todo el registro. Salen de `carga`, que ya viene
+   * agregada por cluster y chute: no se calculan desde las rutas de pantalla,
+   * así el pie no cambia mientras la matriz termina de cargar.
+   */
+  readonly totalesMatriz = computed(() => this.totalesPorChute(null));
+
+  /**
+   * Panel de cada cluster (como la columna izquierda de la planilla): rutas,
+   * bultos, líneas, unidades y códigos, más sus totales por chute para el
+   * desplegable «Totales». También salen de `carga`, no de las rutas filtradas.
+   */
+  readonly metricasCluster = computed(() => {
+    const carga = this.config()?.carga ?? [];
+    const metricas = new Map<number, MetricasCluster>();
+    for (const cluster of this.resumenClusters()) {
+      const filas = carga.filter((fila) => fila.clusterId === cluster.id);
+      const suma = (campo: CampoCarga) => filas.reduce((total, fila) => total + Number(fila[campo] ?? 0), 0);
+      metricas.set(cluster.id, {
+        rutas: suma('rutas'),
+        bultos: suma('bultos'),
+        lineas: suma('lineas'),
+        unidades: suma('unidades'),
+        cod: suma('cod'),
+        porChute: this.totalesPorChute(cluster.id),
+      });
+    }
+    return metricas;
+  });
+
+  /** Filas de las tablas de totales (por cluster y general), como en la planilla. */
+  /**
+   * Filas de las tablas de totales (por cluster y general). Cada una tiene su
+   * color (token del sistema) y sus celdas se oscurecen cuanto mayor es el valor.
+   */
+  readonly filasTotales: { clave: CampoTotal; etiqueta: string; decimales: number; tono: string }[] = [
+    { clave: 'operarios', etiqueta: 'Total operarios', decimales: 0, tono: 'var(--violet)' },
+    { clave: 'bultos', etiqueta: 'Total bultos', decimales: 2, tono: 'var(--accent)' },
+    { clave: 'lineas', etiqueta: 'Total líneas', decimales: 2, tono: 'var(--success)' },
+    { clave: 'unidades', etiqueta: 'Total unidades', decimales: 2, tono: 'var(--warning)' },
+    { clave: 'cod', etiqueta: 'Total códigos', decimales: 0, tono: 'var(--cyan)' },
+  ];
+
+  /** Clusters con el desplegable de totales por chute abierto. */
+  readonly totalesAbiertos = signal<ReadonlySet<number>>(new Set());
+
+  alternarTotales(clusterId: number): void {
+    this.totalesAbiertos.update((abiertos) => {
+      const siguiente = new Set(abiertos);
+      if (!siguiente.delete(clusterId)) {
+        siguiente.add(clusterId);
+      }
+      return siguiente;
+    });
+  }
+
+  /** Totales por chute (en el orden de las columnas) de un cluster o, con null, de todos. */
+  private totalesPorChute(clusterId: number | null): TotalesChute {
+    const chutes = this.chutesMatriz();
+    const carga = (this.config()?.carga ?? []).filter(
+      (fila) => clusterId === null || fila.clusterId === clusterId,
+    );
+    const porChute = new Map<number, CargaSimulacion[]>();
+    for (const fila of carga) {
+      porChute.set(fila.chuteId, [...(porChute.get(fila.chuteId) ?? []), fila]);
+    }
+    // En el total general, los operarios de un chute son el máximo de sus olas:
+    // el mismo equipo pasa de un cluster al siguiente, sumarlas lo contaría varias veces.
+    const columna = (campo: CampoCarga) =>
+      chutes.map((chute) =>
+        (porChute.get(chute.id) ?? []).reduce((total, fila) => {
+          const valor = Number(fila[campo] ?? 0);
+          return clusterId === null && campo === 'operarios' ? Math.max(total, valor) : total + valor;
+        }, 0),
+      );
+    const valores = {
+      operarios: columna('operarios'),
+      bultos: columna('bultos'),
+      unidades: columna('unidades'),
+      lineas: columna('lineas'),
+      cod: columna('cod'),
+    };
+    return {
+      ...valores,
+      niveles: {
+        operarios: nivelesDeFila(valores.operarios),
+        bultos: nivelesDeFila(valores.bultos),
+        unidades: nivelesDeFila(valores.unidades),
+        lineas: nivelesDeFila(valores.lineas),
+        cod: nivelesDeFila(valores.cod),
+      },
+    };
+  }
 
   readonly opcionesRegistro = computed(() =>
     this.registros().map((registro) => ({ id: registro.id, etiqueta: etiquetaRegistro(registro) })),
@@ -297,8 +553,64 @@ export class SimulacionConfiguracion {
         return;
       }
       this.filtroTexto.set(texto);
-      this.recargarRutasDesde(1);
+      this.recargarRutas();
     });
+
+    this.recargarRutas$
+      .pipe(
+        tap((suave) => {
+          this.generacionRutas++;
+          this.cargandoRutas.set(true);
+          this.errorRutas.set(null);
+          this.rutasCargadas.set(0);
+          if (!suave) {
+            this.rutasMatriz.set([]);
+            this.totalRutas.set(0);
+          }
+        }),
+        switchMap((suave) => {
+          const generacion = this.generacionRutas;
+          let ultimo: EstadoRutasMatriz | null = null;
+          return this.cargarTodasLasRutas().pipe(
+            tap({
+              next: (estado) => {
+                if (generacion !== this.generacionRutas) {
+                  return;
+                }
+                ultimo = estado;
+                this.rutasCargadas.set(estado.rutas.length);
+                this.totalRutas.set(estado.total);
+                // Carga nueva: se pinta mientras llega. Recarga suave: se cambia al final,
+                // así la planilla no desaparece ni pierde su desplazamiento.
+                if (!suave) {
+                  this.rutasMatriz.set(estado.rutas);
+                }
+              },
+              error: (err: unknown) => {
+                if (generacion !== this.generacionRutas) {
+                  return;
+                }
+                this.errorRutas.set(mensajeDeError(err));
+                this.cargandoRutas.set(false);
+              },
+              complete: () => {
+                if (generacion === this.generacionRutas) {
+                  if (suave && ultimo) {
+                    this.rutasMatriz.set(ultimo.rutas);
+                  }
+                  this.cargandoRutas.set(false);
+                }
+              },
+            }),
+            // Un fallo de carga no debe romper el flujo que escucha los filtros.
+            // El mensaje ya se guardó en `errorRutas` para mostrarlo en la vista.
+            catchError(() => EMPTY),
+          );
+        }),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe();
+
     this.cargarOpciones();
   }
 
@@ -365,8 +677,10 @@ export class SimulacionConfiguracion {
     // no al recargar el mismo con «Actualizar».
     if (id !== this.seleccionado()) {
       this.reiniciarFiltros();
-      this.pagina.set(1);
-      this.rutas.vaciar();
+      this.rutasMatriz.set([]);
+      this.rutasCargadas.set(0);
+      this.totalRutas.set(0);
+      this.errorRutas.set(null);
     }
     this.seleccionado.set(id);
     this.config.set(null);
@@ -386,9 +700,9 @@ export class SimulacionConfiguracion {
   }
 
   /**
-   * Carga la carga agregada por cluster y chute y la primera página de rutas.
-   * Con `inicial` muestra el estado de carga a pantalla completa; si no (tras
-   * balancear), recarga en segundo plano con las acciones bloqueadas.
+   * Carga la carga agregada por cluster y chute y, después, todas las rutas
+   * que alimentan la matriz. Con `inicial` muestra el estado de carga a
+   * pantalla completa; si no (tras balancear), recarga en segundo plano.
    */
   private cargarConfiguracion(id: number, inicial = false): void {
     const solicitud = ++this.solicitud;
@@ -412,7 +726,8 @@ export class SimulacionConfiguracion {
         next: (config) => {
           if (solicitud === this.solicitud) {
             this.aplicarConfiguracion(config);
-            this.rutas.recargar();
+            // Tras un paso, la planilla se mantiene hasta tener la nueva.
+            this.recargarRutas(!inicial);
           }
         },
         error: (err: unknown) => {
@@ -434,13 +749,10 @@ export class SimulacionConfiguracion {
   /** Carga la configuración del servidor y descarta lo editado del equipo y los límites. */
   private aplicarConfiguracion(config: ConfiguracionSimulacion): void {
     this.config.set(config);
-    this.velocidad.set(Number(config.velocidadBase) || VELOCIDAD_INICIAL);
-    this.equipo.set(Math.max(1, Number(config.operariosMaximos) || 1));
-    this.porChute.set(
-      config.operariosPorChute === null || Number(config.operariosPorChute) <= 0
-        ? null
-        : Number(config.operariosPorChute),
-    );
+    const equipo = equipoNormalizado(config);
+    this.velocidad.set(equipo.velocidad);
+    this.equipo.set(equipo.equipo);
+    this.porChute.set(equipo.porChute);
     this.limites.set(
       Object.fromEntries(
         config.clusters.map((cluster) => [cluster.id, Number(cluster.limiteHoras)]),
@@ -448,18 +760,49 @@ export class SimulacionConfiguracion {
     );
   }
 
-  private fuenteRutas(): Observable<Pagina<RutaSimulacion>> {
+  /**
+   * Pide todas las rutas del registro (con los filtros vigentes) encadenando
+   * páginas de 100, el máximo que acepta el servidor. Es keyset: cada página
+   * pide las rutas después del último id recibido (sin OFFSET), y solo la
+   * primera trae el total. Cada página se acumula sobre la anterior.
+   */
+  private cargarTodasLasRutas(): Observable<EstadoRutasMatriz> {
     const id = this.seleccionado();
     if (id === null) {
-      return of({ contenido: [], total: 0, pagina: 1, tamano: this.porPagina(), totalPaginas: 0 });
+      return of({ rutas: [], total: 0 });
     }
-    return this.api.rutas(id, {
-      pagina: this.pagina(),
-      tamano: this.porPagina(),
+    const filtros = {
       texto: this.filtroTexto().trim(),
       clusterIds: this.filtroCluster(),
       chuteIds: this.filtroChute(),
-    });
+    };
+    const pedir = (despues: number | null) =>
+      this.api.rutas(id, {
+        despues,
+        tamano: SimulacionConfiguracion.TAMANO_PAGINA_RUTAS,
+        ...filtros,
+      });
+
+    return pedir(null).pipe(
+      expand((pagina) => (pagina.siguiente !== null ? pedir(pagina.siguiente) : EMPTY)),
+      scan(
+        (estado, pagina) => ({
+          rutas: estado.rutas.concat(pagina.contenido),
+          total: pagina.total ?? estado.total,
+        }),
+        { rutas: [] as RutaSimulacion[], total: 0 },
+      ),
+    );
+  }
+
+  /** Vuelve a pedir la matriz completa; cada llamada cancela la carga anterior. */
+  private recargarRutas(suave = false): void {
+    this.recargarRutas$.next(suave);
+  }
+
+  /** Reintento manual desde el aviso de error. */
+  reintentarRutas(): void {
+    this.recargarRutas();
   }
 
   campoInvalido(campo: 'nombreRegistro'): boolean {
@@ -471,66 +814,180 @@ export class SimulacionConfiguracion {
   motivoClusterFijo(ruta: RutaSimulacion): string {
     const propio = this.config()?.clusters.find((cluster) => cluster.id === ruta.clusterId);
     if (propio?.estado === 'CERRADO') {
-      return `${ruta.cluster} está cerrado: reábrelo y restablécelo para cambiar sus rutas de cluster.`;
+      return `${ruta.cluster} está cerrado: reábrelo para cambiar sus rutas de cluster.`;
     }
-    if (propio && propio.estado !== 'PENDIENTE') {
-      return `${ruta.cluster} ya está balanceado: restablécelo para cambiar sus rutas de cluster.`;
+    return 'No hay otro cluster abierto al que pasar la ruta.';
+  }
+
+  /** Detalle de la ruta al pasar el mouse y, si no se puede mover, el motivo. */
+  tituloRuta(ruta: RutaSimulacion): string {
+    const n = (valor: number) => formatearNumero(valor, 2);
+    const detalle =
+      `${ruta.codigoRuta} · ${ruta.tipo}\n` +
+      `Bultos: ${n(ruta.totalBultos)} · Unidades: ${n(ruta.totalUnidades)} · ` +
+      `Líneas: ${n(ruta.totalLineas)} · COD: ${formatearNumero(ruta.conteoCod)}`;
+    const origen =
+      ruta.chuteId !== ruta.chuteOriginalId || ruta.clusterId !== ruta.clusterOriginalId
+        ? `\nEn el Excel: ${ruta.clusterOriginal} · chute ${ruta.chuteOriginal}`
+        : '';
+    if (!this.puedeModificar()) {
+      return detalle + origen;
     }
-    return 'No hay otro cluster sin balancear al que pasar la ruta.';
+    const fijo = this.clusterCerrado(ruta.clusterId)
+      ? `\n${ruta.cluster} está cerrado: reábrelo para mover sus rutas.`
+      : '\nArrastra ⋮⋮ a otro chute o cluster para moverla.';
+    return detalle + origen + fijo;
+  }
+
+  // ---------------- Mover rutas a mano (arrastrar y soltar) ----------------
+
+  private readonly rutasPorId = computed(
+    () => new Map(this.rutasMatriz().map((ruta) => [ruta.id, ruta])),
+  );
+
+  private clusterCerrado(clusterId: number): boolean {
+    return this.config()?.clusters.find((cluster) => cluster.id === clusterId)?.estado === 'CERRADO';
+  }
+
+  /** Se puede tomar la ruta: hay permiso y su cluster no está cerrado. */
+  puedeArrastrar(ruta: RutaSimulacion): boolean {
+    return this.puedeModificar() && !this.clusterCerrado(ruta.clusterId);
   }
 
   /**
-   * Sobrescribe el cluster de la ruta desde su chip. El servidor valida todo
-   * (clusters sin balancear, CL1/CL2 en el chute, cluster sin rutas); si
-   * rechaza, el selector vuelve al cluster actual.
+   * Mismas reglas que el servidor, para marcar en rojo un destino imposible
+   * mientras se arrastra (el servidor vuelve a validar al guardar):
+   * clusters cerrados (antes o después de balancear se puede mover) y
+   * CL1/CL2 sin compartir chute.
    */
-  cambiarCluster(ruta: RutaSimulacion, evento: Event): void {
-    const selector = evento.target as HTMLSelectElement;
-    const destino = Number(selector.value);
-    const id = this.seleccionado();
-    const deshacer = () => (selector.value = String(ruta.clusterId));
-    if (!id || !destino || destino === ruta.clusterId) {
-      deshacer();
-      return;
+  readonly motivoNoMover = (rutaId: number, clusterId: number, chuteId: number): string | null => {
+    const ruta = this.rutasPorId().get(rutaId);
+    const cfg = this.config();
+    if (!ruta || !cfg) {
+      return 'La ruta ya no está en la matriz.';
     }
     if (this.ocupado()) {
-      deshacer();
-      this.notificaciones.advertencia('Operación en curso', 'Espera a que termine la operación.');
+      return 'Espera a que termine la operación en curso.';
+    }
+    // Una página que llega después pisaría el movimiento con datos de antes.
+    if (this.cargandoRutas()) {
+      return 'Espera a que terminen de cargar las rutas.';
+    }
+    if (ruta.clusterId === clusterId && ruta.chuteId === chuteId) {
+      return SIN_CAMBIO;
+    }
+    const destino = cfg.clusters.find((cluster) => cluster.id === clusterId);
+    if (this.clusterCerrado(ruta.clusterId)) {
+      return `${ruta.cluster} está cerrado: reábrelo para mover sus rutas.`;
+    }
+    if (!destino || destino.estado === 'CERRADO') {
+      return `${destino?.nombre ?? 'Ese cluster'} está cerrado: reábrelo para recibir rutas.`;
+    }
+    if (clusterId !== ruta.clusterId) {
+      if (!ruta.clusterEditable) {
+        return this.motivoClusterFijo(ruta);
+      }
+      const rutasDelCluster = cfg.carga
+        .filter((fila) => fila.clusterId === ruta.clusterId)
+        .reduce((total, fila) => total + fila.rutas, 0);
+      if (rutasDelCluster <= 1) {
+        return `${ruta.codigoRuta} es la única ruta de ${ruta.cluster}: un cluster no puede quedarse sin rutas.`;
+      }
+    }
+    // CL1 y CL2 no comparten chute: mira qué clusters quedan en el chute destino
+    // (el servidor cambia cluster y chute en un solo paso y valida lo mismo).
+    const presentes = cfg.carga
+      .filter((fila) => fila.chuteId === chuteId && fila.rutas > 0)
+      .filter((fila) => !(fila.clusterId === ruta.clusterId && fila.chuteId === ruta.chuteId && fila.rutas <= 1))
+      .map((fila) => fila.clusterId);
+    const choque = presentes.find((id) => destino.incompatibles.includes(id));
+    if (choque !== undefined) {
+      const chute = cfg.chutes.find((c) => c.id === chuteId)?.nombre ?? chuteId;
+      const otro = cfg.clusters.find((cluster) => cluster.id === choque)?.nombre ?? choque;
+      return `El chute ${chute} tiene rutas de ${otro}: no pueden mezclarse con ${destino.nombre}.`;
+    }
+    return null;
+  };
+
+  /**
+   * Suelta una ruta en otra celda. Mismo cluster → cambia de chute; otra fila
+   * de cluster → cambia de cluster (y de chute si también cambió de columna).
+   * La matriz se corrige en el sitio, sin volver a pedir todas las rutas.
+   */
+  soltarRuta({ rutaId, clusterId, chuteId, motivo }: DestinoRuta): void {
+    if (motivo !== null) {
+      if (motivo !== SIN_CAMBIO) {
+        this.notificaciones.advertencia('No se puede mover la ruta', motivo);
+      }
       return;
     }
-    const nombre =
-      this.config()?.clusters.find((cluster) => cluster.id === destino)?.nombre ?? `${destino}`;
-    this.cambiandoCluster.set(ruta.id);
-    this.conCambiosGuardados(id, () => this.api.cambiarCluster(id, ruta.id, destino))
-      .pipe(finalize(() => this.cambiandoCluster.set(null)))
+    const ruta = this.rutasPorId().get(rutaId);
+    const id = this.seleccionado();
+    const cfg = this.config();
+    if (!ruta || id === null || !cfg) {
+      return;
+    }
+    const nombreCluster = cfg.clusters.find((c) => c.id === clusterId)?.nombre ?? ruta.cluster;
+    const nombreChute = cfg.chutes.find((c) => c.id === chuteId)?.nombre ?? ruta.chute;
+    const cambiaCluster = clusterId !== ruta.clusterId;
+    const cambiaChute = chuteId !== ruta.chuteId;
+
+    this.rutaGuardando.set(ruta.id);
+    // Cambio de cluster (con o sin chute) en un solo llamado: el servidor valida
+    // el destino final, sin un estado intermedio que pueda rechazar.
+    this.conCambiosGuardados(id, () =>
+      cambiaCluster
+        ? this.api.cambiarCluster(id, ruta.id, clusterId, cambiaChute ? chuteId : null)
+        : this.api.moverRuta(id, ruta.id, chuteId),
+    )
+      .pipe(
+        finalize(() => this.rutaGuardando.set(null)),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: (config) => {
           if (this.seleccionado() === id) {
             this.aplicarConfiguracion(config);
-            this.rutas.recargar();
+            this.actualizarRuta(ruta.id, { clusterId, cluster: nombreCluster, chuteId, chute: nombreChute });
           }
-          this.notificaciones.exito(
-            'Cluster cambiado',
-            `${ruta.codigoRuta}: ${ruta.cluster} → ${nombre}.`,
-          );
+          const desde = `${ruta.cluster} · chute ${ruta.chute}`;
+          const hasta = `${nombreCluster} · chute ${nombreChute}`;
+          this.notificaciones.exito('Ruta movida', `${ruta.codigoRuta}: ${desde} → ${hasta}.`);
         },
-        error: () => deshacer(),
+        // El interceptor ya muestra el motivo del servidor; el cambio es todo o nada.
+        error: () => undefined,
       });
   }
 
-  colorDeCluster(clusterId: number): string {
-    const indice = (this.config()?.clusters ?? []).findIndex((cluster) => cluster.id === clusterId);
-    return colorCluster(Math.max(0, indice));
+  /**
+   * Corrige una ruta en la matriz tras guardarla. Si con los filtros vigentes
+   * ya no debería verse (otro cluster o chute filtrado), sale de la lista.
+   */
+  private actualizarRuta(rutaId: number, cambios: Partial<RutaSimulacion>): void {
+    const clusters = this.filtroCluster();
+    const chutes = this.filtroChute();
+    this.rutasMatriz.update((rutas) =>
+      rutas.flatMap((ruta) => {
+        if (ruta.id !== rutaId) {
+          return [ruta];
+        }
+        const nueva = { ...ruta, ...cambios };
+        const visible =
+          (!clusters.length || clusters.includes(nueva.clusterId)) &&
+          (!chutes.length || chutes.includes(nueva.chuteId));
+        return visible ? [nueva] : [];
+      }),
+    );
   }
 
   setFiltroChute(ids: (number | string)[]): void {
     this.filtroChute.set(ids.map(Number));
-    this.recargarRutasDesde(1);
+    this.recargarRutas();
   }
 
   setFiltroCluster(ids: (number | string)[]): void {
     this.filtroCluster.set(ids.map(Number));
-    this.recargarRutasDesde(1);
+    this.recargarRutas();
   }
 
   quitarFiltro(clave: string): void {
@@ -544,7 +1001,7 @@ export class SimulacionConfiguracion {
       this.busqueda$.next('');
       this.textoBusqueda.set('');
       this.filtroTexto.set('');
-      this.recargarRutasDesde(1);
+      this.recargarRutas();
     }
   }
 
@@ -555,7 +1012,7 @@ export class SimulacionConfiguracion {
 
   limpiarFiltros(): void {
     this.reiniciarFiltros();
-    this.recargarRutasDesde(1);
+    this.recargarRutas();
   }
 
   /** Vacía los filtros y descarta una búsqueda pendiente del debounce. */
@@ -565,20 +1022,6 @@ export class SimulacionConfiguracion {
     this.filtroChute.set([]);
     this.filtroCluster.set([]);
     this.filtroTexto.set('');
-  }
-
-  cambiarPagina(pagina: number): void {
-    this.recargarRutasDesde(pagina);
-  }
-
-  cambiarPorPagina(valor: number): void {
-    this.porPagina.set(valor);
-    this.recargarRutasDesde(1);
-  }
-
-  private recargarRutasDesde(pagina: number): void {
-    this.pagina.set(pagina);
-    this.rutas.recargar();
   }
 
   setVelocidad(evento: Event): void {
@@ -604,6 +1047,14 @@ export class SimulacionConfiguracion {
 
   setLimite(clusterId: number, limite: number): void {
     this.limites.set({ ...this.limites(), [clusterId]: limite });
+  }
+
+  /** Límite escrito en el panel del cluster: se normaliza (0 a LIMITES.horas) antes de guardarlo. */
+  cambiarLimite(clusterId: number, evento: Event): void {
+    const input = evento.target as HTMLInputElement;
+    const limite = normalizarLimite(input.value);
+    input.value = limite > 0 ? String(limite) : '';
+    this.setLimite(clusterId, limite);
   }
 
   private peticion(): ConfiguracionSimulacionRequest | null {
@@ -632,7 +1083,10 @@ export class SimulacionConfiguracion {
     this.guardando.set(true);
     this.api
       .guardarConfiguracion(id, peticion)
-      .pipe(finalize(() => this.guardando.set(false)))
+      .pipe(
+        finalize(() => this.guardando.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: (config) => {
           if (this.seleccionado() === id) {
@@ -689,9 +1143,47 @@ export class SimulacionConfiguracion {
     this.ejecutarPaso('OPERARIOS', cluster);
   }
 
-  /** Paso 3: cierra el cluster y el equipo pasa al siguiente con esta dotación. */
+  /**
+   * Paso 3: cierra el cluster y el equipo pasa al siguiente con esta dotación.
+   * Si hay un límite o un equipo sin guardar que cambia sus operarios, no se
+   * cierra: guardarlos los invalidaría y el cierre fallaría a mitad de camino.
+   */
   cerrar(cluster: { id: number; nombre: string }): void {
+    if (this.cambiosInvalidanOperarios(cluster.id)) {
+      this.notificaciones.advertencia(
+        'Recalcula los operarios',
+        `Cambiaste el límite de ${cluster.nombre} o el equipo sin guardar: pulsa «Recalcular operarios» (guarda los cambios) y luego ciérralo.`,
+      );
+      return;
+    }
     this.ejecutarPaso('CERRAR', cluster);
+  }
+
+  /** Lo editado sin guardar (equipo o el límite de este cluster) cambia sus operarios. */
+  private cambiosInvalidanOperarios(clusterId: number): boolean {
+    const cfg = this.config();
+    if (!cfg) {
+      return false;
+    }
+    const guardado = equipoNormalizado(cfg);
+    const limite = Number(cfg.clusters.find((cluster) => cluster.id === clusterId)?.limiteHoras ?? 0);
+    return (
+      guardado.velocidad !== this.velocidad() ||
+      guardado.equipo !== this.equipo() ||
+      guardado.porChute !== this.porChute() ||
+      limite !== (this.limites()[clusterId] ?? 0)
+    );
+  }
+
+  /** Botón ▶ del panel: ejecuta el paso que le toca al cluster en curso (1 rutas, 2 operarios, 3 cerrar). */
+  ejecutarPasoActual(cluster: ResumenCluster): void {
+    if (cluster.paso === 1) {
+      this.balancear(cluster);
+    } else if (cluster.paso === 2) {
+      this.asignarOperarios(cluster);
+    } else {
+      this.cerrar(cluster);
+    }
   }
 
   private ejecutarPaso(paso: Paso, cluster: { id: number; nombre: string }): void {
@@ -714,7 +1206,12 @@ export class SimulacionConfiguracion {
               })),
             ),
       );
-    operacion.pipe(finalize(() => this.trabajando.set(null))).subscribe({
+    operacion
+      .pipe(
+        finalize(() => this.trabajando.set(null)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
       next: ({ mensaje, config }) => {
         this.notificaciones.exito(
           paso === 'RUTAS'
@@ -727,7 +1224,7 @@ export class SimulacionConfiguracion {
         this.actualizarEstadoEnLista(id, config.archivo.estado);
         if (this.seleccionado() === id) {
           this.aplicarConfiguracion(config);
-          this.rutas.recargar();
+          this.recargarRutas(true);
         }
       },
     });
@@ -744,7 +1241,7 @@ export class SimulacionConfiguracion {
   }
 
   confirmarRestablecerCluster(cluster: { id: number; nombre: string }): void {
-    if (!this.ocupado()) {
+    if (!this.ocupado() && !this.avisarCambiosSinGuardar('restablecer el cluster')) {
       this.clusterARestablecer.set({ id: cluster.id, nombre: cluster.nombre });
     }
   }
@@ -758,17 +1255,20 @@ export class SimulacionConfiguracion {
     this.restableciendo.set(true);
     this.api
       .restablecerCluster(id, cluster.id)
-      .pipe(finalize(() => this.restableciendo.set(false)))
+      .pipe(
+        finalize(() => this.restableciendo.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: (config) => {
           this.clusterARestablecer.set(null);
           if (this.seleccionado() === id) {
             this.aplicarConfiguracion(config);
-            this.rutas.recargar();
+            this.recargarRutas(true);
           }
           this.notificaciones.info(
             `${cluster.nombre} restablecido`,
-            'Sus rutas volvieron a su chute original, las que cambiaron de cluster volvieron al suyo y su ola quedó sin operarios.',
+            'Se deshizo lo hecho mientras estuvo en curso: su balanceo y los cambios a mano. Su ola quedó sin operarios.',
           );
         },
       });
@@ -776,7 +1276,7 @@ export class SimulacionConfiguracion {
 
   /** Reabrir un cluster devuelve a la proyección a los que se trabajaron después. */
   confirmarReabrir(cluster: { id: number; nombre: string }): void {
-    if (this.ocupado()) {
+    if (this.ocupado() || this.avisarCambiosSinGuardar('reabrir el cluster')) {
       return;
     }
     const clusters = this.config()?.clusters ?? [];
@@ -800,13 +1300,16 @@ export class SimulacionConfiguracion {
     this.restableciendo.set(true);
     this.api
       .reabrir(id, cluster.id)
-      .pipe(finalize(() => this.restableciendo.set(false)))
+      .pipe(
+        finalize(() => this.restableciendo.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: (config) => {
           this.clusterAReabrir.set(null);
           if (this.seleccionado() === id) {
             this.aplicarConfiguracion(config);
-            this.rutas.recargar();
+            this.recargarRutas(true);
           }
           this.actualizarEstadoEnLista(id, config.archivo.estado);
           this.notificaciones.info(
@@ -833,7 +1336,7 @@ export class SimulacionConfiguracion {
   }
 
   confirmarRestablecer(): void {
-    if (!this.ocupado()) {
+    if (!this.ocupado() && !this.avisarCambiosSinGuardar('restablecer todo')) {
       this.restablecerAbierto.set(true);
     }
   }
@@ -846,7 +1349,10 @@ export class SimulacionConfiguracion {
     this.restableciendo.set(true);
     this.api
       .restablecer(id)
-      .pipe(finalize(() => this.restableciendo.set(false)))
+      .pipe(
+        finalize(() => this.restableciendo.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: () => {
           this.restablecerAbierto.set(false);
@@ -954,4 +1460,40 @@ export class SimulacionConfiguracion {
   irARegistro(): void {
     void this.router.navigate(['/simulacion/registro']);
   }
+}
+
+/** Etiqueta de la columna: el nombre del chute con el prefijo del Excel. */
+function etiquetaChute(nombre: string): string {
+  return /^chute\b/i.test(nombre.trim()) ? nombre : `CHUTE ${nombre}`;
+}
+
+/**
+ * Nivel de cada valor dentro de su fila para el mapa de color: el menor
+ * (distinto de cero) vale 0 y el mayor 1. Los vacíos quedan sin color (null);
+ * si todos son iguales, todos van al medio.
+ */
+function nivelesDeFila(valores: number[]): (number | null)[] {
+  const conDato = valores.filter((valor) => valor > 0);
+  if (conDato.length === 0) {
+    return valores.map(() => null);
+  }
+  const menor = Math.min(...conDato);
+  const rango = Math.max(...conDato) - menor;
+  return valores.map((valor) =>
+    valor > 0 ? (rango === 0 ? 0.5 : Math.round(((valor - menor) / rango) * 100) / 100) : null,
+  );
+}
+
+/** Equipo tal como se edita: velocidad válida, al menos 1 operario y 0/nulo = sin tope por chute. */
+function equipoNormalizado(config: ConfiguracionSimulacion): {
+  velocidad: number;
+  equipo: number;
+  porChute: number | null;
+} {
+  const porChute = Number(config.operariosPorChute);
+  return {
+    velocidad: Number(config.velocidadBase) || VELOCIDAD_INICIAL,
+    equipo: Math.max(1, Number(config.operariosMaximos) || 1),
+    porChute: config.operariosPorChute === null || !(porChute > 0) ? null : porChute,
+  };
 }

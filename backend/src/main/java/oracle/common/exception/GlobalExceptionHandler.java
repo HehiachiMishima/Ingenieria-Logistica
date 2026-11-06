@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import java.sql.SQLException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -171,6 +172,13 @@ public class GlobalExceptionHandler {
                 "La operacion tardo demasiado en responder. Intente de nuevo.", req);
     }
 
+    /** Un Mono supero su .timeout() de Reactor (p. ej. una lectura lenta) -> 503. */
+    @ExceptionHandler(java.util.concurrent.TimeoutException.class)
+    public ResponseEntity<ApiError> topeReactor(java.util.concurrent.TimeoutException ex, HttpServletRequest req) {
+        return cuerpo(HttpStatus.SERVICE_UNAVAILABLE,
+                "La consulta tardo demasiado en responder. Intente de nuevo.", req);
+    }
+
     /** Ruta inexistente: ninguna coincidencia de handler ni recurso estatico. */
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ApiError> rutaInexistente(NoResourceFoundException ex, HttpServletRequest req) {
@@ -190,6 +198,12 @@ public class GlobalExceptionHandler {
         String estado = sql == null ? null : sql.getSQLState();
         if (ESTADO_PROTECCION.equals(estado)) {
             return cuerpo(HttpStatus.FORBIDDEN, mensajeServidor(sql), req);
+        }
+        // lock_timeout (55P03) o deadlock (40P01): otra persona está modificando lo mismo.
+        if (ex instanceof PessimisticLockingFailureException
+                || ESTADO_SIN_BLOQUEO.equals(estado) || ESTADO_INTERBLOQUEO.equals(estado)) {
+            return cuerpo(HttpStatus.CONFLICT,
+                    "Otra persona esta modificando este registro en este momento. Intente de nuevo en unos segundos.", req);
         }
         if (ESTADO_FK.equals(estado) && sql.getMessage() != null
                 && sql.getMessage().contains("update or delete on table")) {
@@ -216,6 +230,9 @@ public class GlobalExceptionHandler {
     static final String ESTADO_PROTECCION = "AT403";
     private static final String ESTADO_FK = "23503";
     private static final String ESTADO_UNICO = "23505";
+    /** lock_timeout vencido esperando el bloqueo de otra transacción. */
+    private static final String ESTADO_SIN_BLOQUEO = "55P03";
+    private static final String ESTADO_INTERBLOQUEO = "40P01";
 
     /**
      * Mensaje del trigger sin el envoltorio del driver: PostgreSQL lo entrega

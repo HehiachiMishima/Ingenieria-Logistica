@@ -37,6 +37,22 @@
     </nav>
 
     <div class="shell__sidebar-foot">
+      @if (escritorio()) {
+        <button
+          type="button"
+          class="shell__panel-btn shell__minimizar"
+          (click)="alternarMenu()"
+          [attr.aria-expanded]="expandido()"
+          aria-controls="shell-nav"
+          [attr.aria-label]="expandido() ? 'Minimizar menú' : 'Expandir menú'"
+          [attr.title]="expandido() ? null : 'Expandir menú'"
+        >
+          <span class="shell__nav-icon">
+            <ui-icon [name]="expandido() ? 'chevronLeft' : 'chevronRight'" [size]="18" />
+          </span>
+          <span class="shell__nav-text"><span class="shell__nav-name">Minimizar menú</span></span>
+        </button>
+      }
       <button
         type="button"
         class="shell__panel-btn"

@@ -20,6 +20,14 @@ export const SIMULACION_ROUTES: Routes = [
       {
         path: 'configuracion',
         canActivate: [permisoGuard(PERMISOS.VER_CONFIGURACION_SIMULACION)],
+        // Salir con el equipo o un límite sin guardar pregunta antes de descartarlos.
+        canDeactivate: [
+          (pagina: { dirty: () => boolean }) =>
+            !pagina.dirty() ||
+            window.confirm(
+              'Tienes cambios sin guardar en el equipo o en los límites. ¿Salir y descartarlos?',
+            ),
+        ],
         loadComponent: () =>
           import('./pages/configuracion/configuracion').then((m) => m.SimulacionConfiguracion),
       },

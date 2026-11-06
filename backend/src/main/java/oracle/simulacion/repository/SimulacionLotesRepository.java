@@ -92,23 +92,30 @@ public class SimulacionLotesRepository {
    * ~26 mil UPDATE de una fila cada uno.
    */
   public void moverRutas(Map<Long, Long> chutes) {
-    if (chutes.isEmpty()) {
+    actualizarEnLote(chutes, "chute_id");
+  }
+
+  /** Cluster de cada ruta (id → cluster), en lote: deshacer cambios de cluster al restablecer. */
+  public void cambiarClusters(Map<Long, Long> clusters) {
+    actualizarEnLote(clusters, "cluster_id");
+  }
+
+  /** UPDATE por bloques de pares (id de ruta, valor); la columna es una constante interna. */
+  private void actualizarEnLote(Map<Long, Long> valores, String columna) {
+    if (valores.isEmpty()) {
       return;
     }
-    List<Map.Entry<Long, Long>> cambios = List.copyOf(chutes.entrySet());
+    String sql =
+        "UPDATE rutas_proyeccion r SET " + columna + " = c.valor"
+            + " FROM unnest(?::bigint[], ?::bigint[]) AS c(id, valor) WHERE r.id = c.id";
+    List<Map.Entry<Long, Long>> cambios = List.copyOf(valores.entrySet());
     for (int i = 0; i < cambios.size(); i += LOTE_UPDATE) {
       List<Map.Entry<Long, Long>> bloque = cambios.subList(i, Math.min(i + LOTE_UPDATE, cambios.size()));
       Long[] ids = bloque.stream().map(Map.Entry::getKey).toArray(Long[]::new);
       Long[] destinos = bloque.stream().map(Map.Entry::getValue).toArray(Long[]::new);
       jdbc.update(
           conexion -> {
-            var ps =
-                conexion.prepareStatement(
-                    """
-                    UPDATE rutas_proyeccion r SET chute_id = c.chute
-                    FROM unnest(?::bigint[], ?::bigint[]) AS c(id, chute)
-                    WHERE r.id = c.id
-                    """);
+            var ps = conexion.prepareStatement(sql);
             ps.setArray(1, conexion.createArrayOf("bigint", ids));
             ps.setArray(2, conexion.createArrayOf("bigint", destinos));
             return ps;

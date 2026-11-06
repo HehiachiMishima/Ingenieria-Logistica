@@ -39,13 +39,13 @@
           </span>
           <ul class="historial-grupo__resumen">
             @if (grupo.rutas > 0) {
-              <li>{{ formatearNumero(grupo.rutas) }} ruta(s) movida(s)</li>
+              <li>{{ (grupo.rutas | numero) }} ruta(s) movida(s)</li>
             }
             @if (grupo.separaciones > 0) {
-              <li>{{ formatearNumero(grupo.separaciones) }} por separar CL1/CL2</li>
+              <li>{{ (grupo.separaciones | numero) }} por separar CL1/CL2</li>
             }
             @if (grupo.chutesOperarios > 0) {
-              <li>{{ formatearNumero(grupo.chutesOperarios) }} chute(s) con otra dotación</li>
+              <li>{{ (grupo.chutesOperarios | numero) }} chute(s) con otra dotación</li>
             }
           </ul>
           <ui-icon class="historial-grupo__flecha" name="flecha" [size]="16" />
@@ -94,7 +94,7 @@
                               }
                             </td>
                             <td class="num">
-                              {{ cambio.bultos === null ? '—' : formatearNumero(cambio.bultos, 2) }}
+                              {{ cambio.bultos === null ? '—' : (cambio.bultos | numero: 2) }}
                             </td>
                             <td>
                               De <strong>{{ cambio.clusterOrigen }}</strong> a
@@ -123,7 +123,7 @@
                               }
                             </td>
                             <td class="num">
-                              {{ cambio.bultos === null ? '—' : formatearNumero(cambio.bultos, 2) }}
+                              {{ cambio.bultos === null ? '—' : (cambio.bultos | numero: 2) }}
                             </td>
                             <td>
                               De <strong>{{ cambio.chuteOrigen }}</strong> a

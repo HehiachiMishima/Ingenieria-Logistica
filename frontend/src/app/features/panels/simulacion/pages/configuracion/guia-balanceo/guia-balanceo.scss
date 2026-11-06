@@ -207,13 +207,13 @@
   }
 }
 
-/* Qué se configura: lo global y lo de cada cluster. */
-.parametros {
+/* Dudas frecuentes: tres columnas de término + respuesta corta. */
+.detalles {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-3);
 
-  @include bp.down(md) {
+  @include bp.down(lg) {
     grid-template-columns: 1fr;
   }
 
@@ -221,6 +221,7 @@
     padding: var(--space-3) var(--space-4);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
+    background: var(--surface-2);
 
     h4 {
       margin: 0 0 var(--space-2);
@@ -231,52 +232,33 @@
       color: var(--text-3);
     }
 
-    ul {
+    dl {
       display: flex;
-      flex-wrap: wrap;
+      flex-direction: column;
       gap: var(--space-2);
       margin: 0;
-      padding: 0;
-      list-style: none;
-    }
-
-    li {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 4px 10px;
-      font-size: var(--fs-xs);
-      font-weight: 600;
-      color: var(--text);
-      background: var(--surface-2);
-      border-radius: 999px;
-
-      ui-icon {
-        color: var(--accent);
-      }
     }
   }
-}
 
-/* Reglas que siempre se respetan. */
-.reglas {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--space-2) var(--space-4);
-  margin: 0;
-  padding: 0;
-  list-style: none;
+  &__item {
+    dt {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: var(--fs-sm);
+      font-weight: 700;
+      color: var(--text);
+    }
 
-  li {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: var(--fs-xs);
-    color: var(--text-2);
+    dt ui-icon {
+      color: var(--accent);
+    }
 
-    ui-icon {
-      color: var(--warning);
+    dd {
+      margin: 2px 0 0 20px;
+      font-size: var(--fs-xs);
+      line-height: 1.45;
+      color: var(--text-2);
     }
   }
 }

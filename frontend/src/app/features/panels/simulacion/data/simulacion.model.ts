@@ -61,7 +61,7 @@ export interface RutaSimulacion {
   /** Cluster que tenía la ruta al cargar el Excel (distinto si se cambió a mano). */
   clusterOriginalId: number;
   clusterOriginal: string;
-  /** Su cluster y algún otro siguen sin balancear: se puede pasar a otro cluster. */
+  /** Su cluster y algún otro siguen sin cerrar: se puede pasar a otro cluster (antes o después de balancear). */
   clusterEditable: boolean;
   codigoRuta: string;
   /** Tipo de operación de la ruta: B2C o B2B. */
@@ -102,8 +102,16 @@ export interface ConfiguracionSimulacion {
   mezclas: ChuteMezcladoSimulacion[];
 }
 
+/** Página de rutas por keyset: `siguiente` es el cursor de la próxima; `total` solo en la primera. */
+export interface PaginaRutas {
+  contenido: RutaSimulacion[];
+  total: number | null;
+  siguiente: number | null;
+}
+
 export interface RutasSimulacionFiltros {
-  pagina: number;
+  /** Id de la última ruta recibida (sin él, la primera página). */
+  despues: number | null;
   tamano: number;
   texto: string;
   clusterIds: number[];

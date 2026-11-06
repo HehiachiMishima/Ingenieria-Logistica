@@ -64,33 +64,6 @@ public interface RutaProyeccionRepository
    */
   boolean existsByArchivoIdAndClusterIdAndIdNot(Long archivoId, Long clusterId, Long id);
 
-  /**
-   * Rutas que cambiaron de cluster y en las que participa un cluster (como
-   * original o como actual): las que restablecer ese cluster devuelve.
-   */
-  @QueryHints(@QueryHint(name = HibernateHints.HINT_READ_ONLY, value = "true"))
-  @Query("""
-      SELECT r
-        FROM RutaProyeccion r
-       WHERE r.archivoId = :archivoId
-         AND r.clusterCambiado = true
-         AND (r.clusterId = :clusterId OR r.clusterOriginalId = :clusterId)
-       ORDER BY r.id
-      """)
-  List<RutaProyeccion> cambiadasDeCluster(
-      @Param("archivoId") Long archivoId, @Param("clusterId") Long clusterId);
-
-  /** Devuelve a su cluster original las rutas que cambiaron y en las que participa un cluster. */
-  @Modifying
-  @Query("""
-      UPDATE RutaProyeccion r
-         SET r.clusterId = r.clusterOriginalId
-       WHERE r.archivoId = :archivoId
-         AND r.clusterCambiado = true
-         AND (r.clusterId = :clusterId OR r.clusterOriginalId = :clusterId)
-      """)
-  int restaurarClusters(@Param("archivoId") Long archivoId, @Param("clusterId") Long clusterId);
-
   /** Rutas que hoy están en otro cluster, agrupadas por (cluster original, cluster actual). */
   @Query("""
       SELECT r.clusterOriginalId AS origen,

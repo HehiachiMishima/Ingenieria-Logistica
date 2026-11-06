@@ -167,24 +167,6 @@
   border-color: color-mix(in srgb, var(--info) 28%, var(--border));
 }
 
-.cluster-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-5);
-  margin-bottom: var(--space-5);
-
-  // Cuatro columnas sólo cuando caben con holgura; así las tarjetas llenan
-  // la fila y no queda un hueco a la derecha en pantallas anchas.
-  @include bp.down(xl) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  @include bp.down(sm) {
-    grid-template-columns: 1fr;
-    gap: var(--space-4);
-  }
-}
-
 .toolbar__acciones {
   display: flex;
   flex-wrap: wrap;
@@ -380,5 +362,593 @@
       flex: 1 1 0;
       min-width: 0;
     }
+  }
+}
+
+/* ===================== Planilla de rutas por chute ===================== */
+
+/*
+ * Mismo lenguaje que el resto del sistema (dashboard de simulación): cada
+ * cluster es una tarjeta `dash-card` (borde, radio xl, sombra sm), su cluster
+ * se identifica con el cuadrito de color y las tablas usan la cabecera clara
+ * de `dash-tabla`. Los totales siguen el pie de tabla (`cuadro__tabla tfoot`).
+ * Todas las tablas comparten el desplazamiento horizontal (appScrollMatriz).
+ */
+.mz {
+  --mz-label: 240px;
+  --mz-col: 156px;
+  --mz-fila: 42px;
+  --mz-alto: calc((var(--mz-fila) * 8) + 41px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+  font-variant-numeric: tabular-nums;
+}
+
+.mz-aviso {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-xs);
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid color-mix(in srgb, var(--danger) 28%, var(--border));
+  border-radius: var(--radius);
+
+  .ui-btn {
+    margin-left: auto;
+  }
+
+  &--vacio {
+    justify-content: center;
+    padding: var(--space-5);
+    font-size: var(--fs-sm);
+    color: var(--text-3);
+    background: var(--surface);
+    border-color: var(--border);
+    border-radius: var(--radius-xl);
+  }
+}
+
+.mz-tablero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* ---------- Tarjeta de cluster (dash-card) ---------- */
+.mz-bloque {
+  display: grid;
+  grid-template-columns: var(--mz-label) minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  animation: ui-rise var(--transition-slow) both;
+
+  &__totales {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--border);
+  }
+}
+
+/* Panel izquierdo: cluster, rutas, métricas y «Ver totales». */
+.mz-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--surface-2);
+  border-right: 1px solid var(--border);
+
+  /* Igual que el cluster en las tablas del dashboard: cuadrito de color + nombre. */
+  &__nombre {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--fs-base);
+    font-weight: 800;
+    letter-spacing: -0.015em;
+    color: var(--text);
+
+    &::before {
+      content: '';
+      width: 10px;
+      height: 10px;
+      flex: none;
+      border-radius: 3px;
+      background: var(--cluster-color, var(--accent));
+    }
+  }
+
+  /* Dos columnas de métricas: el panel queda casi a la altura de 8 filas de rutas. */
+  &__metricas {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2) var(--space-3);
+    margin: 0;
+
+    div {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      min-width: 0;
+    }
+
+    dt {
+      font-size: 0.64rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-3);
+    }
+
+    dd {
+      margin: 0;
+      font-size: var(--fs-sm);
+      font-weight: 800;
+      color: var(--text);
+    }
+  }
+
+  &__totales {
+    width: 100%;
+    justify-content: center;
+
+    span {
+      flex: 1;
+      text-align: left;
+    }
+
+    &[aria-expanded='true'] .mz-panel__flecha {
+      transform: rotate(90deg);
+    }
+  }
+
+  &__flecha {
+    transition: transform var(--transition-fast);
+  }
+}
+/* Fila superior: Título a la izquierda y botón de Play a la derecha */
+.mz-panel__cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+/* Botones redondos de la cabecera del panel: ▶ paso actual, recalcular y restablecer. */
+.mz-panel__botones {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.mz-panel__btn-restablecer:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+  background: var(--danger-soft);
+}
+
+/* Botón ▶ redondo y pequeño: ejecuta el paso del cluster en curso. */
+.mz-panel__btn-play {
+  width: 30px;
+  height: 30px;
+  min-height: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  flex: none;
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--transition-fast);
+
+  &:active:not(:disabled) {
+    transform: scale(0.92);
+  }
+}
+/* Estado, límite y acciones del cluster dentro de su panel (sin tarjetas aparte). */
+.mz-panel__estado {
+  align-self: flex-start;
+  margin-top: calc(var(--space-2) * -1);
+}
+
+/* CL1/CL2 en el mismo chute: aviso de una línea (el detalle está en «¿Cómo balancea?»). */
+.mz-panel__mezcla {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--warning);
+}
+
+.mz-panel__fuera {
+  color: var(--danger) !important;
+}
+
+.mz-panel__limite {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.mz-panel__limite-label {
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.mz-panel__limite-input {
+  width: 90px;
+  height: 36px;
+  padding: 0 var(--space-2);
+  text-align: center;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.mz-panel__spinner {
+  width: 14px;
+  height: 14px;
+}
+
+/* ---------- Tabla de chutes ---------- */
+.mz-scroll,
+.mz-totales__scroll {
+  min-width: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+
+  &::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    border: 2px solid var(--surface);
+    border-radius: 999px;
+    background: var(--border-strong);
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/*
+ * Cada cluster se recorre en su propio cuadro. `contain: size` hace que la
+ * tabla no empuje la altura de la fila: la marca el panel (mínimo 8 filas,
+ * --mz-alto) y la tabla la llena con su propio scroll, sin huecos en blanco.
+ */
+.mz-scroll {
+  contain: size;
+  min-height: var(--mz-alto);
+  overscroll-behavior: contain;
+}
+
+.mz-tabla {
+  width: max-content;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  col.mz-col {
+    width: var(--mz-col);
+  }
+
+  th,
+  td {
+    padding: 0;
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* Cabecera estándar de `ui-table` (fondo de tabla y línea de marca); aquí
+     solo se fija su alto y su capa para que quede encima al desplazar. */
+  thead th {
+    z-index: 5;
+    height: 40px;
+    padding: 0 14px;
+  }
+
+  /* El último chute queda fijo a la derecha. */
+  .mz-der {
+    position: sticky;
+    right: 0;
+    z-index: 3;
+    border-right: 0;
+    border-left: 1px solid var(--border-strong);
+  }
+
+  thead th.mz-der {
+    z-index: 7;
+    border-left-color: rgba(255, 255, 255, 0.12);
+  }
+}
+
+.matriz__celda {
+  height: var(--mz-fila);
+  background: var(--surface);
+  transition: background-color var(--transition-fast);
+
+  &:hover {
+    background: var(--table-hover);
+  }
+}
+
+/* Ruta: código, etiqueta de tipo, cluster de origen y asa ⋮⋮. */
+.matriz-ruta {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  height: 100%;
+  min-height: var(--mz-fila);
+  padding: 0 26px 0 var(--space-3);
+  white-space: nowrap;
+}
+
+.matriz-ruta__codigo {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+
+/* Tipo con el aspecto de `ui-badge`. */
+.matriz-ruta__tipo {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  font-size: 0.64rem;
+  font-weight: 700;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  user-select: none;
+
+  &--b2b {
+    color: var(--info);
+    background: var(--info-soft);
+    border-color: color-mix(in srgb, var(--info) 22%, var(--border));
+  }
+
+  &--b2c {
+    color: var(--success);
+    background: var(--success-soft);
+    border-color: color-mix(in srgb, var(--success) 22%, var(--border));
+  }
+}
+
+.matriz-ruta .cluster-original {
+  flex: none;
+  font-size: 0.66rem;
+}
+
+/* Ruta con otro chute o cluster que en el Excel: fondo rayado suave. */
+.matriz-ruta--movida {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 6px,
+    color-mix(in srgb, var(--accent) 7%, transparent) 6px 12px
+  );
+}
+
+.matriz-ruta--guardando {
+  opacity: 0.55;
+}
+
+.matriz-ruta__spinner {
+  position: absolute;
+  right: 6px;
+  width: 14px;
+  height: 14px;
+}
+
+/* Asa ⋮⋮: indica que la ruta se puede arrastrar. */
+.matriz-ruta__asa {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  padding: 4px;
+  font-size: 1rem;
+  line-height: 1;
+  letter-spacing: -0.12em;
+  color: var(--text-3);
+  pointer-events: none;
+  opacity: 0.45;
+  transform: translateY(-50%);
+  user-select: none;
+  transition: opacity var(--transition-fast);
+}
+
+.matriz-ruta:hover .matriz-ruta__asa {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .matriz-ruta__asa {
+    opacity: 1;
+  }
+}
+
+.matriz--ocupada .matriz-ruta__asa {
+  opacity: 0;
+}
+
+/* Arrastre: la ruta tomada se atenúa y la columna destino se resalta. */
+.matriz-ruta--arrastrada {
+  opacity: 0.45;
+}
+
+/* Toda la ruta se toma con el mouse; el asa ⋮⋮ solo lo indica. */
+.matriz-ruta--movible {
+  cursor: grab;
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+.matriz__celda.matriz__celda--destino {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.matriz__celda.matriz__celda--prohibido {
+  background: var(--danger-soft);
+  box-shadow: inset 0 0 0 2px var(--danger);
+}
+
+/* ---------- Totales (pie de tabla del dashboard) ---------- */
+.mz-totales {
+  display: grid;
+  grid-template-columns: var(--mz-label) minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--surface-2);
+
+  &__etiquetas {
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+
+    > div {
+      display: flex;
+      align-items: center;
+      height: var(--mz-fila);
+      padding-left: var(--space-4);
+      font-size: 0.64rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-3);
+      border-bottom: 1px solid var(--border);
+    }
+
+    > div:last-child {
+      border-bottom: 0;
+    }
+  }
+
+  /* Celda de cabecera con el mismo aspecto que `ui-table th`. */
+  &__concepto {
+    height: 40px !important;
+    color: var(--table-head-fg) !important;
+    background: var(--table-head-bg);
+    border-bottom: 2px solid var(--brand) !important;
+  }
+
+  &__scroll {
+    overflow-y: hidden;
+  }
+
+  .mz-tabla td {
+    height: var(--mz-fila);
+    padding: 0 var(--space-3);
+    text-align: right;
+    font-weight: 700;
+    color: var(--text);
+    background: var(--surface-2);
+  }
+
+  .mz-tabla tr:last-child td {
+    border-bottom: 0;
+  }
+
+  /* Total general: una tarjeta más del sistema, al final. */
+  &--global {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-sm);
+
+    .mz-totales__etiquetas > div:not(.mz-totales__concepto) {
+      color: var(--text);
+      background: var(--surface-2);
+    }
+
+    .mz-tabla td {
+      background: var(--surface);
+    }
+  }
+}
+
+/*
+ * Mapa de color de los totales: cada fila tiene su tono (--tono) y cada celda
+ * se oscurece según su nivel en la fila (--nivel: 0 el menor … 1 el mayor).
+ * Se mezcla con --surface, así funciona igual en tema claro y oscuro.
+ */
+.mz-totales__etiquetas > div[style] {
+  gap: var(--space-2);
+
+  &::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    flex: none;
+    border-radius: 2px;
+    background: var(--tono);
+  }
+}
+
+.mz-totales .mz-tabla td.mz-calor {
+  color: color-mix(in srgb, var(--tono) 70%, var(--text));
+  background: color-mix(in srgb, var(--tono) calc(8% + var(--nivel) * 72%), var(--surface));
+}
+
+/* Celdas oscuras: el texto toma el color de la superficie para leerse bien. */
+.mz-totales .mz-tabla td.mz-calor--oscuro {
+  color: var(--surface);
+}
+
+@include bp.down(md) {
+  .mz {
+    --mz-label: 180px;
+    --mz-col: 140px;
+    --mz-alto: calc((var(--mz-fila) * 8) + 41px);
+  }
+
+  .mz-panel {
+    padding: var(--space-3);
+  }
+}
+
+@include bp.down(sm) {
+  .mz-bloque {
+    grid-template-columns: 1fr;
+  }
+
+  .mz-panel {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .mz-panel__metricas {
+    flex: 1 1 100%;
+  }
+
+  .mz-totales {
+    --mz-label: 112px;
   }
 }

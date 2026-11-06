@@ -9,8 +9,8 @@ import {
   FaseBalanceo,
   HistorialRegistroSimulacion,
   HistorialSimulacion,
+  PaginaRutas,
   RegistroSimulacionActualizarRequest,
-  RutaSimulacion,
   RutasDashboardFiltros,
   RutasDashboardSimulacion,
   RutasSimulacionFiltros,
@@ -60,9 +60,10 @@ export class SimulacionApi {
   }
 
   /** Rutas paginadas del registro; el texto filtra por prefijo del código. */
-  rutas(id: number, filtros: RutasSimulacionFiltros): Observable<Pagina<RutaSimulacion>> {
-    return this.api.get<Pagina<RutaSimulacion>>(`/simulacion/registros/${id}/rutas`, {
-      pagina: filtros.pagina,
+  /** Rutas de la planilla por keyset (cursor = id de la última recibida). */
+  rutas(id: number, filtros: RutasSimulacionFiltros): Observable<PaginaRutas> {
+    return this.api.get<PaginaRutas>(`/simulacion/registros/${id}/rutas`, {
+      ...(filtros.despues !== null ? { despues: filtros.despues } : {}),
       tamano: filtros.tamano,
       texto: filtros.texto,
       ...(filtros.clusterIds.length > 0 ? { clusterIds: filtros.clusterIds.join(',') } : {}),
@@ -88,17 +89,33 @@ export class SimulacionApi {
     );
   }
 
-  /** Pasa una ruta a otro cluster (los dos deben seguir sin balancear). */
-  cambiarCluster(id: number, rutaId: number, clusterId: number): Observable<ConfiguracionSimulacion> {
+  /** Mueve una ruta a otro chute de su mismo cluster (movimiento manual). */
+  moverRuta(id: number, rutaId: number, chuteId: number): Observable<ConfiguracionSimulacion> {
     return this.api.put<ConfiguracionSimulacion>(
-      `/simulacion/registros/${id}/rutas/${rutaId}/cluster`,
-      { clusterId },
+      `/simulacion/registros/${id}/rutas/${rutaId}/mover`,
+      { chuteId },
     );
   }
 
   /**
-   * El cluster en curso vuelve a la proyección, con las rutas que entraron o
-   * salieron de él a su cluster original; los demás no cambian.
+   * Pasa una ruta a otro cluster (antes o después de balancear, con ninguno de
+   * los dos cerrado) y, si se indica, también a otro chute en el mismo paso.
+   */
+  cambiarCluster(
+    id: number,
+    rutaId: number,
+    clusterId: number,
+    chuteId: number | null = null,
+  ): Observable<ConfiguracionSimulacion> {
+    return this.api.put<ConfiguracionSimulacion>(
+      `/simulacion/registros/${id}/rutas/${rutaId}/cluster`,
+      chuteId === null ? { clusterId } : { clusterId, chuteId },
+    );
+  }
+
+  /**
+   * El cluster en curso vuelve a como estaba antes de trabajarlo: se deshace su
+   * balanceo y lo cambiado a mano mientras estuvo en curso; los cerrados no cambian.
    */
   restablecerCluster(id: number, clusterId: number): Observable<ConfiguracionSimulacion> {
     return this.api.post<ConfiguracionSimulacion>(

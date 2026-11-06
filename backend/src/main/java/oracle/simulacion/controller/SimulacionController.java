@@ -22,6 +22,7 @@ import oracle.simulacion.response.ConfiguracionSimulacionResponse;
 import oracle.simulacion.response.DashboardSimulacionResponse;
 import oracle.simulacion.response.HistorialRegistroResponse;
 import oracle.simulacion.response.HistorialSimulacionResponse;
+import oracle.simulacion.response.PaginaRutasResponse;
 import oracle.simulacion.response.RutaSimulacionResponse;
 import oracle.simulacion.response.RutasDashboardResponse;
 import oracle.simulacion.service.SimulacionConfiguracionService;
@@ -144,14 +145,14 @@ public class SimulacionController {
 
   @GetMapping("/registros/{id}/rutas")
   @PreAuthorize("hasAuthority('VER_CONFIGURACION_SIMULACION')")
-  public Mono<ApiResponse<PaginaResponse<RutaSimulacionResponse>>> rutas(
+  public Mono<ApiResponse<PaginaRutasResponse>> rutas(
       @PathVariable Long id,
-      @RequestParam(defaultValue = "1") int pagina,
-      @RequestParam(defaultValue = "25") int tamano,
+      @RequestParam(required = false) Long despues,
+      @RequestParam(defaultValue = "100") int tamano,
       @RequestParam(required = false) String texto,
       @RequestParam(required = false) List<Long> clusterIds,
       @RequestParam(required = false) List<Long> chuteIds) {
-    return configuracionService.rutas(id, pagina, tamano, texto, clusterIds, chuteIds);
+    return configuracionService.rutas(id, despues, tamano, texto, clusterIds, chuteIds);
   }
 
   @PutMapping("/registros/{id}/rutas/{rutaId}/mover")

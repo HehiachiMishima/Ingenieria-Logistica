@@ -155,11 +155,16 @@ export function formatearHoras(horas: number | null | undefined): string {
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
+/** Un formateador por cantidad de decimales: crear `Intl.NumberFormat` en cada llamada es caro. */
+const FORMATOS_NUMERO = new Map<number, Intl.NumberFormat>();
+
 export function formatearNumero(valor: number | null | undefined, decimales = 0): string {
-  return new Intl.NumberFormat('es-PE', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: decimales,
-  }).format(valor ?? 0);
+  let formato = FORMATOS_NUMERO.get(decimales);
+  if (!formato) {
+    formato = new Intl.NumberFormat('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: decimales });
+    FORMATOS_NUMERO.set(decimales, formato);
+  }
+  return formato.format(valor ?? 0);
 }
 
 export function colorRegistro(hex: string | null | undefined): string {

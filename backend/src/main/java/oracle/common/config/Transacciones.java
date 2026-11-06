@@ -25,8 +25,10 @@ public class Transacciones {
 
     private final TransactionTemplate escritura;
     private final TransactionTemplate lectura;
+    private final PlatformTransactionManager gestor;
 
     public Transacciones(PlatformTransactionManager gestor) {
+        this.gestor = gestor;
         this.escritura = new TransactionTemplate(gestor);
         this.lectura = new TransactionTemplate(gestor);
         this.lectura.setReadOnly(true);
@@ -38,6 +40,17 @@ public class Transacciones {
 
     public <T> T consultar(Supplier<T> trabajo) {
         return lectura.execute(estado -> trabajo.get());
+    }
+
+    /**
+     * Lectura con tope TOTAL en segundos: Spring aplica a cada sentencia JDBC/JPA
+     * el tiempo que le queda a la transacción, así una consulta de varias
+     * sentencias no supera el tope aunque cada una quede bajo statement_timeout.
+     */
+    public <T> T consultar(Supplier<T> trabajo, int topeSegundos) {
+        TransactionTemplate conTope = new TransactionTemplate(gestor, lectura);
+        conTope.setTimeout(topeSegundos);
+        return conTope.execute(estado -> trabajo.get());
     }
 
     /**

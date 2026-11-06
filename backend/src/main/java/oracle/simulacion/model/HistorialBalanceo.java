@@ -69,6 +69,15 @@ public class HistorialBalanceo {
   @Column(name = "cluster_destino_id")
   private Long clusterDestinoId;
 
+  /**
+   * Cambios a mano (MOVER_RUTA y CAMBIAR_CLUSTER sin lanzamiento): cluster que
+   * estaba en curso al hacerlos. Restablecer ese cluster, o reabrir uno
+   * anterior, deshace exactamente ese trabajo. Los del balanceo se atribuyen
+   * por su lanzamiento. Null en filas anteriores a esta columna.
+   */
+  @Column(name = "cluster_trabajo_id")
+  private Long clusterTrabajoId;
+
   @Column(name = "motivo", length = 20, nullable = false)
   private String motivo = MOTIVO_BALANCEO;
 

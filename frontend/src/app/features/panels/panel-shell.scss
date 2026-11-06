@@ -221,6 +221,16 @@ $entrada: cubic-bezier(0.7, 0, 0.84, 0);
   border-top: 1px solid var(--sidebar-border);
 }
 
+/* Minimizar: misma medida que "Cambiar de panel", con un tono más discreto. */
+.shell__minimizar {
+  margin-bottom: 2px;
+  color: color-mix(in srgb, var(--sidebar-fg) 80%, transparent);
+
+  .shell__nav-icon {
+    background: transparent;
+  }
+}
+
 .shell__foot-meta {
   margin-top: var(--space-2);
   padding: 0 var(--space-2);

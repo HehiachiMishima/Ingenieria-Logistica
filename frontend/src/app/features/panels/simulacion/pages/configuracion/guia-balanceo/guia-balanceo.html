@@ -75,28 +75,21 @@
       </li>
     </ol>
 
-    <section class="parametros" aria-label="Parámetros">
-      <div class="parametros__grupo">
-        <h4>Globales</h4>
-        <ul>
-          <li><ui-icon name="usuarios" [size]="14" /> Operarios del equipo</li>
-          <li><ui-icon name="tendencia" [size]="14" /> Velocidad (bultos/h)</li>
-          <li><ui-icon name="layers" [size]="14" /> Máximo por chute</li>
-        </ul>
-      </div>
-      <div class="parametros__grupo">
-        <h4>Por cluster</h4>
-        <ul>
-          <li><ui-icon name="reloj" [size]="14" /> Límite de horas: indica si cumple</li>
-        </ul>
-      </div>
-    </section>
-
-    <ul class="reglas">
-      <li><ui-icon name="alerta" [size]="15" /> CL1 y CL2 nunca comparten chute</li>
-      <li><ui-icon name="lock" [size]="15" /> Un cluster cerrado no cambia (salvo al reabrirlo)</li>
-      <li><ui-icon name="refresh" [size]="15" /> Restablecer vuelve todo al Excel</li>
-    </ul>
+    <div class="detalles">
+      @for (grupo of detalles; track grupo.titulo) {
+        <section class="detalles__grupo" [attr.aria-label]="grupo.titulo">
+          <h4>{{ grupo.titulo }}</h4>
+          <dl>
+            @for (item of grupo.items; track item.termino) {
+              <div class="detalles__item">
+                <dt><ui-icon [name]="item.icono" [size]="14" /> {{ item.termino }}</dt>
+                <dd>{{ item.texto }}</dd>
+              </div>
+            }
+          </dl>
+        </section>
+      }
+    </div>
   </div>
 
   <div modal-footer class="modal-foot">

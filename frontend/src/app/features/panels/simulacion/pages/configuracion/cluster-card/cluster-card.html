@@ -1,127 +1,154 @@
 @let c = cluster();
-<article
-  class="cluster-card"
-  [class.cluster-card--en-curso]="c.enCurso"
-  [class.cluster-card--bloqueado]="!c.enCurso && !c.cerrado"
->
-  <header class="cluster-card__head">
-    <span class="cluster-card__nombre" [title]="c.nombre">{{ c.nombre }}</span>
-    <span
-      class="cluster-estado"
-      [class.cluster-estado--cerrado]="c.cerrado"
-      [class.cluster-estado--en-curso]="c.enCurso"
-    >
+@if (compacto()) {
+  <!-- Ficha de la fila de olas: solo nombre, estado y el dato que importa. -->
+  <article
+    class="ficha"
+    [class.ficha--en-curso]="c.enCurso"
+    [class.ficha--cerrado]="c.cerrado"
+    [attr.aria-current]="c.enCurso ? 'step' : null"
+  >
+    <span class="ficha__estado" aria-hidden="true">
       @if (c.cerrado) {
-        <ui-icon name="check" [size]="12" /> Cerrado
+        <ui-icon name="check" [size]="13" />
       } @else if (c.enCurso) {
-        En curso · paso {{ c.paso }} de 3
+        {{ c.paso }}
       } @else {
-        <ui-icon name="lock" [size]="12" /> En espera
+        <ui-icon name="lock" [size]="12" />
       }
     </span>
-    @if (c.dispersion !== null) {
-      <span
-        class="ui-badge"
-        [class.ui-badge--success]="c.dispersion <= 10"
-        [class.ui-badge--warning]="c.dispersion > 10"
-        title="Diferencia de bultos entre sus chutes"
+    <span class="ficha__texto">
+      <strong class="ficha__nombre" [title]="c.nombre">{{ c.nombre }}</strong>
+      <small class="ficha__dato">
+        @if (c.cerrado) {
+          {{ (c.tiempo | horas) }}
+          <span class="ficha__cumple" [class.ficha__cumple--no]="!c.cumple">
+            {{ c.cumple ? 'cumple' : 'excede' }}
+          </span>
+        } @else if (c.enCurso) {
+          Paso {{ c.paso }} de 3
+        } @else {
+          {{ (c.rutas | numero) }} rutas
+        }
+      </small>
+    </span>
+    @if (c.cerrado && puedeModificar()) {
+      <button
+        type="button"
+        class="ui-icon-btn ficha__accion"
+        (click)="reabrir.emit()"
+        [disabled]="ocupado()"
+        [attr.aria-label]="'Reabrir ' + c.nombre"
+        title="Reabrir"
       >
-        {{ c.dispersion }} %
-      </span>
+        <ui-icon name="lock" [size]="14" />
+      </button>
     }
-  </header>
-
-  <dl class="cluster-card__stats">
-    <div>
-      <dt>Rutas</dt>
-      <dd>{{ formatearNumero(c.rutas) }}</dd>
-    </div>
-    <div>
-      <dt>Bultos</dt>
-      <dd>{{ formatearNumero(c.bultos) }}</dd>
-    </div>
-    <div>
-      <dt>Chutes</dt>
-      <dd>{{ formatearNumero(c.chutes) }}</dd>
-    </div>
-  </dl>
-
-  @if (c.enCurso) {
-    <ol class="avance" [attr.aria-label]="'Avance de ' + c.nombre">
-      @for (paso of c.pasos; track paso.numero) {
-        <li
-          class="avance__paso"
-          [class.avance__paso--hecho]="paso.estado === 'hecho'"
-          [class.avance__paso--actual]="paso.estado === 'actual'"
-          [attr.aria-current]="paso.estado === 'actual' ? 'step' : null"
+  </article>
+} @else {
+  <!-- Panel de trabajo del cluster en curso: tres pasos en una fila. -->
+  <article class="trabajo" [attr.aria-label]="'Cluster en curso: ' + c.nombre">
+    <header class="trabajo__head">
+      <span class="trabajo__nombre">{{ c.nombre }}</span>
+      <span class="trabajo__meta">
+        {{ (c.rutas | numero) }} rutas · {{ (c.bultos | numero) }} bultos ·
+        {{ (c.chutes | numero) }} chutes
+      </span>
+      @if (puedeModificar() && c.balanceado) {
+        <button
+          type="button"
+          class="ui-btn ui-btn--ghost ui-btn--sm trabajo__restablecer"
+          (click)="restablecer.emit()"
+          [disabled]="ocupado()"
+          [attr.aria-label]="'Restablecer ' + c.nombre"
         >
-          <span class="avance__marca" aria-hidden="true">
-            @if (paso.estado === 'hecho') {
-              <ui-icon name="check" [size]="14" />
-            } @else {
-              {{ paso.numero }}
-            }
-          </span>
-          <span class="avance__texto">
-            <strong>{{ paso.titulo }}</strong>
-            <span>{{ paso.dato }}</span>
-          </span>
-        </li>
+          <ui-icon name="refresh" [size]="14" />
+          Restablecer
+        </button>
       }
-    </ol>
+    </header>
 
-    <div class="pasos">
-      <section
-        class="pasos__item"
-        [class.pasos__item--hecho]="c.balanceado"
-        [class.pasos__item--actual]="c.paso === 1"
-        aria-label="Paso 1: rutas"
+    <ol class="pasos">
+      <!-- 1 · Rutas -->
+      <li
+        class="paso"
+        [class.paso--hecho]="c.balanceado"
+        [class.paso--actual]="c.paso === 1"
+        [attr.aria-current]="c.paso === 1 ? 'step' : null"
       >
-        <span class="pasos__titulo">1 · Rutas por bultos</span>
-        <span class="pasos__metrica">
-          @if (c.dispersion === null) {
-            Un solo chute
+        <span class="paso__marca" aria-hidden="true">
+          @if (c.balanceado) {
+            <ui-icon name="check" [size]="14" />
           } @else {
-            @if (c.balanceado && c.diferenciaOriginal !== null) {
-              <span class="pasos__antes">{{ c.diferenciaOriginal }} % →</span>
-            }
-            <strong>{{ c.dispersion }} %</strong>
+            1
           }
         </span>
-        <span class="pasos__dato">
-          Diferencia de bultos entre sus {{ c.chutes }} chutes · meta: 10 % o menos
-        </span>
-        @if (!c.balanceado && c.mezclas.length > 0) {
-          <span class="pasos__aviso">
-            Comparte {{ c.mezclas.join(', ') }} con un cluster incompatible: al balancear, sale de
-            ahí el que tenga menos rutas.
+        <div class="paso__cuerpo">
+          <span class="paso__titulo">Rutas</span>
+          <span class="paso__valor">
+            @if (c.dispersion === null) {
+              Un chute
+            } @else {
+              @if (c.balanceado && c.diferenciaOriginal !== null) {
+                <s class="paso__antes">{{ c.diferenciaOriginal }} %</s>
+              }
+              <strong [class.paso__fuera]="c.dispersion > 10">{{ c.dispersion }} %</strong>
+              <small>dif. bultos</small>
+            }
           </span>
-        }
+        </div>
         @if (puedeModificar() && !c.balanceado) {
           <button
             type="button"
-            class="ui-btn ui-btn--primary ui-btn--sm"
+            class="ui-btn ui-btn--primary ui-btn--sm paso__boton"
             (click)="balancear.emit()"
             [disabled]="ocupado()"
           >
             @if (trabajando() === 'RUTAS') {
-              <span class="ui-spinner pasos__spinner"></span>
+              <span class="ui-spinner paso__spinner"></span>
             }
             Balancear rutas
           </button>
         }
-      </section>
+      </li>
 
-      <section
-        class="pasos__item"
-        [class.pasos__item--hecho]="c.conOperarios"
-        [class.pasos__item--actual]="c.paso === 2"
-        [class.pasos__item--espera]="!c.balanceado"
-        aria-label="Paso 2: operarios"
+      <!-- 2 · Operarios -->
+      <li
+        class="paso"
+        [class.paso--hecho]="c.conOperarios"
+        [class.paso--actual]="c.paso === 2"
+        [class.paso--espera]="!c.balanceado"
+        [attr.aria-current]="c.paso === 2 ? 'step' : null"
       >
-        <span class="pasos__titulo">2 · Operarios</span>
-        <div class="pasos__limite">
-          <label class="ui-label" [attr.for]="'limite-' + c.id">Límite (h)</label>
+        <span class="paso__marca" aria-hidden="true">
+          @if (c.conOperarios) {
+            <ui-icon name="check" [size]="14" />
+          } @else {
+            2
+          }
+        </span>
+        <div class="paso__cuerpo">
+          <span class="paso__titulo">Operarios</span>
+          <span class="paso__valor">
+            @if (c.conOperarios) {
+              <strong [class.paso__fuera]="!c.cumple">{{ (c.tiempo | horas) }}</strong>
+              <small>{{ (c.operarios | numero) }} op.</small>
+            } @else {
+              <small>Todo el equipo · {{ (equipo() | numero) }}</small>
+            }
+          </span>
+          @if (c.conOperarios && c.uso !== null) {
+            <span
+              class="uso"
+              [class.uso--excede]="!c.cumple"
+              role="img"
+              [attr.aria-label]="'Usa el ' + c.uso + ' % del límite'"
+            >
+              <span class="uso__barra" [style.width.%]="c.uso"></span>
+            </span>
+          }
+        </div>
+        <label class="paso__limite" [attr.for]="'limite-' + c.id">
+          <span>Límite h</span>
           <input
             [id]="'limite-' + c.id"
             type="number"
@@ -134,135 +161,52 @@
             [disabled]="!puedeModificar() || !c.balanceado || ocupado()"
             (change)="cambiarLimite($event)"
           />
-        </div>
-        @if (c.conOperarios) {
-          <span class="pasos__metrica">
-            <strong>{{ formatearHoras(c.tiempo) }}</strong>
-            @if (c.limite > 0) {
-              <span class="pasos__antes">de {{ formatearHoras(c.limite) }}</span>
-            }
-            <span
-              class="ui-badge"
-              [class.ui-badge--success]="c.cumple"
-              [class.ui-badge--danger]="!c.cumple"
-            >
-              {{ c.cumple ? 'Cumple' : 'Excede' }}
-            </span>
-          </span>
-          @if (c.uso !== null) {
-            <span
-              class="uso"
-              [class.uso--excede]="!c.cumple"
-              role="img"
-              [attr.aria-label]="'Usa el ' + c.uso + ' % del límite'"
-            >
-              <span class="uso__barra" [style.width.%]="c.uso"></span>
-            </span>
-          }
-          <span class="pasos__dato">
-            {{ formatearNumero(c.operarios) }} de {{ formatearNumero(equipo()) }} operarios del
-            equipo
-            @if (c.previo) {
-              · {{ formatearNumero(c.siguen) }} siguen en su chute desde {{ c.previo }}
-            }
-          </span>
-        } @else {
-          <span class="pasos__dato">
-            {{
-              c.previo
-                ? 'Trabaja todo el equipo; parte de donde quedó al cerrar ' + c.previo + '.'
-                : 'Primera ola: trabaja todo el equipo para cerrar lo antes posible.'
-            }}
-          </span>
-        }
+        </label>
         @if (puedeModificar() && c.balanceado) {
           <button
             type="button"
-            class="ui-btn ui-btn--sm"
+            class="ui-btn ui-btn--sm paso__boton"
             [class.ui-btn--primary]="!c.conOperarios"
             [class.ui-btn--secondary]="c.conOperarios"
             (click)="asignar.emit()"
             [disabled]="ocupado()"
           >
             @if (trabajando() === 'OPERARIOS') {
-              <span class="ui-spinner pasos__spinner"></span>
+              <span class="ui-spinner paso__spinner"></span>
             }
-            {{ c.conOperarios ? 'Recalcular operarios' : 'Asignar operarios' }}
+            {{ c.conOperarios ? 'Recalcular' : 'Balancear operarios' }}
           </button>
         }
-      </section>
+      </li>
 
-      <section
-        class="pasos__item"
-        [class.pasos__item--actual]="c.paso === 3"
-        [class.pasos__item--espera]="!c.conOperarios"
-        aria-label="Paso 3: cerrar"
+      <!-- 3 · Cerrar -->
+      <li
+        class="paso"
+        [class.paso--actual]="c.paso === 3"
+        [class.paso--espera]="!c.conOperarios"
+        [attr.aria-current]="c.paso === 3 ? 'step' : null"
       >
-        <span class="pasos__titulo">3 · Cerrar</span>
-        <span class="pasos__metrica">
-          <strong>{{ c.siguiente ?? 'Fin' }}</strong>
-        </span>
-        <span class="pasos__dato">
-          {{
-            c.siguiente
-              ? 'El equipo pasa a ' + c.siguiente + ' con la dotación de esta ola.'
-              : 'Es el último cluster: al cerrarlo termina la simulación.'
-          }}
-        </span>
+        <span class="paso__marca" aria-hidden="true">3</span>
+        <div class="paso__cuerpo">
+          <span class="paso__titulo">Cerrar</span>
+          <span class="paso__valor">
+            <small>{{ c.siguiente ? 'Sigue ' + c.siguiente : 'Último cluster' }}</small>
+          </span>
+        </div>
         @if (puedeModificar() && c.conOperarios) {
           <button
             type="button"
-            class="ui-btn ui-btn--success ui-btn--sm"
+            class="ui-btn ui-btn--success ui-btn--sm paso__boton"
             (click)="cerrar.emit()"
             [disabled]="ocupado()"
           >
             @if (trabajando() === 'CERRAR') {
-              <span class="ui-spinner pasos__spinner"></span>
+              <span class="ui-spinner paso__spinner"></span>
             }
             {{ c.siguiente ? 'Cerrar y pasar a ' + c.siguiente : 'Cerrar y terminar' }}
           </button>
         }
-      </section>
-    </div>
-    @if (puedeModificar() && c.balanceado) {
-      <footer class="cluster-card__acciones">
-        <button
-          type="button"
-          class="ui-btn ui-btn--ghost ui-btn--sm"
-          (click)="restablecer.emit()"
-          [disabled]="ocupado()"
-          [attr.aria-label]="'Restablecer ' + c.nombre"
-          title="Devuelve sus rutas a su chute original y quita los operarios de su ola"
-        >
-          <ui-icon name="refresh" [size]="14" />
-          Restablecer
-        </button>
-      </footer>
-    }
-  } @else if (c.cerrado) {
-    <p class="cluster-card__resumen">
-      {{ formatearNumero(c.operarios) }} operario(s) · cierra en
-      <strong>{{ formatearHoras(c.tiempo) }}</strong>
-      @if (c.limite > 0) {
-        de {{ formatearHoras(c.limite) }}
-      }
-    </p>
-    @if (puedeModificar()) {
-      <footer class="cluster-card__acciones">
-        <button
-          type="button"
-          class="ui-btn ui-btn--ghost ui-btn--sm"
-          (click)="reabrir.emit()"
-          [disabled]="ocupado()"
-          [attr.aria-label]="'Reabrir ' + c.nombre"
-          title="Vuelve a permitir cambios; los clusters siguientes vuelven a la proyección"
-        >
-          <ui-icon name="lock" [size]="14" />
-          Reabrir
-        </button>
-      </footer>
-    }
-  } @else {
-    <p class="cluster-card__resumen">Se habilita al cerrar {{ enCurso() }}.</p>
-  }
-</article>
+      </li>
+    </ol>
+  </article>
+}

@@ -22,7 +22,7 @@ import { Modal } from '../../../../../../shared/ui/modal/modal';
 import { Paginador } from '../../../../../../shared/ui/paginador/paginador';
 import { SimulacionApi } from '../../../data/simulacion.api';
 import { HistorialRegistroSimulacion, HistorialSimulacion } from '../../../data/simulacion.model';
-import { formatearNumero } from '../../../simulacion-formato';
+import { NumeroPipe } from '../../../numero.pipe';
 
 /** Un lanzamiento (o los cambios sin lanzamiento) tal como se lista. */
 interface GrupoHistorial {
@@ -46,7 +46,7 @@ interface GrupoHistorial {
 @Component({
   selector: 'app-simulacion-historial-cambios',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, ActorLabelPipe, EmptyState, Icon, Modal, Paginador],
+  imports: [DatePipe, ActorLabelPipe, EmptyState, Icon, Modal, Paginador, NumeroPipe],
   templateUrl: './historial-cambios.html',
   styleUrl: './historial-cambios.scss',
 })
@@ -58,7 +58,6 @@ export class SimulacionHistorialCambios {
   readonly abierto = input(false);
   readonly cerrar = output<void>();
 
-  readonly formatearNumero = formatearNumero;
 
   private readonly historial = signal<HistorialRegistroSimulacion | null>(null);
   readonly cargando = signal(false);

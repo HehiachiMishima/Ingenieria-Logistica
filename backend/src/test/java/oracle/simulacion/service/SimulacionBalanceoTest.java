@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
@@ -50,7 +51,7 @@ import oracle.simulacion.repository.MovimientoRutas;
 import oracle.simulacion.repository.OperarioOlaRepository;
 import oracle.simulacion.repository.ParametroChuteRepository;
 import oracle.simulacion.repository.ParametroClusterRepository;
-import oracle.simulacion.repository.PrimerCambioCluster;
+import oracle.simulacion.repository.CambioParaDeshacer;
 import oracle.simulacion.repository.RutaProyeccionRepository;
 import oracle.simulacion.repository.RutasMovidasCluster;
 import oracle.simulacion.repository.SimulacionConfigRepository;
@@ -133,6 +134,9 @@ class SimulacionBalanceoTest {
         .thenAnswer(invocacion -> ((Supplier<?>) invocacion.getArgument(0)).get());
     lenient()
         .when(transacciones.consultar(any()))
+        .thenAnswer(invocacion -> ((Supplier<?>) invocacion.getArgument(0)).get());
+    lenient()
+        .when(transacciones.consultar(any(), anyInt()))
         .thenAnswer(invocacion -> ((Supplier<?>) invocacion.getArgument(0)).get());
     lenient()
         .when(lanzamientoRepo.save(any()))
@@ -331,19 +335,25 @@ class SimulacionBalanceoTest {
   }
 
   @Test
-  void rutasSoloSiElClusterEstaPendiente() {
+  void rutasSePuedenVolverABalancearYBorranLosOperariosDeSuOla() {
+    // CL1 ya tenía operarios (LISTO): balancear sus rutas otra vez (p. ej. tras
+    // pasarle rutas de otro cluster) reparte desde como está hoy y vuelve al paso 2.
+    ParametroCluster cl1 = limite(CL1, "2", ParametroCluster.ESTADO_LISTO);
+    OperarioOla olaCl1 = ola(CL1, 1L, 2);
     prepararRegistro(
         archivo(),
         configuracion("100", null),
-        List.of(limite(CL1, "2", ParametroCluster.ESTADO_RUTAS)),
+        List.of(cl1),
         List.of(operarios(1L, 0)),
-        List.of(),
+        List.of(olaCl1),
         List.of(cluster(CL1, "CL1")),
         List.of(chute(1L, "CHUTE 1")));
 
-    ConflictoException error =
-        assertThrows(ConflictoException.class, () -> lanzar(CL1, FaseBalanceo.RUTAS));
-    assertTrue(error.getMessage().contains("restablece ese cluster"), error.getMessage());
+    lanzar(CL1, FaseBalanceo.RUTAS);
+
+    assertEquals(ParametroCluster.ESTADO_RUTAS, cl1.getEstado());
+    verify(operarioOlaRepo).deleteAll(olasBorradas.capture());
+    assertEquals(List.of(olaCl1), olasBorradas.getValue());
   }
 
   @Test
@@ -717,22 +727,16 @@ class SimulacionBalanceoTest {
     lenient().when(rutaRepo.cargaPorArchivo(10L)).thenReturn(List.of());
     // Su balanceo llevó la ruta de CHUTE 2 a CHUTE 1 y luego a CHUTE 3: restablecer la
     // devuelve a CHUTE 2 (el origen de su movimiento más antiguo).
-    HistorialBalanceo segunda = new HistorialBalanceo();
-    segunda.setRutaId(5L);
-    segunda.setChuteOrigenId(1L);
-    segunda.setChuteDestinoId(3L);
-    HistorialBalanceo movida = new HistorialBalanceo();
-    movida.setRutaId(5L);
-    movida.setChuteOrigenId(2L);
-    movida.setChuteDestinoId(1L);
-    when(historialRepo.movimientosParaDeshacer(10L, CL3)).thenReturn(List.of(segunda, movida));
+    when(historialRepo.trabajoParaDeshacer(10L, List.of(CL3)))
+        .thenReturn(List.of(mover(5L, 1L), mover(5L, 2L)));
 
     servicio.restablecerCluster(10L, CL3).block();
 
     verify(lotes).moverRutas(Map.of(5L, 2L));
     verify(rutaRepo, never()).restaurarRutas(10L);
     verify(lanzamientoRepo).borrarPorCluster(10L, CL3);
-    verify(historialRepo).borrarSinLanzamientoDeCluster(10L, CL3);
+    verify(historialRepo).borrarManualesDeTrabajo(10L, List.of(CL3));
+    verify(lotes).cambiarClusters(Map.of());
     verify(operarioOlaRepo).deleteAll(olasBorradas.capture());
     assertEquals(List.of(olaCl3), olasBorradas.getValue());
     assertEquals(ParametroCluster.ESTADO_CERRADO, cl1.getEstado());
@@ -818,7 +822,7 @@ class SimulacionBalanceoTest {
     servicio.reabrir(10L, CL1).block();
     assertEquals(ParametroCluster.ESTADO_LISTO, cl1.getEstado());
     assertEquals(ParametroCluster.ESTADO_PENDIENTE, cl3.getEstado());
-    verify(historialRepo).movimientosParaDeshacer(10L, CL3);
+    verify(historialRepo).trabajoParaDeshacer(10L, List.of(CL3));
     verify(lanzamientoRepo).borrarPorCluster(10L, CL3);
     verify(operarioOlaRepo).deleteAll(olasBorradas.capture());
     assertEquals(List.of(olaCl3), olasBorradas.getValue());
@@ -1248,7 +1252,7 @@ class SimulacionBalanceoTest {
   private ConflictoException cambioRechazado(Long destino) {
     return assertThrows(
         ConflictoException.class,
-        () -> servicio.cambiarCluster(10L, 1L, new CambiarClusterRequest(destino)).block());
+        () -> servicio.cambiarCluster(10L, 1L, new CambiarClusterRequest(destino, null)).block());
   }
 
   @Test
@@ -1256,7 +1260,7 @@ class SimulacionBalanceoTest {
     RutaProyeccion ruta = prepararCambio(limite(CL1, "2"), limite(CL3, "2"));
     ArgumentCaptor<HistorialBalanceo> log = ArgumentCaptor.forClass(HistorialBalanceo.class);
 
-    servicio.cambiarCluster(10L, 1L, new CambiarClusterRequest(CL1)).block();
+    servicio.cambiarCluster(10L, 1L, new CambiarClusterRequest(CL1, null)).block();
 
     assertEquals(CL1, ruta.getClusterId());
     assertEquals(CL3, ruta.getClusterOriginalId());
@@ -1280,7 +1284,7 @@ class SimulacionBalanceoTest {
 
     assertThrows(
         SolicitudInvalidaException.class,
-        () -> servicio.cambiarCluster(10L, 1L, new CambiarClusterRequest(99L)).block());
+        () -> servicio.cambiarCluster(10L, 1L, new CambiarClusterRequest(99L, null)).block());
     ConflictoException mismo = cambioRechazado(CL3);
     assertTrue(mismo.getMessage().contains("ya pertenece a CL3"), mismo.getMessage());
     assertEquals(CL3, ruta.getClusterId());
@@ -1288,15 +1292,38 @@ class SimulacionBalanceoTest {
   }
 
   @Test
-  void cambiarClusterExigeQueElDestinoSigaSinBalancear() {
-    RutaProyeccion ruta =
-        prepararCambio(limite(CL1, "2", ParametroCluster.ESTADO_RUTAS), limite(CL3, "2"));
+  void cambiarClusterDespuesDeBalancearDevuelveAlPaso2YQuedaComoTrabajoDelEnCurso() {
+    ParametroCluster cl1 = limite(CL1, "2", ParametroCluster.ESTADO_LISTO);
+    RutaProyeccion ruta = prepararCambio(cl1, limite(CL3, "2"));
+    ArgumentCaptor<HistorialBalanceo> log = ArgumentCaptor.forClass(HistorialBalanceo.class);
 
-    ConflictoException error = cambioRechazado(CL1);
+    servicio.cambiarCluster(10L, 1L, new CambiarClusterRequest(CL1, null)).block();
 
-    assertTrue(error.getMessage().contains("CL1 ya está balanceado"), error.getMessage());
-    assertEquals(CL3, ruta.getClusterId());
-    verify(historialRepo, never()).save(any());
+    assertEquals(CL1, ruta.getClusterId());
+    // CL1 tenía operarios: su carga cambió y vuelve al paso 2.
+    assertEquals(ParametroCluster.ESTADO_RUTAS, cl1.getEstado());
+    verify(historialRepo).save(log.capture());
+    assertEquals(CL1, log.getValue().getClusterTrabajoId());
+  }
+
+  @Test
+  void cambiarClusterYChuteEnUnPasoValidaElChuteDestino() {
+    RutaProyeccion ruta = prepararCambio(limite(CL1, "2"), limite(CL2, "2"), limite(CL3, "2"));
+    // CHUTE 1 (donde está) tiene CL2, pero va a CHUTE 2, que no: se valida el destino final.
+    lenient()
+        .when(rutaRepo.clusterEnChute(10L, 1L, java.util.Set.of(CL2), 1L))
+        .thenReturn(Optional.of(CL2));
+    when(rutaRepo.clusterEnChute(10L, 2L, java.util.Set.of(CL2), 1L)).thenReturn(Optional.empty());
+    ArgumentCaptor<HistorialBalanceo> logs = ArgumentCaptor.forClass(HistorialBalanceo.class);
+
+    servicio.cambiarCluster(10L, 1L, new CambiarClusterRequest(CL1, 2L)).block();
+
+    assertEquals(CL1, ruta.getClusterId());
+    assertEquals(2L, ruta.getChuteId());
+    verify(historialRepo, org.mockito.Mockito.times(2)).save(logs.capture());
+    assertEquals(HistorialBalanceo.ACCION_CAMBIAR_CLUSTER, logs.getAllValues().get(0).getTipoAccion());
+    assertEquals(HistorialBalanceo.ACCION_MOVER_RUTA, logs.getAllValues().get(1).getTipoAccion());
+    assertEquals(1L, logs.getAllValues().get(1).getChuteOrigenId());
   }
 
   @Test
@@ -1335,7 +1362,38 @@ class SimulacionBalanceoTest {
   }
 
   @Test
-  void restablecerUnClusterDevuelveLasRutasCambiadasASuPuntoDeInicio() {
+  void restablecerDeshaceElCambioDeClusterYElBalanceoAunqueElCambioFueDespues() {
+    ArchivoExcel archivo = archivo();
+    archivo.setEstado(ArchivoExcel.ESTADO_EN_PROCESO);
+    ParametroCluster cl1 = limite(CL1, "2", ParametroCluster.ESTADO_RUTAS);
+    ParametroCluster cl3 = limite(CL3, "2");
+    prepararRegistro(
+        archivo,
+        configuracion("100", null),
+        List.of(cl1, cl3),
+        List.of(operarios(1L, 0), operarios(2L, 0)),
+        List.of(),
+        List.of(cluster(CL1, "CL1"), cluster(CL3, "CL3")),
+        List.of(chute(1L, "CHUTE 1"), chute(2L, "CHUTE 2")));
+    lenient().when(rutaRepo.cargaPorArchivo(10L)).thenReturn(List.of());
+    // El balanceo de CL1 llevó la ruta 5 de CHUTE 2 a CHUTE 1 y DESPUÉS se pasó a CL3
+    // (estando en CHUTE 1). Del último al primero: el cambio de cluster y el movimiento.
+    when(historialRepo.trabajoParaDeshacer(10L, List.of(CL1)))
+        .thenReturn(List.of(cambio(5L, 1L, CL1), mover(5L, 2L)));
+
+    servicio.restablecerCluster(10L, CL1).block();
+
+    // Vuelve a CL1 y al chute de antes del balanceo (no al del cambio de cluster).
+    verify(lotes).moverRutas(Map.of(5L, 2L));
+    verify(lotes).cambiarClusters(Map.of(5L, CL1));
+    verify(lanzamientoRepo).borrarPorCluster(10L, CL1);
+    verify(historialRepo).borrarManualesDeTrabajo(10L, List.of(CL1));
+    assertEquals(ParametroCluster.ESTADO_PENDIENTE, cl1.getEstado());
+    assertEquals(ParametroCluster.ESTADO_PENDIENTE, cl3.getEstado());
+  }
+
+  @Test
+  void restablecerDevuelveAlClusterOriginalUnaRutaQueEntroAMano() {
     ArchivoExcel archivo = archivo();
     archivo.setEstado(ArchivoExcel.ESTADO_EN_PROCESO);
     ParametroCluster cl1 = limite(CL1, "2", ParametroCluster.ESTADO_LISTO);
@@ -1349,50 +1407,15 @@ class SimulacionBalanceoTest {
         List.of(cluster(CL1, "CL1"), cluster(CL3, "CL3")),
         List.of(chute(1L, "CHUTE 1"), chute(2L, "CHUTE 2")));
     lenient().when(rutaRepo.cargaPorArchivo(10L)).thenReturn(List.of());
-    // La ruta 5 era de CL3 en CHUTE 2; pasó a CL1 y el balanceo de CL1 la llevó a CHUTE 1.
-    RutaProyeccion ruta = ruta(5L, CL1, 1L, "R5", "10");
-    ruta.setClusterOriginalId(CL3);
-    when(rutaRepo.cambiadasDeCluster(10L, CL1)).thenReturn(List.of(ruta));
-    when(historialRepo.primerosCambiosDeCluster(10L, CL1))
-        .thenReturn(List.of(primerCambio(5L, 2L, 100L)));
+    // La ruta 5 era de CL3 en CHUTE 2; con CL1 en curso pasó a CL1 y a CHUTE 1 en un paso.
+    when(historialRepo.trabajoParaDeshacer(10L, List.of(CL1)))
+        .thenReturn(List.of(mover(5L, 2L), cambio(5L, 2L, CL3)));
 
     servicio.restablecerCluster(10L, CL1).block();
 
-    verify(lanzamientoRepo).borrarPorCluster(10L, CL1);
-    verify(historialRepo).borrarDesdeCambioDeCluster(10L, CL1);
     verify(lotes).moverRutas(Map.of(5L, 2L));
-    verify(rutaRepo).restaurarClusters(10L, CL1);
+    verify(lotes).cambiarClusters(Map.of(5L, CL3));
     assertEquals(ParametroCluster.ESTADO_PENDIENTE, cl1.getEstado());
-    assertEquals(ParametroCluster.ESTADO_PENDIENTE, cl3.getEstado());
-  }
-
-  @Test
-  void restablecerNoDevuelveRutasAUnClusterCerrado() {
-    ArchivoExcel archivo = archivo();
-    archivo.setEstado(ArchivoExcel.ESTADO_EN_PROCESO);
-    ParametroCluster cl1 = limite(CL1, "2", ParametroCluster.ESTADO_CERRADO);
-    ParametroCluster cl3 = limite(CL3, "2", ParametroCluster.ESTADO_LISTO);
-    prepararRegistro(
-        archivo,
-        configuracion("100", null),
-        List.of(cl1, cl3),
-        List.of(operarios(1L, 0)),
-        List.of(),
-        List.of(cluster(CL1, "CL1"), cluster(CL3, "CL3")),
-        List.of(chute(1L, "CHUTE 1")));
-    // La ruta pasó de CL1 a CL3 y luego se cerró CL1: devolverla cambiaría su carga cerrada.
-    RutaProyeccion ruta = ruta(5L, CL3, 1L, "R5", "10");
-    ruta.setClusterOriginalId(CL1);
-    when(rutaRepo.cambiadasDeCluster(10L, CL3)).thenReturn(List.of(ruta));
-
-    ConflictoException error =
-        assertThrows(
-            ConflictoException.class, () -> servicio.restablecerCluster(10L, CL3).block());
-
-    assertTrue(error.getMessage().contains("CL1 (R5)"), error.getMessage());
-    verify(lanzamientoRepo, never()).borrarPorCluster(any(), any());
-    verify(rutaRepo, never()).restaurarClusters(any(), any());
-    assertEquals(ParametroCluster.ESTADO_LISTO, cl3.getEstado());
   }
 
   @Test
@@ -1478,18 +1501,33 @@ class SimulacionBalanceoTest {
     };
   }
 
-  private static PrimerCambioCluster primerCambio(Long rutaId, Long chuteId, Long historialId) {
-    return new PrimerCambioCluster() {
+  /** Movimiento a deshacer: la ruta vuelve a chuteOrigen. */
+  private static CambioParaDeshacer mover(Long rutaId, Long chuteOrigen) {
+    return deshacer(rutaId, HistorialBalanceo.ACCION_MOVER_RUTA, chuteOrigen, null);
+  }
+
+  /** Cambio de cluster a deshacer: la ruta vuelve a clusterOrigen. */
+  private static CambioParaDeshacer cambio(Long rutaId, Long chute, Long clusterOrigen) {
+    return deshacer(rutaId, HistorialBalanceo.ACCION_CAMBIAR_CLUSTER, chute, clusterOrigen);
+  }
+
+  private static CambioParaDeshacer deshacer(
+      Long rutaId, String tipo, Long chuteOrigen, Long clusterOrigen) {
+    return new CambioParaDeshacer() {
       public Long getRutaId() {
         return rutaId;
       }
 
-      public Long getChuteId() {
-        return chuteId;
+      public String getTipoAccion() {
+        return tipo;
       }
 
-      public Long getHistorialId() {
-        return historialId;
+      public Long getChuteOrigenId() {
+        return chuteOrigen;
+      }
+
+      public Long getClusterOrigenId() {
+        return clusterOrigen;
       }
     };
   }

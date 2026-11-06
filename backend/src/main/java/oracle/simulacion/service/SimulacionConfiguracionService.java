@@ -61,7 +61,7 @@ import oracle.simulacion.repository.HistorialBalanceoRepository;
 import oracle.simulacion.repository.LanzamientoBalanceoRepository;
 import oracle.simulacion.repository.MovimientoRutas;
 import oracle.simulacion.repository.OperarioOlaRepository;
-import oracle.simulacion.repository.PrimerCambioCluster;
+import oracle.simulacion.repository.CambioParaDeshacer;
 import oracle.simulacion.repository.ParametroChuteRepository;
 import oracle.simulacion.repository.ParametroClusterRepository;
 import oracle.simulacion.repository.ResumenRutasFiltro;
@@ -79,6 +79,7 @@ import oracle.simulacion.request.MoverRutaRequest;
 import oracle.simulacion.response.BalanceoResponse;
 import oracle.simulacion.response.CambioClusterResponse;
 import oracle.simulacion.response.CargaSimulacionResponse;
+import oracle.simulacion.response.PaginaRutasResponse;
 import oracle.simulacion.response.ChuteComparativoResponse;
 import oracle.simulacion.response.ChuteMezcladoResponse;
 import oracle.simulacion.response.ChuteParametroResponse;
@@ -129,6 +130,12 @@ public class SimulacionConfiguracionService {
   private static final BigDecimal SIN_OPERARIOS = new BigDecimal("1E+30");
   private static final int MAX_ITERACIONES = 1000;
   private static final int MAX_TAMANO_PAGINA = 100;
+  /** Página máxima de los listados paginados con OFFSET (detalle del dashboard e historial). */
+  private static final int MAX_PAGINA = 2_000;
+  /** Tope de una lectura en Reactor: algo más que el statement_timeout (15 s por defecto). */
+  /** Tope total de la transacción de una lectura: corta la consulta en el servidor. */
+  private static final int TOPE_TRANSACCION_LECTURA_S = 18;
+  private static final java.time.Duration TOPE_LECTURA = java.time.Duration.ofSeconds(20);
   private static final int ESCALA = 4;
   /**
    * Clusters que no pueden compartir chute: CL1 y CL2 (número del nombre
@@ -192,22 +199,24 @@ public class SimulacionConfiguracionService {
         "Configuración de simulación.");
   }
 
-  public Mono<ApiResponse<PaginaResponse<RutaSimulacionResponse>>> rutas(
+  /**
+   * Rutas de la planilla por keyset: `despues` es el id de la última ruta recibida (null en la
+   * primera página), y la respuesta trae `siguiente` mientras queden. Con idx_rutas_archivo_id
+   * cada página sale del índice desde ese id, sin recorrer las anteriores como OFFSET. El total
+   * solo se cuenta en la primera página (para la barra de progreso).
+   */
+  public Mono<ApiResponse<PaginaRutasResponse>> rutas(
       Long archivoId,
-      int pagina,
+      Long despues,
       int tamano,
       String texto,
       List<Long> clusterIds,
       List<Long> chuteIds) {
-    int p = Math.max(pagina, 1) - 1;
     int t = Math.min(Math.max(tamano, 1), MAX_TAMANO_PAGINA);
-    PageRequest pageable =
-        PageRequest.of(p, t, Sort.by("codigoRuta", "tipo", "id").ascending());
     String termino = Filtros.normalizar(texto);
-    // El orden sigue uq_rutas_archivo_ruta_tipo (archivo, código, tipo, id): la
-    // página sale del índice sin ordenar todo el registro. La búsqueda es por
-    // prefijo (no "contiene") por la misma razón; la colación ignora mayúsculas y tildes.
-    Specification<RutaProyeccion> spec =
+    // La búsqueda es por prefijo (no "contiene"): la resuelve el índice único
+    // (archivo, código, tipo).
+    Specification<RutaProyeccion> filtros =
         (root, query, cb) -> {
           List<Predicate> condiciones = new ArrayList<>();
           condiciones.add(cb.equal(root.get("archivoId"), archivoId));
@@ -222,14 +231,20 @@ public class SimulacionConfiguracionService {
           }
           return cb.and(condiciones.toArray(Predicate[]::new));
         };
+    Specification<RutaProyeccion> pagina =
+        despues == null
+            ? filtros
+            : filtros.and((root, query, cb) -> cb.greaterThan(root.get("id"), despues));
     return leer(
         "rutas id=" + archivoId,
         () -> {
           Contexto ctx = contexto(archivoId, false);
-          Page<RutaProyeccion> page = rutaRepo.findAll(spec, pageable);
-          List<RutaSimulacionResponse> lista =
-              page.getContent().stream().map((ruta) -> aRuta(ctx, ruta)).toList();
-          return PaginaResponse.de(page, lista);
+          List<RutaProyeccion> filas =
+              rutaRepo.findBy(pagina, (q) -> q.sortBy(Sort.by("id").ascending()).limit(t).all());
+          List<RutaSimulacionResponse> lista = filas.stream().map((ruta) -> aRuta(ctx, ruta)).toList();
+          Long siguiente = filas.size() < t ? null : filas.getLast().getId();
+          Long total = despues == null ? rutaRepo.count(filtros) : null;
+          return new PaginaRutasResponse(lista, total, siguiente);
         },
         "Rutas del registro.");
   }
@@ -250,7 +265,8 @@ public class SimulacionConfiguracionService {
       LadoChute lado,
       Long clusterId,
       boolean soloCambios) {
-    int p = Math.max(pagina, 1) - 1;
+    // Tope de página: un OFFSET enorme recorrería todo el índice del registro.
+    int p = Math.min(Math.max(pagina, 1), MAX_PAGINA) - 1;
     int t = Math.min(Math.max(tamano, 1), MAX_TAMANO_PAGINA);
     boolean antes = lado == LadoChute.ANTES;
     // Cada lado agrupa por el cluster que la ruta tenía entonces.
@@ -355,9 +371,11 @@ public class SimulacionConfiguracionService {
           boolean cambiaEquipo =
               config.getVelocidadBase() == null
                   || config.getVelocidadBase().compareTo(req.velocidadBase()) != 0
-                  || !Objects.equals(config.getOperariosPorChute(), req.operariosPorChute())
+                  // Se compara con lo que el cliente recibió: 0 y nulo son "sin tope", y un
+                  // equipo nunca definido es la suma que se le mostró (operariosMaximos).
+                  || !Objects.equals(sinTope(config.getOperariosPorChute()), sinTope(req.operariosPorChute()))
                   || (req.operariosMaximos() != null
-                      && !Objects.equals(config.getOperariosMaximos(), req.operariosMaximos()));
+                      && operariosMaximos(ctx, operariosBase(ctx)) != req.operariosMaximos());
           String cerrados = nombres(ctx, cerrados(ctx));
           if (cambiaEquipo && !cerrados.isEmpty()) {
             throw new ConflictoException(
@@ -444,7 +462,7 @@ public class SimulacionConfiguracionService {
     }
     Map<Long, Map<Long, Integer>> operariosPorOla = new LinkedHashMap<>();
     for (CargaRutas fila : rutaRepo.cargaPorArchivo(ctx.archivo().getId())) {
-      if (fila.getRutas() <= 0) {
+      if (fila.getRutas() <= 0 || cerrado(ctx, fila.getClusterId())) {
         continue;
       }
       ParametroChute parametro = ctx.parametrosChute().get(fila.getChuteId());
@@ -512,14 +530,19 @@ public class SimulacionConfiguracionService {
           }
           Long origen = ruta.getChuteId();
           ruta.setChuteId(req.chuteId());
-          historialRepo.save(
+          HistorialBalanceo manual =
               movimiento(
                   archivoId,
                   null,
                   new Traslado(ruta, origen, req.chuteId()),
                   HistorialBalanceo.MOTIVO_MANUAL,
                   actor,
-                  Instant.now()));
+                  Instant.now());
+          // Trabajo del cluster en curso: restablecerlo (o reabrir uno anterior) lo deshace.
+          manual.setClusterTrabajoId(enCurso(ctx));
+          historialRepo.save(manual);
+          // El chute nuevo puede sumar operarios base a la ola de su cluster.
+          validarOperarios(ctx);
           // Mover una ruta cambia la carga sobre la que se asignaron los
           // operarios de su ola: solo ese cluster vuelve al paso 2.
           invalidarOperarios(ctx, List.of(ruta.getClusterId()));
@@ -531,9 +554,9 @@ public class SimulacionConfiguracionService {
 
   /**
    * Pasa una ruta a otro cluster, sobrescribiendo el suyo (el original queda
-   * guardado). Solo antes de balancear: los dos clusters deben seguir
-   * pendientes, porque el reparto y los operarios de un cluster ya trabajado
-   * quedarían desfasados. La ruta se queda en su chute.
+   * guardado). Vale antes y después de balancear, mientras ninguno de los dos
+   * esté cerrado; los que ya tenían operarios vuelven al paso 2 porque su carga
+   * cambió. La ruta se queda en su chute.
    */
   public Mono<ApiResponse<ConfiguracionSimulacionResponse>> cambiarCluster(
       Long archivoId, Long rutaId, CambiarClusterRequest req) {
@@ -557,8 +580,8 @@ public class SimulacionConfiguracionService {
             throw new ConflictoException(
                 "La ruta " + ruta.getCodigoRuta() + " ya pertenece a " + ctx.nombreCluster(origen) + ".");
           }
-          exigirSinBalancear(ctx, origen);
-          exigirSinBalancear(ctx, destino);
+          exigirAbierto(ctx, origen);
+          exigirAbierto(ctx, destino);
           if (!rutaRepo.existsByArchivoIdAndClusterIdAndIdNot(archivoId, origen, rutaId)) {
             throw new ConflictoException(
                 "La ruta "
@@ -567,24 +590,34 @@ public class SimulacionConfiguracionService {
                     + ctx.nombreCluster(origen)
                     + ": un cluster no puede quedarse sin rutas.");
           }
-          // La ruta sigue en su chute: con su nuevo cluster tampoco puede juntar CL1 y
-          // CL2. Solo se consulta si el destino tiene incompatibles (CL1 o CL2).
+          // Chute final: el de la petición (cambio de cluster y de chute en un solo
+          // paso, sin estado intermedio) o el suyo. Con su nuevo cluster tampoco
+          // puede juntar CL1 y CL2 ahí; solo se consulta si el destino tiene
+          // incompatibles (CL1 o CL2).
+          Long chuteAntes = ruta.getChuteId();
+          Long chuteFinal = req.chuteId() == null ? chuteAntes : req.chuteId();
+          if (!ctx.parametrosChute().containsKey(chuteFinal)) {
+            throw new SolicitudInvalidaException(
+                "El chute " + chuteFinal + " no pertenece al registro.");
+          }
           Set<Long> incompatibles = incompatiblesDe(destino, numerosCluster(ctx.clusters()));
           Long conflicto =
               incompatibles.isEmpty()
                   ? null
                   : rutaRepo
-                      .clusterEnChute(archivoId, ruta.getChuteId(), incompatibles, rutaId)
+                      .clusterEnChute(archivoId, chuteFinal, incompatibles, rutaId)
                       .orElse(null);
           if (conflicto != null) {
             throw new ConflictoException(
                 "El chute "
-                    + ctx.nombreChute(ruta.getChuteId())
+                    + ctx.nombreChute(chuteFinal)
                     + " tiene rutas de "
                     + ctx.nombreCluster(conflicto)
                     + ", que no pueden mezclarse con "
                     + ctx.nombreCluster(destino)
-                    + ": mueve antes la ruta a otro chute.");
+                    + (chuteFinal.equals(chuteAntes)
+                        ? ": llévala también a otro chute."
+                        : "."));
           }
           ruta.setClusterId(destino);
           HistorialBalanceo log =
@@ -599,7 +632,26 @@ public class SimulacionConfiguracionService {
           log.setChuteDestinoId(ruta.getChuteId());
           log.setClusterOrigenId(origen);
           log.setClusterDestinoId(destino);
+          log.setClusterTrabajoId(enCurso(ctx));
           historialRepo.save(log);
+          if (!chuteFinal.equals(chuteAntes)) {
+            // El cambio de chute va después en el historial: deshacerlo devuelve
+            // primero el chute y luego el cluster.
+            ruta.setChuteId(chuteFinal);
+            HistorialBalanceo movimiento =
+                movimiento(
+                    archivoId,
+                    null,
+                    new Traslado(ruta, chuteAntes, chuteFinal),
+                    HistorialBalanceo.MOTIVO_MANUAL,
+                    actor,
+                    Instant.now());
+            movimiento.setClusterTrabajoId(enCurso(ctx));
+            historialRepo.save(movimiento);
+          }
+          validarOperarios(ctx);
+          // Cambia la carga de los dos clusters: si ya tenían operarios, vuelven al paso 2.
+          invalidarOperarios(ctx, List.of(origen, destino));
           tocar(ctx.archivo(), actor);
           return aConfiguracion(ctx);
         },
@@ -653,8 +705,10 @@ public class SimulacionConfiguracionService {
   }
 
   /**
-   * El cluster en curso vuelve a la proyección: sus rutas a su chute original,
-   * sin operarios de ola y sin sus lanzamientos. Los demás clusters no cambian.
+   * El cluster en curso vuelve a como estaba antes de trabajarlo: se deshace su
+   * balanceo y lo que se cambió a mano mientras estuvo en curso (movimientos y
+   * rutas que entraron o salieron de él), sin operarios de ola. Los clusters
+   * cerrados no cambian.
    */
   public Mono<ApiResponse<ConfiguracionSimulacionResponse>> restablecerCluster(
       Long archivoId, Long clusterId) {
@@ -664,26 +718,9 @@ public class SimulacionConfiguracionService {
         () -> {
           Contexto ctx = contexto(archivoId, true);
           exigirEnCurso(ctx, clusterId);
-          // Rutas que entraron o salieron de este cluster a mano: también vuelven
-          // a su punto de inicio, salvo que el otro cluster ya esté cerrado.
-          List<RutaProyeccion> cambiadas = rutaRepo.cambiadasDeCluster(archivoId, clusterId);
-          exigirOtrosSinCerrar(ctx, clusterId, cambiadas);
-          Map<Long, Long> chuteAlCambiar = new HashMap<>();
-          if (!cambiadas.isEmpty()) {
-            for (PrimerCambioCluster cambio :
-                historialRepo.primerosCambiosDeCluster(archivoId, clusterId)) {
-              if (cambio.getChuteId() != null) {
-                chuteAlCambiar.put(cambio.getRutaId(), cambio.getChuteId());
-              }
-            }
-          }
+          // Deshace todo lo hecho mientras estuvo en curso: su balanceo y los
+          // cambios a mano (incluidas rutas que entraron o salieron de él).
           reiniciarClusters(ctx, List.of(clusterId));
-          if (!cambiadas.isEmpty()) {
-            // El historial primero: la consulta reconoce las rutas porque siguen cambiadas.
-            historialRepo.borrarDesdeCambioDeCluster(archivoId, clusterId);
-            lotes.moverRutas(chuteAlCambiar);
-            rutaRepo.restaurarClusters(archivoId, clusterId);
-          }
           actualizarEstado(ctx);
           tocar(ctx.archivo(), actor);
           return aConfiguracion(ctx);
@@ -804,7 +841,7 @@ public class SimulacionConfiguracionService {
       Long archivoId, Long lanzamientoId, int pagina, int tamano) {
     PageRequest pageable =
         PageRequest.of(
-            Math.max(pagina, 1) - 1,
+            Math.min(Math.max(pagina, 1), MAX_PAGINA) - 1,
             Math.min(Math.max(tamano, 1), MAX_TAMANO_PAGINA),
             Sort.by("id").descending());
     return leer(
@@ -894,12 +931,10 @@ public class SimulacionConfiguracionService {
     Contexto ctx = contexto(archivoId, true);
     ParametroCluster parametro = exigirEnCurso(ctx, clusterId);
     String nombre = ctx.nombreCluster(clusterId);
-    if (!ParametroCluster.ESTADO_PENDIENTE.equals(parametro.getEstado())) {
-      throw new ConflictoException(
-          "Las rutas de "
-              + nombre
-              + " ya están balanceadas. Para repartirlas de nuevo, restablece ese cluster.");
-    }
+    // Volver a balancear un cluster ya balanceado (p. ej. tras pasarle rutas de
+    // otro cluster) reparte desde como está hoy, sin perder los cambios a mano;
+    // si ya tenía operarios, su carga cambia y vuelve al paso 2.
+    invalidarOperarios(ctx, List.of(clusterId));
     Reparto reparto =
         new Reparto(
             rutaRepo.findByArchivoIdOrderByIdAsc(archivoId),
@@ -1551,25 +1586,40 @@ public class SimulacionConfiguracionService {
    * que movió un cluster anterior al separarse se conserva. Quedan sin
    * operarios de ola y sin sus lanzamientos.
    */
+  /**
+   * Deshace el trabajo hecho mientras esos clusters estaban en curso: los
+   * movimientos de sus lanzamientos y los cambios a mano (mover o cambiar de
+   * cluster) con ese cluster de trabajo. Como el trabajo de cada cluster es un
+   * tramo seguido del historial, deshacerlo devuelve cada ruta exactamente al
+   * chute y cluster que tenía antes; ninguna ruta de un cluster cerrado se toca
+   * (mientras un cluster está en curso, los anteriores están cerrados y no se
+   * pueden cambiar). Los clusters quedan PENDIENTE y sin operarios de ola.
+   */
   private void reiniciarClusters(Contexto ctx, Collection<Long> clusterIds) {
+    if (clusterIds.isEmpty()) {
+      return;
+    }
     Long archivoId = ctx.archivo().getId();
-    for (Long clusterId : clusterIds) {
-      // Los movimientos vienen del último al primero: el origen del más antiguo
-      // de cada ruta es donde estaba antes de trabajar el cluster. Se guarda
-      // en lote, sin cargar las rutas.
-      Map<Long, Long> chutes = new LinkedHashMap<>();
-      List<HistorialBalanceo> movimientos =
-          historialRepo.movimientosParaDeshacer(archivoId, clusterId);
-      for (HistorialBalanceo movimiento : movimientos) {
-        if (movimiento.getRutaId() != null && movimiento.getChuteOrigenId() != null) {
-          chutes.put(movimiento.getRutaId(), movimiento.getChuteOrigenId());
+    // Del último cambio al primero: el origen del más antiguo de cada ruta es
+    // donde estaba antes de ese trabajo (para el chute y para el cluster).
+    Map<Long, Long> chutes = new LinkedHashMap<>();
+    Map<Long, Long> clusters = new LinkedHashMap<>();
+    for (CambioParaDeshacer cambio : historialRepo.trabajoParaDeshacer(archivoId, clusterIds)) {
+      if (HistorialBalanceo.ACCION_CAMBIAR_CLUSTER.equals(cambio.getTipoAccion())) {
+        if (cambio.getClusterOrigenId() != null) {
+          clusters.put(cambio.getRutaId(), cambio.getClusterOrigenId());
         }
+      } else if (cambio.getChuteOrigenId() != null) {
+        chutes.put(cambio.getRutaId(), cambio.getChuteOrigenId());
       }
-      lotes.moverRutas(chutes);
+    }
+    historialRepo.borrarManualesDeTrabajo(archivoId, clusterIds);
+    for (Long clusterId : clusterIds) {
       lanzamientoRepo.borrarPorCluster(archivoId, clusterId);
-      historialRepo.borrarSinLanzamientoDeCluster(archivoId, clusterId);
       ctx.parametrosCluster().get(clusterId).setEstado(ParametroCluster.ESTADO_PENDIENTE);
     }
+    lotes.moverRutas(chutes);
+    lotes.cambiarClusters(clusters);
     borrarOlas(ctx, clusterIds);
   }
 
@@ -1720,66 +1770,25 @@ public class SimulacionConfiguracionService {
    * Un cluster acepta o entrega rutas de otro cluster solo si sigue pendiente:
    * con su paso 1 hecho, su reparto y sus operarios quedarían desfasados.
    */
-  private static void exigirSinBalancear(Contexto ctx, Long clusterId) {
-    String estado = parametroCluster(ctx, clusterId).getEstado();
-    if (ParametroCluster.ESTADO_PENDIENTE.equals(estado)) {
-      return;
+  /** Cambiar rutas de cluster exige que el cluster no esté cerrado. */
+  private static void exigirAbierto(Contexto ctx, Long clusterId) {
+    if (ParametroCluster.ESTADO_CERRADO.equals(parametroCluster(ctx, clusterId).getEstado())) {
+      throw new ConflictoException(
+          ctx.nombreCluster(clusterId) + " está cerrado: reábrelo para cambiar rutas de cluster.");
     }
-    String nombre = ctx.nombreCluster(clusterId);
-    throw new ConflictoException(
-        ParametroCluster.ESTADO_CERRADO.equals(estado)
-            ? nombre + " está cerrado: reábrelo y restablécelo para cambiar rutas de cluster."
-            : nombre + " ya está balanceado: restablécelo para cambiar rutas de cluster.");
   }
 
-  /** La ruta puede cambiar de cluster: el suyo y al menos otro siguen pendientes. */
+  /** La ruta puede cambiar de cluster: el suyo y al menos otro siguen sin cerrar. */
   private static boolean clusterEditable(Contexto ctx, Long clusterId) {
     ParametroCluster propio = ctx.parametrosCluster().get(clusterId);
-    if (propio == null || !ParametroCluster.ESTADO_PENDIENTE.equals(propio.getEstado())) {
+    if (propio == null || ParametroCluster.ESTADO_CERRADO.equals(propio.getEstado())) {
       return false;
     }
     return ctx.parametrosCluster().entrySet().stream()
         .anyMatch(
             (e) ->
                 !e.getKey().equals(clusterId)
-                    && ParametroCluster.ESTADO_PENDIENTE.equals(e.getValue().getEstado()));
-  }
-
-  /**
-   * Restablecer un cluster devuelve las rutas que cambiaron con él; si el otro
-   * cluster del cambio ya no está pendiente (cerrado antes que este), su carga
-   * cerrada cambiaría: hay que reabrirlo y restablecerlo primero.
-   */
-  private static void exigirOtrosSinCerrar(
-      Contexto ctx, Long clusterId, List<RutaProyeccion> cambiadas) {
-    Map<Long, List<String>> bloqueadas = new TreeMap<>();
-    for (RutaProyeccion ruta : cambiadas) {
-      Long otro =
-          clusterId.equals(ruta.getClusterId()) ? ruta.getClusterOriginalId() : ruta.getClusterId();
-      ParametroCluster parametro = ctx.parametrosCluster().get(otro);
-      if (parametro != null && !ParametroCluster.ESTADO_PENDIENTE.equals(parametro.getEstado())) {
-        bloqueadas.computeIfAbsent(otro, (id) -> new ArrayList<>()).add(ruta.getCodigoRuta());
-      }
-    }
-    if (bloqueadas.isEmpty()) {
-      return;
-    }
-    String detalle =
-        bloqueadas.entrySet().stream()
-            .map(
-                (e) ->
-                    ctx.nombreCluster(e.getKey())
-                        + " ("
-                        + e.getValue().stream().limit(5).collect(Collectors.joining(", "))
-                        + (e.getValue().size() > 5 ? " y " + (e.getValue().size() - 5) + " más" : "")
-                        + ")")
-            .collect(Collectors.joining("; "));
-    throw new ConflictoException(
-        "No se puede restablecer "
-            + ctx.nombreCluster(clusterId)
-            + ": tiene rutas cambiadas con clusters que ya no están pendientes: "
-            + detalle
-            + ". Reabre y restablece esos clusters primero.");
+                    && !ParametroCluster.ESTADO_CERRADO.equals(e.getValue().getEstado()));
   }
 
   private static boolean cerrado(Contexto ctx, Long clusterId) {
@@ -2585,6 +2594,11 @@ public class SimulacionConfiguracionService {
     return Math.max(1, Math.min(Limites.MAX_OPERARIOS, operariosMaximos(ctx, operarios)));
   }
 
+  /** 0 o nulo: sin tope propio (así se guarda y se muestra). */
+  private static Integer sinTope(Integer valor) {
+    return valor == null || valor <= 0 ? null : valor;
+  }
+
   /** Tope global del registro; si nunca se definió, la suma asignada actual. */
   private static int operariosMaximos(Contexto ctx, Map<Long, Integer> operarios) {
     Integer maximo = ctx.config().getOperariosMaximos();
@@ -2674,14 +2688,23 @@ public class SimulacionConfiguracionService {
     return cache.obtener(clave, () -> calculo.apply(contexto(archivoId, false)));
   }
 
+  /**
+   * Lecturas: aisladas en boundedElastic, con tope TOTAL en la transacción
+   * (Spring reparte el tiempo restante entre sus sentencias, y PostgreSQL las
+   * cancela; cada una además bajo statement_timeout) y un tope algo mayor en
+   * Reactor como red de seguridad. Las escrituras no llevan este tope: cortar la respuesta no
+   * cancela la transacción y el usuario vería un error de algo que sí se guardó;
+   * a ellas las acota statement_timeout sentencia por sentencia.
+   */
   private <T> Mono<ApiResponse<T>> leer(String operacion, Supplier<T> trabajo, String mensaje) {
     return Mono.fromCallable(
             () ->
                 Trazas.medir(
                     log,
                     "SimulacionConfiguracionService." + operacion,
-                    () -> transacciones.consultar(trabajo)))
+                    () -> transacciones.consultar(trabajo, TOPE_TRANSACCION_LECTURA_S)))
         .subscribeOn(Schedulers.boundedElastic())
+        .timeout(TOPE_LECTURA)
         .map((datos) -> ApiResponse.ok(mensaje, datos));
   }
 
