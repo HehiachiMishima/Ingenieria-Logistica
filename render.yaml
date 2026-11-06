@@ -8,7 +8,8 @@
 #   1. Sube el repositorio a GitHub/GitLab.
 #   2. En Render: New + > Blueprint > selecciona el repositorio.
 #   3. Render pedira los valores marcados con "sync: false"
-#      (credenciales de la base de datos y datos del administrador).
+#      (credenciales de la base de datos, datos del administrador y la
+#      contrasena del SFTP del panel Picking).
 # ============================================================
 
 services:
@@ -53,6 +54,31 @@ services:
       # --- JVM (opcional): ajusta memoria sin reconstruir la imagen ---
       - key: JAVA_OPTS
         value: "-XX:MaxRAMPercentage=70 -XX:+UseContainerSupport -XX:+ExitOnOutOfMemoryError"
+
+      # --- Panel Picking: archivo del WMS por SFTP ---
+      # La imagen no incluye el CSV (backend/data no se copia al contenedor).
+      # Al arrancar, el backend descarga el archivo del WMS y lo guarda en
+      # SFTP_LOCAL_DIR; la carpeta es efimera en Render, pero se vuelve a
+      # sincronizar en cada arranque (y a los :05 y :35 de cada hora).
+      - key: SFTP_HOST
+        value: "40.77.63.163"
+      - key: SFTP_PORT
+        value: "22"
+      - key: SFTP_USER
+        value: "supply"
+      - key: SFTP_PASSWORD
+        sync: false
+      - key: SFTP_REMOTE_DIR
+        value: "/wms_prd/data/9040/output/REPORT_AUTO/"
+      - key: SFTP_FILENAME
+        value: "Pedidos + Asignación 9040.csv"
+      - key: SFTP_LOCAL_DIR
+        value: "/app/data"
+      # Opcional pero recomendado: linea known_hosts ("host clave-publica")
+      # para verificar la identidad del servidor. Si falta, el backend acepta
+      # cualquier clave. Descomenta y define el valor en el dashboard.
+      # - key: SFTP_KNOWN_HOSTS
+      #   sync: false
 
       # --- Usuario administrador semilla ---
       - key: USER_ADMIN

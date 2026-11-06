@@ -294,7 +294,8 @@ Los secretos (`JWT_SECRET`, `USER_*`) se leen de `backend/.env` si existe.
 1. Sube el repositorio a GitHub/GitLab.
 2. Render: **New + → Blueprint** y selecciona el repositorio.
 3. Completa los valores `sync: false`: `DB_NUBE_URL` (la *Internal Database
-   URL* de tu PostgreSQL de Render), `USER_*` y (opcional) `CORS_ALLOWED_ORIGINS`.
+   URL* de tu PostgreSQL de Render), `USER_*`, `SFTP_PASSWORD` y (opcional)
+   `CORS_ALLOWED_ORIGINS`.
 4. Aplica `postgresql.sql` en la base antes del primer deploy (ver **Base de
    datos**); `datos.sql` después, si quieres los ejemplos.
 5. Abre `https://farmacias-peruanas.onrender.com`.
