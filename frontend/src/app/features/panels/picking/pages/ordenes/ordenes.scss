@@ -47,3 +47,13 @@ th.ordenable {
   font-size: 0.7rem;
   font-weight: 800;
 }
+
+/* Cuatro indicadores de la vista: una fila de 4 (2 + 2 en pantallas chicas). */
+.kpis-vista {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 0;
+
+  @media (max-width: 1100px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

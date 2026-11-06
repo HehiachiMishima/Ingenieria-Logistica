@@ -4,6 +4,7 @@ import { PERMISOS } from '../../../../../core/config/permisos';
 import { exportarCsv } from '../../../../../core/utils/csv.util';
 import { HasPermiso } from '../../../../../shared/directives/has-permiso.directive';
 import { EmptyState } from '../../../../../shared/ui/empty-state/empty-state';
+import { Kpi } from '../../../../../shared/ui/charts/kpi';
 import { Icon } from '../../../../../shared/ui/icon/icon';
 import { Paginador } from '../../../../../shared/ui/paginador/paginador';
 import { PickingBarra } from '../../componentes/barra/barra';
@@ -51,7 +52,7 @@ const COLUMNAS: { k: string; l: string; num?: boolean; v: (o: Orden) => number |
 @Component({
   selector: 'app-picking-ordenes',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [PickingBarra, PickingDetalle, Paginador, EmptyState, Icon, HasPermiso],
+  imports: [PickingBarra, PickingDetalle, Kpi, Paginador, EmptyState, Icon, HasPermiso],
   templateUrl: './ordenes.html',
   styleUrl: './ordenes.scss',
 })
@@ -105,6 +106,60 @@ export class PickingOrdenes {
         (!q || `${o.orden} ${o.suc} ${o.sucNom} ${todos(o.cargas)}`.toLowerCase().includes(q)),
     );
     return ordenarPor(filtradas, col.v, this.orden().dir, (o) => o.orden);
+  });
+
+  /**
+   * Indicadores de las órdenes en la vista (filtros, estado y búsqueda): suma lo
+   * que ya muestra la tabla, sin calcular datos nuevos.
+   */
+  readonly kpis = computed(() => {
+    const lista = this.lista();
+    let asig = 0;
+    let emp = 0;
+    let falt = 0;
+    let cart = 0;
+    let cartPend = 0;
+    let completas = 0;
+    for (const o of lista) {
+      asig += o.asig;
+      emp += o.emp;
+      falt += o.falt;
+      cart += o.cart;
+      cartPend += o.pend;
+      if (o.estado === 'completa') {
+        completas++;
+      }
+    }
+    return [
+      {
+        etiqueta: 'Órdenes en la vista',
+        valor: nf(lista.length),
+        icono: 'logistica',
+        color: 'var(--accent)',
+        detalle: `${nf(completas)} completadas · ${nf(lista.length - completas)} abiertas`,
+      },
+      {
+        etiqueta: 'Avance de unidades',
+        valor: pct(asig ? emp / asig : 0),
+        icono: 'paquete',
+        color: 'var(--success)',
+        detalle: `${nf(emp)} de ${nf(asig)} und. empacadas`,
+      },
+      {
+        etiqueta: 'Pendiente de empacar',
+        valor: `${nf(asig - emp)} und.`,
+        icono: 'reloj',
+        color: 'var(--warning)',
+        detalle: `${nf(cartPend)} de ${nf(cart)} cartones pendientes`,
+      },
+      {
+        etiqueta: 'Sin asignar',
+        valor: `${nf(falt)} und.`,
+        icono: 'alerta',
+        color: falt > 0.5 ? 'var(--danger)' : 'var(--success)',
+        detalle: falt > 0.5 ? 'Solicitado que el WMS no asignó' : 'Todo lo solicitado está asignado',
+      },
+    ];
   });
 
   readonly visibles = computed(() => {

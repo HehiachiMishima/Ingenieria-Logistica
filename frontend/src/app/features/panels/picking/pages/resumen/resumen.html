@@ -1,361 +1,446 @@
 <app-picking-barra titulo="Resumen" subtitulo="Avance del picking del día." />
 
 @if (!store.datos()) {
-  @if (store.cargando()) {
-    <div class="table-card"><div class="loading"><span class="ui-spinner"></span> Cargando el archivo del WMS…</div></div>
-  } @else {
-    <ui-empty icono="paquete" titulo="Sin datos de picking" [mensaje]="store.error() ?? ''" />
-  }
+@if (store.cargando()) {
+<div class="table-card">
+  <div class="loading"><span class="ui-spinner"></span> Cargando el archivo del WMS…</div>
+</div>
 } @else {
-  <section class="dash-kpis" aria-label="Indicadores del día">
-    @for (k of kpis(); track k.etiqueta) {
-      <ui-kpi
-        [etiqueta]="k.etiqueta"
-        [valor]="k.valor"
-        [icono]="k.icono"
-        [color]="k.color"
-        [detalle]="k.detalle"
-        [variacion]="k.variacion"
-        [subirEsMalo]="false"
-      />
-    }
-  </section>
+<ui-empty icono="paquete" titulo="Sin datos de picking" [mensaje]="store.error() ?? ''" />
+}
+} @else {
+@let h = hero();
+<article class="dash-card hero" aria-label="Estado del picking del día">
+  <div class="hero__medidor">
+    <ui-gauge [valor]="h.porcentaje" etiqueta="Empacado" [color]="h.color" [tamano]="176" />
+  </div>
 
-  <div class="dash-grid">
-    <!-- Cantidades del día -->
-    <article class="dash-card">
-      <header class="dash-card__head">
-        <div class="dash-card__titulos">
-          <h2 class="dash-card__titulo"><ui-icon name="paquete" [size]="18" /> Cantidades del día</h2>
-          <p class="dash-card__sub">Solicitado, asignado y empacado · operación y traslados por separado</p>
-        </div>
-        <div class="leyenda">
-          <span><i class="hecho"></i>Empacadas</span>
-          <span><i class="pend"></i>Pendientes de empacar</span>
-          <span><i class="falta"></i>No asignadas</span>
-        </div>
-      </header>
-      <div class="dash-card__body cantidades">
-        @for (c of cantidades(); track c.seg) {
-          <section class="cantidad">
-            <h3>{{ c.titulo }}</h3>
-            @if (c.g; as g) {
-              <p class="muted">{{ nf(g.nOrd) }} órdenes · {{ nf(g.cart) }} cartones</p>
-              <div class="cantidad__cifras">
-                <div><small>Solicitadas</small><b>{{ nf(g.solic) }}</b><span>UND. ORIG., una vez por SKU</span></div>
-                <div><small>Asignadas</small><b>{{ nf(g.asig) }}</b><span>{{ pct(g.solic ? g.asig / g.solic : 0) }} de lo solicitado</span></div>
-                <div><small>Empacadas</small><b>{{ nf(g.emp) }}</b><span>{{ pct(g.asig ? g.emp / g.asig : 0) }} de lo asignado</span></div>
-              </div>
-              @if (c.partes; as p) {
-                <div class="barra__pista cantidad__barra" role="img" [attr.aria-label]="c.titulo + ': empacadas, pendientes y no asignadas'">
-                  <span class="barra__hecho" [style.width.%]="p.hecho"></span>
-                  <span class="barra__pend" [style.width.%]="p.pend"></span>
-                  <span class="cantidad__falta" [style.width.%]="p.falta"></span>
-                </div>
-              }
-              <ul class="cantidad__brechas">
-                <li>
-                  <span>No asignadas <b>{{ nf(g.falt) }} und.</b></span>
-                  @if (g.falt > 0.5) {
-                    <span class="muted">{{ nf(g.skuFalt) }} SKU en {{ nf(g.ordFalt) }} órdenes piden más de lo asignado</span>
-                    <span class="acciones">
-                      <button type="button" class="enlace" (click)="ver(c.seg, 'sku', 'faltante')">Ver SKU</button>
-                      <button type="button" class="enlace" (click)="ver(c.seg, 'ordenes', 'faltante')">Ver órdenes</button>
-                    </span>
-                  } @else {
-                    <span class="muted">Todo lo solicitado está asignado</span>
-                  }
-                </li>
-                <li>
-                  <span>Pendientes de empacar <b>{{ nf(g.pend) }} und.</b></span>
-                  @if (g.pend > 0) {
-                    <span class="muted">{{ nf(g.cartPend) }} cartones en {{ nf(g.nOrdPend) }} órdenes</span>
-                    <span class="acciones">
-                      <button type="button" class="enlace" (click)="ver(c.seg, 'sku', 'pendiente')">Ver SKU</button>
-                      <button type="button" class="enlace" (click)="ver(c.seg, 'ordenes', 'pendientes')">Ver órdenes</button>
-                    </span>
-                  } @else {
-                    <span class="muted">Todo lo asignado está empacado</span>
-                  }
-                </li>
-              </ul>
-            } @else {
-              <p class="vacio">Sin órdenes con los filtros actuales.</p>
-            }
-          </section>
-        }
-      </div>
-    </article>
-
-    <!-- Avance MZ TITAN -->
-    <article class="dash-card">
-      <header class="dash-card__head">
-        <div class="dash-card__titulos">
-          <h2 class="dash-card__titulo"><ui-icon name="almacen" [size]="18" /> Avance MZ TITAN</h2>
-          <p class="dash-card__sub">Líneas de picking por área y cluster · clic en un área para filtrar</p>
-        </div>
-      </header>
-      <div class="dash-card__body mz">
-        @for (sec of mz(); track sec.nombre) {
-          <section class="mz__seccion">
-            <div class="mz__lado">
-              <span class="ui-badge ui-badge--brand">{{ sec.nombre }}</span>
-              <ui-gauge [valor]="sec.avance * 100" [etiqueta]="'Avance ' + sec.nombre" color="var(--accent)" [tamano]="170" />
-              <small class="muted">{{ nf(sec.tot.emp) }} de {{ nf(sec.tot.asig) }} líneas empacadas</small>
-            </div>
-            <div class="dash-tabla-wrap mz__tabla">
-              <table class="dash-tabla">
-                <thead>
-                  <tr>
-                    <th rowspan="2">Área</th>
-                    <th rowspan="2" class="num">Asignado</th>
-                    <th rowspan="2" class="num">Empac.</th>
-                    <th rowspan="2" class="num">Pend.</th>
-                    <th [attr.colspan]="mzClusters.length" class="num">Líneas pendientes por CL</th>
-                  </tr>
-                  <tr>
-                    @for (c of mzClusters; track c[0]) {
-                      <th class="num">{{ c[0] }}</th>
-                    }
-                  </tr>
-                </thead>
-                <tbody>
-                  @for (f of sec.filas; track f.nombre) {
-                    <tr
-                      class="clic"
-                      tabindex="0"
-                      [class.seleccionada]="mzSeleccionado(f.areas)"
-                      [title]="'Áreas del WMS: ' + f.areas.join(', ')"
-                      (click)="filtrarAreas(f.areas)"
-                      (keydown.enter)="filtrarAreas(f.areas)"
-                    >
-                      <td class="fuerte">{{ f.nombre }}</td>
-                      <td class="num">{{ nf(f.asig) }}</td>
-                      <td class="num">{{ nf(f.emp) }}</td>
-                      <td class="num">{{ nf(f.pend) }}</td>
-                      @for (c of mzClusters; track c[0]) {
-                        <td class="num" [class.mz__ok]="!f.porCl[c[1]]">{{ nf(f.porCl[c[1]] || 0) }}</td>
-                      }
-                    </tr>
-                  }
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <td class="fuerte">Total</td>
-                    <td class="num fuerte">{{ nf(sec.tot.asig) }}</td>
-                    <td class="num fuerte">{{ nf(sec.tot.emp) }}</td>
-                    <td class="num fuerte">{{ nf(sec.tot.pend) }}</td>
-                    @for (c of mzClusters; track c[0]) {
-                      <td class="num fuerte">{{ nf(sec.tot.porCl[c[1]] || 0) }}</td>
-                    }
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </section>
-        }
-      </div>
-    </article>
-
-    <!-- Avance por área -->
-    <article class="dash-card dash-card--7">
-      <header class="dash-card__head">
-        <div class="dash-card__titulos">
-          <h2 class="dash-card__titulo"><ui-icon name="area" [size]="18" /> Avance por área</h2>
-          <p class="dash-card__sub">{{ nf(area().grupos.length) }} áreas · clic en una barra para filtrar</p>
-        </div>
-        <div class="herramientas">
-          <select class="ui-select ui-select--sm" aria-label="Métrica" [value]="metArea()" (change)="metArea.set($any($event.target).value)">
-            @for (m of metricasArea; track m.k) {
-              <option [value]="m.k">{{ m.l }}</option>
-            }
-          </select>
-          <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm" (click)="tablaArea.set(!tablaArea())">
-            {{ tablaArea() ? 'Ver gráfico' : 'Ver tabla' }}
-          </button>
-        </div>
-      </header>
-      <div class="dash-card__body">
-        @if (tablaArea()) {
-          <ng-container *ngTemplateOutlet="tablaGrupos; context: { $implicit: area().grupos, titulo: 'Área' }" />
-        } @else {
-          <ng-container *ngTemplateOutlet="barras; context: { $implicit: area().filas, dim: 'area', apilada: area().apilada }" />
-        }
-      </div>
-    </article>
-
-    <div class="dash-card--5 pila">
-      <article class="dash-card">
-        <header class="dash-card__head">
-          <div class="dash-card__titulos">
-            <h2 class="dash-card__titulo"><ui-icon name="analisis" [size]="18" /> Avance por negocio</h2>
-            <p class="dash-card__sub">Unidades empacadas y pendientes · clic para filtrar</p>
-          </div>
-        </header>
-        <div class="dash-card__body">
-          <ng-container *ngTemplateOutlet="barras; context: { $implicit: negocio(), dim: 'negocio', apilada: true }" />
-        </div>
-      </article>
-      <article class="dash-card">
-        <header class="dash-card__head">
-          <div class="dash-card__titulos">
-            <h2 class="dash-card__titulo"><ui-icon name="logistica" [size]="18" /> Avance por tipo de orden</h2>
-            <p class="dash-card__sub">Unidades empacadas y pendientes · clic para filtrar</p>
-          </div>
-        </header>
-        <div class="dash-card__body">
-          <ng-container *ngTemplateOutlet="barras; context: { $implicit: tipo(), dim: 'tipo', apilada: true }" />
-        </div>
-      </article>
+  <div class="hero__estado">
+    <span class="hero__kicker">Estado del picking</span>
+    <p class="hero__titular">
+      <strong>{{ nf(h.emp) }}</strong>
+      <span>de {{ nf(h.asig) }} unidades asignadas ya empacadas</span>
+    </p>
+    <div class="hero__barra" role="img"
+      [attr.aria-label]="'Empacado ' + nf(h.emp) + ', pendiente ' + nf(h.pend) + ', sin asignar ' + nf(h.falt) + ' unidades'">
+      <span class="hero__tramo hero__tramo--emp" [style.width.%]="h.partes.emp"></span>
+      <span class="hero__tramo hero__tramo--pend" [style.width.%]="h.partes.pend"></span>
+      <span class="hero__tramo hero__tramo--falt" [style.width.%]="h.partes.falt"></span>
     </div>
-
-    <!-- Avance por cluster y área -->
-    <article class="dash-card">
-      <header class="dash-card__head">
-        <div class="dash-card__titulos">
-          <h2 class="dash-card__titulo"><ui-icon name="nodos" [size]="18" /> Avance por cluster y área</h2>
-          <p class="dash-card__sub">{{ nf(clusters().length) }} clusters · clic en un cluster para ver sus áreas</p>
-        </div>
-        <div class="herramientas">
-          <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm" (click)="abrirTodos()">Abrir / cerrar todos</button>
-          <ng-container *ngTemplateOutlet="ordenSelect; context: { $implicit: ordenClu }" />
-        </div>
-      </header>
-      <div class="dash-card__body">
-        <div class="dash-tabla-wrap">
-          <table class="dash-tabla">
-            <thead>
-              <tr>
-                <th>Cluster / área</th><th class="num">Avance</th><th class="num">Und. pend.</th>
-                <th class="num">Órdenes</th><th class="num">Cartones</th><th class="num">Und. solic.</th>
-                <th class="num">No asig.</th><th class="num">Und. asig.</th><th class="num">Und. empac.</th><th class="num">Filtro</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (c of clusters(); track c.g.key) {
-                <tr class="clic grupo" tabindex="0" [class.seleccionada]="filtrado('cluster', c.g.key)" [attr.aria-expanded]="c.abierto"
-                  (click)="alternarCluster(c.g.key)" (keydown.enter)="alternarCluster(c.g.key)">
-                  <td>
-                    <span class="chevron" [class.chevron--abierto]="c.abierto">▸</span>
-                    <b>{{ nomCluster(c.g.key) }}</b> <span class="muted">· {{ c.areas.length }} áreas</span>
-                  </td>
-                  <ng-container *ngTemplateOutlet="celdas; context: { $implicit: c.g }" />
-                  <td class="num">
-                    <button type="button" class="enlace" (click)="$event.stopPropagation(); store.alternar('cluster', c.g.key)">
-                      {{ filtrado('cluster', c.g.key) ? 'Quitar filtro' : 'Filtrar' }}
-                    </button>
-                  </td>
-                </tr>
-                @if (c.abierto) {
-                  @for (a of c.areas; track a.key) {
-                    <tr class="sub" [class.seleccionada]="filtrado('cluster', c.g.key) && filtrado('area', a.key)">
-                      <td>{{ a.key || '(vacío)' }}</td>
-                      <ng-container *ngTemplateOutlet="celdas; context: { $implicit: a }" />
-                      <td class="num">
-                        <button type="button" class="enlace" (click)="filtrarClusterArea(c.g.key, a.key)">
-                          {{ filtrado('cluster', c.g.key) && filtrado('area', a.key) ? 'Quitar filtro' : 'Filtrar' }}
-                        </button>
-                      </td>
-                    </tr>
-                  }
-                }
-              }
-            </tbody>
-          </table>
-        </div>
+    <dl class="hero__leyenda">
+      <div>
+        <dt><i class="hero__punto hero__punto--emp"></i>Empacado</dt>
+        <dd>{{ nf(h.emp) }}</dd>
       </div>
-    </article>
-
-    <!-- Avance por ruta -->
-    <article class="dash-card">
-      <header class="dash-card__head">
-        <div class="dash-card__titulos">
-          <h2 class="dash-card__titulo"><ui-icon name="truck" [size]="18" /> Avance por ruta</h2>
-          <p class="dash-card__sub">{{ nf(rutas().length) }} rutas {{ rutaDim() === 'rutaP' ? 'principales' : 'finales' }} · clic en una fila para filtrar</p>
-        </div>
-        <div class="herramientas">
-          <div class="segmento" role="group" aria-label="Tipo de ruta">
-            <button type="button" class="segmento__opcion" [class.segmento__opcion--activa]="rutaDim() === 'rutaP'" (click)="rutaDim.set('rutaP')">Ruta principal</button>
-            <button type="button" class="segmento__opcion" [class.segmento__opcion--activa]="rutaDim() === 'rutaF'" (click)="rutaDim.set('rutaF')">Ruta final</button>
-          </div>
-          <ng-container *ngTemplateOutlet="ordenSelect; context: { $implicit: ordenRuta }" />
-        </div>
-      </header>
-      <div class="dash-card__body">
-        <div class="dash-tabla-wrap alta">
-          <table class="dash-tabla">
-            <thead>
-              <tr>
-                <th>{{ rutaDim() === 'rutaP' ? 'Ruta principal' : 'Ruta final' }}</th><th class="num">Avance</th>
-                <th class="num">Und. pend.</th><th class="num">Órdenes</th><th class="num">Cartones</th>
-                <th class="num">Und. solic.</th><th class="num">No asig.</th><th class="num">Und. asig.</th><th class="num">Und. empac.</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (g of rutas(); track g.key) {
-                <tr class="clic" tabindex="0" [class.seleccionada]="filtrado(rutaDim(), g.key)"
-                  (click)="store.alternar(rutaDim(), g.key)" (keydown.enter)="store.alternar(rutaDim(), g.key)">
-                  <td class="fuerte">{{ g.key || '(vacío)' }}</td>
-                  <ng-container *ngTemplateOutlet="celdas; context: { $implicit: g }" />
-                </tr>
-              }
-            </tbody>
-          </table>
-        </div>
+      <div>
+        <dt><i class="hero__punto hero__punto--pend"></i>Pendiente</dt>
+        <dd>{{ nf(h.pend) }}</dd>
       </div>
-    </article>
+      <div>
+        <dt><i class="hero__punto hero__punto--falt"></i>Sin asignar</dt>
+        <dd>{{ nf(h.falt) }}</dd>
+      </div>
+    </dl>
+  </div>
 
-    <!-- Evolución -->
-    <article class="dash-card">
-      <header class="dash-card__head">
-        <div class="dash-card__titulos">
-          <h2 class="dash-card__titulo"><ui-icon name="tendencia" [size]="18" /> Evolución del picking de hoy</h2>
-          <p class="dash-card__sub">
-            Completados según la hora en que se inició su pick · {{ nf(evolucion().lograda) }} de {{ nf(evolucion().total) }}
-            ({{ pct(evolucion().total ? evolucion().lograda / evolucion().total : 0) }})
-          </p>
-        </div>
-        <div class="herramientas">
-          <div class="segmento" role="group" aria-label="Métrica de evolución">
-            @for (m of metricasEvo; track m.k) {
-              <button type="button" class="segmento__opcion" [class.segmento__opcion--activa]="metEvo() === m.k" (click)="metEvo.set(m.k)">{{ m.l }}</button>
-            }
+  <ul class="hero__lecturas" aria-label="Lectura ejecutiva">
+    @for (l of lecturas(); track l.kicker) {
+    <li class="hero__lectura" [style.--c]="l.color">
+      <span class="hero__icono"><ui-icon [name]="l.icono" [size]="16" /></span>
+      <div>
+        <span class="hero__lectura-kicker">{{ l.kicker }}</span>
+        <p class="dash-insight__texto" [innerHTML]="l.texto"></p>
+      </div>
+    </li>
+    }
+  </ul>
+</article>
+
+<section class="dash-kpis" aria-label="Indicadores del día">
+  @for (k of kpis(); track k.etiqueta) {
+  <ui-kpi [etiqueta]="k.etiqueta" [valor]="k.valor" [icono]="k.icono" [color]="k.color" [detalle]="k.detalle"
+    [variacion]="k.variacion" [subirEsMalo]="false" />
+  }
+</section>
+
+<div class="dash-grid">
+  <!-- Cantidades del día -->
+  <article class="dash-card">
+    <header class="dash-card__head">
+      <div class="dash-card__titulos">
+        <h2 class="dash-card__titulo"><ui-icon name="paquete" [size]="18" /> Cantidades del día</h2>
+        <p class="dash-card__sub">Solicitado, asignado y empacado · operación y traslados por separado</p>
+      </div>
+      <div class="leyenda">
+        <span><i class="hecho"></i>Empacadas</span>
+        <span><i class="pend"></i>Pendientes de empacar</span>
+        <span><i class="falta"></i>No asignadas</span>
+      </div>
+    </header>
+    <div class="dash-card__body cantidades">
+      @for (c of cantidades(); track c.seg) {
+      <section class="cantidad">
+        <h3>
+          {{ c.titulo }}
+          @if (c.g; as g) {
+          <span class="cantidad__avance">{{ pct(g.asig ? g.emp / g.asig : 0) }} empacado</span>
+          }
+        </h3>
+        @if (c.g; as g) {
+        <p class="muted">{{ nf(g.nOrd) }} órdenes · {{ nf(g.cart) }} cartones</p>
+        <div class="cantidad__cifras">
+          <div class="cifra"><small>Solicitadas</small><b>{{ nf(g.solic) }}</b><span>UND. ORIG., una vez por SKU</span>
           </div>
-          <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm" (click)="tablaEvo.set(!tablaEvo())">
-            {{ tablaEvo() ? 'Ver gráfico' : 'Ver tabla' }}
-          </button>
+          <div class="cifra cifra--asig"><small>Asignadas</small><b>{{ nf(g.asig) }}</b><span>{{ pct(g.solic ? g.asig /
+              g.solic : 0) }} de lo solicitado</span></div>
+          <div class="cifra cifra--emp"><small>Empacadas</small><b>{{ nf(g.emp) }}</b><span>{{ pct(g.asig ? g.emp /
+              g.asig : 0) }} de lo asignado</span></div>
         </div>
-      </header>
-      <div class="dash-card__body">
-        @if (!evolucion().etiquetas.length) {
-          <p class="vacio">Todavía no hay picking iniciado en el día operativo.</p>
-        } @else if (tablaEvo()) {
-          <div class="dash-tabla-wrap alta">
-            <table class="dash-tabla">
-              <thead>
-                <tr>
-                  <th>Hora de inicio de pick</th><th class="num">Cartones</th><th class="num">Unidades empacadas</th>
-                  <th class="num">Líneas</th><th class="num">Acumulado</th><th class="num">% del total</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (f of evolucion().filas; track f.hora) {
-                  <tr>
-                    <td>{{ f.hora }}</td><td class="num">{{ nf(f.cart) }}</td><td class="num">{{ nf(f.und) }}</td>
-                    <td class="num">{{ nf(f.lin) }}</td><td class="num fuerte">{{ nf(f.acum) }}</td><td class="num">{{ pct(f.pct) }}</td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        } @else {
-          <ui-linea [etiquetas]="evolucion().etiquetas" [series]="evolucion().linea" [periodos]="false" [altura]="200" [maxEtiquetas]="12" />
-          <h3 class="subtitulo">Por hora</h3>
-          <ui-bars [datos]="evolucion().barras" [altura]="140" />
+        @if (c.partes; as p) {
+        <div class="barra__pista cantidad__barra" role="img"
+          [attr.aria-label]="c.titulo + ': empacadas, pendientes y no asignadas'">
+          <span class="barra__hecho" [style.width.%]="p.hecho"></span>
+          <span class="barra__pend" [style.width.%]="p.pend"></span>
+          <span class="cantidad__falta" [style.width.%]="p.falta"></span>
+        </div>
         }
+        <ul class="cantidad__brechas">
+          <li class="brecha brecha--falta">
+            <span>No asignadas <b>{{ nf(g.falt) }} und.</b></span>
+            @if (g.falt > 0.5) {
+            <span class="muted">{{ nf(g.skuFalt) }} SKU en {{ nf(g.ordFalt) }} órdenes piden más de lo asignado</span>
+            <span class="acciones">
+              <button type="button" class="enlace" (click)="ver(c.seg, 'sku', 'faltante')">Ver SKU</button>
+              <button type="button" class="enlace" (click)="ver(c.seg, 'ordenes', 'faltante')">Ver órdenes</button>
+            </span>
+            } @else {
+            <span class="muted">Todo lo solicitado está asignado</span>
+            }
+          </li>
+          <li class="brecha brecha--pend">
+            <span>Pendientes de empacar <b>{{ nf(g.pend) }} und.</b></span>
+            @if (g.pend > 0) {
+            <span class="muted">{{ nf(g.cartPend) }} cartones en {{ nf(g.nOrdPend) }} órdenes</span>
+            <span class="acciones">
+              <button type="button" class="enlace" (click)="ver(c.seg, 'sku', 'pendiente')">Ver SKU</button>
+              <button type="button" class="enlace" (click)="ver(c.seg, 'ordenes', 'pendientes')">Ver órdenes</button>
+            </span>
+            } @else {
+            <span class="muted">Todo lo asignado está empacado</span>
+            }
+          </li>
+        </ul>
+        } @else {
+        <p class="vacio">Sin órdenes con los filtros actuales.</p>
+        }
+      </section>
+      }
+    </div>
+  </article>
+
+  <!-- Avance MZ TITAN -->
+  <article class="dash-card">
+    <header class="dash-card__head">
+      <div class="dash-card__titulos">
+        <h2 class="dash-card__titulo"><ui-icon name="almacen" [size]="18" /> Avance MZ TITAN</h2>
+        <p class="dash-card__sub">Líneas de picking por área y cluster · clic en un área para filtrar</p>
+      </div>
+    </header>
+    <div class="dash-card__body mz">
+      @for (sec of mz(); track sec.nombre) {
+      <section class="mz__seccion">
+        <div class="mz__tarjeta">
+          <div class="mz__tarjeta-titulo">{{ sec.nombre }}</div>
+          <div class="mz__tarjeta-porcentaje">{{ pct(sec.avance) }}</div>
+          <div class="mz__tarjeta-medidor">
+            <ui-gauge [valor]="sec.porcentaje" [etiqueta]="'Avance ' + sec.nombre" color="var(--brand)"
+              [tamano]="150" [conTexto]="false" />
+          </div>
+          <div class="mz__tarjeta-pie">{{ nf(sec.tot.emp) }} de {{ nf(sec.tot.asig) }} líneas empacadas</div>
+        </div>
+
+        <div class="dash-tabla-wrap mz__tabla">
+          <table class="dash-tabla mz__planilla">
+            <thead>
+              <tr>
+                <th rowspan="2" class="mz__area-cabecera">ÁREA</th>
+                <th rowspan="2">ASIGNADO</th>
+                <th rowspan="2">EMPAC.</th>
+                <th rowspan="2">PEND.</th>
+                <th [attr.colspan]="mzClusters.length" class="mz__cl-titulo">LÍNEAS PENDIENTES POR CL</th>
+              </tr>
+              <tr>
+                @for (c of mzClusters; track c[0]) {
+                <th>{{ c[0] }}</th>
+                }
+              </tr>
+            </thead>
+            <tbody>
+              @for (f of sec.filas; track f.nombre) {
+              <tr class="clic" tabindex="0" [class.seleccionada]="mzSeleccionado(f.areas)"
+                [title]="'Áreas del WMS: ' + f.areas.join(', ')" (click)="filtrarAreas(f.areas)"
+                (keydown.enter)="filtrarAreas(f.areas)">
+                <td class="fuerte">{{ f.nombre }}</td>
+                <td class="num">{{ nf(f.asig) }}</td>
+                <td class="num">{{ nf(f.emp) }}</td>
+                <td class="num">{{ nf(f.pend) }}</td>
+                @for (c of mzClusters; track c[0]) {
+                <td class="num" [class.mz__cl--ok]="!f.porCl[c[1]]" [class.mz__cl--pend]="!!f.porCl[c[1]]">
+                  {{ nf(f.porCl[c[1]] || 0) }}
+                </td>
+                }
+              </tr>
+              }
+            </tbody>
+            <tfoot>
+              <tr>
+                <td>TOTAL</td>
+                <td class="num">{{ nf(sec.tot.asig) }}</td>
+                <td class="num">{{ nf(sec.tot.emp) }}</td>
+                <td class="num">{{ nf(sec.tot.pend) }}</td>
+                @for (c of mzClusters; track c[0]) {
+                <td class="num">{{ nf(sec.tot.porCl[c[1]] || 0) }}</td>
+                }
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </section>
+      }
+    </div>
+  </article>
+
+  <!-- Avance por área -->
+  <article class="dash-card dash-card--7">
+    <header class="dash-card__head">
+      <div class="dash-card__titulos">
+        <h2 class="dash-card__titulo"><ui-icon name="area" [size]="18" /> Avance por área</h2>
+        <p class="dash-card__sub">{{ nf(area().grupos.length) }} áreas · clic en una barra para filtrar</p>
+      </div>
+      <div class="herramientas">
+        <select class="ui-select ui-select--sm" aria-label="Métrica" [value]="metArea()"
+          (change)="metArea.set($any($event.target).value)">
+          @for (m of metricasArea; track m.k) {
+          <option [value]="m.k">{{ m.l }}</option>
+          }
+        </select>
+        <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm" (click)="tablaArea.set(!tablaArea())">
+          {{ tablaArea() ? 'Ver gráfico' : 'Ver tabla' }}
+        </button>
+      </div>
+    </header>
+    <div class="dash-card__body">
+      @if (tablaArea()) {
+      <ng-container *ngTemplateOutlet="tablaGrupos; context: { $implicit: area().grupos, titulo: 'Área' }" />
+      } @else {
+      <ng-container
+        *ngTemplateOutlet="barras; context: { $implicit: area().filas, dim: 'area', apilada: area().apilada }" />
+      }
+    </div>
+  </article>
+
+  <div class="dash-card--5 pila">
+    <article class="dash-card">
+      <header class="dash-card__head">
+        <div class="dash-card__titulos">
+          <h2 class="dash-card__titulo"><ui-icon name="analisis" [size]="18" /> Avance por negocio</h2>
+          <p class="dash-card__sub">Unidades empacadas y pendientes · clic para filtrar</p>
+        </div>
+      </header>
+      <div class="dash-card__body">
+        <ng-container *ngTemplateOutlet="barras; context: { $implicit: negocio(), dim: 'negocio', apilada: true }" />
+      </div>
+    </article>
+    <article class="dash-card">
+      <header class="dash-card__head">
+        <div class="dash-card__titulos">
+          <h2 class="dash-card__titulo"><ui-icon name="logistica" [size]="18" /> Avance por tipo de orden</h2>
+          <p class="dash-card__sub">Unidades empacadas y pendientes · clic para filtrar</p>
+        </div>
+      </header>
+      <div class="dash-card__body">
+        <ng-container *ngTemplateOutlet="barras; context: { $implicit: tipo(), dim: 'tipo', apilada: true }" />
       </div>
     </article>
   </div>
+
+  <!-- Avance por cluster y área -->
+  <article class="dash-card">
+    <header class="dash-card__head">
+      <div class="dash-card__titulos">
+        <h2 class="dash-card__titulo"><ui-icon name="nodos" [size]="18" /> Avance por cluster y área</h2>
+        <p class="dash-card__sub">{{ nf(clusters().length) }} clusters · clic en un cluster para ver sus áreas</p>
+      </div>
+      <div class="herramientas">
+        <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm" (click)="abrirTodos()">Abrir / cerrar
+          todos</button>
+        <ng-container *ngTemplateOutlet="ordenSelect; context: { $implicit: ordenClu }" />
+      </div>
+    </header>
+    <div class="dash-card__body">
+      <div class="dash-tabla-wrap">
+        <table class="dash-tabla">
+          <thead>
+            <tr>
+              <th>Cluster / área</th>
+              <th class="num">Avance</th>
+              <th class="num">Und. pend.</th>
+              <th class="num">Órdenes</th>
+              <th class="num">Cartones</th>
+              <th class="num">Und. solic.</th>
+              <th class="num">No asig.</th>
+              <th class="num">Und. asig.</th>
+              <th class="num">Und. empac.</th>
+              <th class="num">Filtro</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (c of clusters(); track c.g.key) {
+            <tr class="clic grupo" tabindex="0" [class.seleccionada]="filtrado('cluster', c.g.key)"
+              [attr.aria-expanded]="c.abierto" (click)="alternarCluster(c.g.key)"
+              (keydown.enter)="alternarCluster(c.g.key)">
+              <td>
+                <span class="chevron" [class.chevron--abierto]="c.abierto">▸</span>
+                <b>{{ nomCluster(c.g.key) }}</b> <span class="muted">· {{ c.areas.length }} áreas</span>
+              </td>
+              <ng-container *ngTemplateOutlet="celdas; context: { $implicit: c.g }" />
+              <td class="num">
+                <button type="button" class="enlace"
+                  (click)="$event.stopPropagation(); store.alternar('cluster', c.g.key)">
+                  {{ filtrado('cluster', c.g.key) ? 'Quitar filtro' : 'Filtrar' }}
+                </button>
+              </td>
+            </tr>
+            @if (c.abierto) {
+            @for (a of c.areas; track a.key) {
+            <tr class="sub" [class.seleccionada]="filtrado('cluster', c.g.key) && filtrado('area', a.key)">
+              <td>{{ a.key || '(vacío)' }}</td>
+              <ng-container *ngTemplateOutlet="celdas; context: { $implicit: a }" />
+              <td class="num">
+                <button type="button" class="enlace" (click)="filtrarClusterArea(c.g.key, a.key)">
+                  {{ filtrado('cluster', c.g.key) && filtrado('area', a.key) ? 'Quitar filtro' : 'Filtrar' }}
+                </button>
+              </td>
+            </tr>
+            }
+            }
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </article>
+
+  <!-- Avance por ruta -->
+  <article class="dash-card">
+    <header class="dash-card__head">
+      <div class="dash-card__titulos">
+        <h2 class="dash-card__titulo"><ui-icon name="truck" [size]="18" /> Avance por ruta</h2>
+        <p class="dash-card__sub">{{ nf(rutas().length) }} rutas {{ rutaDim() === 'rutaP' ? 'principales' : 'finales' }}
+          · clic en una fila para filtrar</p>
+      </div>
+      <div class="herramientas">
+        <div class="segmento" role="group" aria-label="Tipo de ruta">
+          <button type="button" class="segmento__opcion" [class.segmento__opcion--activa]="rutaDim() === 'rutaP'"
+            (click)="rutaDim.set('rutaP')">Ruta principal</button>
+          <button type="button" class="segmento__opcion" [class.segmento__opcion--activa]="rutaDim() === 'rutaF'"
+            (click)="rutaDim.set('rutaF')">Ruta final</button>
+        </div>
+        <ng-container *ngTemplateOutlet="ordenSelect; context: { $implicit: ordenRuta }" />
+      </div>
+    </header>
+    <div class="dash-card__body">
+      <div class="dash-tabla-wrap alta">
+        <table class="dash-tabla">
+          <thead>
+            <tr>
+              <th>{{ rutaDim() === 'rutaP' ? 'Ruta principal' : 'Ruta final' }}</th>
+              <th class="num">Avance</th>
+              <th class="num">Und. pend.</th>
+              <th class="num">Órdenes</th>
+              <th class="num">Cartones</th>
+              <th class="num">Und. solic.</th>
+              <th class="num">No asig.</th>
+              <th class="num">Und. asig.</th>
+              <th class="num">Und. empac.</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (g of rutas(); track g.key) {
+            <tr class="clic" tabindex="0" [class.seleccionada]="filtrado(rutaDim(), g.key)"
+              (click)="store.alternar(rutaDim(), g.key)" (keydown.enter)="store.alternar(rutaDim(), g.key)">
+              <td class="fuerte">{{ g.key || '(vacío)' }}</td>
+              <ng-container *ngTemplateOutlet="celdas; context: { $implicit: g }" />
+            </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </article>
+
+  <!-- Evolución -->
+  <article class="dash-card">
+    <header class="dash-card__head">
+      <div class="dash-card__titulos">
+        <h2 class="dash-card__titulo"><ui-icon name="tendencia" [size]="18" /> Evolución del picking de hoy</h2>
+        <p class="dash-card__sub">
+          Completados según la hora en que se inició su pick · {{ nf(evolucion().lograda) }} de {{ nf(evolucion().total)
+          }}
+          ({{ pct(evolucion().total ? evolucion().lograda / evolucion().total : 0) }})
+        </p>
+      </div>
+      <div class="herramientas">
+        <div class="segmento" role="group" aria-label="Métrica de evolución">
+          @for (m of metricasEvo; track m.k) {
+          <button type="button" class="segmento__opcion" [class.segmento__opcion--activa]="metEvo() === m.k"
+            (click)="metEvo.set(m.k)">{{ m.l }}</button>
+          }
+        </div>
+        <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm" (click)="tablaEvo.set(!tablaEvo())">
+          {{ tablaEvo() ? 'Ver gráfico' : 'Ver tabla' }}
+        </button>
+      </div>
+    </header>
+    <div class="dash-card__body">
+      @if (!evolucion().etiquetas.length) {
+      <p class="vacio">Todavía no hay picking iniciado en el día operativo.</p>
+      } @else if (tablaEvo()) {
+      <div class="dash-tabla-wrap alta">
+        <table class="dash-tabla">
+          <thead>
+            <tr>
+              <th>Hora de inicio de pick</th>
+              <th class="num">Cartones</th>
+              <th class="num">Unidades empacadas</th>
+              <th class="num">Líneas</th>
+              <th class="num">Acumulado</th>
+              <th class="num">% del total</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (f of evolucion().filas; track f.hora) {
+            <tr>
+              <td>{{ f.hora }}</td>
+              <td class="num">{{ nf(f.cart) }}</td>
+              <td class="num">{{ nf(f.und) }}</td>
+              <td class="num">{{ nf(f.lin) }}</td>
+              <td class="num fuerte">{{ nf(f.acum) }}</td>
+              <td class="num">{{ pct(f.pct) }}</td>
+            </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      } @else {
+      <ui-linea [etiquetas]="evolucion().etiquetas" [series]="evolucion().linea" [periodos]="false" [altura]="200"
+        [maxEtiquetas]="12" />
+      <h3 class="subtitulo">Por hora</h3>
+      <ui-bars [datos]="evolucion().barras" [altura]="140" />
+      }
+    </div>
+  </article>
+</div>
 }
 
 <app-picking-detalle />
@@ -363,29 +448,24 @@
 <!-- Barras apiladas (empacado / pendiente) o simples, clic para filtrar -->
 <ng-template #barras let-filas let-dim="dim" let-apilada="apilada">
   @if (!filas.length) {
-    <p class="vacio">Sin datos con los filtros actuales.</p>
+  <p class="vacio">Sin datos con los filtros actuales.</p>
   } @else {
-    <div class="barras">
-      @for (f of filas; track f.g.key) {
-        <button
-          type="button"
-          class="barra"
-          [class.barra--activa]="f.activa"
-          [attr.aria-pressed]="f.activa"
-          [title]="f.etiqueta + ': ' + nf(f.g.emp) + ' de ' + nf(f.g.asig) + ' und. empacadas · ' + nf(f.g.nOrd) + ' órdenes (' + nf(f.g.nOrdPend) + ' pendientes)'"
-          (click)="store.alternar(dim, f.g.key)"
-        >
-          <span class="barra__etiqueta">{{ f.etiqueta }}</span>
-          <span class="barra__pista">
-            <span class="barra__hecho" [style.width.%]="f.hecho"></span>
-            @if (apilada) {
-              <span class="barra__pend" [style.width.%]="f.pend"></span>
-            }
-          </span>
-          <span class="barra__valor">{{ f.valor }}@if (f.extra) {<small>{{ f.extra }}</small>}</span>
-        </button>
-      }
-    </div>
+  <div class="barras">
+    @for (f of filas; track f.g.key) {
+    <button type="button" class="barra" [class.barra--activa]="f.activa" [attr.aria-pressed]="f.activa"
+      [title]="f.etiqueta + ': ' + nf(f.g.emp) + ' de ' + nf(f.g.asig) + ' und. empacadas · ' + nf(f.g.nOrd) + ' órdenes (' + nf(f.g.nOrdPend) + ' pendientes)'"
+      (click)="store.alternar(dim, f.g.key)">
+      <span class="barra__etiqueta">{{ f.etiqueta }}</span>
+      <span class="barra__pista">
+        <span class="barra__hecho" [style.width.%]="f.hecho"></span>
+        @if (apilada) {
+        <span class="barra__pend" [style.width.%]="f.pend"></span>
+        }
+      </span>
+      <span class="barra__valor">{{ f.valor }}@if (f.extra) {<small>{{ f.extra }}</small>}</span>
+    </button>
+    }
+  </div>
   }
 </ng-template>
 
@@ -407,19 +487,34 @@
     <table class="dash-tabla">
       <thead>
         <tr>
-          <th>{{ titulo }}</th><th class="num">Órdenes</th><th class="num">Órd. pend.</th><th class="num">Cartones</th>
-          <th class="num">Cart. pend.</th><th class="num">Und. solic.</th><th class="num">Und. asig.</th>
-          <th class="num">Und. empac.</th><th class="num">Und. pend.</th><th class="num">% und.</th><th class="num">% órd.</th>
+          <th>{{ titulo }}</th>
+          <th class="num">Órdenes</th>
+          <th class="num">Órd. pend.</th>
+          <th class="num">Cartones</th>
+          <th class="num">Cart. pend.</th>
+          <th class="num">Und. solic.</th>
+          <th class="num">Und. asig.</th>
+          <th class="num">Und. empac.</th>
+          <th class="num">Und. pend.</th>
+          <th class="num">% und.</th>
+          <th class="num">% órd.</th>
         </tr>
       </thead>
       <tbody>
         @for (g of gs; track g.key) {
-          <tr>
-            <td class="fuerte">{{ g.key || '(vacío)' }}</td><td class="num">{{ nf(g.nOrd) }}</td><td class="num">{{ nf(g.nOrdPend) }}</td>
-            <td class="num">{{ nf(g.cart) }}</td><td class="num">{{ nf(g.cartPend) }}</td><td class="num">{{ nf(g.solic) }}</td>
-            <td class="num">{{ nf(g.asig) }}</td><td class="num">{{ nf(g.emp) }}</td><td class="num">{{ nf(g.pend) }}</td>
-            <td class="num">{{ pct(g.pct) }}</td><td class="num">{{ pct(g.pctOrd) }}</td>
-          </tr>
+        <tr>
+          <td class="fuerte">{{ g.key || '(vacío)' }}</td>
+          <td class="num">{{ nf(g.nOrd) }}</td>
+          <td class="num">{{ nf(g.nOrdPend) }}</td>
+          <td class="num">{{ nf(g.cart) }}</td>
+          <td class="num">{{ nf(g.cartPend) }}</td>
+          <td class="num">{{ nf(g.solic) }}</td>
+          <td class="num">{{ nf(g.asig) }}</td>
+          <td class="num">{{ nf(g.emp) }}</td>
+          <td class="num">{{ nf(g.pend) }}</td>
+          <td class="num">{{ pct(g.pct) }}</td>
+          <td class="num">{{ pct(g.pctOrd) }}</td>
+        </tr>
         }
       </tbody>
     </table>
@@ -427,7 +522,8 @@
 </ng-template>
 
 <ng-template #ordenSelect let-sig>
-  <select class="ui-select ui-select--sm" aria-label="Ordenar por" [value]="sig()" (change)="sig.set($any($event.target).value)">
+  <select class="ui-select ui-select--sm" aria-label="Ordenar por" [value]="sig()"
+    (change)="sig.set($any($event.target).value)">
     <option value="pend">Mayor cantidad pendiente</option>
     <option value="avance">Menor avance</option>
     <option value="volumen">Mayor volumen de trabajo</option>

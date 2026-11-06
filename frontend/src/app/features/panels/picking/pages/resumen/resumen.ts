@@ -116,6 +116,68 @@ export class PickingResumen {
     ];
   });
 
+  /**
+   * Bloque principal: avance de unidades (medidor) y cómo se reparte lo
+   * solicitado entre empacado, pendiente de empacar y sin asignar. Usa los
+   * totales del agregado; solo los presenta.
+   */
+  readonly hero = computed(() => {
+    const t = this.store.agregado().total;
+    const base = t.emp + t.pend + t.falt;
+    const parte = (valor: number) => (base ? (valor / base) * 100 : 0);
+    return {
+      porcentaje: Math.round(t.pct * 100),
+      color: t.pct >= 0.9 ? 'var(--success)' : t.pct >= 0.5 ? 'var(--accent)' : 'var(--warning)',
+      emp: t.emp,
+      asig: t.asig,
+      pend: t.pend,
+      falt: t.falt,
+      partes: { emp: parte(t.emp), pend: parte(t.pend), falt: parte(t.falt) },
+    };
+  });
+
+  /**
+   * Lectura ejecutiva: tres frases con lo que ya muestran los indicadores y
+   * tablas (avance, dónde está el mayor pendiente y lo que falta asignar). No
+   * calcula datos nuevos: solo los resume.
+   */
+  readonly lecturas = computed(() => {
+    const a = this.store.agregado();
+    const t = a.total;
+    const avance = t.pct;
+    const areas = a.dims.area.filter((g) => g.pend > 0).sort((x, y) => y.pend - x.pend);
+    const foco = areas[0] ?? null;
+    const segmentos = a.dims.segmento;
+    const sinAsignar = segmentos.reduce((s, g) => s + g.falt, 0);
+    const ope = segmentos.find((g) => g.key === SEG_OPE)?.falt ?? 0;
+    const tras = segmentos.find((g) => g.key === SEG_TRAS)?.falt ?? 0;
+    return [
+      {
+        kicker: 'Avance del día',
+        icono: avance >= 0.9 ? 'check' : 'tendencia',
+        color: avance >= 0.9 ? 'var(--success)' : 'var(--accent)',
+        texto: `Va <strong>${pct(avance)}</strong> de lo asignado: ${nf(t.emp)} de ${nf(t.asig)} und. empacadas; quedan ${nf(t.cartPend)} cartones.`,
+      },
+      {
+        kicker: 'Foco',
+        icono: foco ? 'area' : 'check',
+        color: foco ? 'var(--warning)' : 'var(--success)',
+        texto: foco
+          ? `Mayor pendiente en <strong>${foco.key || '(sin área)'}</strong>: ${nf(foco.pend)} und. (${pct(t.pend ? foco.pend / t.pend : 0)} de lo pendiente).`
+          : 'Sin unidades pendientes de empacar con los filtros actuales.',
+      },
+      {
+        kicker: 'Sin asignar',
+        icono: sinAsignar > 0.5 ? 'alertTriangle' : 'check',
+        color: sinAsignar > 0.5 ? 'var(--danger)' : 'var(--success)',
+        texto:
+          sinAsignar > 0.5
+            ? `<strong>${nf(sinAsignar)} und.</strong> solicitadas sin asignar: operación ${nf(ope)} · traslados ${nf(tras)}.`
+            : 'Todo lo solicitado está asignado.',
+      },
+    ];
+  });
+
   /** Operación y traslados por separado: solicitado, asignado, empacado y lo que falta. */
   readonly cantidades = computed(() =>
     [SEG_OPE, SEG_TRAS].map((seg) => {
@@ -130,7 +192,10 @@ export class PickingResumen {
     }),
   );
 
-  readonly mz = computed(() => cuadroMz(this.store.filas()));
+  /** Cuadro MZ TITAN; el medidor recibe el avance ya redondeado (sin decimales largos). */
+  readonly mz = computed(() =>
+    cuadroMz(this.store.filas()).map((sec) => ({ ...sec, porcentaje: Math.round(sec.avance * 100) })),
+  );
 
   readonly area = computed(() => {
     const met = METRICAS_AREA[this.metArea()];

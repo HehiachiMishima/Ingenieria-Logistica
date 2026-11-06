@@ -7,6 +7,12 @@
     <ui-empty icono="paquete" titulo="Sin datos de picking" [mensaje]="store.error() ?? ''" />
   }
 } @else {
+  <section class="dash-kpis kpis-vista" aria-label="Indicadores de las órdenes en la vista">
+    @for (k of kpis(); track k.etiqueta) {
+      <ui-kpi [etiqueta]="k.etiqueta" [valor]="k.valor" [icono]="k.icono" [color]="k.color" [detalle]="k.detalle" />
+    }
+  </section>
+
   <div class="table-card">
     <div class="cabecera">
       <div class="segmento" role="group" aria-label="Estado de la orden">

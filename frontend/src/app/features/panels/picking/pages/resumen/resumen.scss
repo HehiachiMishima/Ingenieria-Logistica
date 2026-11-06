@@ -1,6 +1,7 @@
 @use 'breakpoints' as bp;
 @use '../../picking';
 
+/* El espacio entre bloques lo da el :host (gap). */
 .dash-kpis {
   margin-bottom: 0;
 }
@@ -22,39 +23,36 @@
   gap: var(--space-2);
 
   h3 {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+    font-size: var(--fs-base);
+    font-weight: 800;
+    letter-spacing: -0.015em;
+    color: var(--text);
+  }
+
+  &__avance {
     font-size: var(--fs-sm);
     font-weight: 800;
-    color: var(--text);
+    color: var(--success);
+    font-variant-numeric: tabular-nums;
   }
 
   &__cifras {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--space-2);
+    gap: var(--space-3);
 
-    div {
-      display: flex;
-      flex-direction: column;
-      padding: var(--space-2) var(--space-3);
-      border-radius: var(--radius);
-      background: var(--surface-2);
-    }
-
-    small,
-    span {
-      font-size: var(--fs-xs);
-      color: var(--text-3);
-    }
-
-    b {
-      font-size: 1.25rem;
-      font-variant-numeric: tabular-nums;
-      color: var(--text);
+    @include bp.down(sm) {
+      grid-template-columns: 1fr;
     }
   }
 
   &__barra {
-    height: 14px;
+    height: 12px;
+    border-radius: 999px;
   }
 
   &__falta {
@@ -89,7 +87,12 @@
   }
 }
 
-/* MZ TITAN: medidor a la izquierda, tabla a la derecha, por sección (B2C, B2B). */
+/*
+ * MZ TITAN por sección (B2C, B2B): tarjeta con el nombre, el avance y su
+ * medidor a la izquierda; a la derecha, la tabla de líneas por área con la
+ * cabecera de la planilla (área en rojo marca, columnas oscuras de tabla).
+ * Solo tokens: se ve igual de bien en tema claro y oscuro.
+ */
 .mz {
   display: flex;
   flex-direction: column;
@@ -97,34 +100,118 @@
 
   &__seccion {
     display: grid;
-    grid-template-columns: 200px minmax(0, 1fr);
-    gap: var(--space-4);
-    align-items: center;
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: var(--space-5);
+    align-items: stretch;
 
     @include bp.down(lg) {
       grid-template-columns: 1fr;
     }
   }
 
-  &__lado {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--space-1);
-    text-align: center;
-  }
-
   &__tabla {
     margin: 0;
   }
+}
 
-  &__ok {
-    color: var(--success);
-    font-weight: 700;
+/* Tarjeta izquierda: nombre, avance grande, medidor y líneas empacadas. */
+.mz__tarjeta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface-2);
+  text-align: center;
+
+  &-titulo {
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--fs-xl);
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-2);
+    background: var(--surface);
+    border: 3px solid var(--brand);
+    border-radius: var(--radius);
+  }
+
+  &-porcentaje {
+    font-size: clamp(2.4rem, 2rem + 1.6vw, 3.2rem);
+    font-weight: 900;
+    line-height: 1;
+    letter-spacing: -0.04em;
+    white-space: nowrap;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  &-medidor {
+    width: 100%;
+    max-width: 150px;
+  }
+
+  &-pie {
+    font-size: var(--fs-sm);
+    color: var(--text-3);
+  }
+}
+
+/* Tabla derecha: cabecera de la planilla y celdas por estado. */
+.mz__planilla {
+  border-collapse: collapse;
+
+  th,
+  td {
+    padding: 10px var(--space-2);
+    text-align: center;
+    border: 1px solid var(--border);
+  }
+
+  th {
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    color: var(--table-head-fg);
+    background: var(--table-head-bg);
+  }
+
+  .mz__area-cabecera {
+    background: var(--brand);
+    color: #fff;
+  }
+
+  .mz__cl-titulo {
+    color: var(--brand);
+    background: var(--surface);
   }
 
   tfoot td {
-    border-top: 1px solid var(--border);
+    font-weight: 800;
+    color: var(--text);
+    background: var(--surface-3);
+  }
+
+  tbody tr.clic:hover td {
+    background: var(--table-hover);
+  }
+}
+
+/* Líneas pendientes por cluster: verde si ya no queda nada, ámbar si quedan. */
+.mz__cl {
+  &--ok {
+    font-weight: 700;
+    color: var(--success);
+    background: var(--success-soft);
+  }
+
+  &--pend {
+    font-weight: 700;
+    color: var(--warning);
+    background: var(--warning-soft);
   }
 }
 
@@ -172,4 +259,256 @@ tr.sub td:first-child {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-3);
+}
+
+/* Cifras de cantidades: tarjeta pequeña con acento a la izquierda (solicitado, asignado, empacado). */
+.cifra {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--text-3);
+  background: var(--surface-2);
+
+  small {
+    font-size: 0.66rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+
+  b {
+    font-size: var(--fs-xl);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+  }
+
+  span {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+  }
+
+  &--asig {
+    border-left-color: var(--info);
+  }
+
+  &--emp {
+    border-left-color: var(--success);
+  }
+}
+
+/* Brechas (no asignado / pendiente): fila con marca de color. */
+.brecha {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  border-left: 3px solid var(--text-3);
+
+  &--falta {
+    border-left-color: var(--text-3);
+  }
+
+  &--pend {
+    border-left-color: var(--accent);
+  }
+}
+
+/*
+ * Bloque principal «Estado del picking»: medidor | titular con la barra de
+ * reparto | lectura ejecutiva. Escritorio ancho: 3 columnas; intermedio:
+ * medidor + estado arriba y lecturas abajo; móvil: una columna.
+ */
+.hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.15fr);
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-5);
+  border-top: 3px solid var(--accent);
+
+  @include bp.down(xl) {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  @include bp.down(sm) {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+    padding: var(--space-4);
+  }
+}
+
+.hero__medidor {
+  width: 176px;
+
+  @include bp.down(sm) {
+    justify-self: center;
+    width: 156px;
+  }
+}
+
+.hero__estado {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.hero__kicker,
+.hero__lectura-kicker {
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.hero__titular {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+
+  strong {
+    font-size: clamp(1.6rem, 1.2rem + 1.4vw, 2.2rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Barra de reparto: empacado, pendiente y sin asignar sobre lo solicitado. */
+.hero__barra {
+  display: flex;
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-3);
+}
+
+.hero__tramo {
+  height: 100%;
+  transition: width var(--transition-slow);
+
+  &--emp {
+    background: var(--success);
+  }
+
+  &--pend {
+    background: var(--accent);
+  }
+
+  &--falt {
+    background: var(--text-3);
+  }
+}
+
+.hero__leyenda {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+
+  div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  dt {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+    white-space: nowrap;
+  }
+
+  dd {
+    margin: 0;
+    font-size: var(--fs-base);
+    font-weight: 800;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+}
+
+.hero__punto {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 2px;
+
+  &--emp {
+    background: var(--success);
+  }
+
+  &--pend {
+    background: var(--accent);
+  }
+
+  &--falt {
+    background: var(--text-3);
+  }
+}
+
+/* Lectura ejecutiva: tres frases con su color de estado. */
+.hero__lecturas {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0 0 0 var(--space-5);
+  list-style: none;
+  border-left: 1px solid var(--border);
+
+  @include bp.down(xl) {
+    grid-column: 1 / -1;
+    padding: var(--space-4) 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+}
+
+.hero__lectura {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 0;
+
+  p {
+    margin: 2px 0 0;
+    font-size: var(--fs-sm);
+    line-height: 1.45;
+    color: var(--text-2);
+  }
+}
+
+.hero__icono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  color: var(--c, var(--accent));
+  background: color-mix(in srgb, var(--c, var(--accent)) 13%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero__tramo {
+    transition: none;
+  }
 }

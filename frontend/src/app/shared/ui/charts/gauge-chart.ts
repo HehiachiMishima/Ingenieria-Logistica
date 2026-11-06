@@ -19,10 +19,12 @@ import { ChangeDetectionStrategy, Component, afterNextRender, computed, input, s
             />
         </g>
       </svg>
-      <div class="gauge__center">
-        <span class="gauge__num">{{ valor() }}<span class="gauge__pct">%</span></span>
-        <span class="gauge__caption">{{ etiqueta() }}</span>
-      </div>
+      @if (conTexto()) {
+        <div class="gauge__center">
+          <span class="gauge__num">{{ valor() }}<span class="gauge__pct">%</span></span>
+          <span class="gauge__caption">{{ etiqueta() }}</span>
+        </div>
+      }
     </div>
   `,
   styles: `
@@ -100,6 +102,8 @@ export class GaugeChart {
   readonly etiqueta = input<string>('Progreso');
   readonly color = input<string>('var(--brand)');
   readonly tamano = input<number>(220);
+  /** false = sin número ni rótulo al centro (cuando el valor ya se muestra al lado). */
+  readonly conTexto = input<boolean>(true);
 
   private readonly listo = signal(false);
 
