@@ -157,6 +157,17 @@
 					</execution>
 				</executions>
 			</plugin>
+			<plugin>
+				<!-- Los tests corren como producción: boundedElastic sobre hilos virtuales
+				     (BackendApplication lo activa al arrancar; Reactor lo lee una vez por JVM). -->
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<systemPropertyVariables>
+						<reactor.schedulers.defaultBoundedElasticOnVirtualThreads>true</reactor.schedulers.defaultBoundedElasticOnVirtualThreads>
+					</systemPropertyVariables>
+				</configuration>
+			</plugin>
 		</plugins>
 	</build>
 
