@@ -20,8 +20,6 @@ import oracle.common.security.AutorizacionCache;
 import oracle.common.config.Transacciones;
 import org.springframework.stereotype.Service;
 import lombok.extern.slf4j.Slf4j;
-import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 /**
  * Overrides individuales (usuarios_permisos): otorgado=true es un grant y
@@ -54,9 +52,9 @@ public class UsuarioPermisoService {
     }
 
     /** Crear o actualizar el override del permiso para el usuario. */
-    public Mono<ApiResponse<UsuarioPermisoResponse>> otorgar(Long usuarioId, UsuarioPermisoOverrideRequest peticion) {
+    public ApiResponse<UsuarioPermisoResponse> otorgar(Long usuarioId, UsuarioPermisoOverrideRequest peticion) {
         Long actor = ActorActual.id();
-        return Mono.fromCallable(() -> Trazas.medir(log,
+        return Trazas.medir(log,
                 "UsuarioPermisoService.otorgar usuarioId=" + usuarioId + " permisoId=" + peticion.permisoId(),
                 () -> transacciones.ejecutar(() -> {
                     Usuario usuario = obtenerUsuario(usuarioId);
@@ -100,14 +98,13 @@ public class UsuarioPermisoService {
                     transacciones.alConfirmar(() -> autorizacionCache.invalidar(usuarioId));
 
                     return ApiResponse.ok(mensaje, UsuarioPermisoResponse.of(override));
-                })))
-                .subscribeOn(Schedulers.boundedElastic());
+                }));
     }
 
     /** Eliminar el override y volver al calculo por rol. */
-    public Mono<ApiResponse<Void>> eliminar(Long usuarioId, Long permisoId) {
+    public ApiResponse<Void> eliminar(Long usuarioId, Long permisoId) {
         Long actor = ActorActual.id();
-        return Mono.<Void>fromRunnable(() -> Trazas.medir(log,
+        Trazas.medir(log,
                 "UsuarioPermisoService.eliminar usuarioId=" + usuarioId + " permisoId=" + permisoId,
                 () -> transacciones.ejecutar(() -> {
                     Usuario usuario = obtenerUsuario(usuarioId);
@@ -124,22 +121,20 @@ public class UsuarioPermisoService {
                     usuarioPermisoRepository.eliminarPar(usuarioId, permisoId);
                     transacciones.alConfirmar(() -> autorizacionCache.invalidar(usuarioId));
                     return null;
-                })))
-                .subscribeOn(Schedulers.boundedElastic())
-                .then(Mono.fromSupplier(() -> ApiResponse.<Void>ok("Override eliminado.", null)));
+                }));
+        return ApiResponse.ok("Override eliminado.", null);
     }
 
     /** Overrides del usuario (grant y deny). */
-    public Mono<ApiResponse<List<UsuarioPermisoResponse>>> listarPorUsuario(Long usuarioId) {
-        return Mono.fromCallable(() -> Trazas.medir(log,
+    public ApiResponse<List<UsuarioPermisoResponse>> listarPorUsuario(Long usuarioId) {
+        List<UsuarioPermisoResponse> datos = Trazas.medir(log,
                 "UsuarioPermisoService.listarPorUsuario usuarioId=" + usuarioId, () -> transacciones.consultar(() -> {
                     obtenerUsuario(usuarioId);
                     return usuarioPermisoRepository.findByUsuarioId(usuarioId).stream()
                             .map(UsuarioPermisoResponse::of)
                             .toList();
-                })))
-                .subscribeOn(Schedulers.boundedElastic())
-                .map(lista -> ApiResponse.ok("Overrides del usuario.", lista));
+                }));
+        return ApiResponse.ok("Overrides del usuario.", datos);
     }
 
     private Usuario obtenerUsuario(Long id) {

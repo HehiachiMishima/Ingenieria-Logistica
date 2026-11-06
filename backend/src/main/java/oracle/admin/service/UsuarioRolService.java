@@ -24,8 +24,6 @@ import oracle.common.security.AutorizacionCache;
 import oracle.common.config.Transacciones;
 import org.springframework.stereotype.Service;
 import lombok.extern.slf4j.Slf4j;
-import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 /** Asignacion usuario-rol (usuarios_roles): dar y quitar roles. */
 @Slf4j
@@ -58,72 +56,69 @@ public class UsuarioRolService {
     }
 
     /** Asignar un rol al usuario (unico por par). */
-    public Mono<ApiResponse<UsuarioRolResponse>> asignar(Long usuarioId, UsuarioRolAsignarRequest peticion) {
+    public ApiResponse<UsuarioRolResponse> asignar(Long usuarioId, UsuarioRolAsignarRequest peticion) {
         Long actor = ActorActual.id();
-        return Mono.fromCallable(() -> Trazas.medir(log,
-                        "UsuarioRolService.asignar usuarioId=" + usuarioId + " rolId=" + peticion.rolId(),
-                        () -> transacciones.ejecutar(() -> {
-                            Usuario usuario = obtenerUsuario(usuarioId);
-                            verificarNoProtegido(usuario);
-                            Protecciones.verificarNoAutoGestion(usuarioId, actor);
-                            escalamiento.verificarPuedeAdministrar(actor, usuarioId);
-                            Rol rol = rolRepository.findById(peticion.rolId())
-                                    .orElseThrow(() -> new RecursoNoEncontradoException(
-                                            "No existe el rol con id " + peticion.rolId() + "."));
-                            escalamiento.verificarPuedeOtorgar(actor, rolPermisoRepository.permisosDeRol(rol.getId())
-                                    .stream().map(Permiso::getNombre).toList());
+        return Trazas.medir(log,
+                "UsuarioRolService.asignar usuarioId=" + usuarioId + " rolId=" + peticion.rolId(),
+                () -> transacciones.ejecutar(() -> {
+                    Usuario usuario = obtenerUsuario(usuarioId);
+                    verificarNoProtegido(usuario);
+                    Protecciones.verificarNoAutoGestion(usuarioId, actor);
+                    escalamiento.verificarPuedeAdministrar(actor, usuarioId);
+                    Rol rol = rolRepository.findById(peticion.rolId())
+                            .orElseThrow(() -> new RecursoNoEncontradoException(
+                                    "No existe el rol con id " + peticion.rolId() + "."));
+                    escalamiento.verificarPuedeOtorgar(actor, rolPermisoRepository.permisosDeRol(rol.getId())
+                            .stream().map(Permiso::getNombre).toList());
 
-                            if (usuarioRolRepository.existsByUsuarioIdAndRolId(usuarioId, peticion.rolId())) {
-                                throw new ConflictoException("El usuario '" + usuario.getUsuario()
-                                        + "' ya tiene el rol '" + rol.getNombre() + "'.");
-                            }
+                    if (usuarioRolRepository.existsByUsuarioIdAndRolId(usuarioId, peticion.rolId())) {
+                        throw new ConflictoException("El usuario '" + usuario.getUsuario()
+                                + "' ya tiene el rol '" + rol.getNombre() + "'.");
+                    }
 
-                            UsuarioRol asignacion = new UsuarioRol();
-                            asignacion.setUsuario(usuario);
-                            asignacion.setRol(rol);
-                            asignacion.setCreadoPor(actor);
-                            asignacion.setCreadoEn(Instant.now());
-                            usuarioRolRepository.save(asignacion);
-                            transacciones.alConfirmar(() -> autorizacionCache.invalidar(usuarioId));
+                    UsuarioRol asignacion = new UsuarioRol();
+                    asignacion.setUsuario(usuario);
+                    asignacion.setRol(rol);
+                    asignacion.setCreadoPor(actor);
+                    asignacion.setCreadoEn(Instant.now());
+                    usuarioRolRepository.save(asignacion);
+                    transacciones.alConfirmar(() -> autorizacionCache.invalidar(usuarioId));
 
-                            return ApiResponse.ok("Rol asignado.", UsuarioRolResponse.of(asignacion));
-                        })))
-                .subscribeOn(Schedulers.boundedElastic());
+                    return ApiResponse.ok("Rol asignado.", UsuarioRolResponse.of(asignacion));
+                }));
     }
 
     /** Quitar un rol al usuario. */
-    public Mono<ApiResponse<Void>> quitar(Long usuarioId, Long rolId) {
+    public ApiResponse<Void> quitar(Long usuarioId, Long rolId) {
         Long actor = ActorActual.id();
-        return Mono.<Void>fromRunnable(() -> Trazas.medir(log,
-                        "UsuarioRolService.quitar usuarioId=" + usuarioId + " rolId=" + rolId,
-                        () -> transacciones.ejecutar(() -> {
-                            Usuario usuario = obtenerUsuario(usuarioId);
-                            Protecciones.verificarNoAutoGestion(usuarioId, actor);
-                            verificarNoProtegido(usuario);
-                            escalamiento.verificarPuedeAdministrar(actor, usuarioId);
-                            if (!usuarioRolRepository.existsByUsuarioIdAndRolId(usuarioId, rolId)) {
-                                throw new RecursoNoEncontradoException("El usuario '" + usuario.getUsuario()
-                                        + "' no tiene el rol con id " + rolId + ".");
-                            }
-                            usuarioRolRepository.eliminarPar(usuarioId, rolId);
-                            transacciones.alConfirmar(() -> autorizacionCache.invalidar(usuarioId));
-                            return null;
-                        })))
-                .subscribeOn(Schedulers.boundedElastic())
-                .then(Mono.fromSupplier(() -> ApiResponse.<Void>ok("Rol quitado.", null)));
+        Trazas.medir(log,
+                "UsuarioRolService.quitar usuarioId=" + usuarioId + " rolId=" + rolId,
+                () -> transacciones.ejecutar(() -> {
+                    Usuario usuario = obtenerUsuario(usuarioId);
+                    Protecciones.verificarNoAutoGestion(usuarioId, actor);
+                    verificarNoProtegido(usuario);
+                    escalamiento.verificarPuedeAdministrar(actor, usuarioId);
+                    if (!usuarioRolRepository.existsByUsuarioIdAndRolId(usuarioId, rolId)) {
+                        throw new RecursoNoEncontradoException("El usuario '" + usuario.getUsuario()
+                                + "' no tiene el rol con id " + rolId + ".");
+                    }
+                    usuarioRolRepository.eliminarPar(usuarioId, rolId);
+                    transacciones.alConfirmar(() -> autorizacionCache.invalidar(usuarioId));
+                    return null;
+                }));
+        return ApiResponse.ok("Rol quitado.", null);
     }
 
     /** Roles del usuario. */
-    public Mono<ApiResponse<List<RolResponse>>> listarPorUsuario(Long usuarioId) {
-        return Mono.fromCallable(() -> Trazas.medir(log,
-                        "UsuarioRolService.listarPorUsuario usuarioId=" + usuarioId, () -> transacciones.consultar(() -> {
-                            validarUsuario(usuarioId);
-                            return usuarioRolRepository.rolesDeUsuario(usuarioId).stream()
-                                    .map(RolResponse::of)
-                                    .toList();
-                        })))
-                .subscribeOn(Schedulers.boundedElastic())
-                .map(lista -> ApiResponse.ok("Roles del usuario.", lista));
+    public ApiResponse<List<RolResponse>> listarPorUsuario(Long usuarioId) {
+        List<RolResponse> datos = Trazas.medir(log,
+                "UsuarioRolService.listarPorUsuario usuarioId=" + usuarioId, () -> transacciones.consultar(() -> {
+                    validarUsuario(usuarioId);
+                    return usuarioRolRepository.rolesDeUsuario(usuarioId).stream()
+                            .map(RolResponse::of)
+                            .toList();
+                }));
+        return ApiResponse.ok("Roles del usuario.", datos);
     }
 
     private void validarUsuario(Long id) {

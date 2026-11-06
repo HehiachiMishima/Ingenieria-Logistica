@@ -20,8 +20,6 @@ import oracle.common.response.ApiResponse;
 import oracle.admin.response.PermisoResponse;
 import org.springframework.stereotype.Service;
 import lombok.extern.slf4j.Slf4j;
-import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 /**
  * CRUD de permisos. Los permisos base (Protecciones.PERMISOS_BASE) estan
@@ -45,20 +43,19 @@ public class PermisoService {
         this.transacciones = transacciones;
     }
 
-    public Mono<ApiResponse<List<PermisoResponse>>> listar() {
-        return Mono.fromCallable(() -> Trazas.medir(log, "PermisoService.listar", () -> transacciones.consultar(() -> {
-                        List<PermisoResponse> lista = permisoRepository.findAll(Listas.limitado()).stream()
-                                .map(PermisoResponse::of).toList();
-                        Listas.avisarSiCorto(log, lista.size(), "PermisoService.listar");
-                        return lista;
-                    })))
-                .subscribeOn(Schedulers.boundedElastic())
-                .map(lista -> ApiResponse.ok("Permisos listados.", lista));
+    public ApiResponse<List<PermisoResponse>> listar() {
+        List<PermisoResponse> datos = Trazas.medir(log, "PermisoService.listar", () -> transacciones.consultar(() -> {
+            List<PermisoResponse> lista = permisoRepository.findAll(Listas.limitado()).stream()
+                    .map(PermisoResponse::of).toList();
+            Listas.avisarSiCorto(log, lista.size(), "PermisoService.listar");
+            return lista;
+        }));
+        return ApiResponse.ok("Permisos listados.", datos);
     }
 
-    public Mono<ApiResponse<PermisoResponse>> crear(PermisoCrearRequest peticion) {
+    public ApiResponse<PermisoResponse> crear(PermisoCrearRequest peticion) {
         Long actor = ActorActual.id();
-        return Mono.fromCallable(() -> Trazas.medir(log, "PermisoService.crear nombre=" + peticion.nombre(), () -> transacciones.ejecutar(() -> {
+        return Trazas.medir(log, "PermisoService.crear nombre=" + peticion.nombre(), () -> transacciones.ejecutar(() -> {
             if (permisoRepository.existsByNombre(peticion.nombre())) {
                 throw new ConflictoException("Ya existe un permiso con el nombre '" + peticion.nombre() + "'.");
             }
@@ -72,12 +69,12 @@ public class PermisoService {
             transacciones.alConfirmar(autorizacionCache::invalidarTodo);
 
             return ApiResponse.ok("Permiso creado.", PermisoResponse.of(permiso));
-        }))).subscribeOn(Schedulers.boundedElastic());
+        }));
     }
 
-    public Mono<ApiResponse<PermisoResponse>> actualizar(Long id, PermisoActualizarRequest peticion) {
+    public ApiResponse<PermisoResponse> actualizar(Long id, PermisoActualizarRequest peticion) {
         Long actor = ActorActual.id();
-        return Mono.fromCallable(() -> Trazas.medir(log, "PermisoService.actualizar id=" + id, () -> transacciones.ejecutar(() -> {
+        return Trazas.medir(log, "PermisoService.actualizar id=" + id, () -> transacciones.ejecutar(() -> {
             Permiso permiso = obtenerPermiso(id);
             boolean esBase = Protecciones.esPermisoBase(permiso.getNombre());
 
@@ -109,27 +106,26 @@ public class PermisoService {
             permisoRepository.save(permiso);
             transacciones.alConfirmar(autorizacionCache::invalidarTodo);
             return ApiResponse.ok("Permiso actualizado.", PermisoResponse.of(permiso));
-        }))).subscribeOn(Schedulers.boundedElastic());
+        }));
     }
 
-    public Mono<ApiResponse<Void>> eliminar(Long id) {
-        return Mono.<Void>fromRunnable(() -> Trazas.medir(log, "PermisoService.eliminar id=" + id, () -> transacciones.ejecutar(() -> {
-                    Permiso permiso = obtenerPermiso(id);
-                    if (Protecciones.esPermisoBase(permiso.getNombre())) {
-                        throw new OperacionNoPermitidaException(
-                                "No se puede eliminar un permiso base. Es inmutable e intocable.");
-                    }
-                    permisoRepository.delete(permiso);
-                    transacciones.alConfirmar(autorizacionCache::invalidarTodo);
-                    return null;
-                })))
-                .subscribeOn(Schedulers.boundedElastic())
-                .then(Mono.fromSupplier(() -> ApiResponse.<Void>ok("Permiso eliminado.", null)));
+    public ApiResponse<Void> eliminar(Long id) {
+        Trazas.medir(log, "PermisoService.eliminar id=" + id, () -> transacciones.ejecutar(() -> {
+            Permiso permiso = obtenerPermiso(id);
+            if (Protecciones.esPermisoBase(permiso.getNombre())) {
+                throw new OperacionNoPermitidaException(
+                        "No se puede eliminar un permiso base. Es inmutable e intocable.");
+            }
+            permisoRepository.delete(permiso);
+            transacciones.alConfirmar(autorizacionCache::invalidarTodo);
+            return null;
+        }));
+        return ApiResponse.ok("Permiso eliminado.", null);
     }
 
-    public Mono<ApiResponse<PermisoResponse>> cambiarActivo(Long id, CambiarEstadoRequest peticion) {
+    public ApiResponse<PermisoResponse> cambiarActivo(Long id, CambiarEstadoRequest peticion) {
         Long actor = ActorActual.id();
-        return Mono.fromCallable(() -> Trazas.medir(log, "PermisoService.cambiarActivo id=" + id, () -> transacciones.ejecutar(() -> {
+        return Trazas.medir(log, "PermisoService.cambiarActivo id=" + id, () -> transacciones.ejecutar(() -> {
             Permiso permiso = obtenerPermiso(id);
             if (Protecciones.esPermisoBase(permiso.getNombre())) {
                 throw new OperacionNoPermitidaException(
@@ -142,7 +138,7 @@ public class PermisoService {
 
             String mensaje = peticion.activo() ? "Permiso activado." : "Permiso desactivado.";
             return ApiResponse.ok(mensaje, PermisoResponse.of(permiso));
-        }))).subscribeOn(Schedulers.boundedElastic());
+        }));
     }
 
     private Permiso obtenerPermiso(Long id) {

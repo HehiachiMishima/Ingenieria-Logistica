@@ -48,9 +48,10 @@ public class ConexionBaseDatos implements EnvironmentPostProcessor, Ordered {
     private static final List<String> SSL_MODOS = List.of("disable", "prefer", "require", "verify-ca", "verify-full");
 
     /**
-     * Conexiones por instancia. Las piden los services (Schedulers.boundedElastic, 10 x CPU),
-     * la analitica (su propio scheduler, 6) y el filtro JWT al resolver los permisos de un
-     * usuario aun no cacheado (hilos de Tomcat). En la prueba de carga (1 CPU, 1000 usuarios)
+     * Conexiones por instancia. Las piden los services (un hilo virtual por peticion),
+     * la analitica (hasta 6 consultas a la vez, ver EjecutorAnalitica) y el filtro JWT al
+     * resolver los permisos de un usuario aun no cacheado. Con hilos virtuales este pool es
+     * el limite real de concurrencia contra la base. En la prueba de carga (1 CPU, 1000 usuarios)
      * 10 se agotaba en el arranque en frio de la cache; 20 no. Deja margen en la base
      * (max_connections=100) para una segunda instancia.
      */

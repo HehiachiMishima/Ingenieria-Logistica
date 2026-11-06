@@ -25,7 +25,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Mono;
 
 /** CRUD de incidencias (bitácora), con listado paginado y filtrado en el servidor. */
 @RestController
@@ -40,7 +39,7 @@ public class IncidenciaController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('VER_INCIDENCIAS')")
-    public Mono<ApiResponse<PaginaResponse<IncidenciaResponse>>> listar(
+    public ApiResponse<PaginaResponse<IncidenciaResponse>> listar(
             @RequestParam(required = false) Long centro,
             @RequestParam(required = false) Long sistema,
             @RequestParam(required = false) Long area,
@@ -86,7 +85,7 @@ public class IncidenciaController {
     /** Analitica del dashboard (KPIs, rankings y cruces) para el filtro. */
     @GetMapping("/analitica")
     @PreAuthorize("hasAuthority('VER_DASHBOARD')")
-    public Mono<ApiResponse<AnaliticaBitacoraResponse>> analitica(
+    public ApiResponse<AnaliticaBitacoraResponse> analitica(
             @RequestParam(required = false) Long centro,
             @RequestParam(required = false) Long sistema,
             @RequestParam(required = false) Long area,
@@ -101,20 +100,20 @@ public class IncidenciaController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('CREAR_INCIDENCIAS')")
-    public Mono<ApiResponse<IncidenciaResponse>> crear(@Valid @RequestBody IncidenciaCrearRequest peticion) {
+    public ApiResponse<IncidenciaResponse> crear(@Valid @RequestBody IncidenciaCrearRequest peticion) {
         return incidenciaService.crear(peticion);
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('MODIFICAR_INCIDENCIAS')")
-    public Mono<ApiResponse<IncidenciaResponse>> actualizar(@PathVariable Long id,
+    public ApiResponse<IncidenciaResponse> actualizar(@PathVariable Long id,
             @Valid @RequestBody IncidenciaActualizarRequest peticion) {
         return incidenciaService.actualizar(id, peticion);
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('ELIMINAR_INCIDENCIAS')")
-    public Mono<ApiResponse<Void>> eliminar(@PathVariable Long id) {
+    public ApiResponse<Void> eliminar(@PathVariable Long id) {
         return incidenciaService.eliminar(id);
     }
 }

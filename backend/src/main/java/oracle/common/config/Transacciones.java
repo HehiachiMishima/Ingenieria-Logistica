@@ -10,11 +10,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * Ejecuta bloques de trabajo dentro de una transaccion.
  *
- * Los services devuelven Mono y ejecutan su cuerpo en Schedulers.boundedElastic,
- * por lo que @Transactional en el metodo publico no abarcaria el trabajo real
- * (solo la construccion del Mono). Este helper permite abrir la transaccion
- * DENTRO del hilo de trabajo, de modo que las lecturas + escritura de una
- * operacion compartan la misma transaccion (evita ventanas TOCTOU inconsistentes).
+ * Los services abren la transaccion con este helper (en lugar de @Transactional)
+ * para que cubra exactamente el trabajo medido con Trazas.medir: las lecturas y
+ * la escritura de una operacion comparten la misma transaccion (evita ventanas
+ * TOCTOU inconsistentes) y el armado de la respuesta queda fuera de ella.
  *
  * Las lecturas puramente de solo consulta usan consultar() (readOnly=true).
  * Los efectos fuera de la BD (invalidar caches) se registran con alConfirmar()

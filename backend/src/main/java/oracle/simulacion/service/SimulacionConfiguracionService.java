@@ -104,8 +104,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
-import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 /**
  * Configuración de límites/operarios, rutas, balanceo y comparativos de
@@ -130,12 +128,15 @@ public class SimulacionConfiguracionService {
   private static final BigDecimal SIN_OPERARIOS = new BigDecimal("1E+30");
   private static final int MAX_ITERACIONES = 1000;
   private static final int MAX_TAMANO_PAGINA = 100;
+  /**
+   * Página de la planilla de rutas (keyset por id): la pide entera de corrido, así
+   * que páginas grandes ahorran viajes en serie (5 000 rutas: 5 peticiones, no 50).
+   */
+  private static final int MAX_TAMANO_RUTAS = 1_000;
   /** Página máxima de los listados paginados con OFFSET (detalle del dashboard e historial). */
   private static final int MAX_PAGINA = 2_000;
-  /** Tope de una lectura en Reactor: algo más que el statement_timeout (15 s por defecto). */
   /** Tope total de la transacción de una lectura: corta la consulta en el servidor. */
   private static final int TOPE_TRANSACCION_LECTURA_S = 18;
-  private static final java.time.Duration TOPE_LECTURA = java.time.Duration.ofSeconds(20);
   private static final int ESCALA = 4;
   /**
    * Clusters que no pueden compartir chute: CL1 y CL2 (número del nombre
@@ -192,7 +193,7 @@ public class SimulacionConfiguracionService {
     this.cache = cache;
   }
 
-  public Mono<ApiResponse<ConfiguracionSimulacionResponse>> obtener(Long archivoId) {
+  public ApiResponse<ConfiguracionSimulacionResponse> obtener(Long archivoId) {
     return leer(
         "obtener id=" + archivoId,
         () -> cacheado(archivoId, "configuracion", this::aConfiguracion),
@@ -205,14 +206,14 @@ public class SimulacionConfiguracionService {
    * cada página sale del índice desde ese id, sin recorrer las anteriores como OFFSET. El total
    * solo se cuenta en la primera página (para la barra de progreso).
    */
-  public Mono<ApiResponse<PaginaRutasResponse>> rutas(
+  public ApiResponse<PaginaRutasResponse> rutas(
       Long archivoId,
       Long despues,
       int tamano,
       String texto,
       List<Long> clusterIds,
       List<Long> chuteIds) {
-    int t = Math.min(Math.max(tamano, 1), MAX_TAMANO_PAGINA);
+    int t = Math.min(Math.max(tamano, 1), MAX_TAMANO_RUTAS);
     String termino = Filtros.normalizar(texto);
     // La búsqueda es por prefijo (no "contiene"): la resuelve el índice único
     // (archivo, código, tipo).
@@ -255,7 +256,7 @@ public class SimulacionConfiguracionService {
    * con los totales del conjunto filtrado (no solo de la página). Se ordenan
    * por cluster y código para que las rutas de cada cluster salgan agrupadas.
    */
-  public Mono<ApiResponse<RutasDashboardResponse>> rutasDashboard(
+  public ApiResponse<RutasDashboardResponse> rutasDashboard(
       Long archivoId,
       int pagina,
       int tamano,
@@ -352,7 +353,7 @@ public class SimulacionConfiguracionService {
         ruta.getConteoCod());
   }
 
-  public Mono<ApiResponse<ConfiguracionSimulacionResponse>> guardar(
+  public ApiResponse<ConfiguracionSimulacionResponse> guardar(
       Long archivoId, ConfiguracionActualizarRequest req) {
     Long actor = ActorActual.id();
     return escribir(
@@ -486,7 +487,7 @@ public class SimulacionConfiguracionService {
     }
   }
 
-  public Mono<ApiResponse<ConfiguracionSimulacionResponse>> mover(
+  public ApiResponse<ConfiguracionSimulacionResponse> mover(
       Long archivoId, Long rutaId, MoverRutaRequest req) {
     Long actor = ActorActual.id();
     return escribir(
@@ -558,7 +559,7 @@ public class SimulacionConfiguracionService {
    * esté cerrado; los que ya tenían operarios vuelven al paso 2 porque su carga
    * cambió. La ruta se queda en su chute.
    */
-  public Mono<ApiResponse<ConfiguracionSimulacionResponse>> cambiarCluster(
+  public ApiResponse<ConfiguracionSimulacionResponse> cambiarCluster(
       Long archivoId, Long rutaId, CambiarClusterRequest req) {
     Long actor = ActorActual.id();
     return escribir(
@@ -663,45 +664,40 @@ public class SimulacionConfiguracionService {
    * igualar la carga de sus chutes; OPERARIOS asigna los operarios de su ola
    * sobre esa carga (y puede repetirse para recalcularlos).
    */
-  public Mono<ApiResponse<BalanceoResponse>> balancear(
+  public ApiResponse<BalanceoResponse> balancear(
       Long archivoId, Long clusterId, FaseBalanceo fase) {
     Long actor = ActorActual.id();
-    return Mono.fromCallable(
+    BalanceoResponse datos =
+        Trazas.medir(
+            log,
+            "SimulacionConfiguracionService.balancear id="
+                + archivoId
+                + " cluster="
+                + clusterId
+                + " fase="
+                + fase,
             () ->
-                Trazas.medir(
-                    log,
-                    "SimulacionConfiguracionService.balancear id="
-                        + archivoId
-                        + " cluster="
-                        + clusterId
-                        + " fase="
-                        + fase,
+                transacciones.ejecutar(
                     () ->
-                        transacciones.ejecutar(
-                            () ->
-                                fase == FaseBalanceo.RUTAS
-                                    ? balancearRutas(archivoId, clusterId, actor)
-                                    : asignarOperarios(archivoId, clusterId, actor))))
-        .subscribeOn(Schedulers.boundedElastic())
-        .map((datos) -> ApiResponse.ok(datos.mensaje(), datos));
+                        fase == FaseBalanceo.RUTAS
+                            ? balancearRutas(archivoId, clusterId, actor)
+                            : asignarOperarios(archivoId, clusterId, actor)));
+    return ApiResponse.ok(datos.mensaje(), datos);
   }
 
   /** Todo el registro vuelve a la proyección: rutas, operarios, lanzamientos e historial. */
-  public Mono<ApiResponse<Void>> restablecer(Long archivoId) {
+  public ApiResponse<Void> restablecer(Long archivoId) {
     Long actor = ActorActual.id();
-    return Mono.fromCallable(
-            () ->
-                Trazas.medir(
-                    log,
-                    "SimulacionConfiguracionService.restablecer id=" + archivoId,
-                    () ->
-                        transacciones.<Void>ejecutar(
-                            () -> {
-                              deshacerHistorial(contexto(archivoId, true), actor);
-                              return null;
-                            })))
-        .subscribeOn(Schedulers.boundedElastic())
-        .thenReturn(ApiResponse.<Void>ok("Datos restablecidos.", null));
+    Trazas.medir(
+        log,
+        "SimulacionConfiguracionService.restablecer id=" + archivoId,
+        () ->
+            transacciones.<Void>ejecutar(
+                () -> {
+                  deshacerHistorial(contexto(archivoId, true), actor);
+                  return null;
+                }));
+    return ApiResponse.ok("Datos restablecidos.", null);
   }
 
   /**
@@ -710,7 +706,7 @@ public class SimulacionConfiguracionService {
    * rutas que entraron o salieron de él), sin operarios de ola. Los clusters
    * cerrados no cambian.
    */
-  public Mono<ApiResponse<ConfiguracionSimulacionResponse>> restablecerCluster(
+  public ApiResponse<ConfiguracionSimulacionResponse> restablecerCluster(
       Long archivoId, Long clusterId) {
     Long actor = ActorActual.id();
     return escribir(
@@ -733,7 +729,7 @@ public class SimulacionConfiguracionService {
    * chute con su incompatible. El equipo pasa al siguiente cluster con esta
    * dotación; al cerrar el último, la simulación termina.
    */
-  public Mono<ApiResponse<ConfiguracionSimulacionResponse>> cerrar(
+  public ApiResponse<ConfiguracionSimulacionResponse> cerrar(
       Long archivoId, Long clusterId) {
     Long actor = ActorActual.id();
     return escribir(
@@ -777,7 +773,7 @@ public class SimulacionConfiguracionService {
    * de su dotación, así que vuelven a la proyección (rutas, operarios y
    * lanzamientos); el reabierto conserva sus rutas y operarios.
    */
-  public Mono<ApiResponse<ConfiguracionSimulacionResponse>> reabrir(
+  public ApiResponse<ConfiguracionSimulacionResponse> reabrir(
       Long archivoId, Long clusterId) {
     Long actor = ActorActual.id();
     return escribir(
@@ -805,7 +801,7 @@ public class SimulacionConfiguracionService {
         "Cluster reabierto.");
   }
 
-  public Mono<ApiResponse<HistorialRegistroResponse>> historial(Long archivoId) {
+  public ApiResponse<HistorialRegistroResponse> historial(Long archivoId) {
     return leer(
         "historial id=" + archivoId,
         () -> {
@@ -837,7 +833,7 @@ public class SimulacionConfiguracionService {
    * lanzamiento), del más reciente al más antiguo y paginados: un balanceo
    * grande mueve miles de rutas.
    */
-  public Mono<ApiResponse<PaginaResponse<HistorialSimulacionResponse>>> historialCambios(
+  public ApiResponse<PaginaResponse<HistorialSimulacionResponse>> historialCambios(
       Long archivoId, Long lanzamientoId, int pagina, int tamano) {
     PageRequest pageable =
         PageRequest.of(
@@ -899,7 +895,7 @@ public class SimulacionConfiguracionService {
   }
 
   /** Vista final (clusterId nulo) o la vista del lanzamiento de un cluster. */
-  public Mono<ApiResponse<DashboardSimulacionResponse>> dashboard(Long archivoId, Long clusterId) {
+  public ApiResponse<DashboardSimulacionResponse> dashboard(Long archivoId, Long clusterId) {
     return leer(
         "dashboard id=" + archivoId + " cluster=" + clusterId,
         () ->
@@ -2689,35 +2685,28 @@ public class SimulacionConfiguracionService {
   }
 
   /**
-   * Lecturas: aisladas en boundedElastic, con tope TOTAL en la transacción
-   * (Spring reparte el tiempo restante entre sus sentencias, y PostgreSQL las
-   * cancela; cada una además bajo statement_timeout) y un tope algo mayor en
-   * Reactor como red de seguridad. Las escrituras no llevan este tope: cortar la respuesta no
-   * cancela la transacción y el usuario vería un error de algo que sí se guardó;
-   * a ellas las acota statement_timeout sentencia por sentencia.
+   * Lecturas: con tope TOTAL en la transacción (Spring reparte el tiempo
+   * restante entre sus sentencias y PostgreSQL las cancela; cada una además
+   * bajo statement_timeout). Si vence, TransactionTimedOutException -> 503.
    */
-  private <T> Mono<ApiResponse<T>> leer(String operacion, Supplier<T> trabajo, String mensaje) {
-    return Mono.fromCallable(
-            () ->
-                Trazas.medir(
-                    log,
-                    "SimulacionConfiguracionService." + operacion,
-                    () -> transacciones.consultar(trabajo, TOPE_TRANSACCION_LECTURA_S)))
-        .subscribeOn(Schedulers.boundedElastic())
-        .timeout(TOPE_LECTURA)
-        .map((datos) -> ApiResponse.ok(mensaje, datos));
+  private <T> ApiResponse<T> leer(String operacion, Supplier<T> trabajo, String mensaje) {
+    T datos =
+        Trazas.medir(
+            log,
+            "SimulacionConfiguracionService." + operacion,
+            () -> transacciones.consultar(trabajo, TOPE_TRANSACCION_LECTURA_S));
+    return ApiResponse.ok(mensaje, datos);
   }
 
-  private <T> Mono<ApiResponse<T>> escribir(
-      String operacion, Supplier<T> trabajo, String mensaje) {
-    return Mono.fromCallable(
-            () ->
-                Trazas.medir(
-                    log,
-                    "SimulacionConfiguracionService." + operacion,
-                    () -> transacciones.ejecutar(trabajo)))
-        .subscribeOn(Schedulers.boundedElastic())
-        .map((datos) -> ApiResponse.ok(mensaje, datos));
+  /**
+   * Escrituras: sin tope total (cortarlas a mitad dejaría al usuario con un
+   * error de algo que sí se guardó); las acota statement_timeout por sentencia.
+   */
+  private <T> ApiResponse<T> escribir(String operacion, Supplier<T> trabajo, String mensaje) {
+    T datos =
+        Trazas.medir(
+            log, "SimulacionConfiguracionService." + operacion, () -> transacciones.ejecutar(trabajo));
+    return ApiResponse.ok(mensaje, datos);
   }
 
   /** Ruta movida; lanzamientoId null = movimiento manual. */

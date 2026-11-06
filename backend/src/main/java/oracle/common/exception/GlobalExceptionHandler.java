@@ -12,6 +12,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.dao.QueryTimeoutException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -24,7 +25,9 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
+import org.springframework.jdbc.CannotGetJdbcConnectionException;
+import org.springframework.transaction.CannotCreateTransactionException;
+import org.springframework.transaction.TransactionTimedOutException;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
@@ -163,20 +166,16 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * La peticion asincrona (Mono) supero spring.mvc.async.request-timeout: el
-     * servicio esta saturado o la operacion es demasiado lenta -> 503.
+     * La operacion supero su tope de tiempo: el de un lote analitico
+     * (TiempoAgotadoException) o el total de una transaccion de lectura
+     * (TransactionTimedOutException, ver Transacciones.consultar con tope) -> 503.
      */
-    @ExceptionHandler(AsyncRequestTimeoutException.class)
-    public ResponseEntity<ApiError> tiempoAgotado(AsyncRequestTimeoutException ex, HttpServletRequest req) {
-        return cuerpo(HttpStatus.SERVICE_UNAVAILABLE,
-                "La operacion tardo demasiado en responder. Intente de nuevo.", req);
-    }
-
-    /** Un Mono supero su .timeout() de Reactor (p. ej. una lectura lenta) -> 503. */
-    @ExceptionHandler(java.util.concurrent.TimeoutException.class)
-    public ResponseEntity<ApiError> topeReactor(java.util.concurrent.TimeoutException ex, HttpServletRequest req) {
-        return cuerpo(HttpStatus.SERVICE_UNAVAILABLE,
-                "La consulta tardo demasiado en responder. Intente de nuevo.", req);
+    @ExceptionHandler({TiempoAgotadoException.class, TransactionTimedOutException.class})
+    public ResponseEntity<ApiError> tiempoAgotado(RuntimeException ex, HttpServletRequest req) {
+        String mensaje = ex instanceof TiempoAgotadoException
+                ? ex.getMessage()
+                : "La consulta tardo demasiado en responder. Intente de nuevo.";
+        return cuerpo(HttpStatus.SERVICE_UNAVAILABLE, mensaje, req);
     }
 
     /** Ruta inexistente: ninguna coincidencia de handler ni recurso estatico. */
@@ -225,6 +224,28 @@ public class GlobalExceptionHandler {
         log.error("Error de acceso a datos", ex);
         return cuerpo(HttpStatus.INTERNAL_SERVER_ERROR, "Error interno inesperado.", req);
     }
+
+    /**
+     * Sin conexion a la base: el pool Hikari se agoto (connection-timeout de 3 s)
+     * o la base no responde. Al abrir la transaccion llega como
+     * CannotCreateTransactionException; en JDBC sin transaccion (analitica), como
+     * CannotGetJdbcConnectionException. Es saturacion pasajera, no un error del
+     * codigo: 503 con Retry-After para que el cliente reintente, y una linea de
+     * aviso (sin stack) para no inundar el log justo cuando hay mas carga.
+     */
+    @ExceptionHandler({CannotCreateTransactionException.class, CannotGetJdbcConnectionException.class})
+    public ResponseEntity<ApiError> sinConexion(RuntimeException ex, HttpServletRequest req) {
+        log.warn("Sin conexion a la base para {} {}: {}", req.getMethod(), req.getRequestURI(), ex.getMessage());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(REINTENTAR_EN_S))
+                .body(ApiError.de(HttpStatus.SERVICE_UNAVAILABLE.value(),
+                        HttpStatus.SERVICE_UNAVAILABLE.getReasonPhrase(),
+                        "El sistema esta atendiendo muchas solicitudes. Intente de nuevo en unos segundos.",
+                        req.getRequestURI()));
+    }
+
+    /** Segundos sugeridos al cliente para reintentar cuando no hay conexion libre. */
+    static final int REINTENTAR_EN_S = 2;
 
     /** SQLSTATE con que fallan los triggers de proteccion (comun.proteger en postgresql.sql). */
     static final String ESTADO_PROTECCION = "AT403";

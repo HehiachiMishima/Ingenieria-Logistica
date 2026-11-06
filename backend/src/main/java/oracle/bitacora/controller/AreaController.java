@@ -18,7 +18,6 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Mono;
 
 import java.util.List;
 
@@ -35,52 +34,52 @@ public class AreaController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('VER_CONTROL')")
-    public Mono<ApiResponse<List<AreaResponse>>> listar() {
+    public ApiResponse<List<AreaResponse>> listar() {
         return areaService.listar();
     }
 
     @PostMapping
     @PreAuthorize("hasAuthority('CREAR_CONTROL')")
-    public Mono<ApiResponse<AreaResponse>> crear(@Valid @RequestBody AreaCrearRequest peticion) {
+    public ApiResponse<AreaResponse> crear(@Valid @RequestBody AreaCrearRequest peticion) {
         return areaService.crear(peticion);
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('MODIFICAR_CONTROL')")
-    public Mono<ApiResponse<AreaResponse>> actualizar(@PathVariable Long id,
+    public ApiResponse<AreaResponse> actualizar(@PathVariable Long id,
             @Valid @RequestBody AreaActualizarRequest peticion) {
         return areaService.actualizar(id, peticion);
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('ELIMINAR_CONTROL')")
-    public Mono<ApiResponse<Void>> eliminar(@PathVariable Long id) {
+    public ApiResponse<Void> eliminar(@PathVariable Long id) {
         return areaService.eliminar(id);
     }
 
     @GetMapping("/{id}/responsables")
     @PreAuthorize("hasAuthority('VER_CONTROL')")
-    public Mono<ApiResponse<List<ResponsableResponse>>> responsablesDe(@PathVariable Long id) {
+    public ApiResponse<List<ResponsableResponse>> responsablesDe(@PathVariable Long id) {
         return areaService.responsablesDe(id);
     }
 
     @PostMapping("/{id}/responsables")
     @PreAuthorize("hasAuthority('CREAR_CONTROL')")
-    public Mono<ApiResponse<ResponsableResponse>> crearResponsable(@PathVariable Long id,
+    public ApiResponse<ResponsableResponse> crearResponsable(@PathVariable Long id,
             @Valid @RequestBody ResponsableCrearRequest peticion) {
         return areaService.crearResponsable(id, peticion);
     }
 
     @PutMapping("/{areaId}/responsables/{responsableId}")
     @PreAuthorize("hasAuthority('MODIFICAR_CONTROL')")
-    public Mono<ApiResponse<ResponsableResponse>> actualizarResponsable(@PathVariable Long areaId,
+    public ApiResponse<ResponsableResponse> actualizarResponsable(@PathVariable Long areaId,
             @PathVariable Long responsableId, @Valid @RequestBody ResponsableActualizarRequest peticion) {
         return areaService.actualizarResponsable(areaId, responsableId, peticion);
     }
 
     @DeleteMapping("/{areaId}/responsables/{responsableId}")
     @PreAuthorize("hasAuthority('ELIMINAR_CONTROL')")
-    public Mono<ApiResponse<Void>> eliminarResponsable(@PathVariable Long areaId, @PathVariable Long responsableId) {
+    public ApiResponse<Void> eliminarResponsable(@PathVariable Long areaId, @PathVariable Long responsableId) {
         return areaService.eliminarResponsable(areaId, responsableId);
     }
 }

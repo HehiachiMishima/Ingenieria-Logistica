@@ -1,6 +1,5 @@
 package oracle.simulacion.controller;
 
-import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import oracle.common.exception.LimiteExcedidoException;
@@ -41,10 +40,6 @@ public class LimiteUsoSimulacion implements WebMvcConfigurer, HandlerInterceptor
   @Override
   public boolean preHandle(
       HttpServletRequest request, HttpServletResponse response, Object handler) {
-    // Las respuestas Mono vuelven a pasar por aquí al reanudarse: se cuentan una vez.
-    if (request.getDispatcherType() == DispatcherType.ASYNC) {
-      return true;
-    }
     boolean escritura = !HttpMethod.GET.matches(request.getMethod());
     long espera =
         limite.consumir(

@@ -18,7 +18,6 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Mono;
 
 import java.util.List;
 
@@ -35,52 +34,52 @@ public class SistemaController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('VER_CONTROL')")
-    public Mono<ApiResponse<List<SistemaResponse>>> listar() {
+    public ApiResponse<List<SistemaResponse>> listar() {
         return sistemaService.listar();
     }
 
     @PostMapping
     @PreAuthorize("hasAuthority('CREAR_CONTROL')")
-    public Mono<ApiResponse<SistemaResponse>> crear(@Valid @RequestBody SistemaCrearRequest peticion) {
+    public ApiResponse<SistemaResponse> crear(@Valid @RequestBody SistemaCrearRequest peticion) {
         return sistemaService.crear(peticion);
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('MODIFICAR_CONTROL')")
-    public Mono<ApiResponse<SistemaResponse>> actualizar(@PathVariable Long id,
+    public ApiResponse<SistemaResponse> actualizar(@PathVariable Long id,
             @Valid @RequestBody SistemaActualizarRequest peticion) {
         return sistemaService.actualizar(id, peticion);
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('ELIMINAR_CONTROL')")
-    public Mono<ApiResponse<Void>> eliminar(@PathVariable Long id) {
+    public ApiResponse<Void> eliminar(@PathVariable Long id) {
         return sistemaService.eliminar(id);
     }
 
     @GetMapping("/{id}/tipos-incidencia")
     @PreAuthorize("hasAuthority('VER_CONTROL')")
-    public Mono<ApiResponse<List<TipoIncidenciaResponse>>> tiposDe(@PathVariable Long id) {
+    public ApiResponse<List<TipoIncidenciaResponse>> tiposDe(@PathVariable Long id) {
         return sistemaService.tiposDe(id);
     }
 
     @PostMapping("/{id}/tipos-incidencia")
     @PreAuthorize("hasAuthority('CREAR_CONTROL')")
-    public Mono<ApiResponse<TipoIncidenciaResponse>> crearTipo(@PathVariable Long id,
+    public ApiResponse<TipoIncidenciaResponse> crearTipo(@PathVariable Long id,
             @Valid @RequestBody TipoIncidenciaCrearRequest peticion) {
         return sistemaService.crearTipo(id, peticion);
     }
 
     @PutMapping("/{sistemaId}/tipos-incidencia/{tipoId}")
     @PreAuthorize("hasAuthority('MODIFICAR_CONTROL')")
-    public Mono<ApiResponse<TipoIncidenciaResponse>> actualizarTipo(@PathVariable Long sistemaId,
+    public ApiResponse<TipoIncidenciaResponse> actualizarTipo(@PathVariable Long sistemaId,
             @PathVariable Long tipoId, @Valid @RequestBody TipoIncidenciaActualizarRequest peticion) {
         return sistemaService.actualizarTipo(sistemaId, tipoId, peticion);
     }
 
     @DeleteMapping("/{sistemaId}/tipos-incidencia/{tipoId}")
     @PreAuthorize("hasAuthority('ELIMINAR_CONTROL')")
-    public Mono<ApiResponse<Void>> eliminarTipo(@PathVariable Long sistemaId, @PathVariable Long tipoId) {
+    public ApiResponse<Void> eliminarTipo(@PathVariable Long sistemaId, @PathVariable Long tipoId) {
         return sistemaService.eliminarTipo(sistemaId, tipoId);
     }
 }

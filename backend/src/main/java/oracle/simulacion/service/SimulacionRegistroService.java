@@ -46,8 +46,6 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 /** Registro de archivos Excel: alta con parseo, listado, edición y borrado. */
 @Slf4j
@@ -99,7 +97,7 @@ public class SimulacionRegistroService {
     this.recientes = new CargasRecientes(reloj, VENTANA_DUPLICADOS);
   }
 
-  public Mono<ApiResponse<PaginaResponse<ArchivoSimulacionResponse>>> listar(
+  public ApiResponse<PaginaResponse<ArchivoSimulacionResponse>> listar(
       int pagina, int tamano, String texto, List<String> estados) {
     int p = Math.max(pagina, 1) - 1;
     int t = Math.min(Math.max(tamano, 1), MAX_TAMANO_PAGINA);
@@ -123,33 +121,29 @@ public class SimulacionRegistroService {
           }
           return cb.and(condiciones.toArray(Predicate[]::new));
         };
-    return Mono.fromCallable(
+    var datos =
+        Trazas.medir(
+            log,
+            "SimulacionRegistroService.listar",
             () ->
-                Trazas.medir(
-                    log,
-                    "SimulacionRegistroService.listar",
-                    () ->
-                        transacciones.consultar(
-                            () -> {
-                              Page<ArchivoExcel> page = archivoRepo.findAll(spec, pageable);
-                              List<ArchivoSimulacionResponse> lista = aResponses(page.getContent());
-                              return PaginaResponse.de(page, lista);
-                            })))
-        .subscribeOn(Schedulers.boundedElastic())
-        .map((datos) -> ApiResponse.ok("Registros listados.", datos));
+                transacciones.consultar(
+                    () -> {
+                      Page<ArchivoExcel> page = archivoRepo.findAll(spec, pageable);
+                      List<ArchivoSimulacionResponse> lista = aResponses(page.getContent());
+                      return PaginaResponse.de(page, lista);
+                    }));
+    return ApiResponse.ok("Registros listados.", datos);
   }
 
-  public Mono<ApiResponse<List<ArchivoSimulacionResponse>>> opciones() {
-    return Mono.fromCallable(
+  public ApiResponse<List<ArchivoSimulacionResponse>> opciones() {
+    var datos =
+        Trazas.medir(
+            log,
+            "SimulacionRegistroService.opciones",
             () ->
-                Trazas.medir(
-                    log,
-                    "SimulacionRegistroService.opciones",
-                    () ->
-                        transacciones.consultar(
-                            () -> aResponses(archivoRepo.findTop200ByOrderByCreadoEnDescIdDesc()))))
-        .subscribeOn(Schedulers.boundedElastic())
-        .map((datos) -> ApiResponse.ok("Registros disponibles.", datos));
+                transacciones.consultar(
+                    () -> aResponses(archivoRepo.findTop200ByOrderByCreadoEnDescIdDesc())));
+    return ApiResponse.ok("Registros disponibles.", datos);
   }
 
   /**
@@ -158,16 +152,13 @@ public class SimulacionRegistroService {
    * cliente), se devuelve el registro ya creado en lugar de duplicarlo; si la primera carga sigue
    * en proceso, responde 409.
    */
-  public Mono<ApiResponse<ArchivoSimulacionResponse>> subir(
+  public ApiResponse<ArchivoSimulacionResponse> subir(
       MultipartFile archivo, String nombreRegistro, String etiqueta, String colorHex) {
     Long actor = ActorActual.id();
-    return Mono.fromCallable(
-            () ->
-                Trazas.medir(
-                    log,
-                    "SimulacionRegistroService.subir",
-                    () -> procesar(archivo, nombreRegistro, etiqueta, colorHex, actor)))
-        .subscribeOn(Schedulers.boundedElastic());
+    return Trazas.medir(
+        log,
+        "SimulacionRegistroService.subir",
+        () -> procesar(archivo, nombreRegistro, etiqueta, colorHex, actor));
   }
 
   private ApiResponse<ArchivoSimulacionResponse> procesar(
@@ -217,48 +208,43 @@ public class SimulacionRegistroService {
     }
   }
 
-  public Mono<ApiResponse<ArchivoSimulacionResponse>> actualizar(
+  public ApiResponse<ArchivoSimulacionResponse> actualizar(
       Long id, RegistroActualizarRequest req) {
     Long actor = ActorActual.id();
-    return Mono.fromCallable(
+    var datos =
+        Trazas.medir(
+            log,
+            "SimulacionRegistroService.actualizar id=" + id,
             () ->
-                Trazas.medir(
-                    log,
-                    "SimulacionRegistroService.actualizar id=" + id,
-                    () ->
-                        transacciones.ejecutar(
-                            () -> {
-                              // Con bloqueo: un balanceo en curso sobre el mismo
-                              // registro termina antes y su estado no se pisa.
-                              ArchivoExcel archivo = buscarBloqueado(id);
-                              archivo.setNombreRegistro(req.nombreRegistro().trim());
-                              archivo.setEtiqueta(normalizarEtiqueta(req.etiqueta()));
-                              archivo.setColorHex(normalizarColor(req.colorHex()));
-                              Auditoria.alActualizar(archivo, actor);
-                              return aResponses(List.of(archivoRepo.save(archivo))).get(0);
-                            })))
-        .subscribeOn(Schedulers.boundedElastic())
-        .map((datos) -> ApiResponse.ok("Registro actualizado.", datos));
+                transacciones.ejecutar(
+                    () -> {
+                      // Con bloqueo: un balanceo en curso sobre el mismo
+                      // registro termina antes y su estado no se pisa.
+                      ArchivoExcel archivo = buscarBloqueado(id);
+                      archivo.setNombreRegistro(req.nombreRegistro().trim());
+                      archivo.setEtiqueta(normalizarEtiqueta(req.etiqueta()));
+                      archivo.setColorHex(normalizarColor(req.colorHex()));
+                      Auditoria.alActualizar(archivo, actor);
+                      return aResponses(List.of(archivoRepo.save(archivo))).get(0);
+                    }));
+    return ApiResponse.ok("Registro actualizado.", datos);
   }
 
-  public Mono<ApiResponse<Void>> eliminar(Long id) {
-    return Mono.fromCallable(
-            () ->
-                Trazas.medir(
-                    log,
-                    "SimulacionRegistroService.eliminar id=" + id,
-                    () ->
-                        transacciones.<Void>ejecutar(
-                            () -> {
-                              // Bloquea el registro: no se borra a mitad de un balanceo.
-                              archivoRepo.delete(
-                                  archivoRepo
-                                      .bloquear(id)
-                                      .orElseThrow(() -> noExiste(id)));
-                              return null;
-                            })))
-        .subscribeOn(Schedulers.boundedElastic())
-        .thenReturn(ApiResponse.ok("Registro eliminado.", null));
+  public ApiResponse<Void> eliminar(Long id) {
+    Trazas.medir(
+        log,
+        "SimulacionRegistroService.eliminar id=" + id,
+        () ->
+            transacciones.<Void>ejecutar(
+                () -> {
+                  // Bloquea el registro: no se borra a mitad de un balanceo.
+                  archivoRepo.delete(
+                      archivoRepo
+                          .bloquear(id)
+                          .orElseThrow(() -> noExiste(id)));
+                  return null;
+                }));
+    return ApiResponse.ok("Registro eliminado.", null);
   }
 
   private static void validarArchivo(MultipartFile archivo) {

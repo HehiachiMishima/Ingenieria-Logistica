@@ -8,7 +8,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Mono;
 
 import java.util.List;
 
@@ -25,7 +24,7 @@ public class ResolucionController {
     }
 
     @GetMapping("/efectivos")
-    public Mono<ApiResponse<List<PermisoEfectivoResponse>>> efectivos(@PathVariable Long usuarioId) {
+    public ApiResponse<List<PermisoEfectivoResponse>> efectivos(@PathVariable Long usuarioId) {
         return resolucionPermisosService.efectivos(usuarioId);
     }
 }

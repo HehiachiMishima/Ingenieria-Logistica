@@ -206,7 +206,7 @@ class SimulacionRegistroServiceTest {
   // ------------------------------------------------------------------
 
   private ApiResponse<ArchivoSimulacionResponse> subir(MockMultipartFile archivo, String nombre) {
-    return servicio.subir(archivo, nombre, null, null).block(Duration.ofSeconds(20));
+    return servicio.subir(archivo, nombre, null, null);
   }
 
   private static MockMultipartFile csv(String contenido) {

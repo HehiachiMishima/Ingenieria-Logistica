@@ -10,8 +10,6 @@ import oracle.common.response.ApiResponse;
 import oracle.admin.response.PermisoEfectivoResponse;
 import org.springframework.stereotype.Service;
 import lombok.extern.slf4j.Slf4j;
-import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 /** Vista de resolucion de permisos: como se calcula lo efectivo/final. */
 @Slf4j
@@ -28,13 +26,12 @@ public class ResolucionPermisosService {
         this.resolucionRepository = resolucionRepository;
     }
 
-    public Mono<ApiResponse<List<PermisoEfectivoResponse>>> efectivos(Long usuarioId) {
-        return Mono.fromCallable(() -> Trazas.medir(log, "ResolucionPermisosService.efectivos usuarioId=" + usuarioId, () -> {
-                    validarUsuario(usuarioId);
-                    return resolucionRepository.efectivos(usuarioId);
-                }))
-                .subscribeOn(Schedulers.boundedElastic())
-                .map(lista -> ApiResponse.ok("Permisos efectivos.", lista));
+    public ApiResponse<List<PermisoEfectivoResponse>> efectivos(Long usuarioId) {
+        List<PermisoEfectivoResponse> datos = Trazas.medir(log, "ResolucionPermisosService.efectivos usuarioId=" + usuarioId, () -> {
+            validarUsuario(usuarioId);
+            return resolucionRepository.efectivos(usuarioId);
+        });
+        return ApiResponse.ok("Permisos efectivos.", datos);
     }
 
     private void validarUsuario(Long id) {

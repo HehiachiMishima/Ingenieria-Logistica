@@ -1,6 +1,5 @@
 package oracle.malla.controller;
 
-import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import oracle.common.exception.LimiteExcedidoException;
@@ -40,10 +39,6 @@ public class LimiteUsoMalla implements WebMvcConfigurer, HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
-        // Las respuestas Mono vuelven a pasar por aquí al reanudarse: se cuentan una vez.
-        if (request.getDispatcherType() == DispatcherType.ASYNC) {
-            return true;
-        }
         String ruta = request.getRequestURI();
         boolean pesada = !HttpMethod.GET.matches(request.getMethod())
                 || ruta.endsWith("/excel") || ruta.endsWith("/plantilla");

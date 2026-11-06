@@ -16,8 +16,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.request.WebRequest;
-import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 /**
  * Panel Picking: el navegador descarga el archivo del WMS y calcula los tres
@@ -40,22 +38,19 @@ public class PickingController {
 
     @GetMapping("/estado")
     @PreAuthorize("hasAuthority('PANEL_PICKING')")
-    public Mono<ApiResponse<EstadoPickingResponse>> estado() {
-        return Mono.fromCallable(() -> {
-                    SincronizadorPicking.Estado sync = sincronizador.estado();
-                    Optional<ArchivoPicking.Info> info = archivo.actual();
-                    return new EstadoPickingResponse(
-                            sync.resultado().name(),
-                            sync.mensaje(),
-                            sync.revisado(),
-                            info.isPresent(),
-                            archivo.nombre(),
-                            info.map(ArchivoPicking.Info::bytes).orElse(null),
-                            info.map(ArchivoPicking.Info::modificado).orElse(null),
-                            info.map(ArchivoPicking.Info::huella).orElse(null));
-                })
-                .subscribeOn(Schedulers.boundedElastic())
-                .map((datos) -> ApiResponse.ok("Estado del archivo de picking.", datos));
+    public ApiResponse<EstadoPickingResponse> estado() {
+        SincronizadorPicking.Estado sync = sincronizador.estado();
+        Optional<ArchivoPicking.Info> info = archivo.actual();
+        EstadoPickingResponse datos = new EstadoPickingResponse(
+                sync.resultado().name(),
+                sync.mensaje(),
+                sync.revisado(),
+                info.isPresent(),
+                archivo.nombre(),
+                info.map(ArchivoPicking.Info::bytes).orElse(null),
+                info.map(ArchivoPicking.Info::modificado).orElse(null),
+                info.map(ArchivoPicking.Info::huella).orElse(null));
+        return ApiResponse.ok("Estado del archivo de picking.", datos);
     }
 
     @GetMapping("/archivo")

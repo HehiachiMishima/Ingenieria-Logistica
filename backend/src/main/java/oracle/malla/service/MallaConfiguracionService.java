@@ -28,8 +28,6 @@ import oracle.malla.response.ReglaMallaResponse;
 import oracle.malla.response.ResumenEvaluacionMallaResponse;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
-import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
@@ -63,38 +61,36 @@ public class MallaConfiguracionService {
     }
 
     /** Evalúa las reglas sobre todos los centros o, con centroId, solo sobre ese. */
-    public Mono<ApiResponse<EvaluacionMallaResponse>> evaluar(Long centroId) {
-        return Mono.fromCallable(() -> Trazas.medir(log, "MallaConfiguracionService.evaluar centro=" + centroId,
-                        () -> transacciones.consultar(() -> evaluacion(centroId))))
-                .subscribeOn(Schedulers.boundedElastic())
-                .map(resultado -> ApiResponse.ok("Malla evaluada.", resultado));
+    public ApiResponse<EvaluacionMallaResponse> evaluar(Long centroId) {
+        EvaluacionMallaResponse resultado = Trazas.medir(log, "MallaConfiguracionService.evaluar centro=" + centroId,
+                () -> transacciones.consultar(() -> evaluacion(centroId)));
+        return ApiResponse.ok("Malla evaluada.", resultado);
     }
 
-    public Mono<ApiResponse<ReglaMallaResponse>> actualizar(Long id, MallaReglaActualizarRequest req) {
+    public ApiResponse<ReglaMallaResponse> actualizar(Long id, MallaReglaActualizarRequest req) {
         Long actor = ActorActual.id();
-        return Mono.fromCallable(() -> Trazas.medir(log, "MallaConfiguracionService.actualizar id=" + id,
-                        () -> transacciones.ejecutar(() -> {
-                            MallaRegla regla = reglas.findById(id)
-                                    .orElseThrow(() -> new RecursoNoEncontradoException(
-                                            "No existe la regla de malla con id " + id + "."));
-                            if (req.activa() != null) {
-                                regla.setActiva(req.activa());
-                            }
-                            if (req.parametros() != null) {
-                                Map<String, String> valores = parametros(regla);
-                                valores.putAll(validarParametros(regla.getCodigo(), req.parametros()));
-                                try {
-                                    regla.setParametros(json.writeValueAsString(valores));
-                                } catch (Exception ex) {
-                                    throw new SolicitudInvalidaException(
-                                            "No se pudieron guardar los parámetros de la regla.");
-                                }
-                            }
-                            Auditoria.alActualizar(regla, actor);
-                            MallaRegla guardada = reglas.save(regla);
-                            return ApiResponse.ok("Regla actualizada.", reglaResponse(guardada));
-                        })))
-                .subscribeOn(Schedulers.boundedElastic());
+        return Trazas.medir(log, "MallaConfiguracionService.actualizar id=" + id,
+                () -> transacciones.ejecutar(() -> {
+                    MallaRegla regla = reglas.findById(id)
+                            .orElseThrow(() -> new RecursoNoEncontradoException(
+                                    "No existe la regla de malla con id " + id + "."));
+                    if (req.activa() != null) {
+                        regla.setActiva(req.activa());
+                    }
+                    if (req.parametros() != null) {
+                        Map<String, String> valores = parametros(regla);
+                        valores.putAll(validarParametros(regla.getCodigo(), req.parametros()));
+                        try {
+                            regla.setParametros(json.writeValueAsString(valores));
+                        } catch (Exception ex) {
+                            throw new SolicitudInvalidaException(
+                                    "No se pudieron guardar los parámetros de la regla.");
+                        }
+                    }
+                    Auditoria.alActualizar(regla, actor);
+                    MallaRegla guardada = reglas.save(regla);
+                    return ApiResponse.ok("Regla actualizada.", reglaResponse(guardada));
+                }));
     }
 
     private EvaluacionMallaResponse evaluacion(Long centroId) {

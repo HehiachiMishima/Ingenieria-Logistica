@@ -19,7 +19,6 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Mono;
 
 /**
  * Acceso: login, renovacion y cierre (publicos: el access token puede estar
@@ -45,15 +44,14 @@ public class AuthController {
 
     @PostMapping("/login")
     @PreAuthorize("permitAll()")
-    public Mono<ResponseEntity<ApiResponse<AuthResponse>>> login(
+    public ResponseEntity<ApiResponse<AuthResponse>> login(
             @Valid @RequestBody LoginRequest peticion,
             HttpServletRequest http) {
         // Cubos por IP+usuario, por IP y por cuenta; el intento se cuenta ANTES
         // de verificar la contrasena (ver LoginRateLimiter).
         String ip = http.getRemoteAddr();
         LoginRateLimiter.Reserva reserva = rateLimiter.reservarLogin(ip, peticion.usuario());
-        return authService.login(peticion, reserva, refreshDe(http), ip)
-                .map(acceso -> conCookie(acceso, "Autenticacion exitosa."));
+        return conCookie(authService.login(peticion, reserva, refreshDe(http), ip), "Autenticacion exitosa.");
     }
 
     /**
@@ -63,38 +61,41 @@ public class AuthController {
      */
     @PostMapping("/refresh")
     @PreAuthorize("permitAll()")
-    public Mono<ResponseEntity<ApiResponse<AuthResponse>>> renovar(HttpServletRequest http) {
+    public ResponseEntity<ApiResponse<AuthResponse>> renovar(HttpServletRequest http) {
         exigirAjax(http);
         String ip = http.getRemoteAddr();
         String claveIp = LoginRateLimiter.claveIp(ip);
         rateLimiter.verificarPorIp(ip);
-        return authService.renovar(refreshDe(http), ip)
-                .map(acceso -> conCookie(acceso, "Sesion renovada."))
-                .doOnError(NoAutorizadoException.class, ex -> rateLimiter.registrarFallo(claveIp));
+        try {
+            return conCookie(authService.renovar(refreshDe(http), ip), "Sesion renovada.");
+        } catch (NoAutorizadoException ex) {
+            rateLimiter.registrarFallo(claveIp);
+            throw ex;
+        }
     }
 
     /** Cierra la sesion de este navegador: revoca su refresh token y borra la cookie. */
     @PostMapping("/logout")
     @PreAuthorize("permitAll()")
-    public Mono<ResponseEntity<ApiResponse<Void>>> cerrar(HttpServletRequest http) {
+    public ResponseEntity<ApiResponse<Void>> cerrar(HttpServletRequest http) {
         exigirAjax(http);
-        return authService.cerrar(refreshDe(http))
-                .then(Mono.fromSupplier(() -> ResponseEntity.ok()
-                        .header(HttpHeaders.SET_COOKIE, cookie.borrar())
-                        .body(ApiResponse.<Void>ok("Sesion cerrada.", null))));
+        authService.cerrar(refreshDe(http));
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, cookie.borrar())
+                .body(ApiResponse.ok("Sesion cerrada.", null));
     }
 
     /** Sesion vigente (usuario + permisos actuales) del portador del token. */
     @GetMapping("/sesion")
     @PreAuthorize("isAuthenticated()")
-    public Mono<ApiResponse<SesionResponse>> sesion() {
+    public ApiResponse<SesionResponse> sesion() {
         return authService.sesionActual(ActorActual.id());
     }
 
     /** Cambio de la propia contrasena: exige la actual como confirmacion. */
     @PutMapping("/contrasena")
     @PreAuthorize("isAuthenticated()")
-    public Mono<ApiResponse<Void>> cambiarContrasena(
+    public ApiResponse<Void> cambiarContrasena(
             @Valid @RequestBody CambiarContrasenaRequest peticion, HttpServletRequest http) {
         return authService.cambiarContrasena(ActorActual.id(), peticion, refreshDe(http));
     }

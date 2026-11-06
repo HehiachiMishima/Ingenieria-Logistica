@@ -17,25 +17,7 @@ public class BackendApplication {
 	 */
 	public static void main(String[] args) {
 		TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
-		usarHilosVirtualesEnBoundedElastic();
 		SpringApplication.run(BackendApplication.class, args);
 	}
-
-	/**
-	 * Los servicios envuelven su trabajo JDBC en Mono.subscribeOn(boundedElastic).
-	 * Por defecto ese scheduler usa hilos de plataforma con tope de 10 x CPU (unos
-	 * 10 en el plan free de Render): con más peticiones a la vez hacían cola
-	 * aunque Hikari tuviera conexiones libres. Con hilos virtuales el límite real
-	 * es el pool de conexiones. Reactor lee la propiedad al cargar Schedulers, por
-	 * eso va antes de arrancar Spring; un -D en la línea de comandos la sobrescribe.
-	 */
-	static void usarHilosVirtualesEnBoundedElastic() {
-		if (System.getProperty(PROPIEDAD_BOUNDED_ELASTIC_VIRTUAL) == null) {
-			System.setProperty(PROPIEDAD_BOUNDED_ELASTIC_VIRTUAL, "true");
-		}
-	}
-
-	static final String PROPIEDAD_BOUNDED_ELASTIC_VIRTUAL =
-			"reactor.schedulers.defaultBoundedElasticOnVirtualThreads";
 
 }

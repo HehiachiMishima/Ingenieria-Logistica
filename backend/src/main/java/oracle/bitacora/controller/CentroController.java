@@ -15,7 +15,6 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Mono;
 
 import java.util.List;
 
@@ -32,26 +31,26 @@ public class CentroController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('VER_CONTROL')")
-    public Mono<ApiResponse<List<CentroResponse>>> listar() {
+    public ApiResponse<List<CentroResponse>> listar() {
         return centroService.listar();
     }
 
     @PostMapping
     @PreAuthorize("hasAuthority('CREAR_CONTROL')")
-    public Mono<ApiResponse<CentroResponse>> crear(@Valid @RequestBody CentroCrearRequest peticion) {
+    public ApiResponse<CentroResponse> crear(@Valid @RequestBody CentroCrearRequest peticion) {
         return centroService.crear(peticion);
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('MODIFICAR_CONTROL')")
-    public Mono<ApiResponse<CentroResponse>> actualizar(@PathVariable Long id,
+    public ApiResponse<CentroResponse> actualizar(@PathVariable Long id,
             @Valid @RequestBody CentroActualizarRequest peticion) {
         return centroService.actualizar(id, peticion);
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('ELIMINAR_CONTROL')")
-    public Mono<ApiResponse<Void>> eliminar(@PathVariable Long id) {
+    public ApiResponse<Void> eliminar(@PathVariable Long id) {
         return centroService.eliminar(id);
     }
 }

@@ -228,10 +228,11 @@ export class SimulacionConfiguracion {
 
   /**
    * La matriz necesita todas las rutas del registro, no una página suelta.
-   * El servidor limita cada respuesta a 100 filas, así que se piden en cadena
-   * y se van acumulando; el scroll de cada cluster reparte esa lista.
+   * El servidor limita cada respuesta a 1 000 filas, así que se piden en cadena
+   * (pocas peticiones aun en registros grandes) y se van acumulando; el scroll
+   * de cada cluster reparte esa lista.
    */
-  private static readonly TAMANO_PAGINA_RUTAS = 100;
+  private static readonly TAMANO_PAGINA_RUTAS = 1_000;
   /** true = recarga suave (tras un paso): la planilla actual se mantiene hasta que llega la nueva. */
   private readonly recargarRutas$ = new Subject<boolean>();
   private generacionRutas = 0;
@@ -762,7 +763,7 @@ export class SimulacionConfiguracion {
 
   /**
    * Pide todas las rutas del registro (con los filtros vigentes) encadenando
-   * páginas de 100, el máximo que acepta el servidor. Es keyset: cada página
+   * páginas de 1 000, el máximo que acepta el servidor. Es keyset: cada página
    * pide las rutas después del último id recibido (sin OFFSET), y solo la
    * primera trae el total. Cada página se acumula sobre la anterior.
    */

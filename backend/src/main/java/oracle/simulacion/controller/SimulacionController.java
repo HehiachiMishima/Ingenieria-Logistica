@@ -40,17 +40,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.context.request.async.DeferredResult;
 import org.springframework.web.multipart.MultipartFile;
-import reactor.core.publisher.Mono;
 
 /** Registro, configuración y dashboard del panel Simulación. */
 @RestController
 @RequestMapping("/api/simulacion/registros")
 public class SimulacionController {
-
-  /** Timeout de la carga de archivos; el proxy nginx corta a los 60 s. */
-  private static final long TIMEOUT_CARGA_MS = 55_000;
 
   private final SimulacionRegistroService registroService;
   private final SimulacionConfiguracionService configuracionService;
@@ -64,7 +59,7 @@ public class SimulacionController {
 
   @GetMapping
   @PreAuthorize("hasAuthority('VER_REGISTRO_SIMULACION')")
-  public Mono<ApiResponse<PaginaResponse<ArchivoSimulacionResponse>>> listar(
+  public ApiResponse<PaginaResponse<ArchivoSimulacionResponse>> listar(
       @RequestParam(defaultValue = "1") int pagina,
       @RequestParam(defaultValue = "10") int tamano,
       @RequestParam(required = false) String texto,
@@ -75,79 +70,71 @@ public class SimulacionController {
   @GetMapping("/opciones")
   @PreAuthorize(
       "hasAnyAuthority('VER_REGISTRO_SIMULACION','VER_CONFIGURACION_SIMULACION','VER_DASHBOARD_SIMULACION')")
-  public Mono<ApiResponse<List<ArchivoSimulacionResponse>>> opciones() {
+  public ApiResponse<List<ArchivoSimulacionResponse>> opciones() {
     return registroService.opciones();
   }
 
   /**
    * Alta de un registro desde un .xlsx/.xls/.csv.
    *
-   * <p>Usa DeferredResult para tener un timeout propio (55 s, bajo el proxy_read_timeout de 60 s de
-   * nginx) en lugar del global de 15 s: un libro de 100k filas en una instancia de 0,1 vCPU puede
-   * pasar de 15 s y el cliente recibía 500 mientras la carga terminaba igual. Un archivo inválido
-   * responde con su 4xx (400/413/415/422) y el mismo cuerpo ApiError; el resto de errores sigue en
-   * el GlobalExceptionHandler.
+   * <p>Un archivo inválido responde con su 4xx (400/413/415/422) y el mismo cuerpo ApiError; el
+   * resto de errores sigue en el GlobalExceptionHandler. La carga corre en el hilo virtual de la
+   * petición; si pasa de los 60 s del proxy, la carga termina igual y un reintento con el mismo
+   * archivo devuelve el registro ya creado (es idempotente).
    */
   @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
   @PreAuthorize("hasAuthority('CREAR_REGISTRO_SIMULACION')")
-  public DeferredResult<ResponseEntity<?>> subir(
+  public ResponseEntity<?> subir(
       @RequestPart("archivo") MultipartFile archivo,
       @RequestParam(required = false) String nombreRegistro,
       @RequestParam(required = false) String etiqueta,
       @RequestParam(required = false) String colorHex,
       HttpServletRequest peticion) {
-    String ruta = peticion.getRequestURI();
-    DeferredResult<ResponseEntity<?>> resultado = new DeferredResult<>(TIMEOUT_CARGA_MS);
-    registroService
-        .subir(archivo, nombreRegistro, etiqueta, colorHex)
-        .<ResponseEntity<?>>map(ResponseEntity::ok)
-        .onErrorResume(
-            SimulacionExcel.ArchivoInvalidoException.class,
-            (error) ->
-                Mono.just(
-                    ResponseEntity.status(error.estado())
-                        .body(
-                            ApiError.de(
-                                error.estado().value(),
-                                error.estado().getReasonPhrase(),
-                                error.getMessage(),
-                                ruta))))
-        .subscribe(resultado::setResult, resultado::setErrorResult);
-    return resultado;
+    try {
+      return ResponseEntity.ok(registroService.subir(archivo, nombreRegistro, etiqueta, colorHex));
+    } catch (SimulacionExcel.ArchivoInvalidoException error) {
+      return ResponseEntity.status(error.estado())
+          .body(
+              ApiError.de(
+                  error.estado().value(),
+                  error.estado().getReasonPhrase(),
+                  error.getMessage(),
+                  peticion.getRequestURI()));
+    }
   }
 
   @PutMapping("/{id}")
   @PreAuthorize("hasAuthority('MODIFICAR_REGISTRO_SIMULACION')")
-  public Mono<ApiResponse<ArchivoSimulacionResponse>> actualizar(
+  public ApiResponse<ArchivoSimulacionResponse> actualizar(
       @PathVariable Long id, @Valid @RequestBody RegistroActualizarRequest req) {
     return registroService.actualizar(id, req);
   }
 
   @DeleteMapping("/{id}")
   @PreAuthorize("hasAuthority('ELIMINAR_REGISTRO_SIMULACION')")
-  public Mono<ApiResponse<Void>> eliminar(@PathVariable Long id) {
+  public ApiResponse<Void> eliminar(@PathVariable Long id) {
     return registroService.eliminar(id);
   }
 
   @GetMapping("/{id}/configuracion")
   @PreAuthorize("hasAuthority('VER_CONFIGURACION_SIMULACION')")
-  public Mono<ApiResponse<ConfiguracionSimulacionResponse>> configuracion(@PathVariable Long id) {
+  public ApiResponse<ConfiguracionSimulacionResponse> configuracion(@PathVariable Long id) {
     return configuracionService.obtener(id);
   }
 
   @PutMapping("/{id}/configuracion")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
-  public Mono<ApiResponse<ConfiguracionSimulacionResponse>> guardarConfiguracion(
+  public ApiResponse<ConfiguracionSimulacionResponse> guardarConfiguracion(
       @PathVariable Long id, @Valid @RequestBody ConfiguracionActualizarRequest req) {
     return configuracionService.guardar(id, req);
   }
 
   @GetMapping("/{id}/rutas")
   @PreAuthorize("hasAuthority('VER_CONFIGURACION_SIMULACION')")
-  public Mono<ApiResponse<PaginaRutasResponse>> rutas(
+  public ApiResponse<PaginaRutasResponse> rutas(
       @PathVariable Long id,
       @RequestParam(required = false) Long despues,
-      @RequestParam(defaultValue = "100") int tamano,
+      @RequestParam(defaultValue = "1000") int tamano,
       @RequestParam(required = false) String texto,
       @RequestParam(required = false) List<Long> clusterIds,
       @RequestParam(required = false) List<Long> chuteIds) {
@@ -156,7 +143,7 @@ public class SimulacionController {
 
   @PutMapping("/{id}/rutas/{rutaId}/mover")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
-  public Mono<ApiResponse<ConfiguracionSimulacionResponse>> moverRuta(
+  public ApiResponse<ConfiguracionSimulacionResponse> moverRuta(
       @PathVariable Long id,
       @PathVariable Long rutaId,
       @Valid @RequestBody MoverRutaRequest req) {
@@ -166,7 +153,7 @@ public class SimulacionController {
   /** Pasa una ruta a otro cluster (solo con ambos clusters sin balancear). */
   @PutMapping("/{id}/rutas/{rutaId}/cluster")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
-  public Mono<ApiResponse<ConfiguracionSimulacionResponse>> cambiarClusterRuta(
+  public ApiResponse<ConfiguracionSimulacionResponse> cambiarClusterRuta(
       @PathVariable Long id,
       @PathVariable Long rutaId,
       @Valid @RequestBody CambiarClusterRequest req) {
@@ -176,28 +163,28 @@ public class SimulacionController {
   /** Lanza un cluster: paso 1 (RUTAS) o paso 2 (OPERARIOS) de su ola. */
   @PostMapping("/{id}/clusters/{clusterId}/balancear")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
-  public Mono<ApiResponse<BalanceoResponse>> balancear(
+  public ApiResponse<BalanceoResponse> balancear(
       @PathVariable Long id, @PathVariable Long clusterId, @RequestParam FaseBalanceo fase) {
     return configuracionService.balancear(id, clusterId, fase);
   }
 
   @PostMapping("/{id}/clusters/{clusterId}/restablecer")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
-  public Mono<ApiResponse<ConfiguracionSimulacionResponse>> restablecerCluster(
+  public ApiResponse<ConfiguracionSimulacionResponse> restablecerCluster(
       @PathVariable Long id, @PathVariable Long clusterId) {
     return configuracionService.restablecerCluster(id, clusterId);
   }
 
   @PostMapping("/{id}/restablecer")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
-  public Mono<ApiResponse<Void>> restablecer(@PathVariable Long id) {
+  public ApiResponse<Void> restablecer(@PathVariable Long id) {
     return configuracionService.restablecer(id);
   }
 
   /** Cierra el cluster en curso: el equipo pasa al siguiente con esta dotación. */
   @PostMapping("/{id}/clusters/{clusterId}/cerrar")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
-  public Mono<ApiResponse<ConfiguracionSimulacionResponse>> cerrar(
+  public ApiResponse<ConfiguracionSimulacionResponse> cerrar(
       @PathVariable Long id, @PathVariable Long clusterId) {
     return configuracionService.cerrar(id, clusterId);
   }
@@ -205,21 +192,21 @@ public class SimulacionController {
   /** Reabre un cluster cerrado; los siguientes vuelven a la proyección. */
   @PostMapping("/{id}/clusters/{clusterId}/reabrir")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
-  public Mono<ApiResponse<ConfiguracionSimulacionResponse>> reabrir(
+  public ApiResponse<ConfiguracionSimulacionResponse> reabrir(
       @PathVariable Long id, @PathVariable Long clusterId) {
     return configuracionService.reabrir(id, clusterId);
   }
 
   @GetMapping("/{id}/historial")
   @PreAuthorize("hasAuthority('VER_CONFIGURACION_SIMULACION')")
-  public Mono<ApiResponse<HistorialRegistroResponse>> historial(@PathVariable Long id) {
+  public ApiResponse<HistorialRegistroResponse> historial(@PathVariable Long id) {
     return configuracionService.historial(id);
   }
 
   /** Cambios de un lanzamiento (sin lanzamientoId: los que no tienen), paginados. */
   @GetMapping("/{id}/historial/cambios")
   @PreAuthorize("hasAuthority('VER_CONFIGURACION_SIMULACION')")
-  public Mono<ApiResponse<PaginaResponse<HistorialSimulacionResponse>>> historialCambios(
+  public ApiResponse<PaginaResponse<HistorialSimulacionResponse>> historialCambios(
       @PathVariable Long id,
       @RequestParam(required = false) Long lanzamientoId,
       @RequestParam(defaultValue = "1") int pagina,
@@ -230,14 +217,14 @@ public class SimulacionController {
   /** Sin clusterId, el resumen del registro; con él, la vista de ese cluster. */
   @GetMapping("/{id}/dashboard")
   @PreAuthorize("hasAuthority('VER_DASHBOARD_SIMULACION')")
-  public Mono<ApiResponse<DashboardSimulacionResponse>> dashboard(
+  public ApiResponse<DashboardSimulacionResponse> dashboard(
       @PathVariable Long id, @RequestParam(required = false) Long clusterId) {
     return configuracionService.dashboard(id, clusterId);
   }
 
   @GetMapping("/{id}/dashboard/rutas")
   @PreAuthorize("hasAuthority('VER_DASHBOARD_SIMULACION')")
-  public Mono<ApiResponse<RutasDashboardResponse>> rutasDashboard(
+  public ApiResponse<RutasDashboardResponse> rutasDashboard(
       @PathVariable Long id,
       @RequestParam(defaultValue = "1") int pagina,
       @RequestParam(defaultValue = "25") int tamano,

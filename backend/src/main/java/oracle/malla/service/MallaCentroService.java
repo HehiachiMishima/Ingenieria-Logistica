@@ -29,8 +29,6 @@ import oracle.malla.response.CentroMallaResumenResponse;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 /**
  * Datos de la malla de cada centro: el módulo Configuración los edita (a
@@ -50,16 +48,16 @@ public class MallaCentroService {
         this.transacciones = transacciones;
     }
 
-    public Mono<ApiResponse<List<CentroMallaResumenResponse>>> listar() {
+    public ApiResponse<List<CentroMallaResumenResponse>> listar() {
         return leer("listar", centros::listar, "Centros de la malla.");
     }
 
-    public Mono<ApiResponse<CentroMallaResponse>> obtener(Long id) {
+    public ApiResponse<CentroMallaResponse> obtener(Long id) {
         return leer("obtener id=" + id, () -> buscar(id), "Malla del centro.");
     }
 
     /** Crea el centro y guarda su malla en la misma transacción. */
-    public Mono<ApiResponse<CentroMallaResponse>> crear(CentroMallaRequest req) {
+    public ApiResponse<CentroMallaResponse> crear(CentroMallaRequest req) {
         Long actor = ActorActual.id();
         return escribir("crear", () -> {
             validar(req, null);
@@ -75,7 +73,7 @@ public class MallaCentroService {
      * actualización que vio quien edita) rechaza el guardado si otra persona
      * guardó antes, en lugar de pisar sus cambios.
      */
-    public Mono<ApiResponse<CentroMallaResponse>> guardar(Long id, CentroMallaRequest req, Instant version) {
+    public ApiResponse<CentroMallaResponse> guardar(Long id, CentroMallaRequest req, Instant version) {
         Long actor = ActorActual.id();
         return escribir("guardar id=" + id, () -> {
             Instant actual = centros.bloquear(id).orElseThrow(() -> noExiste(id));
@@ -90,7 +88,7 @@ public class MallaCentroService {
         }, "Malla guardada.");
     }
 
-    public Mono<ApiResponse<Void>> eliminar(Long id) {
+    public ApiResponse<Void> eliminar(Long id) {
         Long actor = ActorActual.id();
         return escribir("eliminar id=" + id, () -> {
             CentroMallaResponse centro = buscar(id);
@@ -100,27 +98,25 @@ public class MallaCentroService {
         }, "Centro eliminado.");
     }
 
-    public Mono<ApiResponse<List<CambioMallaResponse>>> cambios(Long id) {
+    public ApiResponse<List<CambioMallaResponse>> cambios(Long id) {
         return leer("cambios id=" + id, () -> centros.cambios(id, CAMBIOS_VISIBLES), "Cambios del centro.");
     }
 
     /** Lee el Excel y devuelve sus datos sin guardarlos: el formulario los muestra para revisar. */
-    public Mono<ApiResponse<CentroMallaRequest>> importar(MultipartFile archivo) {
-        return Mono.fromCallable(() -> Trazas.medir(log, "MallaCentroService.importar",
-                        () -> MallaExcel.leer(archivo)))
-                .subscribeOn(Schedulers.boundedElastic())
-                .map(datos -> ApiResponse.ok("Excel leído: revisa los datos y guarda.", datos));
+    public ApiResponse<CentroMallaRequest> importar(MultipartFile archivo) {
+        CentroMallaRequest datos = Trazas.medir(log, "MallaCentroService.importar",
+                () -> MallaExcel.leer(archivo));
+        return ApiResponse.ok("Excel leído: revisa los datos y guarda.", datos);
     }
 
     /** Excel con la malla del centro (exportación) o, sin centro, la plantilla con un ejemplo. */
-    public Mono<byte[]> excel(Long id) {
-        return Mono.fromCallable(() -> Trazas.medir(log, "MallaCentroService.excel id=" + id,
-                        () -> MallaExcel.escribir(id == null ? ejemplo() : transacciones.consultar(() -> {
-                            CentroMallaResponse c = buscar(id);
-                            return new CentroMallaRequest(c.codigo(), c.nombre(), c.turnos(), c.flujos(),
-                                    c.olas(), c.zonas(), c.capacidad(), c.dotacion(), c.dotacionReal());
-                        }))))
-                .subscribeOn(Schedulers.boundedElastic());
+    public byte[] excel(Long id) {
+        return Trazas.medir(log, "MallaCentroService.excel id=" + id,
+                () -> MallaExcel.escribir(id == null ? ejemplo() : transacciones.consultar(() -> {
+                    CentroMallaResponse c = buscar(id);
+                    return new CentroMallaRequest(c.codigo(), c.nombre(), c.turnos(), c.flujos(),
+                            c.olas(), c.zonas(), c.capacidad(), c.dotacion(), c.dotacionReal());
+                })));
     }
 
     /**
@@ -213,21 +209,18 @@ public class MallaCentroService {
         return texto.trim().toLowerCase(Locale.ROOT);
     }
 
-    private <T> Mono<ApiResponse<T>> leer(String operacion, Supplier<T> trabajo, String mensaje) {
-        return Mono.fromCallable(() -> Trazas.medir(log, "MallaCentroService." + operacion,
-                        () -> ApiResponse.ok(mensaje, transacciones.consultar(trabajo))))
-                .subscribeOn(Schedulers.boundedElastic());
+    private <T> ApiResponse<T> leer(String operacion, Supplier<T> trabajo, String mensaje) {
+        return Trazas.medir(log, "MallaCentroService." + operacion,
+                () -> ApiResponse.ok(mensaje, transacciones.consultar(trabajo)));
     }
 
-    /** La respuesta se arma dentro: un resultado nulo (eliminar) no deja el Mono vacío. */
-    private <T> Mono<ApiResponse<T>> escribir(String operacion, Supplier<T> trabajo, String mensaje) {
-        return Mono.fromCallable(() -> Trazas.medir(log, "MallaCentroService." + operacion, () -> {
-                    try {
-                        return ApiResponse.ok(mensaje, transacciones.ejecutar(trabajo));
-                    } catch (DuplicateKeyException ex) {
-                        throw new ConflictoException("Hay datos repetidos en la malla: revisa turnos, olas y zonas.");
-                    }
-                }))
-                .subscribeOn(Schedulers.boundedElastic());
+    private <T> ApiResponse<T> escribir(String operacion, Supplier<T> trabajo, String mensaje) {
+        return Trazas.medir(log, "MallaCentroService." + operacion, () -> {
+            try {
+                return ApiResponse.ok(mensaje, transacciones.ejecutar(trabajo));
+            } catch (DuplicateKeyException ex) {
+                throw new ConflictoException("Hay datos repetidos en la malla: revisa turnos, olas y zonas.");
+            }
+        });
     }
 }

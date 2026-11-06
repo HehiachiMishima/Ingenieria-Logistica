@@ -20,8 +20,6 @@ import oracle.common.response.ApiResponse;
 import oracle.admin.response.RolResponse;
 import org.springframework.stereotype.Service;
 import lombok.extern.slf4j.Slf4j;
-import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 /** CRUD de roles con filtros LIKE y protecciones del trigger de ADMINISTRADOR. */
 @Slf4j
@@ -39,20 +37,19 @@ public class RolService {
         this.transacciones = transacciones;
     }
 
-    public Mono<ApiResponse<List<RolResponse>>> listar() {
-        return Mono.fromCallable(() -> Trazas.medir(log, "RolService.listar", () -> transacciones.consultar(() -> {
-                        List<RolResponse> lista = rolRepository.findAll(Listas.limitado()).stream()
-                                .map(RolResponse::of).toList();
-                        Listas.avisarSiCorto(log, lista.size(), "RolService.listar");
-                        return lista;
-                    })))
-                .subscribeOn(Schedulers.boundedElastic())
-                .map(lista -> ApiResponse.ok("Roles listados.", lista));
+    public ApiResponse<List<RolResponse>> listar() {
+        List<RolResponse> datos = Trazas.medir(log, "RolService.listar", () -> transacciones.consultar(() -> {
+            List<RolResponse> lista = rolRepository.findAll(Listas.limitado()).stream()
+                    .map(RolResponse::of).toList();
+            Listas.avisarSiCorto(log, lista.size(), "RolService.listar");
+            return lista;
+        }));
+        return ApiResponse.ok("Roles listados.", datos);
     }
 
-    public Mono<ApiResponse<RolResponse>> crear(RolCrearRequest peticion) {
+    public ApiResponse<RolResponse> crear(RolCrearRequest peticion) {
         Long actor = ActorActual.id();
-        return Mono.fromCallable(() -> Trazas.medir(log, "RolService.crear nombre=" + peticion.nombre(), () -> transacciones.ejecutar(() -> {
+        return Trazas.medir(log, "RolService.crear nombre=" + peticion.nombre(), () -> transacciones.ejecutar(() -> {
             if (rolRepository.existsByNombre(peticion.nombre())) {
                 throw new ConflictoException("Ya existe un rol con el nombre '" + peticion.nombre() + "'.");
             }
@@ -66,12 +63,12 @@ public class RolService {
             transacciones.alConfirmar(autorizacionCache::invalidarTodo);
 
             return ApiResponse.ok("Rol creado.", RolResponse.of(rol));
-        }))).subscribeOn(Schedulers.boundedElastic());
+        }));
     }
 
-    public Mono<ApiResponse<RolResponse>> actualizar(Long id, RolActualizarRequest peticion) {
+    public ApiResponse<RolResponse> actualizar(Long id, RolActualizarRequest peticion) {
         Long actor = ActorActual.id();
-        return Mono.fromCallable(() -> Trazas.medir(log, "RolService.actualizar id=" + id, () -> transacciones.ejecutar(() -> {
+        return Trazas.medir(log, "RolService.actualizar id=" + id, () -> transacciones.ejecutar(() -> {
             Rol rol = obtenerRol(id);
             verificarNoAdministrador(rol);
 
@@ -92,24 +89,23 @@ public class RolService {
             rolRepository.save(rol);
             transacciones.alConfirmar(autorizacionCache::invalidarTodo);
             return ApiResponse.ok("Rol actualizado.", RolResponse.of(rol));
-        }))).subscribeOn(Schedulers.boundedElastic());
+        }));
     }
 
-    public Mono<ApiResponse<Void>> eliminar(Long id) {
-        return Mono.<Void>fromRunnable(() -> Trazas.medir(log, "RolService.eliminar id=" + id, () -> transacciones.ejecutar(() -> {
-                    Rol rol = obtenerRol(id);
-                    verificarNoAdministrador(rol);
-                    rolRepository.delete(rol);
-                    transacciones.alConfirmar(autorizacionCache::invalidarTodo);
-                    return null;
-                })))
-                .subscribeOn(Schedulers.boundedElastic())
-                .then(Mono.fromSupplier(() -> ApiResponse.<Void>ok("Rol eliminado.", null)));
+    public ApiResponse<Void> eliminar(Long id) {
+        Trazas.medir(log, "RolService.eliminar id=" + id, () -> transacciones.ejecutar(() -> {
+            Rol rol = obtenerRol(id);
+            verificarNoAdministrador(rol);
+            rolRepository.delete(rol);
+            transacciones.alConfirmar(autorizacionCache::invalidarTodo);
+            return null;
+        }));
+        return ApiResponse.ok("Rol eliminado.", null);
     }
 
-    public Mono<ApiResponse<RolResponse>> cambiarActivo(Long id, CambiarEstadoRequest peticion) {
+    public ApiResponse<RolResponse> cambiarActivo(Long id, CambiarEstadoRequest peticion) {
         Long actor = ActorActual.id();
-        return Mono.fromCallable(() -> Trazas.medir(log, "RolService.cambiarActivo id=" + id, () -> transacciones.ejecutar(() -> {
+        return Trazas.medir(log, "RolService.cambiarActivo id=" + id, () -> transacciones.ejecutar(() -> {
             Rol rol = obtenerRol(id);
             verificarNoAdministrador(rol);
             rol.setActivo(peticion.activo());
@@ -119,7 +115,7 @@ public class RolService {
 
             String mensaje = peticion.activo() ? "Rol activado." : "Rol desactivado.";
             return ApiResponse.ok(mensaje, RolResponse.of(rol));
-        }))).subscribeOn(Schedulers.boundedElastic());
+        }));
     }
 
     private Rol obtenerRol(Long id) {

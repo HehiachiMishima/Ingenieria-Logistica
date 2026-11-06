@@ -3,7 +3,6 @@ package oracle.common.security;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import jakarta.servlet.DispatcherType;
 import oracle.common.exception.LimiteExcedidoException;
 import oracle.common.security.LimiteUsoPanel.Categoria;
 import org.junit.jupiter.api.Test;
@@ -50,18 +49,6 @@ class LimiteUsoPanelTest {
 
         // Agotar las exportaciones no frena los listados.
         assertThat(interceptor.preHandle(peticion("GET", "/api/x"), respuesta, null)).isTrue();
-    }
-
-    @Test
-    void elDespachoAsincronoNoCuentaDosVeces() {
-        LimiteUsoPanel interceptor = new LimiteUsoPanel(new LimiteSolicitudes(), "prueba", CUPOS);
-        MockHttpServletResponse respuesta = new MockHttpServletResponse();
-
-        assertThat(interceptor.preHandle(peticion("GET", "/api/x/analitica"), respuesta, null)).isTrue();
-        MockHttpServletRequest reanudada = peticion("GET", "/api/x/analitica");
-        reanudada.setDispatcherType(DispatcherType.ASYNC);
-
-        assertThat(interceptor.preHandle(reanudada, respuesta, null)).isTrue();
     }
 
     private static MockHttpServletRequest peticion(String metodo, String ruta) {

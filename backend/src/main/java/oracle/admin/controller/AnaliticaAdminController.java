@@ -7,7 +7,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Mono;
 
 /** Dashboard ejecutivo del panel Administracion. */
 @RestController
@@ -22,7 +21,7 @@ public class AnaliticaAdminController {
 
     @GetMapping("/analitica")
     @PreAuthorize("hasAuthority('DASHBOARD_ADMIN')")
-    public Mono<ApiResponse<AnaliticaAdminResponse>> analitica() {
+    public ApiResponse<AnaliticaAdminResponse> analitica() {
         return service.analitica();
     }
 }

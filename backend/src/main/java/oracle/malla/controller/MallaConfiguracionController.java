@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Mono;
 
 /**
  * Validación de la Malla Operativa: evaluación de las reglas (de todos los
@@ -33,7 +32,7 @@ public class MallaConfiguracionController {
 
     @GetMapping("/evaluacion")
     @PreAuthorize("hasAuthority('VER_MALLA')")
-    public Mono<ApiResponse<EvaluacionMallaResponse>> evaluacion(
+    public ApiResponse<EvaluacionMallaResponse> evaluacion(
             @RequestParam(required = false) Long centroId) {
         return service.evaluar(centroId);
     }
@@ -41,7 +40,7 @@ public class MallaConfiguracionController {
     /** Activar o ajustar reglas cambia qué se considera correcto: tiene su propio permiso. */
     @PutMapping("/reglas/{id}")
     @PreAuthorize("hasAuthority('CONFIGURAR_REGLAS_MALLA')")
-    public Mono<ApiResponse<ReglaMallaResponse>> actualizar(@PathVariable Long id,
+    public ApiResponse<ReglaMallaResponse> actualizar(@PathVariable Long id,
             @Valid @RequestBody MallaReglaActualizarRequest req) {
         return service.actualizar(id, req);
     }

@@ -1,6 +1,8 @@
 
 package oracle.admin.service;
 
+import java.util.List;
+import java.util.concurrent.Future;
 import lombok.extern.slf4j.Slf4j;
 import oracle.admin.repository.AnaliticaAdminRepository;
 import oracle.admin.response.AnaliticaAdminResponse;
@@ -8,9 +10,10 @@ import oracle.common.config.CacheRespuestas;
 import oracle.common.response.ApiResponse;
 import oracle.common.support.EjecutorAnalitica;
 import oracle.common.support.Trazas;
+import oracle.admin.response.AnaliticaAdminResponse.Conteo;
+import oracle.admin.response.AnaliticaAdminResponse.Kpis;
+import oracle.admin.response.AnaliticaAdminResponse.Mes;
 import org.springframework.stereotype.Service;
-import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 /** Dashboard ejecutivo de Administracion: 4 agregaciones en paralelo, cacheadas (TTL). */
 @Slf4j
@@ -30,16 +33,20 @@ public class AnaliticaAdminService {
         this.cacheRespuestas = cacheRespuestas;
     }
 
-    public Mono<ApiResponse<AnaliticaAdminResponse>> analitica() {
-        return Mono.fromCallable(() -> Trazas.medir(log, "AnaliticaAdminService.analitica", () ->
-                        cacheRespuestas.obtener(CLAVE, () -> ejecutor.esperar(calcular()))))
-                .subscribeOn(Schedulers.boundedElastic())
-                .map(datos -> ApiResponse.ok("Analitica calculada.", datos));
+    public ApiResponse<AnaliticaAdminResponse> analitica() {
+        AnaliticaAdminResponse datos = Trazas.medir(log, "AnaliticaAdminService.analitica", () ->
+                cacheRespuestas.obtener(CLAVE, this::calcular));
+        return ApiResponse.ok("Analitica calculada.", datos);
     }
 
-    private Mono<AnaliticaAdminResponse> calcular() {
-        return Mono.zip(ejecutor.consulta(repo::kpis), ejecutor.consulta(repo::coberturaPaneles),
-                        ejecutor.consulta(repo::usuariosPorRol), ejecutor.consulta(repo::crecimiento))
-                .map(r -> new AnaliticaAdminResponse(r.getT1(), r.getT2(), r.getT3(), r.getT4()));
+    private AnaliticaAdminResponse calcular() {
+        try (EjecutorAnalitica.Lote lote = ejecutor.lote()) {
+            Future<Kpis> kpis = lote.consulta(repo::kpis);
+            Future<List<Conteo>> cobertura = lote.consulta(repo::coberturaPaneles);
+            Future<List<Conteo>> porRol = lote.consulta(repo::usuariosPorRol);
+            Future<List<Mes>> crecimiento = lote.consulta(repo::crecimiento);
+            return new AnaliticaAdminResponse(
+                    lote.esperar(kpis), lote.esperar(cobertura), lote.esperar(porRol), lote.esperar(crecimiento));
+        }
     }
 }

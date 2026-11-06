@@ -1,6 +1,5 @@
 package oracle.common.security;
 
-import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import oracle.common.exception.LimiteExcedidoException;
@@ -54,10 +53,6 @@ public class LimiteUsoPanel implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
-        // Las respuestas Mono / en flujo vuelven a pasar por aquí al reanudarse: se cuentan una vez.
-        if (request.getDispatcherType() == DispatcherType.ASYNC) {
-            return true;
-        }
         Categoria categoria = categoria(request.getMethod(), request.getRequestURI());
         long espera = limite.consumir(
                 panel + ":" + categoria.name().toLowerCase() + ":" + ActorActual.id(),

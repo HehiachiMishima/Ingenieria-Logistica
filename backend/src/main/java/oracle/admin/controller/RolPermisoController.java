@@ -15,7 +15,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Mono;
 
 import java.util.List;
 
@@ -32,26 +31,26 @@ public class RolPermisoController {
 
     @GetMapping("/roles/{rolId}/permisos")
     @PreAuthorize("hasAuthority('VER_ROLES') and hasAuthority('VER_PERMISOS')")
-    public Mono<ApiResponse<List<PermisoResponse>>> permisosDeRol(@PathVariable Long rolId) {
+    public ApiResponse<List<PermisoResponse>> permisosDeRol(@PathVariable Long rolId) {
         return rolPermisoService.listarPorRol(rolId);
     }
 
     @PostMapping("/roles/{rolId}/permisos")
     @PreAuthorize("hasAuthority('ASIGNAR_PERMISOS')")
-    public Mono<ApiResponse<RolPermisoResponse>> asignar(@PathVariable Long rolId,
+    public ApiResponse<RolPermisoResponse> asignar(@PathVariable Long rolId,
             @Valid @RequestBody RolPermisoAsignarRequest peticion) {
         return rolPermisoService.asignar(rolId, peticion);
     }
 
     @DeleteMapping("/roles/{rolId}/permisos/{permisoId}")
     @PreAuthorize("hasAuthority('ASIGNAR_PERMISOS')")
-    public Mono<ApiResponse<Void>> quitar(@PathVariable Long rolId, @PathVariable Long permisoId) {
+    public ApiResponse<Void> quitar(@PathVariable Long rolId, @PathVariable Long permisoId) {
         return rolPermisoService.quitar(rolId, permisoId);
     }
 
     @GetMapping("/permisos/{permisoId}/roles")
     @PreAuthorize("hasAuthority('VER_PERMISOS') and hasAuthority('VER_ROLES')")
-    public Mono<ApiResponse<List<RolResponse>>> rolesConPermiso(@PathVariable Long permisoId) {
+    public ApiResponse<List<RolResponse>> rolesConPermiso(@PathVariable Long permisoId) {
         return rolPermisoService.listarPorPermiso(permisoId);
     }
 }

@@ -24,7 +24,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
-import reactor.core.publisher.Mono;
 
 /**
  * Datos de la malla por centro: el módulo Configuración los edita (formulario
@@ -45,25 +44,25 @@ public class MallaCentroController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('VER_MALLA')")
-    public Mono<ApiResponse<List<CentroMallaResumenResponse>>> listar() {
+    public ApiResponse<List<CentroMallaResumenResponse>> listar() {
         return service.listar();
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('VER_MALLA')")
-    public Mono<ApiResponse<CentroMallaResponse>> obtener(@PathVariable Long id) {
+    public ApiResponse<CentroMallaResponse> obtener(@PathVariable Long id) {
         return service.obtener(id);
     }
 
     @PostMapping
     @PreAuthorize("hasAuthority('MODIFICAR_MALLA')")
-    public Mono<ApiResponse<CentroMallaResponse>> crear(@Valid @RequestBody CentroMallaRequest req) {
+    public ApiResponse<CentroMallaResponse> crear(@Valid @RequestBody CentroMallaRequest req) {
         return service.crear(req);
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('MODIFICAR_MALLA')")
-    public Mono<ApiResponse<CentroMallaResponse>> guardar(@PathVariable Long id,
+    public ApiResponse<CentroMallaResponse> guardar(@PathVariable Long id,
             @Valid @RequestBody CentroMallaRequest req, @RequestParam(required = false) Instant version) {
         return service.guardar(id, req, version);
     }
@@ -71,33 +70,33 @@ public class MallaCentroController {
     /** Últimos cambios guardados en la malla del centro. */
     @GetMapping("/{id}/cambios")
     @PreAuthorize("hasAuthority('VER_MALLA')")
-    public Mono<ApiResponse<List<CambioMallaResponse>>> cambios(@PathVariable Long id) {
+    public ApiResponse<List<CambioMallaResponse>> cambios(@PathVariable Long id) {
         return service.cambios(id);
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('MODIFICAR_MALLA')")
-    public Mono<ApiResponse<Void>> eliminar(@PathVariable Long id) {
+    public ApiResponse<Void> eliminar(@PathVariable Long id) {
         return service.eliminar(id);
     }
 
     /** Lee un Excel con la plantilla de la malla y devuelve sus datos, sin guardarlos. */
     @PostMapping(value = "/importar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAuthority('MODIFICAR_MALLA')")
-    public Mono<ApiResponse<CentroMallaRequest>> importar(@RequestParam("archivo") MultipartFile archivo) {
+    public ApiResponse<CentroMallaRequest> importar(@RequestParam("archivo") MultipartFile archivo) {
         return service.importar(archivo);
     }
 
     @GetMapping("/plantilla")
     @PreAuthorize("hasAuthority('MODIFICAR_MALLA')")
-    public Mono<ResponseEntity<byte[]>> plantilla() {
-        return service.excel(null).map(bytes -> archivo(bytes, "plantilla-malla.xlsx"));
+    public ResponseEntity<byte[]> plantilla() {
+        return archivo(service.excel(null), "plantilla-malla.xlsx");
     }
 
     @GetMapping("/{id}/excel")
     @PreAuthorize("hasAuthority('EXPORTAR_MALLA')")
-    public Mono<ResponseEntity<byte[]>> exportar(@PathVariable Long id) {
-        return service.excel(id).map(bytes -> archivo(bytes, "malla-" + id + ".xlsx"));
+    public ResponseEntity<byte[]> exportar(@PathVariable Long id) {
+        return archivo(service.excel(id), "malla-" + id + ".xlsx");
     }
 
     private static ResponseEntity<byte[]> archivo(byte[] bytes, String nombre) {

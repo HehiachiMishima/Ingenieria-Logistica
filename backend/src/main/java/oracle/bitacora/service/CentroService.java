@@ -18,8 +18,6 @@ import oracle.common.response.ApiResponse;
 import oracle.bitacora.response.CentroResponse;
 import org.springframework.stereotype.Service;
 import lombok.extern.slf4j.Slf4j;
-import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 /** CRUD de centros. Los deletes se pre-verifican porque las FK son RESTRICT. */
 @Slf4j
@@ -38,20 +36,19 @@ public class CentroService {
         this.dataCentroRepository = dataCentroRepository;
     }
 
-    public Mono<ApiResponse<List<CentroResponse>>> listar() {
-        return Mono.fromCallable(() -> Trazas.medir(log, "CentroService.listar", () -> transacciones.consultar(() -> {
-                        List<CentroResponse> lista = dataCentroRepository.findAll(Listas.limitado()).stream()
-                                .map(CentroResponse::of).toList();
-                        Listas.avisarSiCorto(log, lista.size(), "CentroService.listar");
-                        return lista;
-                    })))
-                .subscribeOn(Schedulers.boundedElastic())
-                .map(lista -> ApiResponse.ok("Centros listados.", lista));
+    public ApiResponse<List<CentroResponse>> listar() {
+        List<CentroResponse> datos = Trazas.medir(log, "CentroService.listar", () -> transacciones.consultar(() -> {
+            List<CentroResponse> lista = dataCentroRepository.findAll(Listas.limitado()).stream()
+                    .map(CentroResponse::of).toList();
+            Listas.avisarSiCorto(log, lista.size(), "CentroService.listar");
+            return lista;
+        }));
+        return ApiResponse.ok("Centros listados.", datos);
     }
 
-    public Mono<ApiResponse<CentroResponse>> crear(CentroCrearRequest peticion) {
+    public ApiResponse<CentroResponse> crear(CentroCrearRequest peticion) {
         Long actor = ActorActual.id();
-        return Mono.fromCallable(() -> Trazas.medir(log, "CentroService.crear centro=" + peticion.centro(), () -> transacciones.ejecutar(() -> {
+        return Trazas.medir(log, "CentroService.crear centro=" + peticion.centro(), () -> transacciones.ejecutar(() -> {
             if (dataCentroRepository.existsByCentro(peticion.centro())) {
                 throw new ConflictoException("Ya existe un centro con el nombre '" + peticion.centro() + "'.");
             }
@@ -63,12 +60,12 @@ public class CentroService {
             catalogo.registrarCambio();
 
             return ApiResponse.ok("Centro creado.", CentroResponse.of(centro));
-        }))).subscribeOn(Schedulers.boundedElastic());
+        }));
     }
 
-    public Mono<ApiResponse<CentroResponse>> actualizar(Long id, CentroActualizarRequest peticion) {
+    public ApiResponse<CentroResponse> actualizar(Long id, CentroActualizarRequest peticion) {
         Long actor = ActorActual.id();
-        return Mono.fromCallable(() -> Trazas.medir(log, "CentroService.actualizar id=" + id, () -> transacciones.ejecutar(() -> {
+        return Trazas.medir(log, "CentroService.actualizar id=" + id, () -> transacciones.ejecutar(() -> {
             DataCentro centro = obtenerCentro(id);
 
             if (peticion.centro() != null && !peticion.centro().trim().equals(centro.getCentro())) {
@@ -82,24 +79,23 @@ public class CentroService {
             dataCentroRepository.save(centro);
             catalogo.registrarCambio();
             return ApiResponse.ok("Centro actualizado.", CentroResponse.of(centro));
-        }))).subscribeOn(Schedulers.boundedElastic());
+        }));
     }
 
-    public Mono<ApiResponse<Void>> eliminar(Long id) {
-        return Mono.<Void>fromRunnable(() -> Trazas.medir(log, "CentroService.eliminar id=" + id, () -> transacciones.ejecutar(() -> {
-                    DataCentro centro = obtenerCentro(id);
-                    long incidencias = dataCentroRepository.contarIncidencias(id);
-                    if (incidencias > 0) {
-                        throw new ConflictoException(
-                                "No se puede eliminar el centro '" + centro.getCentro() + "': tiene "
-                                        + incidencias + " incidencia(s) registrada(s).");
-                    }
-                    dataCentroRepository.delete(centro);
-                    catalogo.registrarCambio();
-                    return null;
-                })))
-                .subscribeOn(Schedulers.boundedElastic())
-                .then(Mono.fromSupplier(() -> ApiResponse.<Void>ok("Centro eliminado.", null)));
+    public ApiResponse<Void> eliminar(Long id) {
+        Trazas.medir(log, "CentroService.eliminar id=" + id, () -> transacciones.ejecutar(() -> {
+            DataCentro centro = obtenerCentro(id);
+            long incidencias = dataCentroRepository.contarIncidencias(id);
+            if (incidencias > 0) {
+                throw new ConflictoException(
+                        "No se puede eliminar el centro '" + centro.getCentro() + "': tiene "
+                                + incidencias + " incidencia(s) registrada(s).");
+            }
+            dataCentroRepository.delete(centro);
+            catalogo.registrarCambio();
+            return null;
+        }));
+        return ApiResponse.ok("Centro eliminado.", null);
     }
 
     private DataCentro obtenerCentro(Long id) {
