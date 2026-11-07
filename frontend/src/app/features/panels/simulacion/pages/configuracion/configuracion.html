@@ -256,7 +256,11 @@
     <div class="mz-totales" [class.mz-totales--global]="global" [id]="id">
       <div class="mz-totales__etiquetas">
         @if (global) {
+        @if (filtrosActivos() > 0) {
+        <div class="mz-totales__concepto" title="Solo los clusters, chutes y rutas de los filtros">Concepto · filtrado</div>
+        } @else {
         <div class="mz-totales__concepto">Concepto</div>
+        }
         }
         @for (fila of filasTotales; track fila.clave) {
         <div [style.--tono]="fila.tono">

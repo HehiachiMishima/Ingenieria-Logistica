@@ -393,11 +393,50 @@ export class SimulacionConfiguracion {
   }
 
   /**
-   * Totales por chute de todo el registro. Salen de `carga`, que ya viene
-   * agregada por cluster y chute: no se calculan desde las rutas de pantalla,
-   * así el pie no cambia mientras la matriz termina de cargar.
+   * Total general por chute con los filtros vigentes: solo los clusters y
+   * chutes elegidos (sin filtro, todos). Sale de `carga`, ya agregada por
+   * cluster y chute, así que no depende de que la matriz termine de cargar.
+   * Con búsqueda por código, la carga agregada no sirve: se suman las rutas
+   * que trajo el servidor con todos los filtros, y los operarios siguen siendo
+   * los de la ola de cada (cluster, chute).
    */
-  readonly totalesMatriz = computed(() => this.totalesPorChute(null));
+  readonly totalesMatriz = computed(() => {
+    const clusters = new Set(this.filtroCluster());
+    const chutes = new Set(this.filtroChute());
+    const carga = (this.config()?.carga ?? []).filter(
+      (fila) =>
+        (clusters.size === 0 || clusters.has(fila.clusterId)) &&
+        (chutes.size === 0 || chutes.has(fila.chuteId)),
+    );
+    if (!this.filtroTexto().trim()) {
+      return this.totalesDeCarga(carga, true);
+    }
+    const operarios = new Map(carga.map((fila) => [`${fila.clusterId}:${fila.chuteId}`, fila.operarios]));
+    const porPar = new Map<string, CargaSimulacion>();
+    for (const ruta of this.rutasMatriz()) {
+      const clave = `${ruta.clusterId}:${ruta.chuteId}`;
+      let fila = porPar.get(clave);
+      if (!fila) {
+        fila = {
+          clusterId: ruta.clusterId,
+          chuteId: ruta.chuteId,
+          rutas: 0,
+          bultos: 0,
+          unidades: 0,
+          lineas: 0,
+          cod: 0,
+          operarios: operarios.get(clave) ?? null,
+        };
+        porPar.set(clave, fila);
+      }
+      fila.rutas += 1;
+      fila.bultos += Number(ruta.totalBultos ?? 0);
+      fila.unidades += Number(ruta.totalUnidades ?? 0);
+      fila.lineas += Number(ruta.totalLineas ?? 0);
+      fila.cod += Number(ruta.conteoCod ?? 0);
+    }
+    return this.totalesDeCarga([...porPar.values()], true);
+  });
 
   /**
    * Panel de cada cluster (como la columna izquierda de la planilla): rutas,
@@ -432,7 +471,7 @@ export class SimulacionConfiguracion {
     { clave: 'bultos', etiqueta: 'Total bultos', decimales: 2, tono: 'var(--accent)' },
     { clave: 'lineas', etiqueta: 'Total líneas', decimales: 2, tono: 'var(--success)' },
     { clave: 'unidades', etiqueta: 'Total unidades', decimales: 2, tono: 'var(--warning)' },
-    { clave: 'cod', etiqueta: 'Total códigos', decimales: 0, tono: 'var(--cyan)' },
+    { clave: 'cod', etiqueta: 'Total locales', decimales: 0, tono: 'var(--cyan)' },
   ];
 
   /** Clusters con el desplegable de totales por chute abierto. */
@@ -448,23 +487,35 @@ export class SimulacionConfiguracion {
     });
   }
 
-  /** Totales por chute (en el orden de las columnas) de un cluster o, con null, de todos. */
-  private totalesPorChute(clusterId: number | null): TotalesChute {
-    const chutes = this.chutesMatriz();
-    const carga = (this.config()?.carga ?? []).filter(
-      (fila) => clusterId === null || fila.clusterId === clusterId,
+  /** Totales por chute (en el orden de las columnas) de un cluster. */
+  private totalesPorChute(clusterId: number): TotalesChute {
+    return this.totalesDeCarga(
+      (this.config()?.carga ?? []).filter((fila) => fila.clusterId === clusterId),
+      false,
     );
+  }
+
+  /**
+   * Suma por chute de unas filas de carga. En el total general (`general`), los
+   * operarios de un chute son el máximo de sus olas: el mismo equipo pasa de un
+   * cluster al siguiente, sumarlas lo contaría varias veces.
+   */
+  private totalesDeCarga(carga: CargaSimulacion[], general: boolean): TotalesChute {
+    const chutes = this.chutesMatriz();
     const porChute = new Map<number, CargaSimulacion[]>();
     for (const fila of carga) {
-      porChute.set(fila.chuteId, [...(porChute.get(fila.chuteId) ?? []), fila]);
+      const lista = porChute.get(fila.chuteId);
+      if (lista) {
+        lista.push(fila);
+      } else {
+        porChute.set(fila.chuteId, [fila]);
+      }
     }
-    // En el total general, los operarios de un chute son el máximo de sus olas:
-    // el mismo equipo pasa de un cluster al siguiente, sumarlas lo contaría varias veces.
     const columna = (campo: CampoCarga) =>
       chutes.map((chute) =>
         (porChute.get(chute.id) ?? []).reduce((total, fila) => {
           const valor = Number(fila[campo] ?? 0);
-          return clusterId === null && campo === 'operarios' ? Math.max(total, valor) : total + valor;
+          return general && campo === 'operarios' ? Math.max(total, valor) : total + valor;
         }, 0),
       );
     const valores = {
