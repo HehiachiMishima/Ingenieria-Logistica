@@ -304,12 +304,18 @@ export class SimulacionConfiguracion {
     colorHex: [PALETA_REGISTROS[0].hex],
   });
 
-  /** Chutes de la matriz, en orden natural (CHUTE 2 antes que CHUTE 10). */
-  readonly chutesMatriz = computed(() =>
-    [...(this.config()?.chutes ?? [])]
+  /**
+   * Columnas de la matriz: los chutes del filtro (sin filtro, todos), en orden
+   * natural (CHUTE 2 antes que CHUTE 10). Celdas y totales usan este mismo
+   * orden, así que filtrar columnas no desalinea nada.
+   */
+  readonly chutesMatriz = computed(() => {
+    const elegidos = new Set(this.filtroChute());
+    return (this.config()?.chutes ?? [])
+      .filter((chute) => elegidos.size === 0 || elegidos.has(chute.id))
       .sort((a, b) => compararNombre(a.nombre, b.nombre))
-      .map((chute) => ({ ...chute, etiqueta: etiquetaChute(chute.nombre) })),
-  );
+      .map((chute) => ({ ...chute, etiqueta: etiquetaChute(chute.nombre) }));
+  });
 
   /**
    * Rutas agrupadas por cluster y chute. Cada bloque ocupa tantas filas como
@@ -374,10 +380,18 @@ export class SimulacionConfiguracion {
       const columnas = this.chutesMatriz().length;
       return Array.from({ length: MIN_FILAS }, () => Array<CeldaRuta | null>(columnas).fill(null));
     };
-    return this.resumenClusters().map((cluster) => ({
-      cluster,
-      filas: celdas.get(cluster.id) ?? vacias(),
-    }));
+    // Solo los clusters del filtro. Con búsqueda por código, además, solo los que
+    // tienen alguna ruta que coincide (cuando ya terminó de cargar, para que los
+    // bloques no aparezcan y desaparezcan mientras llegan las páginas).
+    const elegidos = new Set(this.filtroCluster());
+    const conBusqueda = this.filtroTexto().trim() !== '' && !this.cargandoRutas();
+    return this.resumenClusters()
+      .filter((cluster) => elegidos.size === 0 || elegidos.has(cluster.id))
+      .filter((cluster) => !conBusqueda || celdas.has(cluster.id))
+      .map((cluster) => ({
+        cluster,
+        filas: celdas.get(cluster.id) ?? vacias(),
+      }));
   });
 
   /** Títulos por ruta: cada objeto ruta es inmutable (moverla crea otro), así que se calculan una vez. */

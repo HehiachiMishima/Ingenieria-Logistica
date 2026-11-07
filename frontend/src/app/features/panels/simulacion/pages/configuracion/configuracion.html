@@ -311,6 +311,10 @@
   <p class="mz-aviso mz-aviso--vacio">Ninguna ruta coincide con los filtros.</p>
   }
 
+  @if (bloquesMatriz().length === 0) {
+  <ui-empty icono="search" titulo="Sin rutas" mensaje="Ninguna ruta coincide con los filtros." />
+  }
+
   <div class="mz-tablero" appScrollMatriz appArrastreRutas [validar]="motivoNoMover" (soltar)="soltarRuta($event)"
     [class.matriz--ocupada]="ocupado()">
     @for (bloque of bloquesMatriz(); track bloque.cluster.id) {
