@@ -34,6 +34,7 @@ import {
   CargaSimulacion,
   ConfiguracionSimulacion,
   ConfiguracionSimulacionRequest,
+  RangoChutes,
   RutaSimulacion,
 } from '../../data/simulacion.model';
 import { Notificaciones } from '../../../../../core/services/notificaciones';
@@ -281,6 +282,53 @@ export class SimulacionConfiguracion {
   );
 
   readonly historialAbierto = signal(false);
+
+  /** Cluster cuyo paso 1 espera el rango de chutes (modal «Chutes para balancear»). */
+  readonly rangoPendiente = signal<{ id: number; nombre: string } | null>(null);
+  readonly rangoDesde = signal<number | null>(null);
+  readonly rangoHasta = signal<number | null>(null);
+
+  /**
+   * Vista previa del rango: chutes incluidos (orden natural, «desde» y «hasta»
+   * incluidos aunque estén invertidos), la carga del cluster, cuántas rutas
+   * están hoy fuera del rango y si el equipo alcanza para un operario en cada
+   * chute que puede quedar con carga (el paso 2 lo exige).
+   */
+  readonly vistaRango = computed(() => {
+    const cluster = this.rangoPendiente();
+    const cfg = this.config();
+    const desde = this.rangoDesde();
+    const hasta = this.rangoHasta();
+    if (!cluster || !cfg || desde === null || hasta === null) {
+      return null;
+    }
+    const orden = this.opcionesChute();
+    const a = orden.findIndex((chute) => chute.id === desde);
+    const b = orden.findIndex((chute) => chute.id === hasta);
+    if (a < 0 || b < 0) {
+      return null;
+    }
+    const inicio = Math.min(a, b);
+    const fin = Math.max(a, b);
+    const incluidos = new Set(orden.slice(inicio, fin + 1).map((chute) => chute.id));
+    const filas = cfg.carga.filter((fila) => fila.clusterId === cluster.id && fila.rutas > 0);
+    const rutas = filas.reduce((total, fila) => total + fila.rutas, 0);
+    const equipo = this.equipo();
+    // Con menos rutas que chutes, algunos quedan vacíos: no necesitan gente.
+    const conCarga = Math.min(incluidos.size, rutas);
+    return {
+      primero: orden[inicio].etiqueta,
+      ultimo: orden[fin].etiqueta,
+      chutes: incluidos.size,
+      rutas,
+      bultos: filas.reduce((total, fila) => total + Number(fila.bultos), 0),
+      fuera: filas
+        .filter((fila) => !incluidos.has(fila.chuteId))
+        .reduce((total, fila) => total + fila.rutas, 0),
+      equipo,
+      excede: conCarga > equipo,
+    };
+  });
 
   readonly restablecerAbierto = signal(false);
   /** Cluster cuyo restablecimiento se está confirmando. */
@@ -1174,11 +1222,45 @@ export class SimulacionConfiguracion {
   }
 
   /**
-   * Paso 1 del cluster en curso: reparte sus rutas para que sus chutes queden
-   * parejos en bultos.
+   * Paso 1 del cluster en curso: primero pide entre qué chutes repartir sus
+   * rutas. Propone el último rango usado o, si no hay, del primer al último
+   * chute que el cluster usa hoy.
    */
   balancear(cluster: { id: number; nombre: string }): void {
-    this.ejecutarPaso('RUTAS', cluster);
+    const cfg = this.config();
+    if (!cfg || this.ocupado()) {
+      return;
+    }
+    const orden = this.opcionesChute();
+    const existe = (id: number | null) => id !== null && orden.some((chute) => chute.id === id);
+    const guardado = cfg.clusters.find((item) => item.id === cluster.id);
+    let desde = guardado?.chuteDesdeId ?? null;
+    let hasta = guardado?.chuteHastaId ?? null;
+    if (!existe(desde) || !existe(hasta)) {
+      const usados = new Set(
+        cfg.carga
+          .filter((fila) => fila.clusterId === cluster.id && fila.rutas > 0)
+          .map((fila) => fila.chuteId),
+      );
+      const indices = orden.flatMap((chute, indice) => (usados.has(chute.id) ? [indice] : []));
+      desde = orden[indices[0] ?? 0]?.id ?? null;
+      hasta = orden[indices.at(-1) ?? orden.length - 1]?.id ?? null;
+    }
+    this.rangoDesde.set(desde);
+    this.rangoHasta.set(hasta);
+    this.rangoPendiente.set(cluster);
+  }
+
+  /** Confirma el modal de rango y lanza el paso 1 con esos chutes. */
+  confirmarRango(): void {
+    const cluster = this.rangoPendiente();
+    const desde = this.rangoDesde();
+    const hasta = this.rangoHasta();
+    if (!cluster || desde === null || hasta === null) {
+      return;
+    }
+    this.rangoPendiente.set(null);
+    this.ejecutarPaso('RUTAS', cluster, { chuteDesdeId: desde, chuteHastaId: hasta });
   }
 
   /**
@@ -1240,7 +1322,11 @@ export class SimulacionConfiguracion {
     }
   }
 
-  private ejecutarPaso(paso: Paso, cluster: { id: number; nombre: string }): void {
+  private ejecutarPaso(
+    paso: Paso,
+    cluster: { id: number; nombre: string },
+    rango: RangoChutes | null = null,
+  ): void {
     const id = this.seleccionado();
     if (!id || this.ocupado()) {
       return;
@@ -1253,7 +1339,7 @@ export class SimulacionConfiguracion {
           ? this.api
               .cerrar(id, cluster.id)
               .pipe(map((config) => ({ mensaje: this.mensajeCierre(cluster.nombre), config })))
-          : this.api.balancear(id, cluster.id, paso).pipe(
+          : this.api.balancear(id, cluster.id, paso, rango).pipe(
               map((resultado) => ({
                 mensaje: resultado.mensaje,
                 config: resultado.configuracion,

@@ -36,4 +36,14 @@ public class ParametroCluster {
 
   @Column(name = "estado", length = 20, nullable = false)
   private String estado = ESTADO_PENDIENTE;
+
+  /**
+   * Último rango de chutes con el que se balancearon sus rutas (paso 1). Null
+   * mientras no se haya elegido uno: se reparte entre los chutes que ya usa.
+   */
+  @Column(name = "chute_desde_id")
+  private Long chuteDesdeId;
+
+  @Column(name = "chute_hasta_id")
+  private Long chuteHastaId;
 }

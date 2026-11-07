@@ -506,6 +506,64 @@
 <app-simulacion-historial-cambios [registroId]="seleccionado()" [abierto]="historialAbierto()"
   (cerrar)="historialAbierto.set(false)" />
 
+<ui-modal [abierto]="rangoPendiente() !== null" ancho="sm" [compacto]="true"
+  [titulo]="'Chutes para balancear ' + (rangoPendiente()?.nombre ?? '')" (cerrar)="rangoPendiente.set(null)">
+  <p class="rango__intro">
+    Sus rutas quedarán solo entre estos chutes, repartidas parejas en bultos. Las que hoy están
+    fuera del rango entran a él.
+  </p>
+  <div class="rango__campos">
+    <div class="rango__campo">
+      <label class="ui-label" for="rango-desde">Desde</label>
+      <ui-select-buscable campoId="rango-desde" [opciones]="opcionesChute()" [valor]="rangoDesde()"
+        placeholder="Chute inicial…" (valorCambia)="rangoDesde.set($event)" />
+    </div>
+    <div class="rango__campo">
+      <label class="ui-label" for="rango-hasta">Hasta</label>
+      <ui-select-buscable campoId="rango-hasta" [opciones]="opcionesChute()" [valor]="rangoHasta()"
+        placeholder="Chute final…" (valorCambia)="rangoHasta.set($event)" />
+    </div>
+  </div>
+  @if (vistaRango(); as v) {
+  <dl class="rango__resumen">
+    <div>
+      <dt>Chutes</dt>
+      <dd>{{ v.chutes }} <span>{{ v.primero }} → {{ v.ultimo }}</span></dd>
+    </div>
+    <div>
+      <dt>Rutas</dt>
+      <dd>{{ (v.rutas | numero) }} <span>{{ (v.bultos | numero: 2) }} bultos</span></dd>
+    </div>
+    <div>
+      <dt>Fuera del rango</dt>
+      <dd>{{ (v.fuera | numero) }} <span>ruta(s) entrarán</span></dd>
+    </div>
+    <div>
+      <dt>Equipo</dt>
+      <dd>{{ v.equipo }} <span>operario(s) para la ola</span></dd>
+    </div>
+  </dl>
+  @if (v.chutes === 1) {
+  <p class="rango__aviso"><ui-icon name="info" [size]="14" /> Un solo chute: todas sus rutas irán ahí, sin nivelar.</p>
+  }
+  @if (v.excede) {
+  <p class="rango__aviso rango__aviso--alerta">
+    <ui-icon name="alerta" [size]="14" />
+    El equipo es de {{ v.equipo }} y cada chute con carga necesita al menos un operario: con
+    este rango, el paso de operarios no podrá asignarlos. Elige {{ v.equipo }} chute(s) o menos,
+    o amplía el equipo.
+  </p>
+  }
+  }
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="rangoPendiente.set(null)">Cancelar</button>
+    <button type="button" class="ui-btn ui-btn--primary" (click)="confirmarRango()"
+      [disabled]="ocupado() || rangoDesde() === null || rangoHasta() === null">
+      <ui-icon name="play" [size]="14" /> Balancear
+    </button>
+  </div>
+</ui-modal>
+
 <ui-modal [abierto]="restablecerAbierto()" ancho="sm" [compacto]="true" titulo="Restablecer todo"
   (cerrar)="restablecerAbierto.set(false)">
   <div class="confirm">

@@ -72,6 +72,7 @@ import oracle.simulacion.request.FaseBalanceo;
 import oracle.simulacion.request.LadoChute;
 import oracle.simulacion.request.Limites;
 import oracle.simulacion.request.MoverRutaRequest;
+import oracle.simulacion.request.RangoChutesRequest;
 import oracle.simulacion.response.BalanceoResponse;
 import oracle.simulacion.response.CambioClusterResponse;
 import oracle.simulacion.response.CargaSimulacionResponse;
@@ -423,9 +424,12 @@ public class SimulacionConfiguracionService {
 
   /**
    * La base de cada chute no puede pasar del máximo por chute ni desbordar el
-   * pool de ninguna ola. Como los clusters se ejecutan en secuencia, el máximo
+   * pool de ninguna ola. La base es el «antes» (la proyección del Excel), así que
+   * cada ola se mide con la distribución original (cluster y chute del Excel):
+   * mover rutas, cambiarlas de cluster o balancearlas no la cambia ni puede
+   * volverla inválida. Como los clusters se ejecutan en secuencia, el máximo
    * global se valida por cluster, no por la suma de todos los chutes. Lo que
-   * asigna el paso 2 ya respeta ambos topes.
+   * asigna el paso 2 sale del equipo y ya respeta ambos topes.
    */
   private void validarOperarios(Contexto ctx) {
     Integer porChute = ctx.config().getOperariosPorChute();
@@ -449,7 +453,7 @@ public class SimulacionConfiguracionService {
       return;
     }
     Map<Long, Map<Long, Integer>> operariosPorOla = new LinkedHashMap<>();
-    for (CargaRutas fila : rutaRepo.cargaPorArchivo(ctx.archivo().getId())) {
+    for (CargaRutas fila : rutaRepo.cargaOriginalPorArchivo(ctx.archivo().getId())) {
       if (fila.getRutas() <= 0 || cerrado(ctx, fila.getClusterId())) {
         continue;
       }
@@ -512,8 +516,6 @@ public class SimulacionConfiguracionService {
           // Trabajo del cluster en curso: restablecerlo (o reabrir uno anterior) lo deshace.
           manual.setClusterTrabajoId(enCurso(ctx));
           historialRepo.save(manual);
-          // El chute nuevo puede sumar operarios base a la ola de su cluster.
-          validarOperarios(ctx);
           // Mover una ruta cambia la carga sobre la que se asignaron los
           // operarios de su ola: solo ese cluster vuelve al paso 2.
           invalidarOperarios(ctx, List.of(ruta.getClusterId()));
@@ -599,7 +601,6 @@ public class SimulacionConfiguracionService {
             movimiento.setClusterTrabajoId(enCurso(ctx));
             historialRepo.save(movimiento);
           }
-          validarOperarios(ctx);
           // Cambia la carga de los dos clusters: si ya tenían operarios, vuelven al paso 2.
           invalidarOperarios(ctx, List.of(origen, destino));
           tocar(ctx.archivo(), actor);
@@ -615,6 +616,17 @@ public class SimulacionConfiguracionService {
    */
   public ApiResponse<BalanceoResponse> balancear(
       Long archivoId, Long clusterId, FaseBalanceo fase) {
+    return balancear(archivoId, clusterId, fase, null);
+  }
+
+  /**
+   * Igual que {@link #balancear(Long, Long, FaseBalanceo)}; en el paso 1, el
+   * rango dice entre qué chutes quedan las rutas del cluster. Sin rango se usa
+   * el último que se eligió para ese cluster o, si nunca se eligió, los chutes
+   * que ya usa. El paso 2 lo ignora.
+   */
+  public ApiResponse<BalanceoResponse> balancear(
+      Long archivoId, Long clusterId, FaseBalanceo fase, RangoChutesRequest rango) {
     Long actor = ActorActual.id();
     BalanceoResponse datos =
         Trazas.medir(
@@ -629,7 +641,7 @@ public class SimulacionConfiguracionService {
                 transacciones.ejecutar(
                     () ->
                         fase == FaseBalanceo.RUTAS
-                            ? balancearRutas(archivoId, clusterId, actor)
+                            ? balancearRutas(archivoId, clusterId, rango, actor)
                             : asignarOperarios(archivoId, clusterId, actor)));
     return ApiResponse.ok(datos.mensaje(), datos);
   }
@@ -848,13 +860,20 @@ public class SimulacionConfiguracionService {
   // ---------------- Paso 1: rutas ----------------
 
   /**
-   * Paso 1 del cluster en curso: reparte sus rutas entre los chutes que ya lo
-   * atienden hasta que su carga (bultos) quede pareja. No toca operarios.
+   * Paso 1 del cluster en curso: reparte sus rutas hasta que su carga (bultos)
+   * quede pareja. Con rango de chutes, primero saca las rutas que están fuera
+   * del rango (la más pesada primero, al chute del rango con menos carga) y
+   * luego nivela entre todos los chutes del rango, también los que aún no
+   * usaba; sin rango, nivela entre los chutes que ya lo atienden. No toca
+   * operarios, pero el rango puede sumar chutes a la ola: si la ola pasa el
+   * máximo de operarios, no se guarda nada.
    */
-  private BalanceoResponse balancearRutas(Long archivoId, Long clusterId, Long actor) {
+  private BalanceoResponse balancearRutas(
+      Long archivoId, Long clusterId, RangoChutesRequest pedido, Long actor) {
     Contexto ctx = contexto(archivoId, true);
     ParametroCluster parametro = exigirEnCurso(ctx, clusterId);
     String nombre = ctx.nombreCluster(clusterId);
+    List<Long> rango = rangoDeBalanceo(ctx, parametro, pedido);
     // Volver a balancear un cluster ya balanceado (p. ej. tras pasarle rutas de
     // otro cluster) reparte desde como está hoy, sin perder los cambios a mano;
     // si ya tenía operarios, su carga cambia y vuelve al paso 2.
@@ -862,18 +881,39 @@ public class SimulacionConfiguracionService {
     Reparto reparto = new Reparto(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(archivoId, clusterId));
     Integer dispersionAntes = reparto.dispersion(clusterId);
     Traslado traslado;
+    List<Traslado> nivelaciones = new ArrayList<>();
+    int fueraDelRango = 0;
+    if (rango != null) {
+      reparto.limitar(clusterId, rango);
+      // Cada ruta de fuera entra una sola vez: termina en a lo sumo rutasDe pasos.
+      while ((traslado = reparto.traerAlRango(clusterId)) != null) {
+        nivelaciones.add(traslado);
+        fueraDelRango++;
+      }
+    }
     // Cada movimiento baja la suma de cuadrados de la carga, así que el
     // proceso termina solo; el tope es una red de seguridad.
-    int tope = Math.max(MAX_ITERACIONES, 4 * reparto.rutasDe(clusterId));
-    List<Traslado> nivelaciones = new ArrayList<>();
+    int tope = fueraDelRango + Math.max(MAX_ITERACIONES, 4 * reparto.rutasDe(clusterId));
     while (nivelaciones.size() < tope && (traslado = reparto.nivelar(clusterId)) != null) {
       nivelaciones.add(traslado);
     }
 
     int movidas =
         (int) nivelaciones.stream().map((t) -> t.ruta().getId()).distinct().count();
-    StringBuilder mensaje =
-        new StringBuilder(nombre).append(": ").append(movidas).append(" ruta(s) movida(s).");
+    StringBuilder mensaje = new StringBuilder(nombre);
+    if (rango != null) {
+      mensaje
+          .append(" (")
+          .append(ctx.nombreChute(rango.getFirst()))
+          .append(" → ")
+          .append(ctx.nombreChute(rango.getLast()))
+          .append(")");
+    }
+    mensaje.append(": ").append(movidas).append(" ruta(s) movida(s)");
+    if (fueraDelRango > 0) {
+      mensaje.append(", ").append(fueraDelRango).append(" desde chutes fuera del rango");
+    }
+    mensaje.append(".");
     Integer dispersionDespues = reparto.dispersion(clusterId);
     if (dispersionAntes != null) {
       mensaje
@@ -889,6 +929,10 @@ public class SimulacionConfiguracionService {
 
     // Las rutas se leyeron en solo lectura: los chutes nuevos se guardan en lote.
     lotes.moverRutas(reparto.chutesNuevos());
+    if (rango != null) {
+      parametro.setChuteDesdeId(rango.getFirst());
+      parametro.setChuteHastaId(rango.getLast());
+    }
     Instant momento = Instant.now();
     LanzamientoBalanceo lanzamiento =
         lanzar(archivoId, clusterId, FaseBalanceo.RUTAS, mensaje.toString(), actor, momento);
@@ -921,6 +965,42 @@ public class SimulacionConfiguracionService {
   }
 
   /**
+   * Chutes del rango de balanceo en el orden natural de las columnas (CHUTE 2
+   * antes que CHUTE 10), «desde» y «hasta» incluidos; invertidos se toman al
+   * revés. Sin pedido, el último rango guardado del cluster si sus chutes siguen
+   * en el registro; si no hay ninguno, null (se nivela entre los que ya usa).
+   */
+  private List<Long> rangoDeBalanceo(
+      Contexto ctx, ParametroCluster parametro, RangoChutesRequest solicitud) {
+    // El cliente manda {} cuando no hay rango: equivale a no mandarlo.
+    RangoChutesRequest pedido = solicitud == null || solicitud.vacio() ? null : solicitud;
+    if (pedido != null && (pedido.chuteDesdeId() == null || pedido.chuteHastaId() == null)) {
+      throw new SolicitudInvalidaException("Elige el chute inicial y el final del rango.");
+    }
+    Long desde = pedido != null ? pedido.chuteDesdeId() : parametro.getChuteDesdeId();
+    Long hasta = pedido != null ? pedido.chuteHastaId() : parametro.getChuteHastaId();
+    if (desde == null || hasta == null) {
+      return null;
+    }
+    for (Long chute : List.of(desde, hasta)) {
+      if (!ctx.parametrosChute().containsKey(chute)) {
+        if (pedido == null) {
+          // El rango guardado ya no sirve (el chute salió del registro): se ignora.
+          return null;
+        }
+        throw new SolicitudInvalidaException("El chute " + chute + " no pertenece al registro.");
+      }
+    }
+    List<Long> ordenados =
+        ctx.parametrosChute().keySet().stream()
+            .sorted(Comparator.comparing(ctx::nombreChute, ORDEN_NATURAL))
+            .toList();
+    int a = ordenados.indexOf(desde);
+    int b = ordenados.indexOf(hasta);
+    return List.copyOf(ordenados.subList(Math.min(a, b), Math.max(a, b) + 1));
+  }
+
+  /**
    * Reparto de rutas por carga de un cluster. Cada cluster es una ola que
    * corre sola, así que lo que se iguala es la carga de ese cluster en cada
    * chute que lo atiende (no la carga total del chute): solo necesita y mueve
@@ -940,6 +1020,11 @@ public class SimulacionConfiguracionService {
     private final Map<Long, Integer> rutasPorCluster = new HashMap<>();
     /** Chute final de cada ruta movida, para guardarlo en lote. */
     private final Map<Long, Long> chutesNuevos = new LinkedHashMap<>();
+    /**
+     * Rango de balanceo, en orden: sus chutes siguen en la ola aunque queden en
+     * 0 (son destino válido); vacío = sin rango.
+     */
+    private final List<Long> rango = new ArrayList<>();
 
     Reparto(List<RutaProyeccion> rutasCluster) {
       for (RutaProyeccion ruta : rutasCluster) {
@@ -962,6 +1047,43 @@ public class SimulacionConfiguracionService {
      */
     Integer dispersion(Long cluster) {
       return diferenciaBultos(carga.getOrDefault(cluster, Map.of()).values());
+    }
+
+    /** Fija el rango: sus chutes entran a la ola del cluster con carga 0 si aún no la tenían. */
+    void limitar(Long cluster, List<Long> chutesRango) {
+      rango.addAll(chutesRango);
+      Map<Long, BigDecimal> porChute = carga.computeIfAbsent(cluster, (id) -> new HashMap<>());
+      chutesRango.forEach((chute) -> porChute.putIfAbsent(chute, BigDecimal.ZERO));
+    }
+
+    /**
+     * Saca una ruta de un chute fuera del rango (el de menor id primero, su ruta
+     * más pesada) y la lleva al chute del rango con menos carga; a igual carga,
+     * el primero del rango. Null cuando ya no quedan rutas fuera.
+     */
+    Traslado traerAlRango(Long cluster) {
+      Map<Long, BigDecimal> porChute = carga.getOrDefault(cluster, Map.of());
+      Long origen =
+          porChute.keySet().stream()
+              .filter((chute) -> !rango.contains(chute) && rutasEn(cluster, chute) > 0)
+              .min(Comparator.naturalOrder())
+              .orElse(null);
+      if (origen == null) {
+        return null;
+      }
+      Long destino = rango.getFirst();
+      for (Long chute : rango) {
+        if (porChute.get(chute).compareTo(porChute.get(destino)) < 0) {
+          destino = chute;
+        }
+      }
+      RutaProyeccion ruta = rutas.get(new Par(cluster, origen)).lastEntry().getValue().peekFirst();
+      trasladar(ruta, cluster, origen, destino);
+      return new Traslado(ruta, origen, destino);
+    }
+
+    private int rutasEn(Long cluster, Long chute) {
+      return cuenta.getOrDefault(new Par(cluster, chute), 0);
     }
 
     /**
@@ -1043,7 +1165,10 @@ public class SimulacionConfiguracionService {
       if (cuenta.merge(par, -1, Integer::sum) == 0) {
         cuenta.remove(par);
         rutas.remove(par);
-        carga.get(cluster).remove(chute);
+        // Un chute del rango sigue en la ola aunque se vacíe: puede volver a recibir.
+        if (!rango.contains(chute)) {
+          carga.get(cluster).remove(chute);
+        }
       }
     }
 
@@ -1094,6 +1219,19 @@ public class SimulacionConfiguracionService {
     }
     Map<Long, Integer> base = operariosBase(ctx);
     int equipo = operariosMaximos(ctx, base);
+    if (carga.size() > equipo) {
+      // Un chute con carga y sin nadie nunca termina: la ola no podría cerrarse.
+      throw new ConflictoException(
+          nombre
+              + " tiene rutas en "
+              + carga.size()
+              + " chutes y el equipo es de "
+              + equipo
+              + ": cada chute con carga necesita al menos un operario. Amplía el equipo o"
+              + " vuelve a balancear sus rutas con un rango de "
+              + equipo
+              + " chute(s) o menos.");
+    }
     int topeChute = topePorChute(ctx, base);
     boolean topeDefinido = ctx.config().getOperariosPorChute() != null;
     Long previo = anterior(ctx, clusterId);
@@ -2143,7 +2281,9 @@ public class SimulacionConfiguracionService {
                         ctx.nombreCluster(id),
                         limites.getOrDefault(id, BigDecimal.ZERO),
                         ctx.parametrosCluster().get(id).getEstado(),
-                        diferenciasOriginales.get(id)))
+                        diferenciasOriginales.get(id),
+                        ctx.parametrosCluster().get(id).getChuteDesdeId(),
+                        ctx.parametrosCluster().get(id).getChuteHastaId()))
             .sorted(Comparator.comparing(ClusterParametroResponse::nombre, ORDEN_NATURAL))
             .toList();
     Map<Long, List<Long>> clustersEnChute = new HashMap<>();

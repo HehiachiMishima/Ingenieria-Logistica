@@ -63,6 +63,7 @@ import oracle.simulacion.request.ConfiguracionActualizarRequest;
 import oracle.simulacion.request.FaseBalanceo;
 import oracle.simulacion.request.LadoChute;
 import oracle.simulacion.request.MoverRutaRequest;
+import oracle.simulacion.request.RangoChutesRequest;
 import oracle.simulacion.response.BalanceoResponse;
 import oracle.simulacion.response.ChuteComparativoResponse;
 import oracle.simulacion.response.ClusterComparativoResponse;
@@ -283,6 +284,223 @@ class SimulacionBalanceoTest {
     assertEquals(2L, cl3.getChuteId());
     assertEquals(1L, cl4A.getChuteId());
     assertEquals(1L, cl4B.getChuteId());
+  }
+
+  // ---------------- Paso 1 con rango de chutes ----------------
+
+  @Test
+  void rangoSacaLasRutasDeFueraYNivelaEntreSusChutes() {
+    // CL3 está en CHUTE 1 y CHUTE 4; el rango es CHUTE 2 → CHUTE 3, que aún no usa.
+    ParametroCluster cl3 = limite(CL3, "100");
+    prepararRegistro(
+        archivo(),
+        configuracion("100", null),
+        List.of(cl3),
+        List.of(operarios(1L, 0), operarios(2L, 0), operarios(3L, 0), operarios(4L, 0)),
+        List.of(),
+        List.of(cluster(CL3, "CL3")),
+        List.of(chute(1L, "CHUTE 1"), chute(2L, "CHUTE 2"), chute(3L, "CHUTE 3"), chute(4L, "CHUTE 4")));
+    List<RutaProyeccion> rutas =
+        List.of(
+            ruta(1L, CL3, 1L, "3030", "100"),
+            ruta(2L, CL3, 1L, "3031", "100"),
+            ruta(3L, CL3, 4L, "3032", "100"),
+            ruta(4L, CL3, 4L, "3033", "100"));
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL3)).thenReturn(rutas);
+
+    BalanceoResponse resultado = lanzar(CL3, FaseBalanceo.RUTAS, new RangoChutesRequest(2L, 3L));
+
+    // Todas quedan dentro del rango y parejas: dos por chute.
+    Map<Long, Long> porChute = new HashMap<>();
+    rutas.forEach((r) -> porChute.merge(r.getChuteId(), 1L, Long::sum));
+    assertEquals(Map.of(2L, 2L, 3L, 2L), porChute);
+    assertEquals(4, resultado.rutasMovidas());
+    assertTrue(resultado.mensaje().startsWith("CL3 (CHUTE 2 → CHUTE 3)"), resultado.mensaje());
+    assertTrue(resultado.mensaje().contains("4 desde chutes fuera del rango"), resultado.mensaje());
+    // El rango queda guardado para volver a balancear.
+    assertEquals(2L, cl3.getChuteDesdeId());
+    assertEquals(3L, cl3.getChuteHastaId());
+    assertEquals(ParametroCluster.ESTADO_RUTAS, cl3.getEstado());
+    verify(lotes).insertarHistorial(logs.capture());
+    assertEquals(4, logs.getValue().size());
+  }
+
+  @Test
+  void rangoInvertidoSigueElOrdenNaturalDeLosChutes() {
+    // Orden natural: CHUTE 2 (1), CHUTE 3 (3), CHUTE 10 (2). «CHUTE 3 → CHUTE 2» es
+    // CHUTE 2 → CHUTE 3: la ruta de CHUTE 10 queda fuera y entra al chute del rango
+    // con menos carga.
+    ParametroCluster cl3 = limite(CL3, "100");
+    prepararRegistro(
+        archivo(),
+        configuracion("100", null),
+        List.of(cl3),
+        List.of(operarios(1L, 0), operarios(2L, 0), operarios(3L, 0)),
+        List.of(),
+        List.of(cluster(CL3, "CL3")),
+        List.of(chute(1L, "CHUTE 2"), chute(2L, "CHUTE 10"), chute(3L, "CHUTE 3")));
+    RutaProyeccion enDiez = ruta(1L, CL3, 2L, "3030", "300");
+    RutaProyeccion enDos = ruta(2L, CL3, 1L, "3031", "100");
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL3))
+        .thenReturn(List.of(enDiez, enDos));
+
+    BalanceoResponse resultado = lanzar(CL3, FaseBalanceo.RUTAS, new RangoChutesRequest(3L, 1L));
+
+    assertEquals(3L, enDiez.getChuteId());
+    assertEquals(1L, enDos.getChuteId());
+    assertTrue(resultado.mensaje().startsWith("CL3 (CHUTE 2 → CHUTE 3)"), resultado.mensaje());
+    assertEquals(1L, cl3.getChuteDesdeId());
+    assertEquals(3L, cl3.getChuteHastaId());
+  }
+
+  @Test
+  void sinRangoEnLaPeticionUsaElUltimoGuardadoAunqueSeaDeUnChute() {
+    ParametroCluster cl3 = limite(CL3, "100");
+    cl3.setChuteDesdeId(2L);
+    cl3.setChuteHastaId(2L);
+    prepararRegistro(
+        archivo(),
+        configuracion("100", null),
+        List.of(cl3),
+        List.of(operarios(1L, 0), operarios(2L, 0), operarios(3L, 0)),
+        List.of(),
+        List.of(cluster(CL3, "CL3")),
+        List.of(chute(1L, "CHUTE 1"), chute(2L, "CHUTE 2"), chute(3L, "CHUTE 3")));
+    List<RutaProyeccion> rutas =
+        List.of(ruta(1L, CL3, 1L, "3030", "100"), ruta(2L, CL3, 3L, "3031", "50"));
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL3)).thenReturn(rutas);
+
+    lanzar(CL3, FaseBalanceo.RUTAS);
+
+    rutas.forEach((r) -> assertEquals(2L, r.getChuteId()));
+    verify(lotes).moverRutas(Map.of(1L, 2L, 2L, 2L));
+  }
+
+  @Test
+  void rangoPuedeSumarChutesAunqueSuBasePaseElMaximo() {
+    // La base es el «antes» (distribución del Excel): repartir CL3 en tres chutes de
+    // base 1 con máximo 2 no la invalida; el paso 2 reparte el equipo.
+    ParametroCluster cl3 = limite(CL3, "100");
+    prepararRegistro(
+        archivo(),
+        configuracion("100", 2),
+        List.of(cl3),
+        List.of(operarios(1L, 1), operarios(2L, 1), operarios(3L, 1)),
+        List.of(),
+        List.of(cluster(CL3, "CL3")),
+        List.of(chute(1L, "CHUTE 1"), chute(2L, "CHUTE 2"), chute(3L, "CHUTE 3")));
+    List<RutaProyeccion> rutas =
+        List.of(
+            ruta(1L, CL3, 1L, "3030", "100"),
+            ruta(2L, CL3, 1L, "3031", "100"),
+            ruta(3L, CL3, 1L, "3032", "100"));
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL3)).thenReturn(rutas);
+
+    lanzar(CL3, FaseBalanceo.RUTAS, new RangoChutesRequest(1L, 3L));
+
+    assertEquals(3L, rutas.stream().map(RutaProyeccion::getChuteId).distinct().count());
+    assertEquals(ParametroCluster.ESTADO_RUTAS, cl3.getEstado());
+    assertEquals(1L, cl3.getChuteDesdeId());
+  }
+
+  @Test
+  void elCuerpoVacioEsSinRangoYSoloUnChuteSeRechaza() {
+    // El cliente manda {} cuando no hay cuerpo (paso 2, o paso 1 sin modal).
+    ParametroCluster cl3 = limite(CL3, "100");
+    prepararRegistro(
+        archivo(),
+        configuracion("100", null),
+        List.of(cl3),
+        List.of(operarios(1L, 0), operarios(2L, 0)),
+        List.of(),
+        List.of(cluster(CL3, "CL3")),
+        List.of(chute(1L, "CHUTE 1"), chute(2L, "CHUTE 2")));
+    lenient()
+        .when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL3))
+        .thenReturn(List.of(ruta(1L, CL3, 1L, "3030", "100")));
+
+    assertThrows(
+        SolicitudInvalidaException.class,
+        () -> lanzar(CL3, FaseBalanceo.RUTAS, new RangoChutesRequest(1L, null)));
+    BalanceoResponse resultado = lanzar(CL3, FaseBalanceo.RUTAS, new RangoChutesRequest(null, null));
+
+    assertEquals(0, resultado.rutasMovidas());
+    assertTrue(resultado.mensaje().startsWith("CL3: "), resultado.mensaje());
+    assertNull(cl3.getChuteDesdeId());
+  }
+
+  @Test
+  void operariosConCuerpoVacioYMasChutesQueEquipoSeRechaza() {
+    // CL3 tiene carga en 3 chutes y el equipo es de 2: un chute quedaría sin nadie.
+    ParametroCluster cl3 = limite(CL3, "2", ParametroCluster.ESTADO_RUTAS);
+    prepararRegistro(
+        archivo(),
+        configuracion("100", 2),
+        List.of(cl3),
+        List.of(operarios(1L, 0), operarios(2L, 0), operarios(3L, 0)),
+        List.of(),
+        List.of(cluster(CL3, "CL3")),
+        List.of(chute(1L, "CHUTE 1"), chute(2L, "CHUTE 2"), chute(3L, "CHUTE 3")));
+    when(rutaRepo.cargaPorArchivo(10L))
+        .thenReturn(
+            List.of(carga(CL3, 1L, 1, "100"), carga(CL3, 2L, 1, "100"), carga(CL3, 3L, 1, "100")));
+
+    ConflictoException error =
+        assertThrows(
+            ConflictoException.class,
+            () -> lanzar(CL3, FaseBalanceo.OPERARIOS, new RangoChutesRequest(null, null)));
+
+    assertTrue(error.getMessage().contains("CL3 tiene rutas en 3 chutes y el equipo es de 2"), error.getMessage());
+    assertEquals(ParametroCluster.ESTADO_RUTAS, cl3.getEstado());
+    verify(operarioOlaRepo, never()).saveAll(any());
+  }
+
+  @Test
+  void guardarValidaLaBaseConLaDistribucionDelExcelNoConLaActual() {
+    // Hoy CL3 está en tres chutes (balanceado), pero en el Excel solo en CHUTE 1:
+    // la base (el «antes») cabe en el máximo de 2 y se puede guardar.
+    ParametroCluster cl3 = limite(CL3, "2", ParametroCluster.ESTADO_RUTAS);
+    prepararRegistro(
+        archivo(),
+        configuracion("100", 2),
+        List.of(cl3),
+        List.of(operarios(1L, 1), operarios(2L, 1), operarios(3L, 1)),
+        List.of(),
+        List.of(cluster(CL3, "CL3")),
+        List.of(chute(1L, "CHUTE 1"), chute(2L, "CHUTE 2"), chute(3L, "CHUTE 3")));
+    lenient()
+        .when(rutaRepo.cargaPorArchivo(10L))
+        .thenReturn(
+            List.of(carga(CL3, 1L, 1, "100"), carga(CL3, 2L, 1, "100"), carga(CL3, 3L, 1, "100")));
+    when(rutaRepo.cargaOriginalPorArchivo(10L)).thenReturn(List.of(carga(CL3, 1L, 3, "300")));
+
+    servicio.guardar(
+        10L,
+        new ConfiguracionActualizarRequest(
+            new BigDecimal("100"),
+            2,
+            null,
+            List.of(new ClusterLimiteRequest(CL3, new BigDecimal("3"))),
+            List.of()));
+
+    assertEquals(0, new BigDecimal("3").compareTo(cl3.getLimiteHoras()));
+  }
+
+  @Test
+  void rangoConUnChuteAjenoSeRechaza() {
+    prepararRegistro(
+        archivo(),
+        configuracion("100", null),
+        List.of(limite(CL3, "100")),
+        List.of(operarios(1L, 0)),
+        List.of(),
+        List.of(cluster(CL3, "CL3")),
+        List.of(chute(1L, "CHUTE 1")));
+
+    assertThrows(
+        SolicitudInvalidaException.class,
+        () -> lanzar(CL3, FaseBalanceo.RUTAS, new RangoChutesRequest(1L, 99L)));
+    verify(lotes, never()).moverRutas(any());
   }
 
   @Test
@@ -1386,6 +1604,10 @@ class SimulacionBalanceoTest {
 
   private BalanceoResponse lanzar(Long clusterId, FaseBalanceo fase) {
     return servicio.balancear(10L, clusterId, fase).datos();
+  }
+
+  private BalanceoResponse lanzar(Long clusterId, FaseBalanceo fase, RangoChutesRequest rango) {
+    return servicio.balancear(10L, clusterId, fase, rango).datos();
   }
 
   /** Operarios que el paso 2 guardó en la ola, por chute. */

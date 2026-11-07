@@ -10,6 +10,7 @@ import {
   HistorialRegistroSimulacion,
   HistorialSimulacion,
   PaginaRutas,
+  RangoChutes,
   RegistroSimulacionActualizarRequest,
   RutasDashboardFiltros,
   RutasDashboardSimulacion,
@@ -82,10 +83,19 @@ export class SimulacionApi {
     );
   }
 
-  /** Trabaja el cluster en curso: paso 1 (RUTAS) o paso 2 (OPERARIOS) de su ola. */
-  balancear(id: number, clusterId: number, fase: FaseBalanceo): Observable<BalanceoSimulacion> {
+  /**
+   * Trabaja el cluster en curso: paso 1 (RUTAS) o paso 2 (OPERARIOS) de su ola.
+   * En el paso 1, el rango dice entre qué chutes quedan sus rutas.
+   */
+  balancear(
+    id: number,
+    clusterId: number,
+    fase: FaseBalanceo,
+    rango: RangoChutes | null = null,
+  ): Observable<BalanceoSimulacion> {
     return this.api.post<BalanceoSimulacion>(
       `/simulacion/registros/${id}/clusters/${clusterId}/balancear?fase=${fase}`,
+      rango,
     );
   }
 

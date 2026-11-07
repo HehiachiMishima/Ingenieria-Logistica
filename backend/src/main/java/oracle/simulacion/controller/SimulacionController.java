@@ -15,6 +15,7 @@ import oracle.simulacion.request.FaseBalanceo;
 import oracle.simulacion.request.LadoChute;
 import oracle.simulacion.request.Limites;
 import oracle.simulacion.request.MoverRutaRequest;
+import oracle.simulacion.request.RangoChutesRequest;
 import oracle.simulacion.request.RegistroActualizarRequest;
 import oracle.simulacion.response.ArchivoSimulacionResponse;
 import oracle.simulacion.response.BalanceoResponse;
@@ -160,12 +161,18 @@ public class SimulacionController {
     return configuracionService.cambiarCluster(id, rutaId, req);
   }
 
-  /** Lanza un cluster: paso 1 (RUTAS) o paso 2 (OPERARIOS) de su ola. */
+  /**
+   * Lanza un cluster: paso 1 (RUTAS) o paso 2 (OPERARIOS) de su ola. En el paso
+   * 1, el cuerpo opcional dice entre qué chutes repartir sus rutas.
+   */
   @PostMapping("/{id}/clusters/{clusterId}/balancear")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
   public ApiResponse<BalanceoResponse> balancear(
-      @PathVariable Long id, @PathVariable Long clusterId, @RequestParam FaseBalanceo fase) {
-    return configuracionService.balancear(id, clusterId, fase);
+      @PathVariable Long id,
+      @PathVariable Long clusterId,
+      @RequestParam FaseBalanceo fase,
+      @Valid @RequestBody(required = false) RangoChutesRequest rango) {
+    return configuracionService.balancear(id, clusterId, fase, rango);
   }
 
   @PostMapping("/{id}/clusters/{clusterId}/restablecer")

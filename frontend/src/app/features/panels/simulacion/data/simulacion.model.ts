@@ -36,6 +36,15 @@ export interface ClusterParametroSimulacion {
   estado: EstadoCluster;
   /** Diferencia de bultos entre sus chutes al cargar el Excel (%); null con un solo chute. */
   diferenciaOriginal: number | null;
+  /** Último rango de chutes con que se balancearon sus rutas; null si nunca se eligió. */
+  chuteDesdeId: number | null;
+  chuteHastaId: number | null;
+}
+
+/** Chutes entre los que se reparten las rutas de un cluster (paso 1), ambos incluidos. */
+export interface RangoChutes {
+  chuteDesdeId: number;
+  chuteHastaId: number;
 }
 
 export interface ChuteParametroSimulacion {
