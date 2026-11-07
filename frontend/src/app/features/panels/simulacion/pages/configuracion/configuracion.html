@@ -31,12 +31,13 @@
         (valorCambia)="seleccionarDesdeSelector($event)" />
     </div>
     <div class="config-panel__campo">
-      <label class="ui-label" for="config-equipo">Operarios del equipo</label>
+      <label class="ui-label" for="config-equipo"
+        title="Cantidad que se propone al asignar los operarios de una ola; cada ola puede usar otra">Equipo por defecto</label>
       <input id="config-equipo" type="number" class="ui-input" min="1" [max]="limitesValidos.equipo" step="1"
         inputmode="numeric" [value]="equipo()"
-        [disabled]="!config() || !puedeModificar() || equipoBloqueado() !== null || ocupado()"
+        [disabled]="!config() || !puedeModificar() || equipoGlobalBloqueado() !== null || ocupado()"
         (change)="setEquipo($event)" />
-      @if (equipoBloqueado(); as cerrado) {
+      @if (equipoGlobalBloqueado(); as cerrado) {
       <span class="config-panel__ayuda">
         <ui-icon name="lock" [size]="12" /> Bloqueado por {{ cerrado.nombre }}
       </span>
@@ -48,6 +49,11 @@
         inputmode="decimal" [value]="velocidad()"
         [disabled]="!config() || !puedeModificar() || equipoBloqueado() !== null || ocupado()"
         (change)="setVelocidad($event)" />
+      @if (equipoBloqueado(); as cerrado) {
+      <span class="config-panel__ayuda">
+        <ui-icon name="lock" [size]="12" /> Bloqueado por {{ cerrado.nombre }}
+      </span>
+      }
     </div>
     <div class="config-panel__campo">
       <label class="ui-label" for="config-por-chute">Máximo por chute</label>
@@ -560,6 +566,64 @@
     <button type="button" class="ui-btn ui-btn--primary" (click)="confirmarRango()"
       [disabled]="ocupado() || rangoDesde() === null || rangoHasta() === null">
       <ui-icon name="play" [size]="14" /> Balancear
+    </button>
+  </div>
+</ui-modal>
+
+<ui-modal [abierto]="operariosPendiente() !== null" ancho="sm" [compacto]="true"
+  [titulo]="'Operarios para ' + (operariosPendiente()?.nombre ?? '')" (cerrar)="operariosPendiente.set(null)">
+  <p class="rango__intro">
+    Se reparten entre sus chutes con carga para que la ola cierre lo antes posible. La gente de la
+    ola anterior se queda en su chute si el cierre no empeora.
+  </p>
+  @if (vistaOperarios(); as v) {
+  <div class="rango__campo">
+    <label class="ui-label" for="operarios-ola">Cantidad de operarios</label>
+    <input id="operarios-ola" type="number" class="ui-input" step="1" inputmode="numeric"
+      [min]="v.chutes" [max]="limitesValidos.equipo" [value]="v.cantidad ?? ''"
+      [class.ui-input--invalid]="!v.valida" (input)="setCantidadOperarios($any($event.target).value)"
+      (keydown.enter)="confirmarOperarios()" />
+  </div>
+  <dl class="rango__resumen">
+    <div>
+      <dt>Mínimo</dt>
+      <dd>{{ v.chutes }} <span>uno por chute con carga</span></dd>
+    </div>
+    <div>
+      <dt>Para cumplir</dt>
+      <dd>
+        @if (v.necesarios > 0) {
+        {{ v.necesarios }} <span>en {{ (v.limite | numero: 2) }} h</span>
+        } @else {
+        — <span>define el límite</span>
+        }
+      </dd>
+    </div>
+  </dl>
+  @if (!v.valida) {
+  <p class="rango__aviso rango__aviso--alerta">
+    <ui-icon name="alerta" [size]="14" />
+    Escribe un número entero entre {{ v.chutes }} y {{ (limitesValidos.equipo | numero) }}: cada chute con
+    carga necesita al menos un operario.
+  </p>
+  } @else if (v.cantidad! < v.necesarios) {
+  <p class="rango__aviso">
+    <ui-icon name="info" [size]="14" /> Con {{ v.cantidad }} no llega a su límite; se calcula igual
+    y verás cuánto tarda.
+  </p>
+  }
+  @if (v.sinChute > 0) {
+  <p class="rango__aviso">
+    <ui-icon name="info" [size]="14" /> {{ v.sinChute }} quedarán sin chute: el máximo por chute es
+    {{ v.tope }}.
+  </p>
+  }
+  }
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="operariosPendiente.set(null)">Cancelar</button>
+    <button type="button" class="ui-btn ui-btn--primary" (click)="confirmarOperarios()"
+      [disabled]="ocupado() || !vistaOperarios()?.valida">
+      <ui-icon name="play" [size]="14" /> Asignar
     </button>
   </div>
 </ui-modal>

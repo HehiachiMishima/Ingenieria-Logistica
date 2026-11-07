@@ -18,7 +18,7 @@ public record DashboardSimulacionResponse(
     List<OlaSimulacionResponse> olas,
     /** Paso de operarios entre olas: en la vista de un cluster, solo el que llega a él. */
     List<FlujoOperariosResponse> flujoOperarios,
-    /** Operarios del equipo y máximo por chute (null = sin tope propio). */
+    /** Operarios de la ola (vista de un cluster) o del equipo (resumen) y máximo por chute (null = sin tope propio). */
     int equipo,
     Integer maximoPorChute,
     /** Operarios de cada chute en cada ola (solo en el resumen). */

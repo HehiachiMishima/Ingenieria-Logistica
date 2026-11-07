@@ -46,4 +46,11 @@ public class ParametroCluster {
 
   @Column(name = "chute_hasta_id")
   private Long chuteHastaId;
+
+  /**
+   * Operarios con que se calculó su ola la última vez (paso 2). Null mientras
+   * no se haya elegido: se usa el equipo del registro.
+   */
+  @Column(name = "operarios_ola")
+  private Integer operariosOla;
 }

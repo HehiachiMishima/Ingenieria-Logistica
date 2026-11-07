@@ -126,7 +126,8 @@
     flex-direction: column;
     gap: 2px;
     min-width: 0;
-    flex: 1;
+    /* Base de 160 px: en pantallas angostas bajan las etiquetas, no se aplasta el texto. */
+    flex: 1 1 160px;
   }
 
   &__nombre {
@@ -172,6 +173,18 @@
   flex-wrap: wrap;
   gap: var(--space-2);
   margin-left: auto;
+
+  /* En celular ocupan todo el ancho: lado a lado si caben, si no uno por fila,
+     siempre del mismo ancho. */
+  @include bp.down(sm) {
+    flex: 1 1 100%;
+    margin-left: 0;
+
+    .ui-btn {
+      flex: 1 1 auto;
+      justify-content: center;
+    }
+  }
 }
 
 .ui-table {
@@ -492,6 +505,9 @@
       font-size: var(--fs-sm);
       font-weight: 800;
       color: var(--text);
+      /* Una cifra nunca se parte en dos líneas. */
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
     }
   }
 
@@ -824,8 +840,11 @@
       align-items: center;
       height: var(--mz-fila);
       padding-left: var(--space-4);
+      /* La etiqueta nunca pasa del alto de la fila: si no cabe en una línea, usa dos. */
+      overflow: hidden;
       font-size: 0.64rem;
       font-weight: 800;
+      line-height: 1.2;
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--text-3);
@@ -910,13 +929,22 @@
 
 @include bp.down(md) {
   .mz {
-    --mz-label: 180px;
+    --mz-label: 200px;
     --mz-col: 140px;
     --mz-alto: calc((var(--mz-fila) * 8) + 41px);
   }
 
   .mz-panel {
     padding: var(--space-3);
+  }
+
+  /* Panel angosto: cifras como 103,895.75 caben en dos columnas sin partirse. */
+  .mz-panel__metricas {
+    column-gap: var(--space-2);
+
+    dd {
+      font-size: 0.74rem;
+    }
   }
 }
 
@@ -937,8 +965,21 @@
     flex: 1 1 100%;
   }
 
+  /* Con el ancho de un celular, la columna fija a la derecha tapaba las del
+     medio (140 de ~340 px): aquí todas se desplazan igual. */
+  .mz-tabla .mz-der {
+    position: static;
+    border-left: 0;
+    border-right: 1px solid var(--border);
+  }
+
   .mz-totales {
-    --mz-label: 112px;
+    --mz-label: 136px;
+
+    &__etiquetas > div {
+      padding-left: var(--space-3);
+      letter-spacing: 0.04em;
+    }
   }
 }
 

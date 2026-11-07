@@ -31,10 +31,10 @@ import { PERMISOS } from '../../../../../core/config/permisos';
 import { mensajeDeError } from '../../../../../core/errors/error.util';
 import {
   ArchivoSimulacion,
+  BalanceoCuerpo,
   CargaSimulacion,
   ConfiguracionSimulacion,
   ConfiguracionSimulacionRequest,
-  RangoChutes,
   RutaSimulacion,
 } from '../../data/simulacion.model';
 import { Notificaciones } from '../../../../../core/services/notificaciones';
@@ -280,6 +280,66 @@ export class SimulacionConfiguracion {
   readonly equipoBloqueado = computed(
     () => (this.config()?.clusters ?? []).find((cluster) => cluster.estado === 'CERRADO') ?? null,
   );
+
+  /**
+   * El equipo del registro solo es la cantidad de las olas que nunca eligieron
+   * la suya: lo bloquea el primer cluster cerrado que lo usó (igual que el servidor).
+   */
+  readonly equipoGlobalBloqueado = computed(
+    () =>
+      (this.config()?.clusters ?? []).find(
+        (cluster) => cluster.estado === 'CERRADO' && cluster.operariosOla === null,
+      ) ?? null,
+  );
+
+  /** Cluster cuyo paso 2 espera la cantidad de operarios (modal «Operarios para …»). */
+  readonly operariosPendiente = signal<{ id: number; nombre: string } | null>(null);
+  readonly operariosCantidad = signal<number | null>(null);
+
+  /**
+   * Vista previa del paso 2 con la cantidad elegida, con las mismas reglas que
+   * el servidor: mínimo uno por chute con carga, cuántos harían falta para
+   * cumplir el límite (cada chute por su cuenta) y cuántos no cabrían por el
+   * máximo por chute.
+   */
+  readonly vistaOperarios = computed(() => {
+    const cluster = this.operariosPendiente();
+    const cfg = this.config();
+    if (!cluster || !cfg) {
+      return null;
+    }
+    const filas = cfg.carga.filter((fila) => fila.clusterId === cluster.id && fila.rutas > 0);
+    const porChute = new Map<number, number>();
+    for (const fila of filas) {
+      porChute.set(fila.chuteId, (porChute.get(fila.chuteId) ?? 0) + Number(fila.bultos));
+    }
+    const velocidad = this.velocidad();
+    const limite = this.limites()[cluster.id] ?? 0;
+    let necesarios = 0;
+    for (const bultos of porChute.values()) {
+      if (bultos > 0 && velocidad > 0 && limite > 0) {
+        necesarios += Math.max(1, Math.ceil(bultos / (velocidad * limite)));
+      }
+    }
+    const cantidad = this.operariosCantidad();
+    const minimo = porChute.size;
+    const valida =
+      cantidad !== null &&
+      Number.isInteger(cantidad) &&
+      cantidad >= Math.max(1, minimo) &&
+      cantidad <= LIMITES.equipo;
+    // Sin máximo por chute, el tope es la ola entera (con el tope técnico por chute).
+    const tope = Math.min(LIMITES.operariosPorChute, this.porChute() ?? Math.max(1, cantidad ?? 1));
+    return {
+      chutes: minimo,
+      necesarios,
+      limite,
+      cantidad,
+      valida,
+      sinChute: valida ? Math.max(0, cantidad - minimo * tope) : 0,
+      tope,
+    };
+  });
 
   readonly historialAbierto = signal(false);
 
@@ -1276,7 +1336,27 @@ export class SimulacionConfiguracion {
       );
       return;
     }
-    this.ejecutarPaso('OPERARIOS', cluster);
+    // Propone la cantidad que usó la ola la última vez o, si nunca se eligió, el equipo.
+    const guardada = this.config()?.clusters.find((item) => item.id === cluster.id)?.operariosOla;
+    this.operariosCantidad.set(guardada ?? this.equipo());
+    this.operariosPendiente.set(cluster);
+  }
+
+  /** Cantidad escrita en el modal de operarios (vacío o no numérico = sin cantidad). */
+  setCantidadOperarios(valor: string): void {
+    const numero = Number(valor);
+    this.operariosCantidad.set(valor.trim() === '' || !Number.isFinite(numero) ? null : numero);
+  }
+
+  /** Confirma el modal de operarios y lanza el paso 2 con esa cantidad. */
+  confirmarOperarios(): void {
+    const cluster = this.operariosPendiente();
+    const vista = this.vistaOperarios();
+    if (!cluster || !vista?.valida || vista.cantidad === null) {
+      return;
+    }
+    this.operariosPendiente.set(null);
+    this.ejecutarPaso('OPERARIOS', cluster, { operarios: vista.cantidad });
   }
 
   /**
@@ -1295,17 +1375,20 @@ export class SimulacionConfiguracion {
     this.ejecutarPaso('CERRAR', cluster);
   }
 
-  /** Lo editado sin guardar (equipo o el límite de este cluster) cambia sus operarios. */
+  /** Lo editado sin guardar (velocidad, máximo por chute, su límite o, si lo usa, el equipo) cambia sus operarios. */
   private cambiosInvalidanOperarios(clusterId: number): boolean {
     const cfg = this.config();
     if (!cfg) {
       return false;
     }
     const guardado = equipoNormalizado(cfg);
-    const limite = Number(cfg.clusters.find((cluster) => cluster.id === clusterId)?.limiteHoras ?? 0);
+    const cluster = cfg.clusters.find((item) => item.id === clusterId);
+    const limite = Number(cluster?.limiteHoras ?? 0);
+    // El equipo del registro solo cuenta si la ola nunca eligió su cantidad (igual que el servidor).
+    const usaEquipo = (cluster?.operariosOla ?? null) === null;
     return (
       guardado.velocidad !== this.velocidad() ||
-      guardado.equipo !== this.equipo() ||
+      (usaEquipo && guardado.equipo !== this.equipo()) ||
       guardado.porChute !== this.porChute() ||
       limite !== (this.limites()[clusterId] ?? 0)
     );
@@ -1325,7 +1408,7 @@ export class SimulacionConfiguracion {
   private ejecutarPaso(
     paso: Paso,
     cluster: { id: number; nombre: string },
-    rango: RangoChutes | null = null,
+    cuerpo: BalanceoCuerpo | null = null,
   ): void {
     const id = this.seleccionado();
     if (!id || this.ocupado()) {
@@ -1339,7 +1422,7 @@ export class SimulacionConfiguracion {
           ? this.api
               .cerrar(id, cluster.id)
               .pipe(map((config) => ({ mensaje: this.mensajeCierre(cluster.nombre), config })))
-          : this.api.balancear(id, cluster.id, paso, rango).pipe(
+          : this.api.balancear(id, cluster.id, paso, cuerpo).pipe(
               map((resultado) => ({
                 mensaje: resultado.mensaje,
                 config: resultado.configuracion,

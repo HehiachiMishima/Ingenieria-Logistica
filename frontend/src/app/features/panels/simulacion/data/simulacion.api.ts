@@ -2,6 +2,7 @@ import { Service, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import {
   ArchivoSimulacion,
+  BalanceoCuerpo,
   BalanceoSimulacion,
   ConfiguracionSimulacion,
   ConfiguracionSimulacionRequest,
@@ -10,7 +11,6 @@ import {
   HistorialRegistroSimulacion,
   HistorialSimulacion,
   PaginaRutas,
-  RangoChutes,
   RegistroSimulacionActualizarRequest,
   RutasDashboardFiltros,
   RutasDashboardSimulacion,
@@ -85,17 +85,17 @@ export class SimulacionApi {
 
   /**
    * Trabaja el cluster en curso: paso 1 (RUTAS) o paso 2 (OPERARIOS) de su ola.
-   * En el paso 1, el rango dice entre qué chutes quedan sus rutas.
+   * El cuerpo lleva el rango de chutes (paso 1) o la cantidad de operarios (paso 2).
    */
   balancear(
     id: number,
     clusterId: number,
     fase: FaseBalanceo,
-    rango: RangoChutes | null = null,
+    cuerpo: BalanceoCuerpo | null = null,
   ): Observable<BalanceoSimulacion> {
     return this.api.post<BalanceoSimulacion>(
       `/simulacion/registros/${id}/clusters/${clusterId}/balancear?fase=${fase}`,
-      rango,
+      cuerpo,
     );
   }
 

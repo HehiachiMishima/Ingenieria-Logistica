@@ -56,6 +56,7 @@ import oracle.simulacion.repository.RutaProyeccionRepository;
 import oracle.simulacion.repository.RutasMovidasCluster;
 import oracle.simulacion.repository.SimulacionConfigRepository;
 import oracle.simulacion.repository.SimulacionLotesRepository;
+import oracle.simulacion.request.BalanceoRequest;
 import oracle.simulacion.request.CambiarClusterRequest;
 import oracle.simulacion.request.ChuteOperariosRequest;
 import oracle.simulacion.request.ClusterLimiteRequest;
@@ -63,7 +64,6 @@ import oracle.simulacion.request.ConfiguracionActualizarRequest;
 import oracle.simulacion.request.FaseBalanceo;
 import oracle.simulacion.request.LadoChute;
 import oracle.simulacion.request.MoverRutaRequest;
-import oracle.simulacion.request.RangoChutesRequest;
 import oracle.simulacion.response.BalanceoResponse;
 import oracle.simulacion.response.ChuteComparativoResponse;
 import oracle.simulacion.response.ClusterComparativoResponse;
@@ -308,7 +308,7 @@ class SimulacionBalanceoTest {
             ruta(4L, CL3, 4L, "3033", "100"));
     when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL3)).thenReturn(rutas);
 
-    BalanceoResponse resultado = lanzar(CL3, FaseBalanceo.RUTAS, new RangoChutesRequest(2L, 3L));
+    BalanceoResponse resultado = lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(2L, 3L));
 
     // Todas quedan dentro del rango y parejas: dos por chute.
     Map<Long, Long> porChute = new HashMap<>();
@@ -344,7 +344,7 @@ class SimulacionBalanceoTest {
     when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL3))
         .thenReturn(List.of(enDiez, enDos));
 
-    BalanceoResponse resultado = lanzar(CL3, FaseBalanceo.RUTAS, new RangoChutesRequest(3L, 1L));
+    BalanceoResponse resultado = lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(3L, 1L));
 
     assertEquals(3L, enDiez.getChuteId());
     assertEquals(1L, enDos.getChuteId());
@@ -396,7 +396,7 @@ class SimulacionBalanceoTest {
             ruta(3L, CL3, 1L, "3032", "100"));
     when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL3)).thenReturn(rutas);
 
-    lanzar(CL3, FaseBalanceo.RUTAS, new RangoChutesRequest(1L, 3L));
+    lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 3L));
 
     assertEquals(3L, rutas.stream().map(RutaProyeccion::getChuteId).distinct().count());
     assertEquals(ParametroCluster.ESTADO_RUTAS, cl3.getEstado());
@@ -421,8 +421,8 @@ class SimulacionBalanceoTest {
 
     assertThrows(
         SolicitudInvalidaException.class,
-        () -> lanzar(CL3, FaseBalanceo.RUTAS, new RangoChutesRequest(1L, null)));
-    BalanceoResponse resultado = lanzar(CL3, FaseBalanceo.RUTAS, new RangoChutesRequest(null, null));
+        () -> lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, null)));
+    BalanceoResponse resultado = lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(null, null));
 
     assertEquals(0, resultado.rutasMovidas());
     assertTrue(resultado.mensaje().startsWith("CL3: "), resultado.mensaje());
@@ -431,7 +431,7 @@ class SimulacionBalanceoTest {
 
   @Test
   void operariosConCuerpoVacioYMasChutesQueEquipoSeRechaza() {
-    // CL3 tiene carga en 3 chutes y el equipo es de 2: un chute quedaría sin nadie.
+    // CL3 tiene carga en 3 chutes y la ola tiene 2: un chute quedaría sin nadie.
     ParametroCluster cl3 = limite(CL3, "2", ParametroCluster.ESTADO_RUTAS);
     prepararRegistro(
         archivo(),
@@ -448,9 +448,9 @@ class SimulacionBalanceoTest {
     ConflictoException error =
         assertThrows(
             ConflictoException.class,
-            () -> lanzar(CL3, FaseBalanceo.OPERARIOS, new RangoChutesRequest(null, null)));
+            () -> lanzar(CL3, FaseBalanceo.OPERARIOS, new BalanceoRequest(null, null)));
 
-    assertTrue(error.getMessage().contains("CL3 tiene rutas en 3 chutes y el equipo es de 2"), error.getMessage());
+    assertTrue(error.getMessage().contains("CL3 tiene rutas en 3 chutes y la ola tiene 2 operario(s)"), error.getMessage());
     assertEquals(ParametroCluster.ESTADO_RUTAS, cl3.getEstado());
     verify(operarioOlaRepo, never()).saveAll(any());
   }
@@ -499,7 +499,7 @@ class SimulacionBalanceoTest {
 
     assertThrows(
         SolicitudInvalidaException.class,
-        () -> lanzar(CL3, FaseBalanceo.RUTAS, new RangoChutesRequest(1L, 99L)));
+        () -> lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 99L)));
     verify(lotes, never()).moverRutas(any());
   }
 
@@ -642,6 +642,115 @@ class SimulacionBalanceoTest {
     assertFalse(resultado.mensaje().contains("sin chute"), resultado.mensaje());
     assertEquals(ParametroCluster.ESTADO_LISTO, cl1.getEstado());
     assertEquals("LISTO", resultado.estado());
+  }
+
+  // ---------------- Paso 2 con cantidad de operarios ----------------
+
+  @Test
+  void operariosCalculaConLaCantidadPedidaYLaGuarda() {
+    // Equipo del registro 10, pero la ola pide 6: 600 y 300 bultos quedan en 4 y 2 (1,5 h).
+    ParametroCluster cl1 = limite(CL1, "2", ParametroCluster.ESTADO_RUTAS);
+    prepararRegistro(
+        archivo(),
+        configuracion("100", 10),
+        List.of(cl1),
+        List.of(operarios(1L, 1), operarios(2L, 1)),
+        List.of(),
+        List.of(cluster(CL1, "CL1")),
+        List.of(chute(1L, "CHUTE 1"), chute(2L, "CHUTE 2")));
+    when(rutaRepo.cargaPorArchivo(10L))
+        .thenReturn(List.of(carga(CL1, 1L, 1, "600"), carga(CL1, 2L, 1, "300")));
+
+    BalanceoResponse resultado =
+        lanzar(CL1, FaseBalanceo.OPERARIOS, BalanceoRequest.conOperarios(6));
+
+    assertEquals(Map.of(1L, 4, 2L, 2), olaGuardada());
+    assertEquals(6, resultado.operariosAsignados());
+    assertTrue(resultado.mensaje().contains("de 6 para la ola"), resultado.mensaje());
+    assertTrue(resultado.mensaje().contains("Cumple su límite: 1.50 h"), resultado.mensaje());
+    assertEquals(6, cl1.getOperariosOla());
+    assertEquals(ParametroCluster.ESTADO_LISTO, cl1.getEstado());
+  }
+
+  @Test
+  void operariosSinCantidadUsaLaUltimaDeLaOla() {
+    ParametroCluster cl1 = limite(CL1, "2", ParametroCluster.ESTADO_RUTAS);
+    cl1.setOperariosOla(4);
+    prepararRegistro(
+        archivo(),
+        configuracion("100", 10),
+        List.of(cl1),
+        List.of(operarios(1L, 1), operarios(2L, 1)),
+        List.of(),
+        List.of(cluster(CL1, "CL1")),
+        List.of(chute(1L, "CHUTE 1"), chute(2L, "CHUTE 2")));
+    when(rutaRepo.cargaPorArchivo(10L))
+        .thenReturn(List.of(carga(CL1, 1L, 1, "600"), carga(CL1, 2L, 1, "300")));
+
+    BalanceoResponse resultado = lanzar(CL1, FaseBalanceo.OPERARIOS);
+
+    assertEquals(4, resultado.operariosAsignados());
+    assertEquals(4, cl1.getOperariosOla());
+    // Con 4 no llega a 2 h: dice cuántos necesita y con cuántos se calculó.
+    assertTrue(resultado.mensaje().contains("necesita 5 operario(s)"), resultado.mensaje());
+    assertTrue(resultado.mensaje().contains("La ola tiene 4 operario(s)"), resultado.mensaje());
+  }
+
+  @Test
+  void operariosPorEncimaDelEquipoSinTopeVanTodosALaOla() {
+    // Sin máximo por chute, el tope es la ola: los 30 caben aunque el equipo del registro sea 10.
+    ParametroCluster cl1 = limite(CL1, "2", ParametroCluster.ESTADO_RUTAS);
+    prepararRegistro(
+        archivo(),
+        configuracion("100", 10),
+        List.of(cl1),
+        List.of(operarios(1L, 1), operarios(2L, 1)),
+        List.of(),
+        List.of(cluster(CL1, "CL1")),
+        List.of(chute(1L, "CHUTE 1"), chute(2L, "CHUTE 2")));
+    when(rutaRepo.cargaPorArchivo(10L))
+        .thenReturn(List.of(carga(CL1, 1L, 1, "600"), carga(CL1, 2L, 1, "300")));
+
+    BalanceoResponse resultado =
+        lanzar(CL1, FaseBalanceo.OPERARIOS, BalanceoRequest.conOperarios(30));
+
+    assertEquals(30, resultado.operariosAsignados());
+    assertFalse(resultado.mensaje().contains("sin chute"), resultado.mensaje());
+  }
+
+  @Test
+  void cambiarElEquipoSoloAfectaALasOlasQueLoUsan() {
+    // CL1 cerró con su propia cantidad (no usa el equipo); CL3 está LISTO con el del registro.
+    ParametroCluster cl1 = limite(CL1, "2", ParametroCluster.ESTADO_CERRADO);
+    cl1.setOperariosOla(5);
+    ParametroCluster cl3 = limite(CL3, "2", ParametroCluster.ESTADO_LISTO);
+    prepararRegistro(
+        archivo(),
+        configuracion("100", 10),
+        List.of(cl1, cl3),
+        List.of(operarios(1L, 1), operarios(2L, 1)),
+        List.of(ola(CL1, 1L, 5), ola(CL3, 2L, 10)),
+        List.of(cluster(CL1, "CL1"), cluster(CL3, "CL3")),
+        List.of(chute(1L, "CHUTE 1"), chute(2L, "CHUTE 2")));
+    lenient().when(rutaRepo.cargaPorArchivo(10L)).thenReturn(List.of());
+
+    servicio.guardar(
+        10L, new ConfiguracionActualizarRequest(new BigDecimal("100"), 12, null, List.of(), List.of()));
+
+    assertEquals(ParametroCluster.ESTADO_CERRADO, cl1.getEstado());
+    assertEquals(ParametroCluster.ESTADO_RUTAS, cl3.getEstado());
+
+    // Si el cerrado hubiera usado el equipo del registro, cambiarlo exige reabrirlo.
+    cl1.setOperariosOla(null);
+    ConflictoException error =
+        assertThrows(
+            ConflictoException.class,
+            () ->
+                servicio.guardar(
+                    10L,
+                    new ConfiguracionActualizarRequest(
+                        new BigDecimal("100"), 14, null, List.of(), List.of())));
+    assertTrue(error.getMessage().contains("El equipo ya trabajó en CL1"), error.getMessage());
   }
 
   @Test
@@ -1606,8 +1715,8 @@ class SimulacionBalanceoTest {
     return servicio.balancear(10L, clusterId, fase).datos();
   }
 
-  private BalanceoResponse lanzar(Long clusterId, FaseBalanceo fase, RangoChutesRequest rango) {
-    return servicio.balancear(10L, clusterId, fase, rango).datos();
+  private BalanceoResponse lanzar(Long clusterId, FaseBalanceo fase, BalanceoRequest pedido) {
+    return servicio.balancear(10L, clusterId, fase, pedido).datos();
   }
 
   /** Operarios que el paso 2 guardó en la ola, por chute. */

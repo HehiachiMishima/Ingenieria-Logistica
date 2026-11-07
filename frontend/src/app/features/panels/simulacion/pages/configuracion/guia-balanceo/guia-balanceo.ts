@@ -25,9 +25,9 @@ const DETALLES: readonly GrupoDetalle[] = [
     items: [
       {
         icono: 'usuarios',
-        termino: 'Operarios del equipo',
+        termino: 'Equipo por defecto',
         texto:
-          'El mismo equipo pasa de un cluster al siguiente. Se bloquea cuando un cluster ya se cerró: reábrelo para cambiarlo.',
+          'Cantidad que se propone al asignar operarios. Cada ola elige la suya en el paso 2 (mínimo uno por chute con carga) y la gente de la ola anterior se queda en su chute si el cierre no empeora.',
       },
       {
         icono: 'tendencia',
@@ -38,7 +38,7 @@ const DETALLES: readonly GrupoDetalle[] = [
         icono: 'layers',
         termino: 'Máximo por chute',
         texto:
-          'Tope de operarios en un mismo chute. Vacío: un chute puede recibir hasta todo el equipo.',
+          'Tope de operarios en un mismo chute. Vacío: un chute puede recibir a toda la ola. Se bloquea cuando un cluster ya se cerró: reábrelo para cambiarlo.',
       },
       {
         icono: 'reloj',

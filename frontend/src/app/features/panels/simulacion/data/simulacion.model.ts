@@ -39,12 +39,18 @@ export interface ClusterParametroSimulacion {
   /** Último rango de chutes con que se balancearon sus rutas; null si nunca se eligió. */
   chuteDesdeId: number | null;
   chuteHastaId: number | null;
+  /** Operarios con que se calculó su ola la última vez; null si nunca se eligió. */
+  operariosOla: number | null;
 }
 
-/** Chutes entre los que se reparten las rutas de un cluster (paso 1), ambos incluidos. */
-export interface RangoChutes {
-  chuteDesdeId: number;
-  chuteHastaId: number;
+/**
+ * Parámetros de un paso de balanceo. Paso 1: chutes entre los que se reparten
+ * las rutas (ambos incluidos). Paso 2: operarios con que se calcula la ola.
+ */
+export interface BalanceoCuerpo {
+  chuteDesdeId?: number;
+  chuteHastaId?: number;
+  operarios?: number;
 }
 
 export interface ChuteParametroSimulacion {

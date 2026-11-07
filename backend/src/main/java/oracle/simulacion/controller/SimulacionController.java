@@ -9,13 +9,13 @@ import oracle.common.exception.SolicitudInvalidaException;
 import oracle.common.response.ApiResponse;
 import oracle.common.response.PaginaResponse;
 import oracle.simulacion.model.TipoRuta;
+import oracle.simulacion.request.BalanceoRequest;
 import oracle.simulacion.request.CambiarClusterRequest;
 import oracle.simulacion.request.ConfiguracionActualizarRequest;
 import oracle.simulacion.request.FaseBalanceo;
 import oracle.simulacion.request.LadoChute;
 import oracle.simulacion.request.Limites;
 import oracle.simulacion.request.MoverRutaRequest;
-import oracle.simulacion.request.RangoChutesRequest;
 import oracle.simulacion.request.RegistroActualizarRequest;
 import oracle.simulacion.response.ArchivoSimulacionResponse;
 import oracle.simulacion.response.BalanceoResponse;
@@ -171,7 +171,7 @@ public class SimulacionController {
       @PathVariable Long id,
       @PathVariable Long clusterId,
       @RequestParam FaseBalanceo fase,
-      @Valid @RequestBody(required = false) RangoChutesRequest rango) {
+      @Valid @RequestBody(required = false) BalanceoRequest rango) {
     return configuracionService.balancear(id, clusterId, fase, rango);
   }
 

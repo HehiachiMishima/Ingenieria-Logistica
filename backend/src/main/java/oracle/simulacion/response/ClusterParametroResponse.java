@@ -6,7 +6,7 @@ import java.math.BigDecimal;
  * Límite de un cluster, su avance (PENDIENTE, RUTAS, LISTO o CERRADO), la
  * diferencia de bultos entre sus chutes al cargar el Excel (%; null con un
  * solo chute) y el último rango de chutes con que se balancearon sus rutas
- * (null si nunca se eligió).
+ * (null si nunca se eligió) y los operarios de su última ola.
  */
 public record ClusterParametroResponse(
     Long id,
@@ -15,4 +15,6 @@ public record ClusterParametroResponse(
     String estado,
     Integer diferenciaOriginal,
     Long chuteDesdeId,
-    Long chuteHastaId) {}
+    Long chuteHastaId,
+    /** Operarios con que se calculó su ola la última vez; null si nunca se eligió. */
+    Integer operariosOla) {}
