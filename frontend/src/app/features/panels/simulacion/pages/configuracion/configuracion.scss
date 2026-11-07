@@ -1055,3 +1055,12 @@
     border-radius: var(--radius-sm);
   }
 }
+
+/* Acciones de la cabecera en celular: los dos botones reparten el ancho y su
+   contenido (icono + texto) cabe sin salirse del botón. */
+@include bp.down(sm) {
+  .page-head__acciones .ui-btn {
+    flex: 1 1 auto;
+    padding-inline: var(--space-3);
+  }
+}

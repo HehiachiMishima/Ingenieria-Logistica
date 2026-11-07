@@ -172,7 +172,8 @@
 } @else {
 <div class="toolbar">
   <div class="ui-search toolbar__grow">
-    <ui-icon name="search" [size]="18" />
+    <!-- responsive:ok la lupa va dentro del campo a propósito (patrón ui-search) -->
+    <ui-icon name="search" [size]="18" data-responsive-ignore />
     <input type="search" class="ui-input" placeholder="Buscar ruta por código…" aria-label="Buscar ruta por código"
       [value]="textoBusqueda()" (input)="buscarRuta($any($event.target).value)" />
   </div>

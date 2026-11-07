@@ -53,7 +53,11 @@ export interface BarraDato {
     }
   `,
   styles: `
-    :host { display: block; }
+    :host {
+      display: block;
+      /* Las columnas se ajustan al ancho del gráfico, no al de la pantalla. */
+      container-type: inline-size;
+    }
 
     .bars {
       display: flex;
@@ -76,6 +80,18 @@ export interface BarraDato {
       font-weight: 600;
       color: var(--text);
       font-variant-numeric: tabular-nums;
+    }
+
+    /* Gráfico angosto: menos espacio entre columnas y cifras más chicas, así
+       valores como 1570 y 1667 no se juntan con los de al lado. */
+    @container (max-width: 420px) {
+      .bars {
+        gap: var(--space-1);
+      }
+
+      .bars__value {
+        font-size: 0.7rem;
+      }
     }
 
     .bars__sub {

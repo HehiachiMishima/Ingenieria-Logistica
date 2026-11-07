@@ -924,6 +924,10 @@ body.col-resize--activo .col-resize {
     display: flex;
     align-items: center;
     gap: var(--space-1);
+    /* Con muchas páginas en un celular, los botones bajan de línea en vez de
+       salirse del contenedor. */
+    flex-wrap: wrap;
+    min-width: 0;
   }
 
   &__btn {

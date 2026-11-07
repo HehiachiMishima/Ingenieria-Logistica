@@ -36,14 +36,15 @@ import { Icon } from '../../shared/ui/icon/icon';
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: var(--space-6);
+      /* En celular el marco y la tarjeta ceden espacio a los botones. */
+      padding: clamp(var(--space-4), 5vw, var(--space-6));
       background: var(--bg);
     }
     .denied__card {
       max-width: 440px;
       width: 100%;
       text-align: center;
-      padding: var(--space-10);
+      padding: clamp(var(--space-6), 8vw, var(--space-10));
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius-xl);
@@ -81,7 +82,13 @@ import { Icon } from '../../shared/ui/icon/icon';
     .denied__actions {
       margin-top: var(--space-6);
       display: flex;
+      flex-wrap: wrap;
       gap: var(--space-3);
+      justify-content: center;
+    }
+    /* Si no caben lado a lado, cada botón ocupa su fila completa. */
+    .denied__actions .ui-btn {
+      flex: 1 1 auto;
       justify-content: center;
     }
   `,

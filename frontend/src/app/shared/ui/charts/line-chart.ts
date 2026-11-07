@@ -84,6 +84,8 @@ export interface SerieLinea {
       display: flex;
       flex-direction: column;
       gap: var(--space-2);
+      /* El eje X decide cuántas etiquetas caben según el ancho del gráfico. */
+      container-type: inline-size;
     }
     .lc__leyenda {
       display: flex;
@@ -215,6 +217,19 @@ export interface SerieLinea {
       transform: translateX(-50%);
       white-space: nowrap;
     }
+    /* Los extremos se alinean hacia adentro: no salen del área del gráfico. */
+    .lc__eje-x span:first-child {
+      transform: none;
+    }
+    .lc__eje-x span:last-child:not(:first-child) {
+      transform: translateX(-100%);
+    }
+    /* Gráfico angosto (celular): una etiqueta de cada dos, siempre con la última. */
+    @container (max-width: 420px) {
+      .lc__eje-x span:nth-child(even):not(:last-child) {
+        display: none;
+      }
+    }
     .u-sr-only {
       position: absolute;
       width: 1px;
@@ -279,9 +294,13 @@ export class LineChart {
     const todas = this.etiquetas();
     const n = todas.length;
     const paso = Math.max(1, Math.ceil(n / this.maxEtiquetas()));
+    // La última siempre se muestra; una del paso que le quede a menos de un
+    // paso se omite para que no se pisen (p. ej. «oct 26» junto a «nov 26»).
     return todas
       .map((e, i) => ({ i, texto: this.texto(e), pct: n <= 1 ? 50 : (i / (n - 1)) * 100 }))
-      .filter((e) => e.i % paso === 0 || e.i === n - 1);
+      .filter(
+        (e) => e.i === n - 1 || (e.i % paso === 0 && n - 1 - e.i >= paso),
+      );
   });
 
   readonly detalleActivo = computed(() => {

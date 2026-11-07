@@ -243,16 +243,20 @@
   animation-delay: calc(120ms + var(--i, 0) * 80ms);
   transition: transform var(--transition), box-shadow var(--transition), border-color var(--transition);
 
+  /* Brillo de la esquina: ocupa la tarjeta (inset 0) y dibuja el mismo círculo
+     de 200 px centrado a 40 px de la esquina; antes sobresalía 60 px y la
+     tarjeta medía más que su caja. */
   &::after {
     content: '';
     position: absolute;
-    right: -60px;
-    top: -60px;
-    width: 200px;
-    height: 200px;
-    border-radius: 50%;
-    background: radial-gradient(circle, color-mix(in srgb, var(--c) 22%, transparent), transparent 70%);
+    inset: 0;
+    background: radial-gradient(
+      circle 100px at calc(100% - 40px) 40px,
+      color-mix(in srgb, var(--c) 22%, transparent),
+      transparent 70px
+    );
     pointer-events: none;
+    transform-origin: calc(100% - 40px) 40px;
     transition: transform var(--transition-slow);
   }
 

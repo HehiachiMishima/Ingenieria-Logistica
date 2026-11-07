@@ -336,6 +336,15 @@ $entrada: cubic-bezier(0.7, 0, 0.84, 0);
   text-overflow: ellipsis;
 }
 
+/* En celular no caben las dos migas: queda la página actual (el panel ya se
+   nombra en el menú) en vez de aplastarla a "C…". */
+@include bp.down(sm) {
+  .shell__crumb,
+  .shell__crumb-sep {
+    display: none;
+  }
+}
+
 .shell__status {
   display: flex;
   align-items: center;
