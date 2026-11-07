@@ -30,9 +30,4 @@ public record ChuteComparativoResponse(
     List<String> clusters,
     /** Clusters del chute al cargar el Excel y tras el balanceo, por separado. */
     List<String> clustersOriginal,
-    List<String> clustersBalanceado,
-    /** El chute junta CL1 y CL2 (no permitido) al cargar el Excel / tras el balanceo. */
-    boolean mezclaOriginal,
-    boolean mezclaBalanceada,
-    /** Clusters de CL1/CL2 que salieron del chute para dejar de compartirlo. */
-    List<String> clustersSeparados) {}
+    List<String> clustersBalanceado) {}

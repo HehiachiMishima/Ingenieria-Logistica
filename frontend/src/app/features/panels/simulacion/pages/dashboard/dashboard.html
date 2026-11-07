@@ -211,16 +211,6 @@
       Los indicadores son del registro completo; los filtros se aplican a los gráficos y cuadros.
     </p>
   }
-  @for (mezcla of datos.mezclas; track mezcla.id) {
-    <p class="dash-mezcla" role="alert">
-      <ui-icon name="alerta" [size]="16" />
-      <span>
-        <strong>{{ mezcla.chute }}</strong> junta {{ mezcla.clusters.join(' y ') }}, que no pueden
-        compartir chute. No hubo otro chute libre para separarlos: mueve sus rutas desde
-        Configuración.
-      </span>
-    </p>
-  }
 
   @if (cambiosCluster(); as cambios) {
     <div class="dash-grid" [class.dash-grid--cargando]="cargando()">

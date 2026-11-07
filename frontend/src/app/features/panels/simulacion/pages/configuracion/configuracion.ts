@@ -858,8 +858,8 @@ export class SimulacionConfiguracion {
   /**
    * Mismas reglas que el servidor, para marcar en rojo un destino imposible
    * mientras se arrastra (el servidor vuelve a validar al guardar):
-   * clusters cerrados (antes o después de balancear se puede mover) y
-   * CL1/CL2 sin compartir chute.
+   * clusters cerrados (antes o después de balancear se puede mover) y un
+   * cluster no puede quedarse sin rutas.
    */
   readonly motivoNoMover = (rutaId: number, clusterId: number, chuteId: number): string | null => {
     const ruta = this.rutasPorId().get(rutaId);
@@ -894,18 +894,6 @@ export class SimulacionConfiguracion {
       if (rutasDelCluster <= 1) {
         return `${ruta.codigoRuta} es la única ruta de ${ruta.cluster}: un cluster no puede quedarse sin rutas.`;
       }
-    }
-    // CL1 y CL2 no comparten chute: mira qué clusters quedan en el chute destino
-    // (el servidor cambia cluster y chute en un solo paso y valida lo mismo).
-    const presentes = cfg.carga
-      .filter((fila) => fila.chuteId === chuteId && fila.rutas > 0)
-      .filter((fila) => !(fila.clusterId === ruta.clusterId && fila.chuteId === ruta.chuteId && fila.rutas <= 1))
-      .map((fila) => fila.clusterId);
-    const choque = presentes.find((id) => destino.incompatibles.includes(id));
-    if (choque !== undefined) {
-      const chute = cfg.chutes.find((c) => c.id === chuteId)?.nombre ?? chuteId;
-      const otro = cfg.clusters.find((cluster) => cluster.id === choque)?.nombre ?? choque;
-      return `El chute ${chute} tiene rutas de ${otro}: no pueden mezclarse con ${destino.nombre}.`;
     }
     return null;
   };
@@ -1121,8 +1109,8 @@ export class SimulacionConfiguracion {
   }
 
   /**
-   * Paso 1 del cluster en curso: lo separa de su incompatible y reparte sus
-   * rutas para que sus chutes queden parejos en bultos.
+   * Paso 1 del cluster en curso: reparte sus rutas para que sus chutes queden
+   * parejos en bultos.
    */
   balancear(cluster: { id: number; nombre: string }): void {
     this.ejecutarPaso('RUTAS', cluster);

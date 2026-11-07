@@ -33,8 +33,6 @@ export interface ClusterParametroSimulacion {
   id: number;
   nombre: string;
   limiteHoras: number;
-  /** Clusters con los que no puede compartir chute (CL1 con CL2). */
-  incompatibles: number[];
   estado: EstadoCluster;
   /** Diferencia de bultos entre sus chutes al cargar el Excel (%); null con un solo chute. */
   diferenciaOriginal: number | null;
@@ -98,8 +96,6 @@ export interface ConfiguracionSimulacion {
   clusters: ClusterParametroSimulacion[];
   chutes: ChuteParametroSimulacion[];
   carga: CargaSimulacion[];
-  /** Chutes que hoy mezclan CL1 y CL2: el balanceo los separa. */
-  mezclas: ChuteMezcladoSimulacion[];
 }
 
 /** Página de rutas por keyset: `siguiente` es el cursor de la próxima; `total` solo en la primera. */
@@ -139,7 +135,7 @@ export interface HistorialSimulacion {
   /** Lanzamiento que hizo el cambio; null = movimiento manual o de una versión anterior. */
   lanzamientoId: number | null;
   tipoAccion: 'MOVER_RUTA' | 'ASIGNAR_OPERARIOS' | 'CAMBIAR_CLUSTER' | string;
-  /** BALANCEO: paso 1 o 2; SEPARACION: CL1 y CL2; MANUAL: hecho por el usuario. */
+  /** BALANCEO: paso 1 o 2; MANUAL: hecho por el usuario; SEPARACION solo en historiales anteriores. */
   motivo: 'BALANCEO' | 'SEPARACION' | 'MANUAL' | string;
   rutaId: number | null;
   ruta: string | null;
@@ -171,9 +167,8 @@ export interface LanzamientoSimulacion {
   mensaje: string;
   creadoEn: string;
   creadoPor: number | null;
-  /** Rutas movidas, de ellas las que separaron CL1/CL2, y chutes con otra dotación. */
+  /** Rutas movidas y chutes con otra dotación. */
   rutas: number;
-  separaciones: number;
   chutesOperarios: number;
 }
 
@@ -262,11 +257,6 @@ export interface ChuteComparativoSimulacion {
   /** Clusters del chute al cargar el Excel y tras el balanceo, por separado. */
   clustersOriginal: string[];
   clustersBalanceado: string[];
-  /** El chute junta CL1 y CL2 (no permitido) al cargar el Excel / tras el balanceo. */
-  mezclaOriginal: boolean;
-  mezclaBalanceada: boolean;
-  /** Clusters de CL1/CL2 que salieron del chute para dejar de compartirlo. */
-  clustersSeparados: string[];
 }
 
 /** Rutas que pasaron de un cluster (original) a otro (actual), con lo que se llevaron. */
@@ -293,8 +283,6 @@ export interface DashboardSimulacion {
   kpis: SimulacionKpis;
   clusters: ClusterComparativoSimulacion[];
   chutes: ChuteComparativoSimulacion[];
-  /** Chutes que hoy mezclan CL1 y CL2: el balanceo los separa. */
-  mezclas: ChuteMezcladoSimulacion[];
   /** Movimientos de rutas entre chutes: flujo de cualquier grupo de chutes. */
   movimientos: MovimientoChuteSimulacion[];
   /** Rutas que cambiaron de cluster; en la vista de un cluster, las que entraron o salieron de él. */
@@ -335,12 +323,6 @@ export interface FlujoOperariosSimulacion {
   salen: number;
   llegan: number;
   chutes: { chuteId: number; chute: string; antes: number; despues: number }[];
-}
-
-export interface ChuteMezcladoSimulacion {
-  id: number;
-  chute: string;
-  clusters: string[];
 }
 
 /** Totales de un lado del chute (antes o después) con los filtros del modal. */

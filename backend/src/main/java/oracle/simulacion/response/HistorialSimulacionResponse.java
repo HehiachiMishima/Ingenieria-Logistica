@@ -12,7 +12,7 @@ public record HistorialSimulacionResponse(
     /** Lanzamiento que hizo el cambio; null = movimiento manual o de una versión anterior. */
     Long lanzamientoId,
     String tipoAccion,
-    /** BALANCEO, SEPARACION (CL1 y CL2) o MANUAL. */
+    /** BALANCEO o MANUAL (SEPARACION solo en historiales anteriores). */
     String motivo,
     Long rutaId,
     String ruta,

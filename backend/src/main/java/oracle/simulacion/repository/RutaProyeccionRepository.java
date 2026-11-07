@@ -1,7 +1,6 @@
 package oracle.simulacion.repository;
 
 import jakarta.persistence.QueryHint;
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import oracle.simulacion.model.RutaProyeccion;
@@ -17,46 +16,14 @@ public interface RutaProyeccionRepository
     extends JpaRepository<RutaProyeccion, Long>, JpaSpecificationExecutor<RutaProyeccion> {
 
   /**
-   * Todas las rutas del archivo para el balanceo, en solo lectura: Hibernate no
-   * guarda copias para detectar cambios; los chutes nuevos se guardan en lote.
+   * Rutas de un cluster para su balanceo, en solo lectura: Hibernate no guarda
+   * copias para detectar cambios; los chutes nuevos se guardan en lote. Usa
+   * idx_rutas_archivo_cluster.
    */
   @QueryHints(@QueryHint(name = HibernateHints.HINT_READ_ONLY, value = "true"))
-  List<RutaProyeccion> findByArchivoIdOrderByIdAsc(Long archivoId);
+  List<RutaProyeccion> findByArchivoIdAndClusterIdOrderByIdAsc(Long archivoId, Long clusterId);
 
   Optional<RutaProyeccion> findByIdAndArchivoId(Long id, Long archivoId);
-
-  /** Clusters con rutas en un chute: valida que un movimiento no mezcle CL1 y CL2. */
-  @Query("""
-      SELECT DISTINCT r.clusterId
-        FROM RutaProyeccion r
-       WHERE r.archivoId = :archivoId
-         AND r.chuteId = :chuteId
-      """)
-  List<Long> clustersEnChute(
-      @Param("archivoId") Long archivoId, @Param("chuteId") Long chuteId);
-
-  /**
-   * Algún cluster de la lista con rutas en el chute, sin contar una ruta (la que
-   * cambia de cluster). Se detiene en la primera fila: usa
-   * idx_rutas_archivo_chute_cluster sin recorrer todas las rutas del chute.
-   */
-  @Query(
-      value =
-          """
-          SELECT cluster_id
-            FROM rutas_proyeccion
-           WHERE archivo_id = :archivoId
-             AND chute_id = :chuteId
-             AND cluster_id IN (:clusterIds)
-             AND id <> :rutaId
-           LIMIT 1
-          """,
-      nativeQuery = true)
-  Optional<Long> clusterEnChute(
-      @Param("archivoId") Long archivoId,
-      @Param("chuteId") Long chuteId,
-      @Param("clusterIds") Collection<Long> clusterIds,
-      @Param("rutaId") Long rutaId);
 
   /**
    * El cluster tiene otra ruta además de la indicada. EXISTS con LIMIT 1 sobre

@@ -44,10 +44,6 @@ public class LanzamientoBalanceo {
   @Column(name = "rutas", nullable = false)
   private int rutas;
 
-  /** De esas, las movidas para separar CL1 y CL2. */
-  @Column(name = "separaciones", nullable = false)
-  private int separaciones;
-
   /** Chutes cuya dotación cambió (paso 2). */
   @Column(name = "chutes_operarios", nullable = false)
   private int chutesOperarios;

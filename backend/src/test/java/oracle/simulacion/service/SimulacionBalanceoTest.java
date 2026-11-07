@@ -151,7 +151,8 @@ class SimulacionBalanceoTest {
   // ---------------- Paso 1: rutas de un cluster ----------------
 
   @Test
-  void rutasSeparaMoviendoAlClusterConMenosRutasSiAunNoEmpezo() {
+  void rutasRepartenSoloSuClusterAunqueCompartaChuteConOtro() {
+    // CL1 y CL2 pueden compartir chute: CL1 lleva una ruta a CHUTE 2, donde ya está CL2.
     ArchivoExcel archivo = archivo();
     ParametroCluster cl1 = limite(CL1, "100");
     ParametroCluster cl2 = limite(CL2, "100");
@@ -163,18 +164,18 @@ class SimulacionBalanceoTest {
         List.of(),
         List.of(cluster(CL1, "CL1"), cluster(CL2, "CL2")),
         List.of(chute(1L, "CHUTE 1"), chute(2L, "CHUTE 2")));
-    RutaProyeccion cl1A = ruta(1L, CL1, 1L, "3030", "100");
+    RutaProyeccion cl1A = ruta(1L, CL1, 1L, "3030", "300");
     RutaProyeccion cl1B = ruta(2L, CL1, 1L, "3031", "100");
-    RutaProyeccion cl2Ruta = ruta(3L, CL2, 1L, "3032", "50");
-    when(rutaRepo.findByArchivoIdOrderByIdAsc(10L)).thenReturn(List.of(cl1A, cl1B, cl2Ruta));
+    RutaProyeccion cl1C = ruta(3L, CL1, 2L, "3032", "100");
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL1))
+        .thenReturn(List.of(cl1A, cl1B, cl1C));
 
     BalanceoResponse resultado = lanzar(CL1, FaseBalanceo.RUTAS);
 
-    // CL2 tiene menos rutas en CHUTE 1 y aún no empezó: sale él, no las 2 de CL1.
-    assertEquals(2L, cl2Ruta.getChuteId());
     assertEquals(1L, cl1A.getChuteId());
-    assertEquals(1L, cl1B.getChuteId());
-    assertTrue(resultado.mensaje().contains("1 para separar CL1 y CL2"), resultado.mensaje());
+    assertEquals(2L, cl1B.getChuteId());
+    assertEquals(1, resultado.rutasMovidas());
+    assertFalse(resultado.mensaje().contains("CL2"), resultado.mensaje());
     assertEquals(ParametroCluster.ESTADO_RUTAS, cl1.getEstado());
     assertEquals(ParametroCluster.ESTADO_PENDIENTE, cl2.getEstado());
     assertEquals(ArchivoExcel.ESTADO_EN_PROCESO, archivo.getEstado());
@@ -184,12 +185,13 @@ class SimulacionBalanceoTest {
     assertEquals("RUTAS", lanzamiento.getValue().getFase());
     verify(lotes).insertarHistorial(logs.capture());
     assertEquals(77L, logs.getValue().get(0).getLanzamientoId());
-    assertEquals(HistorialBalanceo.MOTIVO_SEPARACION, logs.getValue().get(0).getMotivo());
+    assertEquals(HistorialBalanceo.MOTIVO_BALANCEO, logs.getValue().get(0).getMotivo());
     assertEquals(2L, logs.getValue().get(0).getChuteDestinoId());
     // El lanzamiento guarda sus totales y la ruta movida se guarda en lote.
     assertEquals(1, lanzamiento.getValue().getRutas());
-    assertEquals(1, lanzamiento.getValue().getSeparaciones());
-    verify(lotes).moverRutas(Map.of(3L, 2L));
+    verify(lotes).moverRutas(Map.of(2L, 2L));
+    // Solo se leen las rutas del cluster lanzado.
+    verify(rutaRepo).findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL1);
     // El paso devuelve la configuración ya actualizada.
     assertEquals(2, resultado.configuracion().clusters().size());
   }
@@ -211,7 +213,7 @@ class SimulacionBalanceoTest {
     for (long id = 1; id <= 3000; id++) {
       rutas.add(ruta(id, CL3, id <= 2900 ? 1L : 2L, "R" + id, String.valueOf(5 + id % 7)));
     }
-    when(rutaRepo.findByArchivoIdOrderByIdAsc(10L)).thenReturn(rutas);
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL3)).thenReturn(rutas);
 
     BalanceoResponse resultado = lanzar(CL3, FaseBalanceo.RUTAS);
 
@@ -223,50 +225,6 @@ class SimulacionBalanceoTest {
     assertTrue(diferencia <= promedio * 0.10, bultos + " · " + resultado.mensaje());
     assertFalse(resultado.mensaje().contains("máximo de movimientos"), resultado.mensaje());
     verify(lotes).moverRutas(anyMap());
-  }
-
-  @Test
-  void rutasNoMuevenAUnClusterCerrado() {
-    // CL1 ya cerró y comparte CHUTE 1 con CL2: aunque CL1 tenga menos rutas allí, sale CL2.
-    prepararRegistro(
-        archivo(),
-        configuracion("100", null),
-        List.of(limite(CL1, "100", ParametroCluster.ESTADO_CERRADO), limite(CL2, "100")),
-        List.of(operarios(1L, 0), operarios(2L, 0)),
-        List.of(),
-        List.of(cluster(CL1, "CL1"), cluster(CL2, "CL2")),
-        List.of(chute(1L, "CHUTE 1"), chute(2L, "CHUTE 2")));
-    RutaProyeccion cl1 = ruta(1L, CL1, 1L, "3030", "100");
-    RutaProyeccion cl2A = ruta(2L, CL2, 1L, "3031", "50");
-    RutaProyeccion cl2B = ruta(3L, CL2, 1L, "3032", "50");
-    when(rutaRepo.findByArchivoIdOrderByIdAsc(10L)).thenReturn(List.of(cl1, cl2A, cl2B));
-
-    lanzar(CL2, FaseBalanceo.RUTAS);
-
-    assertEquals(1L, cl1.getChuteId());
-    assertEquals(2L, cl2A.getChuteId());
-    assertEquals(2L, cl2B.getChuteId());
-  }
-
-  @Test
-  void rutasAvisaCuandoNoHayChuteParaSepararCl1YCl2() {
-    prepararRegistro(
-        archivo(),
-        configuracion("100", null),
-        List.of(limite(CL1, "100"), limite(CL2, "100")),
-        List.of(operarios(1L, 0)),
-        List.of(),
-        List.of(cluster(CL1, "CL1"), cluster(CL2, "CL2")),
-        List.of(chute(1L, "CHUTE 1")));
-    RutaProyeccion cl1Ruta = ruta(1L, CL1, 1L, "3030", "100");
-    when(rutaRepo.findByArchivoIdOrderByIdAsc(10L))
-        .thenReturn(List.of(cl1Ruta, ruta(2L, CL2, 1L, "3031", "50")));
-
-    BalanceoResponse resultado = lanzar(CL1, FaseBalanceo.RUTAS);
-
-    assertEquals(0, resultado.rutasMovidas());
-    assertEquals(1L, cl1Ruta.getChuteId());
-    assertTrue(resultado.mensaje().contains("No se pudo separar CL1 y CL2 en CHUTE 1"));
   }
 
   @Test
@@ -283,7 +241,7 @@ class SimulacionBalanceoTest {
         List.of(chute(1L, "CHUTE 1"), chute(2L, "CHUTE 2")));
     RutaProyeccion r400 = ruta(1L, CL3, 1L, "3030", "400");
     RutaProyeccion r300 = ruta(2L, CL3, 1L, "3031", "300");
-    when(rutaRepo.findByArchivoIdOrderByIdAsc(10L))
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL3))
         .thenReturn(
             List.of(
                 r400,
@@ -316,15 +274,8 @@ class SimulacionBalanceoTest {
     RutaProyeccion cl3 = ruta(2L, CL3, 1L, "3031", "200");
     RutaProyeccion cl4A = ruta(4L, CL4, 1L, "4040", "400");
     RutaProyeccion cl4B = ruta(5L, CL4, 1L, "4041", "200");
-    when(rutaRepo.findByArchivoIdOrderByIdAsc(10L))
-        .thenReturn(
-            List.of(
-                ruta(1L, CL3, 1L, "3030", "400"),
-                cl3,
-                ruta(3L, CL3, 2L, "3032", "50"),
-                cl4A,
-                cl4B,
-                ruta(6L, CL4, 2L, "4042", "50")));
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL3))
+        .thenReturn(List.of(ruta(1L, CL3, 1L, "3030", "400"), cl3, ruta(3L, CL3, 2L, "3032", "50")));
 
     BalanceoResponse resultado = lanzar(CL3, FaseBalanceo.RUTAS);
 
@@ -675,15 +626,6 @@ class SimulacionBalanceoTest {
   // ---------------- Restablecer, cerrar, reabrir y cambios manuales ----------------
 
   @Test
-  void reconoceSoloLosNombresDeClusterNumerados() {
-    assertEquals(1, SimulacionConfiguracionService.numeroCluster("CL1"));
-    assertEquals(1, SimulacionConfiguracionService.numeroCluster("cl 01"));
-    assertEquals(2, SimulacionConfiguracionService.numeroCluster("C2"));
-    assertNull(SimulacionConfiguracionService.numeroCluster("CP1"));
-    assertNull(SimulacionConfiguracionService.numeroCluster("CB2"));
-  }
-
-  @Test
   void restablecerTodoVuelveALaProyeccion() {
     ArchivoExcel archivo = archivo();
     archivo.setEstado(ArchivoExcel.ESTADO_EN_PROCESO);
@@ -763,12 +705,13 @@ class SimulacionBalanceoTest {
   }
 
   @Test
-  void cerrarRechazaCl1YCl2Juntos() {
+  void cerrarPermiteCl1YCl2EnElMismoChute() {
+    ParametroCluster cl1 = limite(CL1, "2", ParametroCluster.ESTADO_LISTO);
     prepararRegistro(
         archivo(),
         configuracion("100", null),
         List.of(
-            limite(CL1, "2", ParametroCluster.ESTADO_LISTO),
+            cl1,
             limite(CL2, "2", ParametroCluster.ESTADO_PENDIENTE)),
         List.of(operarios(1L, 0)),
         List.of(),
@@ -777,9 +720,9 @@ class SimulacionBalanceoTest {
     when(rutaRepo.cargaPorArchivo(10L))
         .thenReturn(List.of(carga(CL1, 1L, 1, "100"), carga(CL2, 1L, 1, "100")));
 
-    ConflictoException error =
-        assertThrows(ConflictoException.class, () -> servicio.cerrar(10L, CL1));
-    assertTrue(error.getMessage().contains("CL1 sigue compartiendo CHUTE 1"), error.getMessage());
+    servicio.cerrar(10L, CL1);
+
+    assertEquals(ParametroCluster.ESTADO_CERRADO, cl1.getEstado());
   }
 
   @Test
@@ -925,7 +868,6 @@ class SimulacionBalanceoTest {
     RutaProyeccion ruta = ruta(1L, CL1, 1L, "3030", "10");
     ruta.setChuteId(2L);
     when(rutaRepo.findByIdAndArchivoId(1L, 10L)).thenReturn(Optional.of(ruta));
-    when(rutaRepo.clustersEnChute(10L, 1L)).thenReturn(List.of());
     when(rutaRepo.cargaPorArchivo(10L)).thenReturn(List.of());
 
     servicio.mover(10L, 1L, new MoverRutaRequest(1L));
@@ -1013,16 +955,12 @@ class SimulacionBalanceoTest {
     ChuteComparativoResponse chute1 = dashboard.chutes().get(0);
     assertEquals(List.of("CL1", "CL2"), chute1.clustersOriginal());
     assertEquals(List.of("CL1"), chute1.clustersBalanceado());
-    assertTrue(chute1.mezclaOriginal());
-    assertFalse(chute1.mezclaBalanceada());
     assertEquals(1, chute1.rutasSalieron());
     // Con solo las rutas balanceadas no hay operarios ni tiempos; el resumen no tiene «antes».
     assertEquals(0, chute1.operariosOriginal());
     assertEquals(0, chute1.operariosBalanceado());
     assertNull(dashboard.kpis().tiempoBalanceado());
     assertNull(dashboard.kpis().tiempoOriginal());
-    assertFalse(dashboard.chutes().get(1).mezclaBalanceada());
-    assertTrue(dashboard.mezclas().isEmpty());
     assertEquals(1, dashboard.movimientos().size());
     assertEquals(2L, dashboard.movimientos().get(0).destinoId());
     assertEquals(List.of("CL1", "CL2"), dashboard.olas().stream().map((o) -> o.cluster()).toList());
@@ -1274,8 +1212,6 @@ class SimulacionBalanceoTest {
     // El chute del momento del cambio: restablecer devuelve la ruta ahí.
     assertEquals(1L, log.getValue().getChuteOrigenId());
     verify(archivoRepo).save(any());
-    // Sin CL2 en el registro, CL1 no tiene incompatibles: no se consulta el chute.
-    verify(rutaRepo, never()).clusterEnChute(any(), any(), any(), any());
   }
 
   @Test
@@ -1309,11 +1245,6 @@ class SimulacionBalanceoTest {
   @Test
   void cambiarClusterYChuteEnUnPasoValidaElChuteDestino() {
     RutaProyeccion ruta = prepararCambio(limite(CL1, "2"), limite(CL2, "2"), limite(CL3, "2"));
-    // CHUTE 1 (donde está) tiene CL2, pero va a CHUTE 2, que no: se valida el destino final.
-    lenient()
-        .when(rutaRepo.clusterEnChute(10L, 1L, java.util.Set.of(CL2), 1L))
-        .thenReturn(Optional.of(CL2));
-    when(rutaRepo.clusterEnChute(10L, 2L, java.util.Set.of(CL2), 1L)).thenReturn(Optional.empty());
     ArgumentCaptor<HistorialBalanceo> logs = ArgumentCaptor.forClass(HistorialBalanceo.class);
 
     servicio.cambiarCluster(10L, 1L, new CambiarClusterRequest(CL1, 2L));
@@ -1349,16 +1280,14 @@ class SimulacionBalanceoTest {
   }
 
   @Test
-  void cambiarClusterNoJuntaCl1YCl2EnElChute() {
+  void cambiarClusterPuedeJuntarCl1YCl2EnElMismoChute() {
     RutaProyeccion ruta = prepararCambio(limite(CL1, "2"), limite(CL2, "2"), limite(CL3, "2"));
-    // CHUTE 1 tiene rutas de CL2: la ruta no puede pasar a CL1 quedándose ahí.
-    when(rutaRepo.clusterEnChute(10L, 1L, java.util.Set.of(CL2), 1L)).thenReturn(Optional.of(CL2));
 
-    ConflictoException error = cambioRechazado(CL1);
+    servicio.cambiarCluster(10L, 1L, new CambiarClusterRequest(CL1, null));
 
-    assertTrue(error.getMessage().contains("CHUTE 1 tiene rutas de CL2"), error.getMessage());
-    assertEquals(CL3, ruta.getClusterId());
-    verify(historialRepo, never()).save(any());
+    assertEquals(CL1, ruta.getClusterId());
+    assertEquals(1L, ruta.getChuteId());
+    verify(historialRepo).save(any());
   }
 
   @Test

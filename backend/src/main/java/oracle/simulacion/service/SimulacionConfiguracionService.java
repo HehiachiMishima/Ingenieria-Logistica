@@ -14,7 +14,6 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -24,10 +23,7 @@ import java.util.TreeSet;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.function.ToIntFunction;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
 import oracle.common.config.CacheRespuestas;
 import oracle.common.config.Transacciones;
@@ -81,7 +77,6 @@ import oracle.simulacion.response.CambioClusterResponse;
 import oracle.simulacion.response.CargaSimulacionResponse;
 import oracle.simulacion.response.PaginaRutasResponse;
 import oracle.simulacion.response.ChuteComparativoResponse;
-import oracle.simulacion.response.ChuteMezcladoResponse;
 import oracle.simulacion.response.ChuteParametroResponse;
 import oracle.simulacion.response.ClusterComparativoResponse;
 import oracle.simulacion.response.ClusterParametroResponse;
@@ -138,14 +133,6 @@ public class SimulacionConfiguracionService {
   /** Tope total de la transacción de una lectura: corta la consulta en el servidor. */
   private static final int TOPE_TRANSACCION_LECTURA_S = 18;
   private static final int ESCALA = 4;
-  /**
-   * Clusters que no pueden compartir chute: CL1 y CL2 (número del nombre
-   * {@link #CLUSTER_NUMERADO}). El resto de combinaciones sigue permitido.
-   */
-  private static final Set<Integer> CLUSTERS_INCOMPATIBLES = Set.of(1, 2);
-  /** «CL1», «CL 1», «C1», «cl01» → 1. Otros prefijos (CP1, CB2…) no cuentan. */
-  private static final Pattern CLUSTER_NUMERADO = Pattern.compile("CL?0*(\\d+)");
-  private static final Pattern ESPACIOS = Pattern.compile("\\s+");
   /** Ordena CHUTE 2 antes que CHUTE 10 (comparación natural, no lexicográfica). */
   private static final Comparator<String> ORDEN_NATURAL =
       SimulacionConfiguracionService::compararNatural;
@@ -512,23 +499,6 @@ public class SimulacionConfiguracionService {
             throw new ConflictoException(
                 "La ruta ya pertenece al chute " + ctx.nombreChute(req.chuteId()) + ".");
           }
-          // CL1 y CL2 no pueden compartir chute: un movimiento manual tampoco
-          // puede crear esa mezcla.
-          Long conflicto =
-              clusterEnConflicto(
-                  rutaRepo.clustersEnChute(archivoId, req.chuteId()),
-                  ruta.getClusterId(),
-                  numerosCluster(ctx.clusters()));
-          if (conflicto != null) {
-            throw new ConflictoException(
-                "El chute "
-                    + ctx.nombreChute(req.chuteId())
-                    + " ya tiene rutas del cluster "
-                    + ctx.nombreCluster(conflicto)
-                    + " y no pueden mezclarse con las del cluster "
-                    + ctx.nombreCluster(ruta.getClusterId())
-                    + ".");
-          }
           Long origen = ruta.getChuteId();
           ruta.setChuteId(req.chuteId());
           HistorialBalanceo manual =
@@ -592,33 +562,12 @@ public class SimulacionConfiguracionService {
                     + ": un cluster no puede quedarse sin rutas.");
           }
           // Chute final: el de la petición (cambio de cluster y de chute en un solo
-          // paso, sin estado intermedio) o el suyo. Con su nuevo cluster tampoco
-          // puede juntar CL1 y CL2 ahí; solo se consulta si el destino tiene
-          // incompatibles (CL1 o CL2).
+          // paso, sin estado intermedio) o el suyo.
           Long chuteAntes = ruta.getChuteId();
           Long chuteFinal = req.chuteId() == null ? chuteAntes : req.chuteId();
           if (!ctx.parametrosChute().containsKey(chuteFinal)) {
             throw new SolicitudInvalidaException(
                 "El chute " + chuteFinal + " no pertenece al registro.");
-          }
-          Set<Long> incompatibles = incompatiblesDe(destino, numerosCluster(ctx.clusters()));
-          Long conflicto =
-              incompatibles.isEmpty()
-                  ? null
-                  : rutaRepo
-                      .clusterEnChute(archivoId, chuteFinal, incompatibles, rutaId)
-                      .orElse(null);
-          if (conflicto != null) {
-            throw new ConflictoException(
-                "El chute "
-                    + ctx.nombreChute(chuteFinal)
-                    + " tiene rutas de "
-                    + ctx.nombreCluster(conflicto)
-                    + ", que no pueden mezclarse con "
-                    + ctx.nombreCluster(destino)
-                    + (chuteFinal.equals(chuteAntes)
-                        ? ": llévala también a otro chute."
-                        : "."));
           }
           ruta.setClusterId(destino);
           HistorialBalanceo log =
@@ -725,9 +674,9 @@ public class SimulacionConfiguracionService {
   }
 
   /**
-   * Cierra el cluster en curso: con sus operarios asignados y sin compartir
-   * chute con su incompatible. El equipo pasa al siguiente cluster con esta
-   * dotación; al cerrar el último, la simulación termina.
+   * Cierra el cluster en curso con sus operarios asignados. El equipo pasa al
+   * siguiente cluster con esta dotación; al cerrar el último, la simulación
+   * termina.
    */
   public ApiResponse<ConfiguracionSimulacionResponse> cerrar(
       Long archivoId, Long clusterId) {
@@ -741,24 +690,6 @@ public class SimulacionConfiguracionService {
           if (!ParametroCluster.ESTADO_LISTO.equals(parametro.getEstado())) {
             throw new ConflictoException(
                 "Balancea las rutas y asigna los operarios de " + nombre + " antes de cerrarlo.");
-          }
-          String juntos =
-              mezclas(
-                      rutaRepo.cargaPorArchivo(archivoId).stream()
-                          .filter((fila) -> fila.getRutas() > 0)
-                          .map((fila) -> new Par(fila.getClusterId(), fila.getChuteId()))
-                          .toList(),
-                      ctx)
-                  .stream()
-                  .filter((mezcla) -> mezcla.clusters().contains(nombre))
-                  .map(ChuteMezcladoResponse::chute)
-                  .collect(Collectors.joining(", "));
-          if (!juntos.isEmpty()) {
-            throw new ConflictoException(
-                nombre
-                    + " sigue compartiendo "
-                    + juntos
-                    + " con un cluster incompatible: mueve esas rutas antes de cerrarlo.");
           }
           parametro.setEstado(ParametroCluster.ESTADO_CERRADO);
           actualizarEstado(ctx);
@@ -819,7 +750,6 @@ public class SimulacionConfiguracionService {
                               lanzamiento.getCreadoEn(),
                               lanzamiento.getCreadoPor(),
                               lanzamiento.getRutas(),
-                              lanzamiento.getSeparaciones(),
                               lanzamiento.getChutesOperarios()))
                   .toList();
           return new HistorialRegistroResponse(
@@ -918,9 +848,7 @@ public class SimulacionConfiguracionService {
   // ---------------- Paso 1: rutas ----------------
 
   /**
-   * Paso 1 del cluster en curso. Si comparte chute con su incompatible (CL1
-   * con CL2), los separa moviendo las rutas del que tenga menos allí (sin tocar
-   * clusters cerrados); luego reparte sus rutas entre los chutes que ya lo
+   * Paso 1 del cluster en curso: reparte sus rutas entre los chutes que ya lo
    * atienden hasta que su carga (bultos) quede pareja. No toca operarios.
    */
   private BalanceoResponse balancearRutas(Long archivoId, Long clusterId, Long actor) {
@@ -931,26 +859,9 @@ public class SimulacionConfiguracionService {
     // otro cluster) reparte desde como está hoy, sin perder los cambios a mano;
     // si ya tenía operarios, su carga cambia y vuelve al paso 2.
     invalidarOperarios(ctx, List.of(clusterId));
-    Reparto reparto =
-        new Reparto(
-            rutaRepo.findByArchivoIdOrderByIdAsc(archivoId),
-            ctx.parametrosChute().keySet(),
-            numerosCluster(ctx.clusters()));
+    Reparto reparto = new Reparto(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(archivoId, clusterId));
     Integer dispersionAntes = reparto.dispersion(clusterId);
-    List<Traslado> separaciones = new ArrayList<>();
     Traslado traslado;
-    // Se pueden mover rutas de este cluster y de los que aún no empezaron.
-    Set<Long> movibles = new HashSet<>();
-    ctx.parametrosCluster()
-        .forEach(
-            (id, p) -> {
-              if (id.equals(clusterId) || ParametroCluster.ESTADO_PENDIENTE.equals(p.getEstado())) {
-                movibles.add(id);
-              }
-            });
-    while ((traslado = reparto.separar(clusterId, movibles)) != null) {
-      separaciones.add(traslado);
-    }
     // Cada movimiento baja la suma de cuadrados de la carga, así que el
     // proceso termina solo; el tope es una red de seguridad.
     int tope = Math.max(MAX_ITERACIONES, 4 * reparto.rutasDe(clusterId));
@@ -960,17 +871,9 @@ public class SimulacionConfiguracionService {
     }
 
     int movidas =
-        (int)
-            Stream.concat(separaciones.stream(), nivelaciones.stream())
-                .map((t) -> t.ruta().getId())
-                .distinct()
-                .count();
+        (int) nivelaciones.stream().map((t) -> t.ruta().getId()).distinct().count();
     StringBuilder mensaje =
-        new StringBuilder(nombre).append(": ").append(movidas).append(" ruta(s) movida(s)");
-    if (!separaciones.isEmpty()) {
-      mensaje.append(" (").append(separaciones.size()).append(" para separar CL1 y CL2)");
-    }
-    mensaje.append(".");
+        new StringBuilder(nombre).append(": ").append(movidas).append(" ruta(s) movida(s).");
     Integer dispersionDespues = reparto.dispersion(clusterId);
     if (dispersionAntes != null) {
       mensaje
@@ -983,36 +886,15 @@ public class SimulacionConfiguracionService {
     if (nivelaciones.size() >= tope) {
       mensaje.append(" Se alcanzó el máximo de movimientos por ejecución.");
     }
-    if (!reparto.mezclasSinSalida().isEmpty()) {
-      mensaje
-          .append(" No se pudo separar CL1 y CL2 en ")
-          .append(
-              reparto.mezclasSinSalida().stream()
-                  .map(ctx::nombreChute)
-                  .sorted(ORDEN_NATURAL)
-                  .collect(Collectors.joining(", ")))
-          .append(": no hay otro chute libre de esos clusters.");
-    }
 
     // Las rutas se leyeron en solo lectura: los chutes nuevos se guardan en lote.
     lotes.moverRutas(reparto.chutesNuevos());
     Instant momento = Instant.now();
     LanzamientoBalanceo lanzamiento =
         lanzar(archivoId, clusterId, FaseBalanceo.RUTAS, mensaje.toString(), actor, momento);
-    lanzamiento.setRutas(separaciones.size() + nivelaciones.size());
-    lanzamiento.setSeparaciones(separaciones.size());
+    lanzamiento.setRutas(nivelaciones.size());
     Long lanzamientoId = lanzamiento.getId();
     List<HistorialBalanceo> logs = new ArrayList<>();
-    separaciones.forEach(
-        (t) ->
-            logs.add(
-                movimiento(
-                    archivoId,
-                    lanzamientoId,
-                    t,
-                    HistorialBalanceo.MOTIVO_SEPARACION,
-                    actor,
-                    momento)));
     nivelaciones.forEach(
         (t) ->
             logs.add(
@@ -1041,11 +923,10 @@ public class SimulacionConfiguracionService {
   /**
    * Reparto de rutas por carga de un cluster. Cada cluster es una ola que
    * corre sola, así que lo que se iguala es la carga de ese cluster en cada
-   * chute que lo atiende (no la carga total del chute). Conoce todas las rutas
-   * para saber qué clusters hay en cada chute, pero solo mueve las del cluster
-   * lanzado (y, al separar CL1/CL2, las de su incompatible si aún no empezó).
-   * Las rutas de cada (cluster, chute) van ordenadas por bultos: elegir la
-   * ruta a mover cuesta log(n), no recorrer todas.
+   * chute que lo atiende (no la carga total del chute): solo necesita y mueve
+   * las rutas del cluster lanzado. Las rutas de cada (cluster, chute) van
+   * ordenadas por bultos: elegir la ruta a mover cuesta log(n), no recorrer
+   * todas.
    */
   private static final class Reparto {
     /** La ola se da por pareja si la diferencia entre chutes es ≤ 10 % de su promedio. */
@@ -1057,29 +938,14 @@ public class SimulacionConfiguracionService {
     private final Map<Par, TreeMap<BigDecimal, ArrayDeque<RutaProyeccion>>> rutas = new HashMap<>();
     private final Map<Par, Integer> cuenta = new HashMap<>();
     private final Map<Long, Integer> rutasPorCluster = new HashMap<>();
-    /** Clusters con rutas en cada chute, para validar la mezcla CL1/CL2. */
-    private final Map<Long, Set<Long>> clustersPorChute = new HashMap<>();
-    private final Map<Long, BigDecimal> bultosChute = new HashMap<>();
-    private final Set<Long> chutes = new HashSet<>();
-    private final Map<Long, Integer> numerosCluster;
-    private final Set<Long> mezclasSinSalida = new TreeSet<>();
     /** Chute final de cada ruta movida, para guardarlo en lote. */
     private final Map<Long, Long> chutesNuevos = new LinkedHashMap<>();
 
-    /** Los chutes del registro, incluso vacíos: son destino válido al separar CL1/CL2. */
-    Reparto(
-        List<RutaProyeccion> todas, Set<Long> chutesRegistro, Map<Long, Integer> numerosCluster) {
-      this.numerosCluster = numerosCluster;
-      chutes.addAll(chutesRegistro);
-      for (RutaProyeccion ruta : todas) {
+    Reparto(List<RutaProyeccion> rutasCluster) {
+      for (RutaProyeccion ruta : rutasCluster) {
         poner(ruta, ruta.getClusterId(), ruta.getChuteId());
         rutasPorCluster.merge(ruta.getClusterId(), 1, Integer::sum);
-        chutes.add(ruta.getChuteId());
       }
-    }
-
-    Set<Long> mezclasSinSalida() {
-      return mezclasSinSalida;
     }
 
     Map<Long, Long> chutesNuevos() {
@@ -1096,64 +962,6 @@ public class SimulacionConfiguracionService {
      */
     Integer dispersion(Long cluster) {
       return diferenciaBultos(carga.getOrDefault(cluster, Map.of()).values());
-    }
-
-    /**
-     * Separa el cluster de su incompatible (CL1 con CL2) en el primer chute
-     * donde comparten: saca la ruta más pesada del que tenga menos rutas allí
-     * (si no tiene adónde ir, prueba con el otro). Solo se mueven rutas de los
-     * clusters movibles: el que se trabaja y los que aún no empezaron, nunca uno
-     * cerrado. Prefiere otro chute de su ola; si no hay, el chute compatible
-     * menos cargado. Null cuando no quedan mezclas que separar.
-     */
-    Traslado separar(Long cluster, Set<Long> movibles) {
-      List<Long> ordenados = new ArrayList<>(carga.getOrDefault(cluster, Map.of()).keySet());
-      ordenados.sort(Comparator.naturalOrder());
-      for (Long chute : ordenados) {
-        if (mezclasSinSalida.contains(chute) || admite(chute, cluster)) {
-          continue;
-        }
-        List<Long> salientes =
-            clustersPorChute.getOrDefault(chute, Set.of()).stream()
-                .filter(movibles::contains)
-                .filter(
-                    (otro) ->
-                        otro.equals(cluster)
-                            || clusterEnConflicto(List.of(otro), cluster, numerosCluster) != null)
-                .sorted(
-                    Comparator.comparingInt((Long otro) -> rutasEn(otro, chute))
-                        .thenComparing(Comparator.naturalOrder()))
-                .toList();
-        for (Long saliente : salientes) {
-          Long destino = destinoSeparacion(saliente, chute);
-          if (destino != null) {
-            RutaProyeccion ruta =
-                rutas.get(new Par(saliente, chute)).lastEntry().getValue().peekFirst();
-            trasladar(ruta, saliente, chute, destino);
-            return new Traslado(ruta, chute, destino);
-          }
-        }
-        mezclasSinSalida.add(chute);
-      }
-      return null;
-    }
-
-    private Long destinoSeparacion(Long cluster, Long origen) {
-      Comparator<Long> porCarga =
-          Comparator.comparing(
-              (Long chute) -> carga.get(cluster).getOrDefault(chute, BigDecimal.ZERO));
-      Long mismaOla =
-          carga.get(cluster).keySet().stream()
-              .filter((chute) -> !chute.equals(origen) && admite(chute, cluster))
-              .min(porCarga)
-              .orElse(null);
-      if (mismaOla != null) {
-        return mismaOla;
-      }
-      return chutes.stream()
-          .filter((chute) -> !chute.equals(origen) && admite(chute, cluster))
-          .min(Comparator.comparing((Long chute) -> bultosChute.getOrDefault(chute, BigDecimal.ZERO)))
-          .orElse(null);
     }
 
     /**
@@ -1213,16 +1021,6 @@ public class SimulacionConfiguracionService {
       return new Traslado(mejor, cargado, liviano);
     }
 
-    private int rutasEn(Long cluster, Long chute) {
-      return cuenta.getOrDefault(new Par(cluster, chute), 0);
-    }
-
-    /** CL1 y CL2 no pueden quedar juntos: el chute admite al cluster si no crea esa mezcla. */
-    private boolean admite(Long chute, Long cluster) {
-      return !mezclaRestringida(
-          clustersPorChute.getOrDefault(chute, Set.of()), cluster, numerosCluster);
-    }
-
     private void poner(RutaProyeccion ruta, Long cluster, Long chute) {
       Par par = new Par(cluster, chute);
       rutas
@@ -1246,14 +1044,11 @@ public class SimulacionConfiguracionService {
         cuenta.remove(par);
         rutas.remove(par);
         carga.get(cluster).remove(chute);
-        clustersPorChute.get(chute).remove(cluster);
       }
     }
 
     private void sumar(Long cluster, Long chute, BigDecimal bultos) {
       carga.computeIfAbsent(cluster, (id) -> new HashMap<>()).merge(chute, bultos, BigDecimal::add);
-      bultosChute.merge(chute, bultos, BigDecimal::add);
-      clustersPorChute.computeIfAbsent(chute, (id) -> new HashSet<>()).add(cluster);
     }
 
     private void trasladar(RutaProyeccion ruta, Long cluster, Long origen, Long destino) {
@@ -1951,7 +1746,6 @@ public class SimulacionConfiguracionService {
     }
     Map<Long, Set<Long>> clustersOriginales = clustersPorChute(cargaOriginal);
     Map<Long, Set<Long>> clustersActuales = clustersPorChute(cargaActual);
-    Map<Long, Integer> numeros = numerosCluster(ctx.clusters());
     // Operarios del chute tras el balanceo: los de su ola en la vista de un
     // cluster; en el resumen, el máximo entre sus olas. Un chute que se quedó
     // sin carga ya no trabaja en ninguna: 0.
@@ -2012,21 +1806,12 @@ public class SimulacionConfiguracionService {
                       despues.codEntero(),
                       List.copyOf(clustersPorChute.getOrDefault(chuteId, Set.of())),
                       nombresCluster(clustersOriginales.get(chuteId), ctx),
-                      nombresCluster(clustersActuales.get(chuteId), ctx),
-                      mezclaIncompatible(clustersOriginales.get(chuteId), numeros),
-                      mezclaIncompatible(clustersActuales.get(chuteId), numeros),
-                      clustersSeparados(
-                          clustersOriginales.get(chuteId), clustersActuales.get(chuteId), numeros, ctx));
+                      nombresCluster(clustersActuales.get(chuteId), ctx));
                 })
             .toList();
 
     SimulacionKpisResponse kpis =
         new SimulacionKpisResponse(anulable(tiempoOriginal), anulable(tiempoBalanceado), rutasMovidas);
-    List<Par> ocupados =
-        cargaActual.entrySet().stream()
-            .filter((entrada) -> entrada.getValue().rutas() > 0)
-            .map(Map.Entry::getKey)
-            .toList();
     List<Long> orden = orden(ctx);
     Map<Long, Integer> rutasMovidasPorCluster = new HashMap<>();
     rutaRepo
@@ -2062,7 +1847,6 @@ public class SimulacionConfiguracionService {
         kpis,
         clusters,
         chutes,
-        mezclas(ocupados, ctx),
         movimientos,
         cambiosCluster,
         olas,
@@ -2167,37 +1951,6 @@ public class SimulacionConfiguracionService {
     return ola == null ? 0 : ola.getOperarios();
   }
 
-  /**
-   * Chutes que hoy mezclan CL1 y CL2 (pares cluster/chute con rutas). La carga
-   * ya se aceptó con esos datos, así que se informa como advertencia: el
-   * balanceo los separa primero y un movimiento manual tampoco puede crearlos.
-   */
-  private List<ChuteMezcladoResponse> mezclas(Collection<Par> ocupados, Contexto ctx) {
-    Map<Long, Integer> numeros = numerosCluster(ctx.clusters());
-    Map<Long, Set<Long>> clustersPorChute = new LinkedHashMap<>();
-    ocupados.forEach(
-        (par) ->
-            clustersPorChute
-                .computeIfAbsent(par.chuteId(), (id) -> new LinkedHashSet<>())
-                .add(par.clusterId()));
-    return clustersPorChute.entrySet().stream()
-        .filter((entrada) -> mezclaIncompatible(entrada.getValue(), numeros))
-        .sorted(
-            Comparator.comparing(
-                (Map.Entry<Long, Set<Long>> entrada) -> ctx.nombreChute(entrada.getKey()),
-                ORDEN_NATURAL))
-        .map(
-            (entrada) ->
-                new ChuteMezcladoResponse(
-                    entrada.getKey(),
-                    ctx.nombreChute(entrada.getKey()),
-                    entrada.getValue().stream()
-                        .map(ctx::nombreCluster)
-                        .sorted(ORDEN_NATURAL)
-                        .toList()))
-        .toList();
-  }
-
   /** Clusters con rutas en cada chute para una distribución de carga. */
   private static Map<Long, Set<Long>> clustersPorChute(Map<Par, Estadistica> carga) {
     Map<Long, Set<Long>> resultado = new HashMap<>();
@@ -2214,110 +1967,6 @@ public class SimulacionConfiguracionService {
     return clusters == null
         ? List.of()
         : clusters.stream().map(ctx::nombreCluster).sorted(ORDEN_NATURAL).toList();
-  }
-
-  /**
-   * Clusters CL1/CL2 que el chute tenía mezclados al cargar y que ya no están
-   * en él: salieron para cumplir la regla. Vacío si no había mezcla.
-   */
-  private static List<String> clustersSeparados(
-      Set<Long> originales, Set<Long> actuales, Map<Long, Integer> numeros, Contexto ctx) {
-    if (!mezclaIncompatible(originales, numeros)) {
-      return List.of();
-    }
-    Set<Long> ahora = actuales == null ? Set.of() : actuales;
-    return originales.stream()
-        .filter((cluster) -> !ahora.contains(cluster))
-        .filter((cluster) -> CLUSTERS_INCOMPATIBLES.contains(numeros.get(cluster)))
-        .map(ctx::nombreCluster)
-        .sorted(ORDEN_NATURAL)
-        .toList();
-  }
-
-  /** True si entre los clusters hay más de uno de {@link #CLUSTERS_INCOMPATIBLES} (CL1 con CL2). */
-  private static boolean mezclaIncompatible(Collection<Long> clusters, Map<Long, Integer> numeros) {
-    if (clusters == null) {
-      return false;
-    }
-    return clusters.stream()
-            .map(numeros::get)
-            .filter((numero) -> numero != null && CLUSTERS_INCOMPATIBLES.contains(numero))
-            .distinct()
-            .count()
-        > 1;
-  }
-
-  /**
-   * Número del cluster según {@link #CLUSTER_NUMERADO} («CL1», «CL 2», «C1»).
-   * Null si el nombre no sigue ese formato (p. ej. «CP1»).
-   */
-  static Integer numeroCluster(String nombre) {
-    if (nombre == null) {
-      return null;
-    }
-    Matcher coincidencia =
-        CLUSTER_NUMERADO.matcher(ESPACIOS.matcher(nombre).replaceAll("").toUpperCase(Locale.ROOT));
-    return coincidencia.matches() ? aNumero(coincidencia.group(1)) : null;
-  }
-
-  private static Integer aNumero(String digitos) {
-    try {
-      return Integer.valueOf(digitos);
-    } catch (NumberFormatException error) {
-      return null;
-    }
-  }
-
-  private static Map<Long, Integer> numerosCluster(Map<Long, String> nombres) {
-    Map<Long, Integer> numeros = new HashMap<>();
-    nombres.forEach(
-        (id, nombre) -> {
-          Integer numero = numeroCluster(nombre);
-          if (numero != null) {
-            numeros.put(id, numero);
-          }
-        });
-    return numeros;
-  }
-
-  /**
-   * Cluster ya presente en el chute que impide agregar el cluster indicado:
-   * solo CL1 y CL2 no pueden compartir chute. Null si la mezcla es válida.
-   */
-  private static Long clusterEnConflicto(
-      Collection<Long> presentes, Long cluster, Map<Long, Integer> numeros) {
-    Integer numero = numeros.get(cluster);
-    if (numero == null || !CLUSTERS_INCOMPATIBLES.contains(numero)) {
-      return null;
-    }
-    for (Long presente : presentes) {
-      Integer otro = numeros.get(presente);
-      if (otro != null && !otro.equals(numero) && CLUSTERS_INCOMPATIBLES.contains(otro)) {
-        return presente;
-      }
-    }
-    return null;
-  }
-
-  /** Clusters que no pueden compartir chute con el indicado (CL1 ↔ CL2); vacío si no es CL1/CL2. */
-  private static Set<Long> incompatiblesDe(Long cluster, Map<Long, Integer> numeros) {
-    Integer numero = numeros.get(cluster);
-    if (numero == null || !CLUSTERS_INCOMPATIBLES.contains(numero)) {
-      return Set.of();
-    }
-    Set<Long> otros = new HashSet<>();
-    numeros.forEach(
-        (id, otro) -> {
-          if (!otro.equals(numero) && CLUSTERS_INCOMPATIBLES.contains(otro)) {
-            otros.add(id);
-          }
-        });
-    return otros;
-  }
-
-  private static boolean mezclaRestringida(
-      Collection<Long> presentes, Long cluster, Map<Long, Integer> numeros) {
-    return clusterEnConflicto(presentes, cluster, numeros) != null;
   }
 
   private record Par(Long clusterId, Long chuteId) {}
@@ -2483,7 +2132,6 @@ public class SimulacionConfiguracionService {
     List<CargaRutas> carga = rutaRepo.cargaPorArchivo(ctx.archivo().getId());
     Map<Long, BigDecimal> limites = limites(ctx);
     Map<Long, Integer> operarios = operariosBase(ctx);
-    Map<Long, Integer> numeros = numerosCluster(ctx.clusters());
     Map<Long, Integer> diferenciasOriginales =
         diferenciasPorCluster(rutaRepo.cargaOriginalPorArchivo(ctx.archivo().getId()));
     List<ClusterParametroResponse> clusters =
@@ -2494,11 +2142,6 @@ public class SimulacionConfiguracionService {
                         id,
                         ctx.nombreCluster(id),
                         limites.getOrDefault(id, BigDecimal.ZERO),
-                        ctx.parametrosCluster().keySet().stream()
-                            .filter(
-                                (otro) ->
-                                    clusterEnConflicto(List.of(otro), id, numeros) != null)
-                            .toList(),
                         ctx.parametrosCluster().get(id).getEstado(),
                         diferenciasOriginales.get(id)))
             .sorted(Comparator.comparing(ClusterParametroResponse::nombre, ORDEN_NATURAL))
@@ -2549,13 +2192,7 @@ public class SimulacionConfiguracionService {
         topePorChute(ctx, operarios),
         clusters,
         chutes,
-        cargaResponse,
-        mezclas(
-            carga.stream()
-                .filter((fila) -> fila.getRutas() > 0)
-                .map((fila) -> new Par(fila.getClusterId(), fila.getChuteId()))
-                .toList(),
-            ctx));
+        cargaResponse);
   }
 
   private static Map<Long, BigDecimal> limites(Contexto ctx) {

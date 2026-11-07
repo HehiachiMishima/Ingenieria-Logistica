@@ -18,6 +18,4 @@ public record ConfiguracionSimulacionResponse(
     int topePorChute,
     List<ClusterParametroResponse> clusters,
     List<ChuteParametroResponse> chutes,
-    List<CargaSimulacionResponse> carga,
-    /** Chutes que hoy mezclan CL1 y CL2: el balanceo los separa. */
-    List<ChuteMezcladoResponse> mezclas) {}
+    List<CargaSimulacionResponse> carga) {}

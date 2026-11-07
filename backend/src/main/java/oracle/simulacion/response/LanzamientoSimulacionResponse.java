@@ -13,5 +13,4 @@ public record LanzamientoSimulacionResponse(
     Instant creadoEn,
     Long creadoPor,
     int rutas,
-    int separaciones,
     int chutesOperarios) {}

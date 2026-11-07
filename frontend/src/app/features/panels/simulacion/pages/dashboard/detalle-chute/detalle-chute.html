@@ -1,6 +1,6 @@
 <ul class="rc-fichas" aria-label="Clusters de cada chute antes y después">
   @for (c of chutes(); track c.id) {
-    <li class="rc-ficha" [class.rc-ficha--alerta]="c.mezclaBalanceada">
+    <li class="rc-ficha">
       <strong class="rc-ficha__chute">{{ c.chute }}</strong>
       <span class="rc-ficha__rutas" title="Rutas al cargar → tras el balanceo">
         {{ formatearNumero(c.rutasOriginal) }} → {{ formatearNumero(c.rutasBalanceado) }} rutas
@@ -18,11 +18,6 @@
       >
         {{ c.clustersBalanceado.length > 0 ? c.clustersBalanceado.join(' · ') : 'Sin rutas' }}
       </span>
-      @if (c.mezclaBalanceada) {
-        <span class="ui-badge ui-badge--danger">CL1 y CL2 juntos</span>
-      } @else if (c.mezclaOriginal) {
-        <span class="ui-badge ui-badge--success">CL1 y CL2 separados</span>
-      }
       @if (c.tiempoBalanceado === null) {
         <span class="ui-badge ui-badge--neutral" title="Asigna operarios para calcular el tiempo">
           Sin operarios
@@ -46,17 +41,6 @@
     </li>
   }
 </ul>
-@if (mezclados().length > 0) {
-  <p class="rc-aviso" role="alert">
-    <ui-icon name="alerta" [size]="15" />
-    CL1 y CL2 no pueden compartir chute y siguen juntos en
-    {{
-      mezclados()
-        .map((c) => c.chute)
-        .join(', ')
-    }}. No hubo otro chute libre para separarlos: mueve sus rutas desde Configuración.
-  </p>
-}
 
 <section class="rc-resumen" aria-label="Flujo de rutas de los chutes elegidos">
   @if (flujo(); as f) {
@@ -295,9 +279,6 @@
                     <td class="num">{{ formatearNumero(ruta.conteoCod, 0) }}</td>
                     <td>
                       <span class="rc-mov" [class]="'rc-mov--' + mov.tipo">{{ mov.texto }}</span>
-                      @if (mov.separa) {
-                        <span class="rc-separa">Separa CL1/CL2</span>
-                      }
                       @if (cambioCluster) {
                         <span class="rc-separa">{{ cambioCluster }}</span>
                       }

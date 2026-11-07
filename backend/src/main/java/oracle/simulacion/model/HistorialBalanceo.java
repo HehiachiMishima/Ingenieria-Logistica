@@ -33,7 +33,6 @@ public class HistorialBalanceo {
   public static final String ACCION_CAMBIAR_CLUSTER = "CAMBIAR_CLUSTER";
 
   public static final String MOTIVO_BALANCEO = "BALANCEO";
-  public static final String MOTIVO_SEPARACION = "SEPARACION";
   public static final String MOTIVO_MANUAL = "MANUAL";
 
   @Id

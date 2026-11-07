@@ -84,12 +84,6 @@ const DETALLES: readonly GrupoDetalle[] = [
     titulo: 'Reglas',
     items: [
       {
-        icono: 'alerta',
-        termino: 'CL1 y CL2',
-        texto:
-          'Nunca comparten chute. Si el Excel los mezcla, al balancear el primero sale de ese chute el que tenga menos rutas allí.',
-      },
-      {
         icono: 'lock',
         termino: 'Cluster cerrado',
         texto:

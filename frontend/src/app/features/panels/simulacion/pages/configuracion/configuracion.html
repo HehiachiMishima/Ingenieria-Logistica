@@ -380,12 +380,6 @@
     }
   </span>
 
-  @if (!c.cerrado && c.mezclas.length > 0) {
-    <p class="mz-panel__mezcla" [title]="'Comparte con un cluster incompatible: ' + c.mezclas.join(', ')">
-      <ui-icon name="alerta" [size]="12" /> Mezcla en {{ c.mezclas.join(', ') }}
-    </p>
-  }
-
   <dl class="mz-panel__metricas">
     <div>
       <dt>Rutas</dt>

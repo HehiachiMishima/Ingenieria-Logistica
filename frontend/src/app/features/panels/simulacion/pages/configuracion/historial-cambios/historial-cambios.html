@@ -41,9 +41,6 @@
             @if (grupo.rutas > 0) {
               <li>{{ (grupo.rutas | numero) }} ruta(s) movida(s)</li>
             }
-            @if (grupo.separaciones > 0) {
-              <li>{{ (grupo.separaciones | numero) }} por separar CL1/CL2</li>
-            }
             @if (grupo.chutesOperarios > 0) {
               <li>{{ (grupo.chutesOperarios | numero) }} chute(s) con otra dotación</li>
             }
@@ -105,15 +102,7 @@
                             </td>
                           } @else {
                             <td>
-                              <span
-                                class="ui-badge"
-                                [class.ui-badge--success]="cambio.motivo === 'SEPARACION'"
-                                [class.ui-badge--warning]="cambio.motivo !== 'SEPARACION'"
-                              >
-                                {{
-                                  cambio.motivo === 'SEPARACION' ? 'Separa CL1/CL2' : 'Ruta movida'
-                                }}
-                              </span>
+                              <span class="ui-badge ui-badge--warning">Ruta movida</span>
                             </td>
                             <td class="u-mono">{{ cambio.ruta ?? '—' }}</td>
                             <td>

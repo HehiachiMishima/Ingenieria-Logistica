@@ -44,8 +44,6 @@ export interface ResumenCluster {
   /** Diferencia de bultos entre sus chutes (%): hoy y al cargar el Excel; null con un solo chute. */
   dispersion: number | null;
   diferenciaOriginal: number | null;
-  /** Chutes donde comparte con su incompatible: al balancearlo, sus rutas salen de ahí. */
-  mezclas: string[];
   operarios: number;
   tiempo: number;
   limite: number;
@@ -101,9 +99,6 @@ export function resumirClusters(
       cargas.length < 2
         ? null
         : Math.round(((Math.max(...cargas) - Math.min(...cargas)) / promedio) * 100);
-    const incompatibles = new Set(
-      cfg.clusters.filter((otro) => cluster.incompatibles.includes(otro.id)).map((o) => o.nombre),
-    );
     const conOperarios = cluster.estado === 'LISTO' || cluster.estado === 'CERRADO';
     let tiempo = 0;
     let operarios = 0;
@@ -163,13 +158,6 @@ export function resumirClusters(
       chutes: cargas.length,
       dispersion,
       diferenciaOriginal: cluster.diferenciaOriginal,
-      mezclas: cfg.mezclas
-        .filter(
-          (mezcla) =>
-            mezcla.clusters.includes(cluster.nombre) &&
-            mezcla.clusters.some((nombre) => incompatibles.has(nombre)),
-        )
-        .map((mezcla) => mezcla.chute),
       operarios,
       tiempo,
       limite,

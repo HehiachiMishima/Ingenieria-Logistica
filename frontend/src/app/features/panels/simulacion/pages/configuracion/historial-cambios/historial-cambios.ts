@@ -34,7 +34,6 @@ interface GrupoHistorial {
   fecha: string | null;
   creadoPor: number | null;
   rutas: number;
-  separaciones: number;
   chutesOperarios: number;
 }
 
@@ -87,7 +86,6 @@ export class SimulacionHistorialCambios {
       fecha: lanzamiento.creadoEn,
       creadoPor: lanzamiento.creadoPor,
       rutas: lanzamiento.rutas,
-      separaciones: lanzamiento.separaciones,
       chutesOperarios: lanzamiento.chutesOperarios,
     }));
     if (historial.sinLanzamiento > 0) {
@@ -99,7 +97,6 @@ export class SimulacionHistorialCambios {
         fecha: null,
         creadoPor: null,
         rutas: historial.sinLanzamiento,
-        separaciones: 0,
         chutesOperarios: 0,
       });
     }

@@ -33,8 +33,6 @@ type TipoFiltro = '' | 'B2C' | 'B2B';
 interface Movimiento {
   texto: string;
   tipo: 'quedo' | 'interna' | 'sale' | 'llega';
-  /** Salió para separar CL1 de CL2. */
-  separa?: boolean;
 }
 
 /** Estado de un lado del chute (antes o después): su página, totales y carga. */
@@ -61,8 +59,7 @@ class LadoRutas {
 /**
  * Detalle de los chutes elegidos en el filtro del dashboard: sus rutas al
  * cargar el Excel frente a las que tienen tras el balanceo. Vive dentro de la
- * página (sin modal). Las rutas se listan agrupadas por cluster: CL1 y CL2 no
- * pueden compartir chute, así que cada cluster se lee por separado.
+ * página (sin modal). Las rutas se listan agrupadas por cluster.
  */
 @Component({
   selector: 'app-simulacion-detalle-chute',
@@ -102,9 +99,6 @@ export class SimulacionDetalleChute {
 
   readonly ids = computed(() => this.chutes().map((chute) => chute.id));
   private readonly elegidos = computed(() => new Set(this.ids()));
-  private readonly porId = computed(
-    () => new Map(this.chutes().map((chute) => [chute.id, chute] as const)),
-  );
   readonly varios = computed(() => this.chutes().length > 1);
 
   /** Solo los clusters que los chutes elegidos atienden antes o después. */
@@ -167,9 +161,6 @@ export class SimulacionDetalleChute {
       pctLlegaron: (llegaron / escala) * 100,
     };
   });
-
-  /** Chutes que hoy juntan CL1 y CL2: sin balancear o sin otro chute libre para separarlos. */
-  readonly mezclados = computed(() => this.chutes().filter((chute) => chute.mezclaBalanceada));
 
   constructor() {
     // Cada selección de chutes (o lado) limpia los filtros y recarga lo visible.
@@ -331,17 +322,11 @@ export class SimulacionDetalleChute {
     if (lado === 'ANTES') {
       return elegidos.has(ruta.chuteId)
         ? { texto: `Pasó a ${ruta.chute}`, tipo: 'interna' }
-        : { texto: `Salió a ${ruta.chute}`, tipo: 'sale', separa: this.separaMezcla(ruta) };
+        : { texto: `Salió a ${ruta.chute}`, tipo: 'sale' };
     }
     return elegidos.has(ruta.chuteOriginalId)
       ? { texto: `Vino de ${ruta.chuteOriginal}`, tipo: 'interna' }
       : { texto: `Llegó de ${ruta.chuteOriginal}`, tipo: 'llega' };
   }
 
-  /** La ruta salió de su chute para separar CL1 y CL2 (no por un ajuste de tiempos). */
-  private separaMezcla(ruta: RutaSimulacion): boolean {
-    return (
-      this.porId().get(ruta.chuteOriginalId)?.clustersSeparados.includes(ruta.cluster) ?? false
-    );
-  }
 }

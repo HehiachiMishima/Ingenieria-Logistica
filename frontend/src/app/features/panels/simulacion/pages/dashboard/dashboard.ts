@@ -345,7 +345,6 @@ export class SimulacionDashboard {
     const difDespues = dispersion(despues);
     const maxAntes = Math.max(0, ...antes);
     const maxDespues = Math.max(0, ...despues);
-    const separados = chutes.filter((chute) => chute.clustersSeparados.length > 0).length;
     return [
       {
         etiqueta: 'Diferencia de bultos',
@@ -372,10 +371,7 @@ export class SimulacionDashboard {
         valor: `${formatearNumero(kpis.rutasMovidas)} rutas`,
         icono: 'flecha',
         color: 'var(--violet)',
-        detalle:
-          separados > 0
-            ? `en otro chute · separa CL1 y CL2 en ${formatearNumero(separados)} chute(s)`
-            : 'en otro chute para igualar sus bultos',
+        detalle: 'en otro chute para igualar sus bultos',
       },
     ];
   });

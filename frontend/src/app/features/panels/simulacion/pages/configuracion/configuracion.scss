@@ -560,17 +560,6 @@
   margin-top: calc(var(--space-2) * -1);
 }
 
-/* CL1/CL2 en el mismo chute: aviso de una línea (el detalle está en «¿Cómo balancea?»). */
-.mz-panel__mezcla {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin: 0;
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  color: var(--warning);
-}
-
 .mz-panel__fuera {
   color: var(--danger) !important;
 }
