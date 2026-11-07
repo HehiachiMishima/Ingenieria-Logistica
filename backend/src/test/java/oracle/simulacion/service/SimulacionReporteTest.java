@@ -44,6 +44,10 @@ class SimulacionReporteTest {
       assertTrue(textos.contains("Reporte ejecutivo de simulación"), textos.toString());
       assertTrue(textos.contains("CL1"), textos.toString());
       assertTrue(textos.stream().anyMatch((t) -> t.startsWith("• 1 de 1 clusters cumplen")), textos.toString());
+      // Límite 2 h y cierre conseguido 1 h 30 m: 25 % por debajo de lo establecido.
+      assertTrue(textos.contains("+25 %"), textos.toString());
+      assertTrue(textos.contains("Cierre establecido") && textos.contains("Cierre conseguido"), textos.toString());
+      assertTrue(!textos.contains("Tiempo antes") && !textos.contains("Estado"), textos.toString());
     }
   }
 

@@ -267,6 +267,63 @@
   }
 }
 
+/* Cuadro ejecutivo antes vs. después: «antes» atenuado, «después» en negrita con su variación. */
+.rep-cuadro {
+  margin-bottom: var(--space-4);
+
+  thead th {
+    text-align: center;
+  }
+
+  &__grupo {
+    border-left: 1px solid rgba(255, 255, 255, 0.18);
+  }
+
+  &__antes {
+    color: var(--text-3);
+  }
+
+  tfoot td {
+    font-weight: 800;
+    background: var(--surface-2);
+    border-top: 2px solid var(--border-strong, var(--border));
+  }
+}
+
+.rep-delta {
+  display: block;
+  font-size: 0.64rem;
+  font-weight: 700;
+  color: var(--text-3);
+
+  &--sube {
+    color: var(--info, var(--accent));
+  }
+
+  &--baja {
+    color: var(--warning);
+  }
+}
+
+.rep-nota {
+  margin: calc(var(--space-2) * -1) 0 var(--space-3);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.rep-bloque--comparativo {
+  overflow: visible;
+  break-inside: avoid;
+}
+
+.rep-bloque__grafico {
+  padding: var(--space-3) var(--space-3) 0;
+}
+
+.rep-bloque--comparativo .rep-tabla-wrap {
+  padding: 0 var(--space-3);
+}
+
 .rep-conclusiones {
   margin: 0;
   padding-left: var(--space-5);

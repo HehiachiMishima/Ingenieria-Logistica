@@ -10,8 +10,9 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
-import { EMPTY, Observable, expand, forkJoin, map, reduce } from 'rxjs';
+import { EMPTY, Observable, expand, forkJoin, map, of, reduce, switchMap } from 'rxjs';
 import { mensajeDeError } from '../../../../../core/errors/error.util';
 import { BarraDato, BarChart } from '../../../../../shared/ui/charts/bar-chart';
 import { ComparativoChart, GrupoComparativo } from '../../../../../shared/ui/charts/comparativo-chart';
@@ -42,6 +43,26 @@ interface Datos {
   cfg: ConfiguracionSimulacion;
   dash: DashboardSimulacion;
   rutas: RutaSimulacion[];
+  /** Vista del dashboard de cada cluster (misma posición que cfg.clusters): su carga por chute. */
+  porCluster: DashboardSimulacion[];
+}
+
+/** Las cinco métricas del comparativo antes vs. después (como el cuadro del dashboard). */
+const METRICAS = [
+  { id: 'rutas', nombre: 'Rutas', antes: 'rutasOriginal', despues: 'rutasBalanceado' },
+  { id: 'bultos', nombre: 'Bultos', antes: 'bultosOriginal', despues: 'bultosBalanceado' },
+  { id: 'unidades', nombre: 'Unidades', antes: 'unidadesOriginal', despues: 'unidadesBalanceado' },
+  { id: 'lineas', nombre: 'Líneas', antes: 'lineasOriginal', despues: 'lineasBalanceado' },
+  { id: 'cod', nombre: 'COD', antes: 'codOriginal', despues: 'codBalanceado' },
+] as const;
+
+type ClaveMetrica = (typeof METRICAS)[number]['antes'] | (typeof METRICAS)[number]['despues'];
+
+/** Fila del cuadro ejecutivo: una celda antes/después por métrica, con su variación. */
+interface FilaComparativa {
+  etiqueta: string;
+  color?: string;
+  celdas: { antes: number; despues: number; variacion: string; sube: boolean | null }[];
 }
 
 interface ColumnaChute {
@@ -87,7 +108,7 @@ const CONCEPTOS: { clave: keyof Pick<CargaSimulacion, 'bultos' | 'lineas' | 'uni
   selector: 'app-simulacion-reporte',
   changeDetection: ChangeDetectionStrategy.OnPush,
   encapsulation: ViewEncapsulation.None,
-  imports: [Icon, Kpi, ComparativoChart, BarChart],
+  imports: [NgTemplateOutlet, Icon, Kpi, ComparativoChart, BarChart],
   templateUrl: './reporte.html',
   styleUrl: './reporte.scss',
 })
@@ -102,7 +123,19 @@ export class SimulacionReporteEjecutivo {
   readonly error = signal<string | null>(null);
   readonly generado = new Date();
   readonly formatearEntero = formatearEntero;
-  readonly formatoHoras = (valor: number): string => formatearHoras(valor);
+  /**
+   * Horas cortas para las cifras de los gráficos («2h31», «8h», «45m»): caben
+   * sobre la barra (34 px). En tablas y textos se usa el formato completo.
+   */
+  readonly formatoHoras = (valor: number): string => {
+    const minutos = Math.round(valor * 60);
+    const h = Math.floor(minutos / 60);
+    const m = minutos % 60;
+    if (h === 0) {
+      return `${m}m`;
+    }
+    return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, '0')}`;
+  };
   readonly formatoEntero = (valor: number): string => formatearEntero(valor);
 
   constructor() {
@@ -117,7 +150,16 @@ export class SimulacionReporteEjecutivo {
       dash: this.api.dashboard(id),
       rutas: this.todasLasRutas(id),
     })
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        // Después, la vista de cada cluster (su carga por chute antes vs. después).
+        switchMap((base) =>
+          (base.cfg.clusters.length === 0
+            ? of([] as DashboardSimulacion[])
+            : forkJoin(base.cfg.clusters.map((cluster) => this.api.dashboard(id, cluster.id)))
+          ).pipe(map((porCluster) => ({ ...base, porCluster }))),
+        ),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: (datos) => {
           this.datos.set(datos);
@@ -174,34 +216,67 @@ export class SimulacionReporteEjecutivo {
     return resumirClusters(d.cfg, Number(d.cfg.velocidadBase) || 0, limites);
   });
 
+  /**
+   * Cierre establecido (límite de horas) frente al conseguido (tiempo de la ola
+   * balanceada) de las olas que tienen ambos: la base de «Mejora del tiempo».
+   */
+  readonly cierres = computed(() => {
+    const d = this.datos();
+    if (!d) {
+      return { establecido: 0, conseguido: 0, olas: 0, mejora: null as number | null };
+    }
+    let establecido = 0;
+    let conseguido = 0;
+    let olas = 0;
+    for (const c of d.dash.clusters) {
+      const limite = Number(c.limiteHoras) || 0;
+      const real = tiempo(c.tiempoBalanceado);
+      if (limite > 0 && real !== null) {
+        establecido += limite;
+        conseguido += real;
+        olas++;
+      }
+    }
+    return {
+      establecido,
+      conseguido,
+      olas,
+      // Positivo: se cerró antes de lo establecido; negativo: se pasó.
+      mejora: olas > 0 && establecido > 0 ? Math.round(((establecido - conseguido) / establecido) * 100) : null,
+    };
+  });
+
   readonly kpis = computed(() => {
     const d = this.datos();
     if (!d) {
       return [];
     }
-    const antes = tiempo(d.dash.kpis.tiempoOriginal);
-    const despues = tiempo(d.dash.kpis.tiempoBalanceado);
-    const mejora = antes !== null && despues !== null && antes > 0 ? Math.round(((antes - despues) / antes) * 100) : null;
+    const cierres = this.cierres();
     const medibles = d.dash.clusters.filter((c) => Number(c.limiteHoras) > 0 && tiempo(c.tiempoBalanceado) !== null);
     const cumplen = medibles.filter((c) => !c.excede).length;
     const archivo = d.cfg.archivo;
     return [
       {
-        etiqueta: 'Tiempo total',
-        valor: despues === null ? '—' : formatearHoras(despues),
+        etiqueta: 'Cierre conseguido',
+        valor: cierres.olas === 0 ? '—' : formatearHoras(cierres.conseguido),
         detalle:
-          despues === null
+          cierres.olas === 0
             ? 'Se calcula cuando cada ola tiene operarios'
-            : `Antes ${antes === null ? '—' : formatearHoras(antes)}`,
+            : `Establecido ${formatearHoras(cierres.establecido)} · ${cierres.olas} ola(s)`,
         icono: 'reloj',
         color: 'var(--accent)',
       },
       {
         etiqueta: 'Mejora del tiempo',
-        valor: mejora === null ? '—' : `${mejora} %`,
-        detalle: 'Respecto de la proyección del Excel',
+        valor: cierres.mejora === null ? '—' : `${cierres.mejora > 0 ? '+' : ''}${cierres.mejora} %`,
+        detalle:
+          cierres.mejora === null
+            ? 'Cierre conseguido frente al establecido'
+            : cierres.mejora >= 0
+              ? 'Cierre conseguido por debajo del establecido'
+              : 'Cierre conseguido por encima del establecido',
         icono: 'tendencia',
-        color: 'var(--success)',
+        color: cierres.mejora !== null && cierres.mejora < 0 ? 'var(--danger)' : 'var(--success)',
       },
       {
         etiqueta: 'Clusters que cumplen',
@@ -258,9 +333,9 @@ export class SimulacionReporteEjecutivo {
         chutes: carga.length,
         rutas: carga.reduce((t, f) => t + f.rutas, 0),
         bultos: carga.reduce((t, f) => t + Number(f.bultos), 0),
-        antes: formatearHoras(tiempo(c?.tiempoOriginal ?? null)),
-        despues: formatearHoras(despues),
-        limite: limite > 0 ? formatearHoras(limite) : '—',
+        /** Cierre establecido (límite de horas) y conseguido (tiempo de la ola balanceada). */
+        establecido: limite > 0 ? formatearHoras(limite) : '—',
+        conseguido: despues === null ? '—' : formatearHoras(despues),
         uso: medible ? Math.ceil((despues / limite) * 100) : null,
         cumple: medible ? !c!.excede : null,
         dispersion: r?.dispersion ?? null,
@@ -274,11 +349,18 @@ export class SimulacionReporteEjecutivo {
       return [];
     }
     const frases: string[] = [];
+    const cierres = this.cierres();
+    if (cierres.mejora !== null) {
+      frases.push(
+        `Cierre conseguido de ${formatearHoras(cierres.conseguido)} frente a ${formatearHoras(cierres.establecido)} establecido` +
+          ` (${cierres.mejora >= 0 ? cierres.mejora + ' % por debajo' : -cierres.mejora + ' % por encima'}; ${cierres.olas} ola(s) con límite y operarios).`,
+      );
+    }
     const antes = tiempo(d.dash.kpis.tiempoOriginal);
     const despues = tiempo(d.dash.kpis.tiempoBalanceado);
     if (antes !== null && despues !== null && antes > 0) {
       frases.push(
-        `El tiempo total pasa de ${formatearHoras(antes)} a ${formatearHoras(despues)} (${Math.round(((antes - despues) / antes) * 100)} % de mejora).`,
+        `Frente a la proyección del Excel, el tiempo pasa de ${formatearHoras(antes)} a ${formatearHoras(despues)}.`,
       );
     }
     for (const c of d.dash.clusters) {
@@ -331,29 +413,109 @@ export class SimulacionReporteEjecutivo {
       .map((c) => ({ etiqueta: c.chute, antes: Number(c.bultosOriginal), despues: Number(c.bultosBalanceado) }));
   });
 
-  /** Hay al menos una ola con tiempo calculado (si no, el gráfico de tiempos no aporta). */
-  readonly hayTiempos = computed(() =>
-    this.graficoTiempos().some((g) => !g.textoAntes || !g.textoDespues),
+  /** Cierre establecido (límite) vs. conseguido de cada ola. */
+  readonly graficoCierres = computed<GrupoComparativo[]>(() => {
+    const d = this.datos();
+    if (!d) {
+      return [];
+    }
+    return d.dash.clusters.map((c) => {
+      const limite = Number(c.limiteHoras) || 0;
+      const real = tiempo(c.tiempoBalanceado);
+      return {
+        etiqueta: c.cluster,
+        antes: limite,
+        despues: real ?? 0,
+        ...(limite > 0 ? {} : { textoAntes: 'Sin límite' }),
+        ...(real === null ? { textoDespues: 'Sin operarios' } : {}),
+      };
+    });
+  });
+
+  /** Hay al menos una ola con límite o con cierre conseguido. */
+  readonly hayCierres = computed(() =>
+    this.graficoCierres().some((g) => !g.textoAntes || !g.textoDespues),
   );
+
+  /** Comparativo de todos los clusters: bultos antes vs. después (gráfico). */
+  readonly graficoClusters = computed<GrupoComparativo[]>(() =>
+    (this.datos()?.dash.clusters ?? []).map((c) => ({
+      etiqueta: c.cluster,
+      antes: Number(c.bultosOriginal),
+      despues: Number(c.bultosBalanceado),
+    })),
+  );
+
+  /** Cuadro ejecutivo de todos los clusters: las cinco métricas antes vs. después, más entradas y salidas. */
+  readonly cuadroClusters = computed(() => {
+    const d = this.datos();
+    if (!d) {
+      return { filas: [] as (FilaComparativa & { entraron: number; salieron: number })[], total: null as FilaComparativa | null };
+    }
+    const colores = new Map(this.resumen().map((r) => [r.id, r.color]));
+    const filas = d.dash.clusters.map((c) => ({
+      etiqueta: c.cluster,
+      color: colores.get(c.id),
+      celdas: celdas(c as unknown as Record<ClaveMetrica, number>),
+      entraron: c.rutasEntraron,
+      salieron: c.rutasSalieron,
+    }));
+    return { filas, total: totalDe(filas) };
+  });
+
+  /**
+   * Comparativo de cada cluster por chute (vista del cluster en el dashboard):
+   * gráfico de bultos antes vs. después y su cuadro con las cinco métricas.
+   */
+  readonly comparativosCluster = computed(() => {
+    const d = this.datos();
+    if (!d) {
+      return [];
+    }
+    const colores = new Map(this.resumen().map((r) => [r.id, r.color]));
+    return d.cfg.clusters.map((cluster, i) => {
+      const vista = d.porCluster[i];
+      const chutes = [...(vista?.chutes ?? [])]
+        .filter((c) => Number(c.bultosOriginal) > 0 || Number(c.bultosBalanceado) > 0)
+        .sort((a, b) => compararNombre(a.chute, b.chute));
+      const filas: FilaComparativa[] = chutes.map((c) => ({
+        etiqueta: etiquetaChute(c.chute),
+        celdas: celdas(c as unknown as Record<ClaveMetrica, number>),
+      }));
+      const ola = d.dash.olas.find((o) => o.clusterId === cluster.id);
+      return {
+        id: cluster.id,
+        nombre: cluster.nombre,
+        color: colores.get(cluster.id) ?? 'var(--accent)',
+        estado: etiquetaEstadoCluster(cluster.estado),
+        rutasMovidas: ola?.rutasMovidas ?? 0,
+        graficos: partirGrafico(
+          chutes.map((c) => ({
+            etiqueta: c.chute,
+            antes: Number(c.bultosOriginal),
+            despues: Number(c.bultosBalanceado),
+          })),
+        ),
+        filas,
+        total: totalDe(filas),
+      };
+    });
+  });
+
+  readonly metricas = METRICAS;
+
+  /**
+   * Alguna ola tiene un tiempo «antes» real (la proyección del Excel con su
+   * dotación base). Si no, el «antes» de los tiempos es el cierre establecido
+   * y ese gráfico ya está arriba: este no se muestra.
+   */
+  readonly hayTiemposAntes = computed(() => this.graficoTiempos().some((g) => !g.textoAntes));
 
   /**
    * Bultos por chute en gráficos de hasta 15 chutes, parejos (29 → 15 y 14),
    * para que cada barra y su cifra se lean sin pisarse en el ancho de la hoja.
    */
-  readonly graficosBultos = computed(() => {
-    const grupos = this.graficoBultos();
-    if (grupos.length === 0) {
-      return [];
-    }
-    const porGrafico = Math.ceil(grupos.length / Math.ceil(grupos.length / 15));
-    const tramos: { grupos: GrupoComparativo[]; ancho: number }[] = [];
-    for (let i = 0; i < grupos.length; i += porGrafico) {
-      const parte = grupos.slice(i, i + porGrafico);
-      // 900 px de barras + el eje: cabe en el ancho útil de un A4 apaisado (≈1 047 px).
-      tramos.push({ grupos: parte, ancho: Math.max(44, Math.min(90, Math.floor(900 / parte.length))) });
-    }
-    return tramos;
-  });
+  readonly graficosBultos = computed(() => partirGrafico(this.graficoBultos()));
 
   readonly graficoOperarios = computed<BarraDato[]>(() =>
     this.olas()
@@ -362,7 +524,7 @@ export class SimulacionReporteEjecutivo {
         etiqueta: o.nombre,
         valor: o.operarios ?? 0,
         color: o.color,
-        detalle: `${o.operarios} operarios · ${o.despues}`,
+        detalle: `${o.operarios} operarios · cierre ${o.conseguido}`,
       })),
   );
 
@@ -465,6 +627,62 @@ export class SimulacionReporteEjecutivo {
 function tiempo(valor: number | null | undefined): number | null {
   const n = Number(valor);
   return valor === null || valor === undefined || !Number.isFinite(n) || n >= SIN_OPERARIOS ? null : n;
+}
+
+/**
+ * Parte un gráfico de chutes en gráficos de hasta 15, parejos (29 → 15 y 14).
+ * Cada chute tiene entre 56 y 110 px: sus dos cifras se leen sin pisarse y,
+ * con 900 px de barras más el eje, cabe en el ancho útil de un A4 apaisado.
+ */
+function partirGrafico(grupos: GrupoComparativo[]): { grupos: GrupoComparativo[]; ancho: number }[] {
+  if (grupos.length === 0) {
+    return [];
+  }
+  const porGrafico = Math.ceil(grupos.length / Math.ceil(grupos.length / 15));
+  const tramos: { grupos: GrupoComparativo[]; ancho: number }[] = [];
+  for (let i = 0; i < grupos.length; i += porGrafico) {
+    const parte = grupos.slice(i, i + porGrafico);
+    tramos.push({ grupos: parte, ancho: Math.max(56, Math.min(110, Math.floor(900 / parte.length))) });
+  }
+  return tramos;
+}
+
+/** «+12 %», «−5 %», «0 %», «nuevo» o «—» (como el cuadro del dashboard). */
+function variacion(antes: number, despues: number): { texto: string; sube: boolean | null } {
+  if (antes <= 0) {
+    return despues > 0 ? { texto: 'nuevo', sube: true } : { texto: '—', sube: null };
+  }
+  const relativa = Math.round(((despues - antes) / antes) * 100);
+  if (relativa === 0) {
+    return { texto: '0 %', sube: null };
+  }
+  return { texto: `${relativa > 0 ? '+' : '−'}${Math.abs(relativa)} %`, sube: relativa > 0 };
+}
+
+/** Celdas antes/después de las cinco métricas de un cluster o chute. */
+function celdas(fila: Record<ClaveMetrica, number>): FilaComparativa['celdas'] {
+  return METRICAS.map((m) => {
+    const antes = Number(fila[m.antes]) || 0;
+    const despues = Number(fila[m.despues]) || 0;
+    const v = variacion(antes, despues);
+    return { antes, despues, variacion: v.texto, sube: v.sube };
+  });
+}
+
+/** Fila «Total» del cuadro: suma de cada métrica. */
+function totalDe(filas: FilaComparativa[]): FilaComparativa | null {
+  if (filas.length === 0) {
+    return null;
+  }
+  return {
+    etiqueta: 'Total',
+    celdas: METRICAS.map((_, i) => {
+      const antes = filas.reduce((t, f) => t + f.celdas[i].antes, 0);
+      const despues = filas.reduce((t, f) => t + f.celdas[i].despues, 0);
+      const v = variacion(antes, despues);
+      return { antes, despues, variacion: v.texto, sube: v.sube };
+    }),
+  };
 }
 
 function etiquetaChute(nombre: string): string {

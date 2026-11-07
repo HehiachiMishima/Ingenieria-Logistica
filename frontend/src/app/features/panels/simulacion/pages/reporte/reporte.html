@@ -56,14 +56,12 @@
           <tr>
             <th>Ola</th>
             <th class="rep-izq">Cluster</th>
-            <th class="rep-izq">Estado</th>
             <th>Operarios</th>
             <th>Chutes</th>
             <th>Rutas</th>
             <th>Bultos</th>
-            <th>Tiempo antes</th>
-            <th>Tiempo después</th>
-            <th>Límite</th>
+            <th>Cierre establecido</th>
+            <th>Cierre conseguido</th>
             <th>Uso</th>
             <th>Dif. bultos</th>
             <th>Cumple</th>
@@ -74,14 +72,12 @@
           <tr>
             <td>{{ o.ola }}</td>
             <td class="rep-izq"><span class="rep-cluster" [style.--c]="o.color">{{ o.nombre }}</span></td>
-            <td class="rep-izq">{{ o.estado }}</td>
             <td>{{ o.operarios ?? '—' }}</td>
             <td>{{ o.chutes }}</td>
             <td>{{ formatearEntero(o.rutas) }}</td>
             <td>{{ formatearEntero(o.bultos) }}</td>
-            <td>{{ o.antes }}</td>
-            <td class="rep-fuerte">{{ o.despues }}</td>
-            <td>{{ o.limite }}</td>
+            <td>{{ o.establecido }}</td>
+            <td class="rep-fuerte">{{ o.conseguido }}</td>
             <td>{{ o.uso === null ? '—' : o.uso + ' %' }}</td>
             <td>{{ o.dispersion === null ? '—' : o.dispersion + ' %' }}</td>
             <td>
@@ -107,21 +103,107 @@
     </ul>
   </section>
 
-  <!-- ============ Página 2: gráficos del dashboard ============ -->
+  <!-- Cuadro ejecutivo antes vs. después: las cinco métricas (como el dashboard). -->
+  <ng-template #tplCuadro let-filas let-total="total" let-primera="primera" let-traspasos="traspasos">
+    <div class="rep-tabla-wrap">
+      <table class="rep-tabla rep-cuadro">
+        <thead>
+          <tr>
+            <th rowspan="2" class="rep-izq">{{ primera }}</th>
+            @for (m of metricas; track m.id) {
+            <th colspan="2" class="rep-cuadro__grupo">{{ m.nombre }}</th>
+            }
+            @if (traspasos) {
+            <th rowspan="2">Entraron</th>
+            <th rowspan="2">Salieron</th>
+            }
+          </tr>
+          <tr>
+            @for (m of metricas; track m.id) {
+            <th>Antes</th>
+            <th>Después</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (f of filas; track f.etiqueta) {
+          <tr>
+            <td class="rep-izq">
+              @if (f.color) {
+              <span class="rep-cluster" [style.--c]="f.color">{{ f.etiqueta }}</span>
+              } @else {
+              <strong>{{ f.etiqueta }}</strong>
+              }
+            </td>
+            @for (c of f.celdas; track $index) {
+            <td class="rep-cuadro__antes">{{ formatearEntero(c.antes) }}</td>
+            <td>
+              <strong>{{ formatearEntero(c.despues) }}</strong>
+              <small class="rep-delta" [class.rep-delta--sube]="c.sube === true"
+                [class.rep-delta--baja]="c.sube === false">{{ c.variacion }}</small>
+            </td>
+            }
+            @if (traspasos) {
+            <td class="rep-delta--sube">{{ f.entraron ? '+' + f.entraron : '—' }}</td>
+            <td class="rep-delta--baja">{{ f.salieron ? '−' + f.salieron : '—' }}</td>
+            }
+          </tr>
+          }
+        </tbody>
+        @if (total) {
+        <tfoot>
+          <tr>
+            <td class="rep-izq"><strong>Total</strong></td>
+            @for (c of total.celdas; track $index) {
+            <td class="rep-cuadro__antes">{{ formatearEntero(c.antes) }}</td>
+            <td><strong>{{ formatearEntero(c.despues) }}</strong></td>
+            }
+            @if (traspasos) {
+            <td></td>
+            <td></td>
+            }
+          </tr>
+        </tfoot>
+        }
+      </table>
+    </div>
+  </ng-template>
+
+  <!-- ============ Página 2: tiempos y comparativo de clusters ============ -->
   <section class="rep-hoja rep-hoja--nueva">
-    <h2 class="rep-titulo"><ui-icon name="reloj" [size]="16" /> Tiempo de cada ola: antes vs. después</h2>
+    <h2 class="rep-titulo"><ui-icon name="reloj" [size]="16" /> Cierre de cada ola: establecido vs. conseguido</h2>
     <div class="rep-grafico">
-      @if (hayTiempos()) {
-      <ui-comparativo [datos]="graficoTiempos()" [formato]="formatoHoras" etiquetaAntes="Antes del balanceo"
-        etiquetaDespues="Después del balanceo" color="var(--accent)" [altura]="210" [anchoGrupo]="110" />
+      @if (hayCierres()) {
+      <ui-comparativo [datos]="graficoCierres()" [formato]="formatoHoras" etiquetaAntes="Cierre establecido"
+        etiquetaDespues="Cierre conseguido" color="var(--violet)" [altura]="210" [anchoGrupo]="110" />
       } @else {
       <p class="rep-grafico__vacio">
-        <ui-icon name="info" [size]="16" /> Los tiempos aparecen cuando las olas tienen sus operarios asignados.
+        <ui-icon name="info" [size]="16" /> Define el límite de cada cluster y asigna sus operarios para comparar el
+        cierre establecido con el conseguido.
       </p>
       }
     </div>
 
-    <h2 class="rep-titulo"><ui-icon name="paquete" [size]="16" /> Bultos por chute: antes vs. después</h2>
+    <!-- Antes (proyección del Excel) vs. después: solo si el Excel trae dotación base;
+         si no, el «antes» es el cierre establecido del gráfico de arriba. -->
+    @if (hayTiemposAntes()) {
+    <h2 class="rep-titulo"><ui-icon name="reloj" [size]="16" /> Tiempo de cada ola: proyección vs. balanceado</h2>
+    <div class="rep-grafico">
+      <ui-comparativo [datos]="graficoTiempos()" [formato]="formatoHoras" etiquetaAntes="Proyección del Excel"
+        etiquetaDespues="Después del balanceo" color="var(--accent)" [altura]="210" [anchoGrupo]="110" />
+    </div>
+    }
+
+    <h2 class="rep-titulo"><ui-icon name="analisis" [size]="16" /> Comparativo de clusters: antes vs. después</h2>
+    <p class="rep-nota">«Antes» es la carga del Excel; «después», la de hoy (incluye las rutas cambiadas de cluster).</p>
+    <div class="rep-grafico">
+      <ui-comparativo [datos]="graficoClusters()" [formato]="formatoEntero" etiquetaAntes="Bultos antes"
+        etiquetaDespues="Bultos después" color="var(--accent)" [altura]="190" [anchoGrupo]="110" />
+    </div>
+    <ng-container [ngTemplateOutlet]="tplCuadro" [ngTemplateOutletContext]="{
+        $implicit: cuadroClusters().filas, total: cuadroClusters().total, primera: 'Cluster', traspasos: true }" />
+
+    <h2 class="rep-titulo"><ui-icon name="paquete" [size]="16" /> Bultos por chute (todos los clusters): antes vs. después</h2>
     @for (g of graficosBultos(); track $index) {
     <div class="rep-grafico">
       <ui-comparativo [datos]="g.grupos" [formato]="formatoEntero" etiquetaAntes="Antes" etiquetaDespues="Después"
@@ -134,6 +216,32 @@
     <div class="rep-grafico">
       <ui-bars [datos]="graficoOperarios()" [altura]="200" />
     </div>
+    }
+  </section>
+
+  <!-- ============ Comparativo de cada cluster por chute (vista del cluster en el dashboard) ============ -->
+  <section class="rep-hoja rep-hoja--nueva">
+    <h2 class="rep-titulo rep-titulo--grande"><ui-icon name="analisis" [size]="18" /> Comparativo por cluster: antes vs. después</h2>
+    <p class="rep-nota">Carga de cada cluster en sus chutes al cargar el Excel y después del balanceo.</p>
+    @for (c of comparativosCluster(); track c.id) {
+    <article class="rep-bloque rep-bloque--comparativo" [style.--c]="c.color">
+      <header class="rep-bloque__cabecera">
+        <span class="rep-cluster" [style.--c]="c.color">{{ c.nombre }}</span>
+        <span class="rep-bloque__resumen">{{ c.estado }} · {{ c.filas.length }} chutes · {{ c.rutasMovidas }} ruta(s) movidas</span>
+      </header>
+      @if (c.graficos.length > 0) {
+      @for (g of c.graficos; track $index) {
+      <div class="rep-bloque__grafico">
+        <ui-comparativo [datos]="g.grupos" [formato]="formatoEntero" etiquetaAntes="Bultos antes"
+          etiquetaDespues="Bultos después" color="var(--success)" [altura]="170" [anchoGrupo]="g.ancho" />
+      </div>
+      }
+      <ng-container [ngTemplateOutlet]="tplCuadro" [ngTemplateOutletContext]="{
+          $implicit: c.filas, total: c.total, primera: 'Chute', traspasos: false }" />
+      } @else {
+      <p class="rep-bloque__vacio">Sin carga en este cluster.</p>
+      }
+    </article>
     }
   </section>
 

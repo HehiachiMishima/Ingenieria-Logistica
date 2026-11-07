@@ -228,6 +228,12 @@ public class SimulacionReporte {
       BigDecimal balanceado = valor(dash.kpis().tiempoBalanceado());
       long cumplen = dash.clusters().stream().filter((c) -> conLimite(c) && !c.excede()).count();
       long medibles = dash.clusters().stream().filter(Libro::conLimite).count();
+      // Cierre establecido (límite) vs. conseguido de las olas que tienen ambos: la mejora.
+      BigDecimal establecido = dash.clusters().stream().filter(Libro::conLimite)
+          .map((c) -> valor(c.limiteHoras())).reduce(BigDecimal.ZERO, BigDecimal::add);
+      BigDecimal conseguido = dash.clusters().stream().filter(Libro::conLimite)
+          .map((c) -> valor(c.tiempoBalanceado())).reduce(BigDecimal.ZERO, BigDecimal::add);
+      Long mejoraCierre = mejora(establecido, conseguido);
       Object[][] pares = {
         {"Velocidad (bultos/h por operario)", entero(cfg.velocidadBase())},
         {"Máximo por chute", cfg.operariosPorChute() == null ? "Sin tope" : cfg.operariosPorChute()},
@@ -237,9 +243,9 @@ public class SimulacionReporte {
         {"Unidades", entero(archivo.unidades())},
         {"Líneas", entero(archivo.lineas())},
         {"Locales (COD)", (long) archivo.cod()},
-        {"Tiempo total antes", horas(original)},
-        {"Tiempo total después", horas(balanceado)},
-        {"Mejora del tiempo", porcentaje(mejora(original, balanceado))},
+        {"Cierre establecido", medibles == 0 ? "—" : horas(establecido)},
+        {"Cierre conseguido", medibles == 0 ? "—" : horas(conseguido)},
+        {"Mejora del tiempo", mejoraCierre == null ? "—" : (mejoraCierre > 0 ? "+" : "") + mejoraCierre + " %"},
         {"Rutas movidas", (long) dash.kpis().rutasMovidas()},
         {"Clusters que cumplen su límite", medibles == 0 ? "—" : cumplen + " de " + medibles},
         {"Clusters cerrados", cerrados() + " de " + cfg.clusters().size()},
@@ -257,8 +263,8 @@ public class SimulacionReporte {
       // Resultado por ola.
       f = seccion(hoja, f, "Resultado por ola", anchos.length);
       String[] cabecera = {
-        "Ola", "Cluster", "Estado", "Operarios", "Chutes", "Rutas", "Bultos", "Tiempo antes",
-        "Tiempo después", "Límite", "Uso", "Cumple", "Entraron", "Salieron", "Dif. bultos"
+        "Ola", "Cluster", "Operarios", "Chutes", "Rutas", "Bultos", "Cierre establecido",
+        "Cierre conseguido", "Uso", "Cumple", "Entraron", "Salieron", "Dif. bultos"
       };
       f = cabecera(hoja, f, 0, cabecera);
       int inicioTabla = f;
@@ -275,16 +281,14 @@ public class SimulacionReporte {
         int col = 0;
         celda(fila, col++, (long) ola++, e.centro);
         celda(fila, col++, cluster.nombre(), e.fuerte);
-        celda(fila, col++, estadoCluster(cluster.estado()), e.texto);
         celda(fila, col++, cluster.operariosOla() == null ? "—" : (Object) (long) cluster.operariosOla(), e.numero);
         celda(fila, col++, (long) suya.size(), e.numero);
         celda(fila, col++, rutasCluster, e.numero);
         celda(fila, col++, entero(bultos), e.numero);
         BigDecimal limite = valor(cluster.limiteHoras());
         boolean medible = c != null && conLimite(c);
-        celda(fila, col++, c == null ? "—" : horas(c.tiempoOriginal()), e.derecha);
-        celda(fila, col++, c == null ? "—" : horas(c.tiempoBalanceado()), e.derecha);
         celda(fila, col++, limite.signum() > 0 ? horas(limite) : "—", e.derecha);
+        celda(fila, col++, c == null || c.tiempoBalanceado() == null ? "—" : horas(c.tiempoBalanceado()), e.derecha);
         celda(fila, col++, medible ? porcentaje(uso(c.tiempoBalanceado(), limite)) : "—", e.derecha);
         if (medible) {
           celda(fila, col++, c.excede() ? "No" : "Sí", c.excede() ? e.rojo : e.verde);
@@ -303,6 +307,11 @@ public class SimulacionReporte {
 
       // Conclusiones en frases cortas.
       f = seccion(hoja, f, "Conclusiones", anchos.length);
+      if (mejoraCierre != null) {
+        f = texto(hoja, f, "• Cierre conseguido de " + horas(conseguido) + " frente a " + horas(establecido)
+            + " establecido (" + Math.abs(mejoraCierre) + " % " + (mejoraCierre >= 0 ? "por debajo" : "por encima")
+            + "; " + medibles + " ola(s) con límite y operarios).", e.texto);
+      }
       for (String frase : conclusiones(original, balanceado, cumplen, medibles)) {
         f = texto(hoja, f, "• " + frase, e.texto);
       }
@@ -313,8 +322,8 @@ public class SimulacionReporte {
         BigDecimal original, BigDecimal balanceado, long cumplen, long medibles) {
       List<String> frases = new ArrayList<>();
       if (original.signum() > 0 && balanceado.signum() > 0) {
-        frases.add("El tiempo total pasa de " + horas(original) + " a " + horas(balanceado)
-            + " (" + porcentaje(mejora(original, balanceado)) + " de mejora).");
+        frases.add("Frente a la proyección del Excel, el tiempo pasa de " + horas(original) + " a "
+            + horas(balanceado) + ".");
       }
       if (medibles > 0) {
         frases.add(cumplen + " de " + medibles + " clusters cumplen su límite de horas.");
