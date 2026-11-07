@@ -497,3 +497,20 @@
     }
   }
 }
+
+/* Acciones de la cabecera: configuración y exportar; en celular reparten el ancho. */
+.page-head__acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+
+  @include bp.down(sm) {
+    width: 100%;
+
+    > .ui-btn,
+    > app-simulacion-exportar {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+  }
+}

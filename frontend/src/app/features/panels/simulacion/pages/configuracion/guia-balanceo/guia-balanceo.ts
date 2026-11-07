@@ -25,9 +25,9 @@ const DETALLES: readonly GrupoDetalle[] = [
     items: [
       {
         icono: 'usuarios',
-        termino: 'Equipo por defecto',
+        termino: 'Operarios de la ola',
         texto:
-          'Cantidad que se propone al asignar operarios. Cada ola elige la suya en el paso 2 (mínimo uno por chute con carga) y la gente de la ola anterior se queda en su chute si el cierre no empeora.',
+          'Cada cluster ingresa su cantidad en el paso 2 (mínimo uno por chute con carga); la próxima vez se propone la última que usó. La gente de la ola anterior se queda en su chute si el cierre no empeora.',
       },
       {
         icono: 'tendencia',

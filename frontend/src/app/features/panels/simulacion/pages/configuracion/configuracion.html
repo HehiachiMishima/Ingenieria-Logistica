@@ -16,6 +16,8 @@
       <ui-icon name="dashboard" [size]="18" />
       Ver dashboard
     </button>
+    <app-simulacion-exportar *hasPermiso="permisos.VER_DASHBOARD_SIMULACION" [registroId]="seleccionado()"
+      [registroNombre]="config()?.archivo?.nombreRegistro ?? ''" [listo]="finalizado()" />
     }
   </div>
 </header>
@@ -29,19 +31,6 @@
       <ui-select-buscable campoId="config-registro" [opciones]="opcionesRegistro()" [valor]="seleccionado()"
         [deshabilitado]="cargandoOpciones() || ocupado()" placeholder="Elegir registro…"
         (valorCambia)="seleccionarDesdeSelector($event)" />
-    </div>
-    <div class="config-panel__campo">
-      <label class="ui-label" for="config-equipo"
-        title="Cantidad que se propone al asignar los operarios de una ola; cada ola puede usar otra">Equipo por defecto</label>
-      <input id="config-equipo" type="number" class="ui-input" min="1" [max]="limitesValidos.equipo" step="1"
-        inputmode="numeric" [value]="equipo()"
-        [disabled]="!config() || !puedeModificar() || equipoGlobalBloqueado() !== null || ocupado()"
-        (change)="setEquipo($event)" />
-      @if (equipoGlobalBloqueado(); as cerrado) {
-      <span class="config-panel__ayuda">
-        <ui-icon name="lock" [size]="12" /> Bloqueado por {{ cerrado.nombre }}
-      </span>
-      }
     </div>
     <div class="config-panel__campo">
       <label class="ui-label" for="config-velocidad">Velocidad (bultos/h)</label>
@@ -75,7 +64,7 @@
         <span class="config-info__meta">
           {{ (cfg.archivo.rutas | numero) }} rutas ·
           {{ (cfg.archivo.chutes | numero) }} chutes ·
-          {{ (cfg.archivo.bultos | numero: 2) }} bultos
+          {{ (cfg.archivo.bultos | entero) }} bultos
         </span>
       </div>
       <span class="ui-badge" [class.ui-badge--success]="cfg.archivo.estado === 'FINALIZADO'"
@@ -186,6 +175,11 @@
     }
   </button>
   <div class="toolbar__acciones">
+    <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="alternarMinimizado()"
+      [disabled]="bloquesMatriz().length === 0" [attr.aria-pressed]="minimizado()">
+      <ui-icon [name]="minimizado() ? 'chevronRight' : 'chevronLeft'" [size]="16" />
+      {{ minimizado() ? 'Expandir clusters' : 'Minimizar clusters' }}
+    </button>
     <button *hasPermiso="permisos.MODIFICAR_CONFIGURACION_SIMULACION" type="button"
       class="ui-btn ui-btn--secondary ui-btn--sm" (click)="confirmarRestablecer()"
       [disabled]="ocupado() || finalizado()">
@@ -222,7 +216,7 @@
   </section>
 </ui-panel-filtros>
 
-<section class="mz" aria-label="Rutas por cluster y chute">
+<section class="mz" aria-label="Rutas por cluster y chute" [style.--mz-filas]="filasVisibles">
   @if (cargandoRutas() && rutasMatriz().length === 0) {
   <div class="table-card">
     <div class="loading"><span class="ui-spinner"></span> Cargando rutas…</div>
@@ -264,14 +258,23 @@
       <div class="mz-totales__etiquetas">
         @if (global) {
         @if (filtrosActivos() > 0) {
-        <div class="mz-totales__concepto" title="Solo los clusters, chutes y rutas de los filtros">Concepto · filtrado</div>
+        <div class="mz-totales__concepto" title="Solo los clusters, chutes y rutas de los filtros">
+          <span class="mz-totales__largo">Concepto · filtrado</span>
+          <abbr class="mz-totales__corto" title="Concepto · filtrado">Total*</abbr>
+        </div>
         } @else {
-        <div class="mz-totales__concepto">Concepto</div>
+        <div class="mz-totales__concepto">
+          <span class="mz-totales__largo">Concepto</span>
+          <abbr class="mz-totales__corto" title="Concepto">Total</abbr>
+        </div>
         }
         }
         @for (fila of filasTotales; track fila.clave) {
+        @let etiqueta = global && fila.clave === 'operarios' ? 'Máx. operarios por ola' : fila.etiqueta;
+        <!-- Minimizado (riel delgado) se ve la abreviatura; su title da el nombre completo. -->
         <div [style.--tono]="fila.tono">
-          {{ global && fila.clave === 'operarios' ? 'Máx. operarios por ola' : fila.etiqueta }}
+          <span class="mz-totales__largo">{{ etiqueta }}</span>
+          <abbr class="mz-totales__corto" [title]="etiqueta">{{ fila.corta }}</abbr>
         </div>
         }
       </div>
@@ -286,14 +289,15 @@
             <tr [style.--tono]="fila.tono">
               @for (chute of chutes; track chute.id; let i = $index) {
               @let nivel = t.niveles[fila.clave][i];
+              <!-- Semáforo por línea: amarillo = lo más bajo, verde = intermedio, rojo = lo más alto. -->
               <td
                 [class.mz-der]="$last"
-                [class.mz-calor]="nivel !== null"
-                [class.mz-calor--oscuro]="nivel !== null && nivel >= 0.6"
-                [style.--nivel]="nivel"
+                [class.mz-sem--bajo]="nivel !== null && nivel < 1 / 3"
+                [class.mz-sem--medio]="nivel !== null && nivel >= 1 / 3 && nivel < 2 / 3"
+                [class.mz-sem--alto]="nivel !== null && nivel >= 2 / 3"
               >
                 @if (t[fila.clave][i]) {
-                {{ (t[fila.clave][i] | numero: fila.decimales) }}
+                {{ (t[fila.clave][i] | entero) }}
                 }
               </td>
               }
@@ -323,17 +327,18 @@
   }
 
   <div class="mz-tablero" appScrollMatriz appArrastreRutas [validar]="motivoNoMover" (soltar)="soltarRuta($event)"
-    [class.matriz--ocupada]="ocupado()">
+    [class.matriz--ocupada]="ocupado()" [class.mz-tablero--min]="minimizado()">
     @for (bloque of bloquesMatriz(); track bloque.cluster.id) {
     @let m = metricas.get(bloque.cluster.id);
+    @let plegado = minimizado();
     @let abierto = totalesAbiertos().has(bloque.cluster.id);
-    <section class="mz-bloque" [style.--cluster-color]="bloque.cluster.color">
+    <section class="mz-bloque" [class.mz-bloque--min]="plegado" [style.--cluster-color]="bloque.cluster.color">
       <aside class="mz-panel">
   @let c = bloque.cluster;
 
-  <!-- Nombre y botón ▶ que ejecuta el paso que toca (el título dice cuál). -->
+  <!-- Nombre (pliega o despliega el cluster) y botón ▶ que ejecuta el paso que toca. -->
   <div class="mz-panel__cabecera">
-    <span class="mz-panel__nombre">{{ c.nombre }}</span>
+    <span class="mz-panel__nombre" [title]="c.nombre"><span>{{ c.nombre }}</span></span>
 
     <div class="mz-panel__botones" *hasPermiso="permisos.MODIFICAR_CONFIGURACION_SIMULACION">
       @if (c.cerrado) {
@@ -354,7 +359,7 @@
             <ui-icon name="play" [size]="14" />
           }
         </button>
-        @if (c.balanceado) {
+        @if (c.balanceado && !plegado) {
           <button type="button" class="ui-btn ui-btn--secondary mz-panel__btn-play" [disabled]="ocupado()"
             (click)="balancear(c)" title="Volver a balancear rutas (conserva los cambios a mano)"
             [attr.aria-label]="'Volver a balancear las rutas de ' + c.nombre">
@@ -385,65 +390,60 @@
     </div>
   </div>
 
-  <span class="ui-badge mz-panel__estado" [class.ui-badge--success]="c.cerrado" [class.ui-badge--info]="c.enCurso" [class.ui-badge--neutral]="!c.cerrado && !c.enCurso">
-    @if (c.cerrado) {
-      <ui-icon name="check" [size]="12" /> Cerrado
-    } @else if (c.enCurso) {
-      Paso {{ c.paso }} de 3
-    } @else {
-      <ui-icon name="lock" [size]="12" /> En espera
-    }
-  </span>
-
-  <dl class="mz-panel__metricas">
-    <div>
-      <dt>Rutas</dt>
-      <dd>{{ (m?.rutas ?? 0) | numero }}</dd>
-    </div>
-    <div>
-      <dt>Bultos</dt>
-      <dd>{{ (m?.bultos ?? 0) | numero: 2 }}</dd>
-    </div>
-    <div>
-      <dt>Líneas</dt>
-      <dd>{{ (m?.lineas ?? 0) | numero: 2 }}</dd>
-    </div>
-    <div>
-      <dt>Unid.</dt>
-      <dd>{{ (m?.unidades ?? 0) | numero: 2 }}</dd>
-    </div>
-    <div>
-      <dt>Códigos</dt>
-      <dd>{{ (m?.cod ?? 0) | numero }}</dd>
-    </div>
-    @if (c.balanceado && c.dispersion !== null) {
-      <div>
-        <dt>Dif. bultos</dt>
-        <dd [class.mz-panel__fuera]="c.dispersion > 10">{{ c.dispersion }} %</dd>
-      </div>
-    }
-    @if (c.conOperarios || c.cerrado) {
-      <div>
-        <dt>Tiempo</dt>
-        <dd [class.mz-panel__fuera]="!c.cumple">{{ c.tiempo | horas }}</dd>
-      </div>
-    }
-  </dl>
+  <!-- Estado y lo esencial; el resto del detalle va en su ficha («Detalle»).
+       Minimizado, el panel es una columna delgada: nombre, ▶ y «Detalle». -->
+  @if (!plegado) {
+  <div class="mz-panel__resumen">
+    <span class="ui-badge mz-panel__estado" [class.ui-badge--success]="c.cerrado" [class.ui-badge--info]="c.enCurso" [class.ui-badge--neutral]="!c.cerrado && !c.enCurso">
+      @if (c.cerrado) {
+        <ui-icon name="check" [size]="12" /> Cerrado
+      } @else if (c.enCurso) {
+        Paso {{ c.paso }} de 3
+      } @else {
+        <ui-icon name="lock" [size]="12" /> En espera
+      }
+    </span>
+    <span class="mz-panel__dato">
+      <strong>{{ (m?.rutas ?? 0) | entero }}</strong> rutas ·
+      <strong>{{ (m?.bultos ?? 0) | entero }}</strong> bultos
+    </span>
+  </div>
 
   <div class="mz-panel__limite">
     <label class="mz-panel__limite-label" [for]="'limite-' + c.id">Límite h</label>
     <input [id]="'limite-' + c.id" type="number" class="ui-input mz-panel__limite-input" min="0"
       [max]="limitesValidos.horas" step="0.1" inputmode="decimal" placeholder="—" [value]="c.limite || ''"
       [disabled]="c.cerrado || !puedeModificar() || ocupado()" (change)="cambiarLimite(c.id, $event)" />
+    @if (c.conOperarios || c.cerrado) {
+      <span class="mz-panel__tiempo" [class.mz-panel__fuera]="!c.cumple" title="Tiempo de la ola">
+        <ui-icon name="reloj" [size]="12" /> {{ c.tiempo | horas }}
+      </span>
+    }
   </div>
+  }
 
-  <button type="button" class="ui-btn ui-btn--sm mz-panel__totales" [class.ui-btn--secondary]="!abierto"
-    [class.ui-btn--primary]="abierto" [attr.aria-expanded]="abierto"
-    [attr.aria-controls]="'totales-cluster-' + c.id" (click)="alternarTotales(c.id)">
-    <ui-icon name="analisis" [size]="16" />
-    <span>{{ abierto ? 'Ocultar totales' : 'Ver totales' }}</span>
-    <ui-icon class="mz-panel__flecha" name="chevronRight" [size]="16" />
-  </button>
+  <div class="mz-panel__acciones">
+    @let detalleAbierto = detalle()?.tipo === 'cluster' && detalle()?.id === c.id;
+    <button type="button" class="ui-btn ui-btn--sm mz-panel__accion" [class.ui-btn--secondary]="!detalleAbierto"
+      [class.ui-btn--primary]="detalleAbierto" aria-haspopup="dialog" [attr.aria-expanded]="detalleAbierto"
+      [attr.aria-label]="'Detalle de ' + c.nombre" [title]="'Detalle de ' + c.nombre"
+      (click)="abrirDetalleCluster($event, c.id)">
+      <ui-icon name="info" [size]="15" />
+      @if (!plegado) {
+      <span>Detalle</span>
+      }
+    </button>
+    <button type="button" class="ui-btn ui-btn--sm mz-panel__accion mz-panel__totales" [class.ui-btn--secondary]="!abierto"
+      [class.ui-btn--primary]="abierto" [attr.aria-expanded]="abierto"
+      [attr.aria-controls]="'totales-cluster-' + c.id" [attr.aria-label]="'Totales de ' + c.nombre"
+      [title]="(abierto ? 'Ocultar' : 'Ver') + ' totales de ' + c.nombre" (click)="alternarTotales(c.id)">
+      <ui-icon name="analisis" [size]="15" />
+      @if (!plegado) {
+      <span>Totales</span>
+      <ui-icon class="mz-panel__flecha" name="chevronRight" [size]="14" />
+      }
+    </button>
+  </div>
 </aside>
 
       <div class="mz-scroll" data-scroll-matriz>
@@ -463,7 +463,11 @@
                 <div class="matriz-ruta" [class.matriz-ruta--movible]="movible"
                   [attr.draggable]="movible ? 'true' : null" [attr.data-arrastre-ruta]="movible ? ruta.id : null"
                   [class.matriz-ruta--guardando]="guardando" [class.matriz-ruta--movida]="celda.movida"
-                  [title]="celda.titulo">
+                  [class.matriz-ruta--activa]="detalle()?.tipo === 'ruta' && detalle()?.id === ruta.id"
+                  [title]="celda.titulo" role="button" tabindex="0" aria-haspopup="dialog"
+                  [attr.aria-label]="'Detalle de la ruta ' + ruta.codigoRuta"
+                  (click)="abrirDetalleRuta($event, ruta.id)" (keydown.enter)="abrirDetalleRuta($event, ruta.id)"
+                  (keydown.space)="abrirDetalleRuta($event, ruta.id)">
                   <span class="matriz-ruta__codigo">{{ ruta.codigoRuta }}</span>
                   <span class="matriz-ruta__tipo" [class.matriz-ruta__tipo--b2b]="ruta.tipo === 'B2B'"
                     [class.matriz-ruta__tipo--b2c]="ruta.tipo === 'B2C'">{{ ruta.tipo }}</span>
@@ -539,15 +543,15 @@
     </div>
     <div>
       <dt>Rutas</dt>
-      <dd>{{ (v.rutas | numero) }} <span>{{ (v.bultos | numero: 2) }} bultos</span></dd>
+      <dd>{{ (v.rutas | numero) }} <span>{{ (v.bultos | entero) }} bultos</span></dd>
     </div>
     <div>
       <dt>Fuera del rango</dt>
       <dd>{{ (v.fuera | numero) }} <span>ruta(s) entrarán</span></dd>
     </div>
     <div>
-      <dt>Equipo</dt>
-      <dd>{{ v.equipo }} <span>operario(s) para la ola</span></dd>
+      <dt>Operarios mínimos</dt>
+      <dd>{{ v.minimo }} <span>uno por chute con carga (paso 2)</span></dd>
     </div>
   </dl>
   @if (v.chutes === 1) {
@@ -556,9 +560,8 @@
   @if (v.excede) {
   <p class="rango__aviso rango__aviso--alerta">
     <ui-icon name="alerta" [size]="14" />
-    El equipo es de {{ v.equipo }} y cada chute con carga necesita al menos un operario: con
-    este rango, el paso de operarios no podrá asignarlos. Elige {{ v.equipo }} chute(s) o menos,
-    o amplía el equipo.
+    La ola usó {{ v.equipo }} operario(s) y con este rango necesitará al menos {{ v.minimo }}: en el
+    paso de operarios ingresa {{ v.minimo }} o más, o elige {{ v.equipo }} chute(s) o menos.
   </p>
   }
   }
@@ -582,8 +585,9 @@
     <label class="ui-label" for="operarios-ola">Cantidad de operarios</label>
     <input id="operarios-ola" type="number" class="ui-input" step="1" inputmode="numeric"
       [min]="v.chutes" [max]="limitesValidos.equipo" [value]="v.cantidad ?? ''"
-      [class.ui-input--invalid]="!v.valida" (input)="setCantidadOperarios($any($event.target).value)"
-      (keydown.enter)="confirmarOperarios()" />
+      [placeholder]="v.necesarios > 0 ? 'Sugerido: ' + v.necesarios : 'Mínimo ' + v.chutes"
+      [class.ui-input--invalid]="v.cantidad !== null && !v.valida"
+      (input)="setCantidadOperarios($any($event.target).value)" (keydown.enter)="confirmarOperarios()" />
   </div>
   <dl class="rango__resumen">
     <div>
@@ -601,7 +605,12 @@
       </dd>
     </div>
   </dl>
-  @if (!v.valida) {
+  @if (v.cantidad === null) {
+  <p class="rango__aviso">
+    <ui-icon name="info" [size]="14" /> Ingresa cuántos operarios trabajan en esta ola (desde
+    {{ v.chutes }}).
+  </p>
+  } @else if (!v.valida) {
   <p class="rango__aviso rango__aviso--alerta">
     <ui-icon name="alerta" [size]="14" />
     Escribe un número entero entre {{ v.chutes }} y {{ (limitesValidos.equipo | numero) }}: cada chute con
@@ -690,8 +699,9 @@
         Conserva sus rutas y operarios para que puedas cambiarlos.
         @if (reabrir.siguientes.length > 0) {
         Como el equipo pasaba de {{ reabrir.nombre }} a los siguientes,
-        <strong>{{ reabrir.siguientes.join(', ') }}</strong> vuelve(n) a la proyección: sus
-        rutas, operarios e historial se borran.
+        en <strong>{{ reabrir.siguientes.join(', ') }}</strong> se deshace lo hecho mientras
+        estuvieron en curso (su balanceo, sus movimientos a mano y sus operarios) y vuelven a
+        empezar.
         }
       </p>
     </div>
@@ -769,5 +779,143 @@
     </button>
   </div>
 </ui-modal>
+
+<!-- Ficha flotante: junto a la ruta o al botón «Detalle» del cluster (hoja inferior en celular). -->
+@if (detalle(); as d) {
+@let r = rutaDetalle();
+@let k = clusterDetalle();
+@if (r || k) {
+<div class="detalle-pop" [class.detalle-pop--hoja]="d.pos.hoja" role="dialog"
+  [attr.aria-label]="r ? 'Detalle de la ruta ' + r.ruta.codigoRuta : 'Detalle de ' + k!.c.nombre"
+  [style.left.px]="d.pos.left" [style.top.px]="d.pos.top" [style.bottom.px]="d.pos.bottom"
+  [style.max-height.px]="d.pos.maxAlto" [style.--pop-color]="r ? r.color : k!.c.color">
+  @if (r) {
+  <header class="detalle-pop__cabecera">
+    <div class="detalle-pop__titulo">
+      <span class="detalle-pop__kicker">Ruta</span>
+      <strong>{{ r.ruta.codigoRuta }}</strong>
+    </div>
+    <span class="matriz-ruta__tipo" [class.matriz-ruta__tipo--b2b]="r.ruta.tipo === 'B2B'"
+      [class.matriz-ruta__tipo--b2c]="r.ruta.tipo === 'B2C'">{{ r.ruta.tipo }}</span>
+    <button type="button" class="detalle-pop__cerrar" aria-label="Cerrar detalle" (click)="cerrarDetalle()">
+      <ui-icon name="close" [size]="16" />
+    </button>
+  </header>
+  <p class="detalle-pop__ubicacion">
+    <span class="detalle-pop__chip">{{ r.ruta.cluster }}</span>
+    <ui-icon name="flecha" [size]="12" />
+    <span class="detalle-pop__chip">Chute {{ r.ruta.chute }}</span>
+  </p>
+  <dl class="detalle-pop__datos">
+    <div class="detalle-pop__dato--destacado">
+      <dt>Bultos</dt>
+      <dd>{{ r.ruta.totalBultos | entero }}</dd>
+    </div>
+    <div>
+      <dt>Unidades</dt>
+      <dd>{{ r.ruta.totalUnidades | entero }}</dd>
+    </div>
+    <div>
+      <dt>Líneas</dt>
+      <dd>{{ r.ruta.totalLineas | entero }}</dd>
+    </div>
+    <div>
+      <dt>COD</dt>
+      <dd>{{ r.ruta.conteoCod | entero }}</dd>
+    </div>
+  </dl>
+  @if (r.parte !== null) {
+  <div class="detalle-pop__barra" [attr.aria-label]="r.parte + ' % de los bultos de su chute'">
+    <div class="detalle-pop__barra-texto">
+      <span>De los bultos de su chute</span>
+      <strong>{{ r.parte }} %</strong>
+    </div>
+    <span class="detalle-pop__pista"><span [style.width.%]="r.parte"></span></span>
+  </div>
+  }
+  @if (r.operarios !== null) {
+  <p class="detalle-pop__nota"><ui-icon name="usuarios" [size]="13" /> {{ r.operarios }} operario(s) en su chute</p>
+  }
+  @if (r.movida) {
+  <p class="detalle-pop__nota detalle-pop__nota--movida">
+    <ui-icon name="refresh" [size]="13" /> En el Excel: {{ r.ruta.clusterOriginal }} · chute {{ r.ruta.chuteOriginal }}
+  </p>
+  }
+  @if (r.aviso) {
+  <p class="detalle-pop__pie">{{ r.aviso }}</p>
+  }
+  } @else if (k) {
+  @let c = k.c;
+  <header class="detalle-pop__cabecera">
+    <div class="detalle-pop__titulo">
+      <span class="detalle-pop__kicker">Cluster</span>
+      <strong>{{ c.nombre }}</strong>
+    </div>
+    <span class="ui-badge" [class.ui-badge--success]="c.cerrado" [class.ui-badge--info]="c.enCurso"
+      [class.ui-badge--neutral]="!c.cerrado && !c.enCurso">
+      {{ c.cerrado ? 'Cerrado' : c.enCurso ? 'Paso ' + c.paso + ' de 3' : 'En espera' }}
+    </span>
+    <button type="button" class="detalle-pop__cerrar" aria-label="Cerrar detalle" (click)="cerrarDetalle()">
+      <ui-icon name="close" [size]="16" />
+    </button>
+  </header>
+  <dl class="detalle-pop__datos">
+    <div class="detalle-pop__dato--destacado">
+      <dt>Rutas</dt>
+      <dd>{{ (k.m?.rutas ?? 0) | entero }}</dd>
+    </div>
+    <div class="detalle-pop__dato--destacado">
+      <dt>Bultos</dt>
+      <dd>{{ (k.m?.bultos ?? 0) | entero }}</dd>
+    </div>
+    <div>
+      <dt>Líneas</dt>
+      <dd>{{ (k.m?.lineas ?? 0) | entero }}</dd>
+    </div>
+    <div>
+      <dt>Unidades</dt>
+      <dd>{{ (k.m?.unidades ?? 0) | entero }}</dd>
+    </div>
+    <div>
+      <dt>Códigos</dt>
+      <dd>{{ (k.m?.cod ?? 0) | entero }}</dd>
+    </div>
+    <div>
+      <dt>Chutes</dt>
+      <dd>{{ c.chutes | entero }}</dd>
+    </div>
+    @if (c.balanceado && c.dispersion !== null) {
+    <div>
+      <dt>Dif. bultos</dt>
+      <dd [class.detalle-pop__fuera]="c.dispersion > 10">{{ c.dispersion }} %</dd>
+    </div>
+    }
+    @if (c.conOperarios || c.cerrado) {
+    <div>
+      <dt>Operarios</dt>
+      <dd>{{ c.operarios | entero }}</dd>
+    </div>
+    }
+  </dl>
+  @if ((c.conOperarios || c.cerrado) && c.limite > 0 && c.uso !== null) {
+  <div class="detalle-pop__barra" [class.detalle-pop__barra--fuera]="!c.cumple">
+    <div class="detalle-pop__barra-texto">
+      <span>Tiempo {{ c.tiempo | horas }} de {{ c.limite | horas }}</span>
+      <strong>{{ c.uso | entero }} %</strong>
+    </div>
+    <span class="detalle-pop__pista"><span [style.width.%]="c.uso"></span></span>
+  </div>
+  } @else if (c.conOperarios || c.cerrado) {
+  <p class="detalle-pop__nota" [class.detalle-pop__fuera]="!c.cumple">
+    <ui-icon name="reloj" [size]="13" /> Tiempo de la ola: {{ c.tiempo | horas }}
+  </p>
+  }
+  @if (c.previo && c.siguen > 0) {
+  <p class="detalle-pop__nota"><ui-icon name="usuarios" [size]="13" /> {{ c.siguen }} operario(s) siguen en su chute desde {{ c.previo }}</p>
+  }
+  }
+</div>
+}
+}
 
 <app-simulacion-guia-balanceo [abierto]="explicacionAbierta()" (cerrar)="explicacionAbierta.set(false)" />

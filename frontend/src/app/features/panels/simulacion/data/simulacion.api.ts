@@ -10,6 +10,7 @@ import {
   FaseBalanceo,
   HistorialRegistroSimulacion,
   HistorialSimulacion,
+  NivelExportacion,
   PaginaRutas,
   RegistroSimulacionActualizarRequest,
   RutasDashboardFiltros,
@@ -72,7 +73,7 @@ export class SimulacionApi {
     });
   }
 
-  /** Equipo (operarios y velocidad) y límites de horas de los clusters. */
+  /** Velocidad, máximo por chute y límites de horas de los clusters. */
   guardarConfiguracion(
     id: number,
     peticion: ConfiguracionSimulacionRequest,
@@ -174,6 +175,14 @@ export class SimulacionApi {
       `/simulacion/registros/${id}/dashboard`,
       clusterId === null ? {} : { clusterId },
     );
+  }
+
+  /**
+   * Excel de la simulación: EJECUTIVO (resumen y cuadrículas) o DETALLADO (además
+   * chutes, rutas, operarios por ola e historial).
+   */
+  exportarExcel(id: number, nivel: NivelExportacion): Observable<Blob> {
+    return this.api.getArchivo(`/simulacion/registros/${id}/exportar?nivel=${nivel}`);
   }
 
   /** Rutas de un lado del chute (antes o después), paginadas y con totales del filtro. */

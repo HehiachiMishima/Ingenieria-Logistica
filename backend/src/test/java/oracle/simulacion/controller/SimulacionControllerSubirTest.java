@@ -15,6 +15,7 @@ import oracle.simulacion.response.ArchivoSimulacionResponse;
 import oracle.simulacion.service.SimulacionConfiguracionService;
 import oracle.simulacion.service.SimulacionExcel.ArchivoInvalidoException;
 import oracle.simulacion.service.SimulacionRegistroService;
+import oracle.simulacion.service.SimulacionReporte;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -26,7 +27,8 @@ class SimulacionControllerSubirTest {
 
   private final SimulacionRegistroService registro = mock(SimulacionRegistroService.class);
   private final SimulacionController controller =
-      new SimulacionController(registro, mock(SimulacionConfiguracionService.class));
+      new SimulacionController(
+          registro, mock(SimulacionConfiguracionService.class), mock(SimulacionReporte.class));
   private final MockHttpServletRequest peticion =
       new MockHttpServletRequest("POST", "/api/simulacion/registros");
   private final MockMultipartFile archivo =

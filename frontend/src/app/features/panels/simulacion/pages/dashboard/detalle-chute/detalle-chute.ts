@@ -26,7 +26,7 @@ import {
   RutaSimulacion,
 } from '../../../data/simulacion.model';
 import { SimulacionApi } from '../../../data/simulacion.api';
-import { compararNombre, formatearNumero } from '../../../simulacion-formato';
+import { compararNombre, formatearEntero } from '../../../simulacion-formato';
 
 type TipoFiltro = '' | 'B2C' | 'B2B';
 
@@ -81,7 +81,9 @@ export class SimulacionDetalleChute {
   /** Vista del lanzamiento de un cluster: solo sus rutas, sin elegir otro cluster. */
   readonly clusterFijo = input<number | null>(null);
 
-  readonly formatearNumero = formatearNumero;
+  /** Datos sin decimales, redondeados hacia arriba (199,1 → 200); el 2.º argumento se ignora. */
+  readonly formatearNumero = (valor: number | null | undefined, _decimales?: number): string =>
+    formatearEntero(valor);
 
   readonly texto = signal('');
   /** Lo que muestra el buscador; el filtro se aplica tras la pausa de escritura. */

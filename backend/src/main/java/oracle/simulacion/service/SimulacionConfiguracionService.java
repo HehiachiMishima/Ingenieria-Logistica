@@ -355,30 +355,15 @@ public class SimulacionConfiguracionService {
             Auditoria.alActualizar(config, actor);
           }
           // La velocidad y el máximo por chute valen para todas las olas: si cambian,
-          // ninguna asignación sigue al día. El equipo del registro solo es la
-          // cantidad de las olas que nunca eligieron la suya. Lo que ya usó un
-          // cluster cerrado no se puede cambiar sin reabrirlo.
+          // ninguna asignación sigue al día. Lo que ya usó un cluster cerrado no se
+          // puede cambiar sin reabrirlo. La cantidad de operarios es de cada ola
+          // (paso 2): ya no hay un equipo del registro y `operariosMaximos` se ignora.
           boolean cambiaRitmo =
               config.getVelocidadBase() == null
                   || config.getVelocidadBase().compareTo(req.velocidadBase()) != 0
                   // 0 y nulo son "sin tope".
                   || !Objects.equals(sinTope(config.getOperariosPorChute()), sinTope(req.operariosPorChute()));
-          // Se compara con lo que el cliente recibió: un equipo nunca definido es la
-          // suma que se le mostró (operariosMaximos).
-          boolean cambiaEquipo =
-              req.operariosMaximos() != null
-                  && operariosMaximos(ctx, operariosBase(ctx)) != req.operariosMaximos();
-          Set<Long> usanEquipo =
-              ctx.parametrosCluster().entrySet().stream()
-                  .filter((entrada) -> entrada.getValue().getOperariosOla() == null)
-                  .map(Map.Entry::getKey)
-                  .collect(Collectors.toSet());
-          String cerrados =
-              nombres(
-                  ctx,
-                  cerrados(ctx).stream()
-                      .filter((id) -> cambiaRitmo || (cambiaEquipo && usanEquipo.contains(id)))
-                      .toList());
+          String cerrados = cambiaRitmo ? nombres(ctx, cerrados(ctx)) : "";
           if (!cerrados.isEmpty()) {
             throw new ConflictoException(
                 "El equipo ya trabajó en "
@@ -388,9 +373,6 @@ public class SimulacionConfiguracionService {
           config.setVelocidadBase(req.velocidadBase());
           // Nulo = reparto parejo: el usuario puede volver a dejarlo vacío.
           config.setOperariosPorChute(req.operariosPorChute());
-          if (req.operariosMaximos() != null) {
-            config.setOperariosMaximos(req.operariosMaximos());
-          }
           configRepo.save(config);
 
           Set<Long> limiteCambiado = new HashSet<>();
@@ -426,14 +408,11 @@ public class SimulacionConfiguracionService {
             }
           }
           validarOperarios(ctx);
-          // Un cluster LISTO cuyo cálculo cambió (límite, velocidad, máximo por chute o,
-          // si usa el del registro, el equipo) vuelve a «Asignar operarios»; sus rutas
-          // del paso 1 siguen valiendo.
+          // Un cluster LISTO cuyo cálculo cambió (límite, velocidad o máximo por
+          // chute) vuelve a «Asignar operarios»; sus rutas del paso 1 siguen valiendo.
           Set<Long> invalidar = new HashSet<>(limiteCambiado);
           if (cambiaRitmo) {
             invalidar.addAll(ctx.parametrosCluster().keySet());
-          } else if (cambiaEquipo) {
-            invalidar.addAll(usanEquipo);
           }
           invalidarOperarios(ctx, invalidar);
           tocar(ctx.archivo(), actor);
@@ -443,13 +422,10 @@ public class SimulacionConfiguracionService {
   }
 
   /**
-   * La base de cada chute no puede pasar del máximo por chute ni desbordar el
-   * pool de ninguna ola. La base es el «antes» (la proyección del Excel), así que
-   * cada ola se mide con la distribución original (cluster y chute del Excel):
-   * mover rutas, cambiarlas de cluster o balancearlas no la cambia ni puede
-   * volverla inválida. Como los clusters se ejecutan en secuencia, el máximo
-   * global se valida por cluster, no por la suma de todos los chutes. Lo que
-   * asigna el paso 2 sale del equipo y ya respeta ambos topes.
+   * La base de cada chute (el «antes», la proyección del Excel) no puede pasar
+   * del máximo por chute. Ya no hay un equipo del registro contra el que medir
+   * cada ola: la cantidad la elige cada cluster en su paso 2, que ya respeta el
+   * máximo por chute.
    */
   private void validarOperarios(Contexto ctx) {
     Integer porChute = ctx.config().getOperariosPorChute();
@@ -467,34 +443,6 @@ public class SimulacionConfiguracionService {
                           + ". Ajusta ese chute o sube el máximo.");
                 }
               });
-    }
-    Integer maximo = ctx.config().getOperariosMaximos();
-    if (maximo == null || maximo <= 0) {
-      return;
-    }
-    Map<Long, Map<Long, Integer>> operariosPorOla = new LinkedHashMap<>();
-    for (CargaRutas fila : rutaRepo.cargaOriginalPorArchivo(ctx.archivo().getId())) {
-      if (fila.getRutas() <= 0 || cerrado(ctx, fila.getClusterId())) {
-        continue;
-      }
-      ParametroChute parametro = ctx.parametrosChute().get(fila.getChuteId());
-      int operarios = parametro == null ? 0 : base(parametro);
-      operariosPorOla
-          .computeIfAbsent(fila.getClusterId(), (id) -> new LinkedHashMap<>())
-          .putIfAbsent(fila.getChuteId(), operarios);
-    }
-    for (Map.Entry<Long, Map<Long, Integer>> ola : operariosPorOla.entrySet()) {
-      int total = ola.getValue().values().stream().mapToInt(Integer::intValue).sum();
-      if (total > maximo) {
-        throw new ConflictoException(
-            "El cluster "
-                + ctx.nombreCluster(ola.getKey())
-                + " necesita "
-                + total
-                + " operario(s) en su ola y el máximo disponible es "
-                + maximo
-                + ". Ajusta los chutes o sube el máximo.");
-      }
     }
   }
 
@@ -1214,7 +1162,7 @@ public class SimulacionConfiguracionService {
 
   /**
    * Paso 2 del cluster en curso con la cantidad de operarios elegida para su
-   * ola (o la última usada; si nunca se eligió, el equipo del registro). Todos
+   * ola (o la última usada; si nunca se eligió, se pide). Todos
    * trabajan y se reparten para que la ola cierre lo antes posible; el límite
    * de horas solo dice si cumple. La cantidad se guarda en el cluster cuando el
    * paso termina bien.
@@ -1247,13 +1195,14 @@ public class SimulacionConfiguracionService {
         carga.merge(fila.getChuteId(), fila.getBultos(), BigDecimal::add);
       }
     }
-    Map<Long, Integer> base = operariosBase(ctx);
-    int equipo =
-        pedidos != null
-            ? pedidos
-            : parametro.getOperariosOla() != null
-                ? parametro.getOperariosOla()
-                : operariosMaximos(ctx, base);
+    // Cada ola define su propia cantidad: la que se envía o la última que usó.
+    // Ya no hay un equipo del registro al que recurrir.
+    Integer elegido = pedidos != null ? pedidos : parametro.getOperariosOla();
+    if (elegido == null || elegido <= 0) {
+      throw new SolicitudInvalidaException(
+          "Ingresa la cantidad de operarios de la ola de " + nombre + ".");
+    }
+    int equipo = elegido;
     if (carga.size() > equipo) {
       // Un chute con carga y sin nadie nunca termina: la ola no podría cerrarse.
       throw new ConflictoException(
@@ -1442,9 +1391,12 @@ public class SimulacionConfiguracionService {
      * primero dejando a la gente donde ya estaba y luego en el chute más lento.
      */
     void asignar() {
-      carga.keySet().forEach((chute) -> operarios.put(chute, 0));
+      // Cada chute con rutas parte con uno (el paso 2 ya exige equipo >= chutes):
+      // así uno con rutas de 0 bultos, que no tarda nada, no queda sin nadie.
       int disponibles = Math.min(equipo, carga.size() * topeChute);
-      for (int i = 0; i < disponibles; i++) {
+      int base = disponibles >= carga.size() ? 1 : 0;
+      carga.keySet().forEach((chute) -> operarios.put(chute, base));
+      for (int i = base * carga.size(); i < disponibles; i++) {
         operarios.merge(chuteMasLento(), 1, Integer::sum);
       }
       BigDecimal cierre = tiempoOla();
@@ -1454,7 +1406,8 @@ public class SimulacionConfiguracionService {
       int sobrantes = 0;
       for (Long chute : carga.keySet()) {
         int justos = operarios(chute);
-        while (justos > 0
+        // Nunca baja de uno: todo chute con rutas de la ola necesita a alguien.
+        while (justos > 1
             && horas(carga.get(chute), velocidad, justos - 1).compareTo(cierre) <= 0) {
           justos--;
         }
@@ -1538,20 +1491,21 @@ public class SimulacionConfiguracionService {
     borrarOlas(ctx, ctx.parametrosCluster().keySet());
     historialRepo.borrarPorArchivo(archivoId);
     lanzamientoRepo.borrarPorArchivo(archivoId);
+    // Todo vuelve a la proyección: también el rango de chutes y la cantidad de
+    // operarios que cada ola había elegido (si no, los modales los propondrían).
     ctx.parametrosCluster()
         .values()
-        .forEach((p) -> p.setEstado(ParametroCluster.ESTADO_PENDIENTE));
+        .forEach(
+            (p) -> {
+              p.setEstado(ParametroCluster.ESTADO_PENDIENTE);
+              p.setChuteDesdeId(null);
+              p.setChuteHastaId(null);
+              p.setOperariosOla(null);
+            });
     actualizarEstado(ctx);
     tocar(ctx.archivo(), actor);
   }
 
-  /**
-   * Devuelve esos clusters a como estaban antes de trabajarlos: deshace los
-   * movimientos de sus lanzamientos (también los de rutas de otro cluster que
-   * no había empezado) y los manuales de sus rutas, del último al primero. Lo
-   * que movió un cluster anterior al separarse se conserva. Quedan sin
-   * operarios de ola y sin sus lanzamientos.
-   */
   /**
    * Deshace el trabajo hecho mientras esos clusters estaban en curso: los
    * movimientos de sus lanzamientos y los cambios a mano (mover o cambiar de
@@ -1733,10 +1687,9 @@ public class SimulacionConfiguracionService {
   }
 
   /**
-   * Un cluster acepta o entrega rutas de otro cluster solo si sigue pendiente:
-   * con su paso 1 hecho, su reparto y sus operarios quedarían desfasados.
+   * Cambiar rutas de cluster exige que el cluster no esté cerrado (antes o
+   * después de balancear; si ya tenía operarios, vuelve al paso 2).
    */
-  /** Cambiar rutas de cluster exige que el cluster no esté cerrado. */
   private static void exigirAbierto(Contexto ctx, Long clusterId) {
     if (ParametroCluster.ESTADO_CERRADO.equals(parametroCluster(ctx, clusterId).getEstado())) {
       throw new ConflictoException(
@@ -2426,11 +2379,22 @@ public class SimulacionConfiguracionService {
     return valor == null || valor <= 0 ? null : valor;
   }
 
-  /** Tope global del registro; si nunca se definió, la suma asignada actual. */
+  /**
+   * Operarios de referencia cuando no se mira una ola concreta (resumen del
+   * dashboard y tope «sin tope» de la vista): la ola más grande que ya eligió
+   * su cantidad o, si ninguna lo hizo, la suma de la base de los chutes. Ya no
+   * existe un equipo del registro: `operarios_maximos` queda sin uso.
+   */
   private static int operariosMaximos(Contexto ctx, Map<Long, Integer> operarios) {
-    Integer maximo = ctx.config().getOperariosMaximos();
-    if (maximo != null && maximo > 0) {
-      return maximo;
+    int mayorOla =
+        ctx.parametrosCluster().values().stream()
+            .map(ParametroCluster::getOperariosOla)
+            .filter(Objects::nonNull)
+            .mapToInt(Integer::intValue)
+            .max()
+            .orElse(0);
+    if (mayorOla > 0) {
+      return mayorOla;
     }
     int asignados = operarios.values().stream().mapToInt(Integer::intValue).sum();
     // Sin tope y sin operarios: al menos uno por chute para que el balanceo
@@ -2591,7 +2555,8 @@ public class SimulacionConfiguracionService {
     return log;
   }
 
-  private static int compararNatural(String a, String b) {
+  /** Orden natural (CHUTE 2 antes que CHUTE 10); también lo usa el reporte. */
+  static int compararNatural(String a, String b) {
     int i = 0;
     int j = 0;
     while (i < a.length() && j < b.length()) {

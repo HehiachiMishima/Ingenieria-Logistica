@@ -3,6 +3,7 @@ package oracle.simulacion.controller;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import oracle.common.exception.ApiError;
 import oracle.common.exception.SolicitudInvalidaException;
@@ -28,6 +29,9 @@ import oracle.simulacion.response.RutasDashboardResponse;
 import oracle.simulacion.service.SimulacionConfiguracionService;
 import oracle.simulacion.service.SimulacionExcel;
 import oracle.simulacion.service.SimulacionRegistroService;
+import oracle.simulacion.service.SimulacionReporte;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -50,12 +54,19 @@ public class SimulacionController {
 
   private final SimulacionRegistroService registroService;
   private final SimulacionConfiguracionService configuracionService;
+  private final SimulacionReporte reporte;
+
+  private static final MediaType XLSX =
+      MediaType.parseMediaType(
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 
   public SimulacionController(
       SimulacionRegistroService registroService,
-      SimulacionConfiguracionService configuracionService) {
+      SimulacionConfiguracionService configuracionService,
+      SimulacionReporte reporte) {
     this.registroService = registroService;
     this.configuracionService = configuracionService;
+    this.reporte = reporte;
   }
 
   @GetMapping
@@ -151,7 +162,7 @@ public class SimulacionController {
     return configuracionService.mover(id, rutaId, req);
   }
 
-  /** Pasa una ruta a otro cluster (solo con ambos clusters sin balancear). */
+  /** Pasa una ruta a otro cluster (ambos clusters sin cerrar). */
   @PutMapping("/{id}/rutas/{rutaId}/cluster")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
   public ApiResponse<ConfiguracionSimulacionResponse> cambiarClusterRuta(
@@ -248,5 +259,26 @@ public class SimulacionController {
     }
     return configuracionService.rutasDashboard(
         id, pagina, tamano, texto, tipoRuta, chuteIds, lado, clusterId, soloCambios);
+  }
+
+  /**
+   * Excel de la simulación: EJECUTIVO (resumen y cuadrículas de configuración) o
+   * DETALLADO (además chutes, rutas, operarios por ola e historial). Solo lee.
+   */
+  @GetMapping("/{id}/exportar")
+  @PreAuthorize("hasAuthority('VER_DASHBOARD_SIMULACION')")
+  public ResponseEntity<byte[]> exportar(
+      @PathVariable Long id,
+      @RequestParam(defaultValue = "EJECUTIVO") SimulacionReporte.Nivel nivel) {
+    byte[] contenido = reporte.excel(id, nivel);
+    return ResponseEntity.ok()
+        .contentType(XLSX)
+        .header(
+            HttpHeaders.CONTENT_DISPOSITION,
+            ContentDisposition.attachment()
+                .filename(reporte.nombreArchivo(id, nivel), StandardCharsets.UTF_8)
+                .build()
+                .toString())
+        .body(contenido);
   }
 }

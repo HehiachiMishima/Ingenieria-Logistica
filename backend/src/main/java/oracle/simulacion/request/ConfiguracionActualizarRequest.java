@@ -14,7 +14,10 @@ import java.util.List;
 public record ConfiguracionActualizarRequest(
     @NotNull @DecimalMin("0.01") @DecimalMax(Limites.MAX_VELOCIDAD) @Digits(integer = 8, fraction = 2)
         BigDecimal velocidadBase,
-    /** Tope global de operarios disponibles; nulo conserva el valor actual. */
+    /**
+     * Obsoleto: ya no hay equipo del registro (cada ola elige su cantidad en el
+     * paso 2). Se acepta para no romper clientes viejos, pero se ignora.
+     */
     @Min(1) @Max(Limites.MAX_OPERARIOS_TOTAL) Integer operariosMaximos,
     /** Máximo de operarios en un chute; nulo = reparto parejo del máximo global. */
     @Min(1) @Max(Limites.MAX_OPERARIOS) Integer operariosPorChute,

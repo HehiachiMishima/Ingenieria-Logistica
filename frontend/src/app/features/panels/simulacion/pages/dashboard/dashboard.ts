@@ -37,9 +37,10 @@ import {
   etiquetaEstadoCluster,
   etiquetaRegistro,
   formatearHoras,
-  formatearNumero,
+  formatearEntero,
 } from '../../simulacion-formato';
 import { SimulacionDetalleChute } from './detalle-chute/detalle-chute';
+import { SimulacionExportar } from '../../exportar/exportar';
 
 type Metrica = 'rutas' | 'bultos' | 'unidades' | 'lineas' | 'cod';
 
@@ -138,6 +139,7 @@ const METRICAS: ReadonlyArray<{
     PanelFiltros,
     FiltrosActivos,
     SimulacionDetalleChute,
+    SimulacionExportar,
   ],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.scss',
@@ -151,10 +153,12 @@ export class SimulacionDashboard {
   readonly permisos = PERMISOS;
   readonly metricas = METRICAS;
   readonly formatearHoras = formatearHoras;
-  readonly formatearNumero = formatearNumero;
+  /** Datos sin decimales, redondeados hacia arriba (199,1 → 200); el 2.º argumento se ignora. */
+  readonly formatearNumero = (valor: number | null | undefined, _decimales?: number): string =>
+    formatearEntero(valor);
   readonly estadoCluster = etiquetaEstadoCluster;
   /** Valores de carga en el gráfico: enteros con separador de miles. */
-  readonly formatoCarga = (valor: number): string => formatearNumero(valor);
+  readonly formatoCarga = (valor: number): string => formatearEntero(valor);
 
   readonly registros = signal<ArchivoSimulacion[]>([]);
   readonly seleccionado = signal<number | null>(null);
@@ -358,17 +362,17 @@ export class SimulacionDashboard {
       },
       {
         etiqueta: 'Chute más cargado',
-        valor: `${formatearNumero(maxDespues)} bultos`,
+        valor: `${formatearEntero(maxDespues)} bultos`,
         icono: 'almacen',
         color: 'var(--accent)',
         detalle:
           maxAntes > 0
-            ? `Antes ${formatearNumero(maxAntes)} · ${this.variacion(maxAntes, maxDespues)}: es el que marca el cierre`
+            ? `Antes ${formatearEntero(maxAntes)} · ${this.variacion(maxAntes, maxDespues)}`
             : 'Sin carga',
       },
       {
         etiqueta: 'Rutas movidas',
-        valor: `${formatearNumero(kpis.rutasMovidas)} rutas`,
+        valor: `${formatearEntero(kpis.rutasMovidas)} rutas`,
         icono: 'flecha',
         color: 'var(--violet)',
         detalle: 'en otro chute para igualar sus bultos',
@@ -409,21 +413,21 @@ export class SimulacionDashboard {
       },
       {
         etiqueta: 'Operarios en la ola',
-        valor: formatearNumero(asignados),
+        valor: formatearEntero(asignados),
         icono: 'usuarios',
         color: 'var(--violet)',
         detalle:
           previa && paso
-            ? `De los ${formatearNumero(paso.quedan + paso.salen)} que terminaron ${previa}, ${formatearNumero(paso.quedan)} siguen en su chute`
+            ? `De los ${formatearEntero(paso.quedan + paso.salen)} que terminaron ${previa}, ${formatearEntero(paso.quedan)} siguen en su chute`
             : 'Primera ola: el equipo empieza aquí',
       },
       {
         etiqueta: 'Cambios de chute',
-        valor: paso ? `${formatearNumero(Math.min(paso.salen, paso.llegan))}` : '—',
+        valor: paso ? `${formatearEntero(Math.min(paso.salen, paso.llegan))}` : '—',
         icono: 'flecha',
         color: 'var(--accent)',
         detalle: paso
-          ? `${formatearNumero(paso.quedan)} se quedan · ${formatearNumero(paso.salen)} salen · ${formatearNumero(paso.llegan)} llegan`
+          ? `${formatearEntero(paso.quedan)} se quedan · ${formatearEntero(paso.salen)} salen · ${formatearEntero(paso.llegan)} llegan`
           : 'Nadie llega de otra ola',
       },
     ];

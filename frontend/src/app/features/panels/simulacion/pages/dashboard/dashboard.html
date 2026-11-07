@@ -7,15 +7,22 @@
     </p>
   </div>
   @if (seleccionado()) {
-    <button
-      *hasPermiso="permisos.VER_CONFIGURACION_SIMULACION"
-      type="button"
-      class="ui-btn ui-btn--secondary"
-      (click)="irAConfiguracion()"
-    >
-      <ui-icon name="control" [size]="18" />
-      Ver configuración
-    </button>
+    <div class="page-head__acciones">
+      <button
+        *hasPermiso="permisos.VER_CONFIGURACION_SIMULACION"
+        type="button"
+        class="ui-btn ui-btn--secondary"
+        (click)="irAConfiguracion()"
+      >
+        <ui-icon name="control" [size]="18" />
+        Ver configuración
+      </button>
+      <app-simulacion-exportar
+        [registroId]="seleccionado()"
+        [registroNombre]="registroSeleccionado()?.nombreRegistro ?? ''"
+        [listo]="finalizado()"
+      />
+    </div>
   }
 </header>
 

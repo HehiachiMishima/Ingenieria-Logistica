@@ -6,6 +6,13 @@ import { PanelShell } from '../panel-shell';
 import { aPrimerModulo } from '../panel-rutas';
 
 export const SIMULACION_ROUTES: Routes = [
+  // Reporte ejecutivo para imprimir / guardar como PDF: sin el menú del panel.
+  {
+    path: 'reporte',
+    canActivate: [permisoGuard(PERMISOS.VER_DASHBOARD_SIMULACION)],
+    loadComponent: () =>
+      import('./pages/reporte/reporte').then((m) => m.SimulacionReporteEjecutivo),
+  },
   {
     path: '',
     component: PanelShell,
@@ -25,7 +32,7 @@ export const SIMULACION_ROUTES: Routes = [
           (pagina: { dirty: () => boolean }) =>
             !pagina.dirty() ||
             window.confirm(
-              'Tienes cambios sin guardar en el equipo o en los límites. ¿Salir y descartarlos?',
+              'Tienes cambios sin guardar en los parámetros o en los límites. ¿Salir y descartarlos?',
             ),
         ],
         loadComponent: () =>

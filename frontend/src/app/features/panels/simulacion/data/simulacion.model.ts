@@ -102,7 +102,7 @@ export interface CargaSimulacion {
 export interface ConfiguracionSimulacion {
   archivo: ArchivoSimulacion;
   velocidadBase: number;
-  /** Tope global de operarios disponibles en cada ola; el pool se reutiliza entre olas. */
+  /** Operarios de referencia (la ola más grande ya elegida). Ya no hay equipo por defecto editable. */
   operariosMaximos: number;
   /** Máximo de operarios en un chute definido por el usuario; null = reparto parejo. */
   operariosPorChute: number | null;
@@ -129,12 +129,10 @@ export interface RutasSimulacionFiltros {
   chuteIds: number[];
 }
 
-/** Equipo (operarios y velocidad) y límites de horas de los clusters. */
+/** Velocidad, máximo por chute y límites de horas de los clusters (la cantidad de operarios es de cada ola). */
 export interface ConfiguracionSimulacionRequest {
   velocidadBase: number;
-  /** Operarios del equipo: los mismos pasan de un cluster al siguiente. */
-  operariosMaximos: number;
-  /** Máximo por chute; null = reparto parejo del equipo. */
+  /** Máximo por chute; null = sin tope propio (toda la ola). */
   operariosPorChute: number | null;
   clusters: { clusterId: number; limiteHoras: number }[];
 }
@@ -374,3 +372,6 @@ export interface RutasDashboardSimulacion {
   resumen: ResumenRutasSimulacion;
   rutas: Pagina<RutaSimulacion>;
 }
+
+/** Alcance del Excel exportado. */
+export type NivelExportacion = 'EJECUTIVO' | 'DETALLADO';

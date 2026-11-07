@@ -1,0 +1,508 @@
+@use 'breakpoints' as bp;
+
+/*
+ * Reporte ejecutivo (ViewEncapsulation.None: todo va bajo .rep / rep-*).
+ * En pantalla es una hoja centrada; al imprimir, A4 apaisado con colores
+ * exactos y cortes de página entre secciones.
+ */
+@page {
+  size: A4 landscape;
+  margin: 10mm;
+}
+
+.rep {
+  --rep-ancho: 1120px;
+  min-height: 100dvh;
+  padding: 0 clamp(var(--space-3), 3vw, var(--space-6)) var(--space-8);
+  background: var(--bg, var(--surface-2));
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* ---------- Barra de acciones (solo pantalla) ---------- */
+.rep-barra {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  max-width: var(--rep-ancho);
+  margin: 0 auto var(--space-4);
+  padding: var(--space-3) 0;
+  background: inherit;
+  border-bottom: 1px solid var(--border);
+
+  &__texto {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+  }
+
+  &__acciones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  @include bp.down(sm) {
+    &__acciones {
+      flex: 1 1 100%;
+
+      .ui-btn {
+        flex: 1 1 auto;
+      }
+    }
+  }
+}
+
+.rep-estado {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  max-width: var(--rep-ancho);
+  margin: var(--space-8) auto;
+  padding: var(--space-6);
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+
+  &--error {
+    color: var(--danger);
+    background: var(--danger-soft);
+  }
+}
+
+/* ---------- Hoja ---------- */
+.rep-hoja {
+  max-width: var(--rep-ancho);
+  margin: 0 auto var(--space-5);
+  padding: clamp(var(--space-4), 3vw, var(--space-6));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+}
+
+.rep-portada {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-bottom: var(--space-4);
+  margin-bottom: var(--space-4);
+  border-bottom: 3px solid var(--brand, var(--accent));
+
+  &__marca {
+    min-width: 0;
+    flex: 1 1 420px;
+  }
+
+  &__kicker {
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--brand, var(--accent));
+  }
+
+  &__titulo {
+    margin: var(--space-1) 0;
+    font-family: var(--font-display);
+    font-size: clamp(1.4rem, 2.6vw, 2rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    overflow-wrap: anywhere;
+  }
+
+  &__meta {
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+  }
+
+  &__fecha {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    text-align: right;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+
+    /* Cuando baja debajo del título, se alinea con él. */
+    @include bp.down(md) {
+      align-items: flex-start;
+      text-align: left;
+    }
+
+    strong {
+      font-size: var(--fs-sm);
+      color: var(--text);
+    }
+  }
+}
+
+.rep-aviso {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-sm);
+  color: var(--warning);
+  background: var(--warning-soft, var(--surface-2));
+  border-radius: var(--radius-sm);
+}
+
+/* Seis indicadores en 3 columnas (2 en tablet, 1 en celular): las etiquetas no se cortan. */
+.rep-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+
+  @include bp.down(md) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @include bp.down(sm) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.rep-titulo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-5) 0 var(--space-3);
+  font-size: var(--fs-base);
+  font-weight: 800;
+  color: var(--text);
+
+  &--grande {
+    margin-top: 0;
+    font-size: var(--fs-lg);
+  }
+}
+
+/* ---------- Tabla de olas ---------- */
+.rep-tabla-wrap {
+  overflow-x: auto;
+}
+
+.rep-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+
+  th,
+  td {
+    padding: 7px 10px;
+    text-align: right;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border);
+  }
+
+  thead th {
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--table-head-fg, #fff);
+    background: var(--table-head-bg, #0f1e3d);
+  }
+
+  .rep-izq {
+    text-align: left;
+  }
+
+  .rep-fuerte {
+    font-weight: 800;
+  }
+}
+
+.rep-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 800;
+
+  &::before {
+    content: '';
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    background: var(--c, var(--accent));
+  }
+
+  &--general::before {
+    background: var(--text);
+  }
+}
+
+.rep-pill {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 999px;
+  font-weight: 800;
+
+  &--ok {
+    color: var(--success);
+    background: var(--success-soft);
+  }
+
+  &--mal {
+    color: var(--danger);
+    background: var(--danger-soft);
+  }
+}
+
+.rep-conclusiones {
+  margin: 0;
+  padding-left: var(--space-5);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+/* ---------- Gráficos ---------- */
+.rep-grafico {
+  min-width: 0;
+  margin-bottom: var(--space-4);
+  break-inside: avoid;
+
+  &__vacio {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+    padding: var(--space-5);
+    font-size: var(--fs-sm);
+    color: var(--text-3);
+    background: var(--surface-2);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+  }
+}
+
+/* ---------- Cuadrículas ---------- */
+.rep-leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+
+  .rep-sem {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 800;
+  }
+}
+
+.rep-movida-muestra {
+  padding: 2px 8px;
+  font-weight: 700;
+  color: #3730a3;
+  background: #eef2ff;
+  border-radius: 4px;
+}
+
+.rep-bloque {
+  margin-bottom: var(--space-5);
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--c, var(--accent));
+  border-radius: var(--radius);
+
+  &--general {
+    border-left-color: var(--text);
+  }
+
+  &__cabecera {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+  }
+
+  &__resumen {
+    font-size: var(--fs-xs);
+    color: var(--text-2);
+  }
+
+  &__vacio {
+    margin: 0;
+    padding: var(--space-3);
+    font-size: var(--fs-sm);
+    color: var(--text-3);
+  }
+}
+
+.rep-grid {
+  width: 100%;
+  min-width: 720px;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+
+  & + & {
+    border-top: 2px solid var(--border-strong, var(--border));
+  }
+
+  th,
+  td {
+    height: 24px;
+    padding: 2px 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border: 1px solid var(--border);
+  }
+
+  thead th {
+    font-size: 0.66rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: var(--table-head-fg, #fff);
+    background: var(--table-head-bg, #0f1e3d);
+  }
+
+  /* «Máx. operarios por ola» baja a dos líneas en vez de cortarse. */
+  &__concepto {
+    width: 128px;
+    text-align: left;
+    font-weight: 700;
+    line-height: 1.15;
+    white-space: normal !important;
+    color: var(--text-2);
+    background: var(--surface-2);
+  }
+
+  thead .rep-grid__concepto {
+    color: var(--table-head-fg, #fff);
+    background: var(--table-head-bg, #0f1e3d);
+  }
+
+  &__ruta {
+    font-weight: 700;
+  }
+
+  &__ruta--movida {
+    color: #3730a3;
+    background: #eef2ff;
+  }
+
+  &__total td {
+    text-align: right;
+    font-weight: 800;
+  }
+}
+
+/* Semáforo por línea (mismos tonos que la planilla): amarillo, verde y rojo. */
+.rep-sem {
+  &--bajo,
+  &--medio,
+  &--alto {
+    color: color-mix(in srgb, var(--sem) 78%, var(--text));
+    background: color-mix(in srgb, var(--sem) 20%, var(--surface));
+  }
+
+  &--bajo {
+    --sem: var(--warning);
+  }
+
+  &--medio {
+    --sem: var(--success);
+  }
+
+  &--alto {
+    --sem: var(--danger);
+  }
+}
+
+.rep-pie {
+  max-width: var(--rep-ancho);
+  margin: 0 auto;
+  font-size: var(--fs-xs);
+  text-align: center;
+  color: var(--text-3);
+}
+
+/* ---------- Impresión ---------- */
+@media print {
+  .rep {
+    padding: 0;
+    background: #fff;
+  }
+
+  .rep-barra {
+    display: none;
+  }
+
+  .rep-hoja {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+  }
+
+  .rep-hoja--nueva {
+    break-before: page;
+  }
+
+  .rep-tabla-wrap,
+  .rep-bloque {
+    overflow: visible;
+  }
+
+  /* En la hoja, la tabla de olas se ajusta al ancho útil (277 mm). */
+  .rep-tabla {
+    font-size: 0.74rem;
+
+    th,
+    td {
+      padding: 5px 6px;
+    }
+
+    thead th {
+      white-space: normal;
+    }
+  }
+
+  .rep-tabla tr,
+  .rep-grid tr,
+  .rep-kpis,
+  .rep-bloque__cabecera {
+    break-inside: avoid;
+  }
+
+  .rep-grid {
+    min-width: 0;
+    break-inside: auto;
+  }
+
+  .rep-bloque__cabecera {
+    break-after: avoid;
+  }
+
+  .rep-pie {
+    margin-top: var(--space-3);
+  }
+}

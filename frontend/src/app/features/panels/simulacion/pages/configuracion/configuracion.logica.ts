@@ -140,7 +140,7 @@ export function resumirClusters(
           estado: estadoPaso(2),
           dato: conOperarios
             ? `${formatearNumero(operarios)} · ${formatearHoras(tiempo)}`
-            : 'Todo el equipo',
+            : 'Ingresar cantidad',
         },
         {
           numero: 3,
@@ -178,12 +178,6 @@ export function normalizarVelocidad(texto: string): number | null {
   return Number.isFinite(leido) && leido > 0 ? Math.min(LIMITES.velocidad, leido) : null;
 }
 
-/** Operarios del equipo: entero entre 1 y el tope. */
-export function normalizarEquipo(texto: string): number {
-  const valor = Number.parseInt(texto, 10);
-  return Number.isInteger(valor) && valor >= 1 ? Math.min(LIMITES.equipo, valor) : 1;
-}
-
 /** Máximo por chute: vacío = sin tope propio; si no, entre 1 y el tope técnico. */
 export function normalizarPorChute(texto: string): number | null {
   if (texto.trim() === '') {
@@ -197,4 +191,29 @@ export function normalizarPorChute(texto: string): number | null {
 export function normalizarLimite(texto: string): number {
   const valor = Math.round(Number(texto) * 100) / 100;
   return Number.isFinite(valor) && valor >= 0 ? Math.min(LIMITES.horas, valor) : 0;
+}
+
+/**
+ * Nivel de cada valor dentro de su fila para el semáforo, por su puesto (no
+ * por su distancia): el menor (distinto de cero) vale 0 y el mayor 1, así un
+ * chute muy cargado no deja a todos los demás en amarillo. Valores iguales
+ * comparten nivel; los vacíos quedan sin color (null) y, si todos son
+ * iguales, todos van al medio (verde). Lo usan la planilla y el reporte.
+ */
+export function nivelesDeFila(valores: number[]): (number | null)[] {
+  const distintos = [...new Set(valores.filter((valor) => valor > 0))].sort((a, b) => a - b);
+  if (distintos.length === 0) {
+    return valores.map(() => null);
+  }
+  const ultimo = distintos.length - 1;
+  const puesto = new Map(distintos.map((valor, i) => [valor, ultimo === 0 ? 0.5 : i / ultimo]));
+  return valores.map((valor) => (valor > 0 ? (puesto.get(valor) ?? null) : null));
+}
+
+/** Tono del semáforo para un nivel: amarillo = bajo, verde = intermedio, rojo = alto. */
+export function tonoSemaforo(nivel: number | null): 'bajo' | 'medio' | 'alto' | null {
+  if (nivel === null) {
+    return null;
+  }
+  return nivel < 1 / 3 ? 'bajo' : nivel < 2 / 3 ? 'medio' : 'alto';
 }

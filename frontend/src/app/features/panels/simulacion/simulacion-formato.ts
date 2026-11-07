@@ -170,3 +170,16 @@ export function formatearNumero(valor: number | null | undefined, decimales = 0)
 export function colorRegistro(hex: string | null | undefined): string {
   return hex && /^#[0-9a-fA-F]{6}$/.test(hex) ? hex : PALETA_REGISTROS[0].hex;
 }
+
+/**
+ * Entero hacia arriba para mostrar datos sin decimales (199.1 → 200). Antes se
+ * corta el ruido de punto flotante: 200.0000000001 sigue siendo 200.
+ */
+export function redondearArriba(valor: number | null | undefined): number {
+  return Math.ceil(Math.round((valor ?? 0) * 1e6) / 1e6);
+}
+
+/** Número sin decimales, redondeado hacia arriba y con separadores de es-PE. */
+export function formatearEntero(valor: number | null | undefined): string {
+  return formatearNumero(redondearArriba(valor));
+}

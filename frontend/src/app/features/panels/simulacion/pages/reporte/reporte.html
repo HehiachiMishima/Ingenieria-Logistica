@@ -1,0 +1,229 @@
+<div class="rep">
+  <!-- Barra de acciones: solo en pantalla, no se imprime. -->
+  <div class="rep-barra">
+    <div class="rep-barra__texto">
+      <ui-icon name="dashboard" [size]="18" />
+      <span>Reporte ejecutivo · elige «Guardar como PDF» en el destino de impresión.</span>
+    </div>
+    <div class="rep-barra__acciones">
+      <button type="button" class="ui-btn ui-btn--secondary" (click)="cerrar()">Cerrar</button>
+      <button type="button" class="ui-btn ui-btn--primary" [disabled]="!datos()" (click)="imprimir()">
+        <ui-icon name="descargar" [size]="16" /> Imprimir / Guardar PDF
+      </button>
+    </div>
+  </div>
+
+  @if (error(); as mensaje) {
+  <div class="rep-estado rep-estado--error" role="alert">
+    <ui-icon name="alerta" [size]="20" /> {{ mensaje }}
+  </div>
+  } @else if (!datos()) {
+  <div class="rep-estado"><span class="ui-spinner"></span> Preparando el reporte…</div>
+  } @else if (datos(); as d) {
+  <!-- ============ Página 1: portada, indicadores y resultado por ola ============ -->
+  <section class="rep-hoja">
+    <header class="rep-portada">
+      <div class="rep-portada__marca">
+        <span class="rep-portada__kicker">Simulación · Reporte ejecutivo</span>
+        <h1 class="rep-portada__titulo">{{ d.cfg.archivo.nombreRegistro }}</h1>
+        <p class="rep-portada__meta">
+          {{ estadoRegistro() }} · {{ formatearEntero(d.cfg.archivo.rutas) }} rutas ·
+          {{ formatearEntero(d.cfg.archivo.chutes) }} chutes · velocidad
+          {{ formatearEntero(d.cfg.velocidadBase) }} bultos/h por operario ·
+          {{ d.cfg.operariosPorChute ? 'máx. ' + d.cfg.operariosPorChute + ' por chute' : 'sin tope por chute' }}
+        </p>
+      </div>
+      <div class="rep-portada__fecha">
+        <span>Generado</span>
+        <strong>{{ generado.toLocaleString('es-PE', { dateStyle: 'medium', timeStyle: 'short' }) }}</strong>
+      </div>
+    </header>
+
+    @if (!finalizado()) {
+    <p class="rep-aviso"><ui-icon name="alerta" [size]="14" /> La simulación aún no termina: los datos son parciales.</p>
+    }
+
+    <div class="rep-kpis">
+      @for (k of kpis(); track k.etiqueta) {
+      <ui-kpi [etiqueta]="k.etiqueta" [valor]="k.valor" [detalle]="k.detalle" [icono]="k.icono" [color]="k.color" />
+      }
+    </div>
+
+    <h2 class="rep-titulo"><ui-icon name="analisis" [size]="16" /> Resultado por ola</h2>
+    <div class="rep-tabla-wrap">
+      <table class="rep-tabla">
+        <thead>
+          <tr>
+            <th>Ola</th>
+            <th class="rep-izq">Cluster</th>
+            <th class="rep-izq">Estado</th>
+            <th>Operarios</th>
+            <th>Chutes</th>
+            <th>Rutas</th>
+            <th>Bultos</th>
+            <th>Tiempo antes</th>
+            <th>Tiempo después</th>
+            <th>Límite</th>
+            <th>Uso</th>
+            <th>Dif. bultos</th>
+            <th>Cumple</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (o of olas(); track o.nombre) {
+          <tr>
+            <td>{{ o.ola }}</td>
+            <td class="rep-izq"><span class="rep-cluster" [style.--c]="o.color">{{ o.nombre }}</span></td>
+            <td class="rep-izq">{{ o.estado }}</td>
+            <td>{{ o.operarios ?? '—' }}</td>
+            <td>{{ o.chutes }}</td>
+            <td>{{ formatearEntero(o.rutas) }}</td>
+            <td>{{ formatearEntero(o.bultos) }}</td>
+            <td>{{ o.antes }}</td>
+            <td class="rep-fuerte">{{ o.despues }}</td>
+            <td>{{ o.limite }}</td>
+            <td>{{ o.uso === null ? '—' : o.uso + ' %' }}</td>
+            <td>{{ o.dispersion === null ? '—' : o.dispersion + ' %' }}</td>
+            <td>
+              @if (o.cumple === null) {
+              —
+              } @else {
+              <span class="rep-pill" [class.rep-pill--ok]="o.cumple" [class.rep-pill--mal]="!o.cumple">
+                {{ o.cumple ? 'Sí' : 'No' }}
+              </span>
+              }
+            </td>
+          </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <h2 class="rep-titulo"><ui-icon name="info" [size]="16" /> Conclusiones</h2>
+    <ul class="rep-conclusiones">
+      @for (frase of conclusiones(); track frase) {
+      <li>{{ frase }}</li>
+      }
+    </ul>
+  </section>
+
+  <!-- ============ Página 2: gráficos del dashboard ============ -->
+  <section class="rep-hoja rep-hoja--nueva">
+    <h2 class="rep-titulo"><ui-icon name="reloj" [size]="16" /> Tiempo de cada ola: antes vs. después</h2>
+    <div class="rep-grafico">
+      @if (hayTiempos()) {
+      <ui-comparativo [datos]="graficoTiempos()" [formato]="formatoHoras" etiquetaAntes="Antes del balanceo"
+        etiquetaDespues="Después del balanceo" color="var(--accent)" [altura]="210" [anchoGrupo]="110" />
+      } @else {
+      <p class="rep-grafico__vacio">
+        <ui-icon name="info" [size]="16" /> Los tiempos aparecen cuando las olas tienen sus operarios asignados.
+      </p>
+      }
+    </div>
+
+    <h2 class="rep-titulo"><ui-icon name="paquete" [size]="16" /> Bultos por chute: antes vs. después</h2>
+    @for (g of graficosBultos(); track $index) {
+    <div class="rep-grafico">
+      <ui-comparativo [datos]="g.grupos" [formato]="formatoEntero" etiquetaAntes="Antes" etiquetaDespues="Después"
+        color="var(--success)" [altura]="190" [anchoGrupo]="g.ancho" />
+    </div>
+    }
+
+    @if (graficoOperarios().length > 0) {
+    <h2 class="rep-titulo"><ui-icon name="usuarios" [size]="16" /> Operarios por ola</h2>
+    <div class="rep-grafico">
+      <ui-bars [datos]="graficoOperarios()" [altura]="200" />
+    </div>
+    }
+  </section>
+
+  <!-- ============ Cuadrículas de configuración ============ -->
+  <section class="rep-hoja rep-hoja--nueva">
+    <h2 class="rep-titulo rep-titulo--grande"><ui-icon name="layers" [size]="18" /> Configuración: rutas por cluster y chute</h2>
+    <p class="rep-leyenda">
+      Totales con semáforo por línea:
+      <span class="rep-sem rep-sem--alto">más alto</span>
+      <span class="rep-sem rep-sem--medio">intermedio</span>
+      <span class="rep-sem rep-sem--bajo">más bajo</span>
+      · <span class="rep-movida-muestra">ruta</span> movida respecto del Excel.
+    </p>
+
+    @for (c of cuadriculas(); track c.id) {
+    <article class="rep-bloque" [style.--c]="c.color">
+      <header class="rep-bloque__cabecera">
+        <span class="rep-cluster" [style.--c]="c.color">{{ c.nombre }}</span>
+        <span class="rep-bloque__resumen">{{ c.resumen }}</span>
+      </header>
+      @if (c.tramos.length === 0) {
+      <p class="rep-bloque__vacio">Sin rutas en este cluster.</p>
+      }
+      @for (t of c.tramos; track $index) {
+      <table class="rep-grid">
+        <thead>
+          <tr>
+            <th class="rep-grid__concepto">Concepto</th>
+            @for (ch of t.chutes; track ch.id) {
+            <th>{{ ch.etiqueta }}</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (fila of t.filas; track $index; let primera = $first) {
+          <tr>
+            <th class="rep-grid__concepto">{{ primera ? 'Rutas' : '' }}</th>
+            @for (celda of fila; track $index) {
+            <td class="rep-grid__ruta" [class.rep-grid__ruta--movida]="celda?.movida">{{ celda?.texto ?? '' }}</td>
+            }
+          </tr>
+          }
+          @for (total of t.totales; track total.etiqueta) {
+          <tr class="rep-grid__total">
+            <th class="rep-grid__concepto">{{ total.etiqueta }}</th>
+            @for (celda of total.celdas; track $index) {
+            <td [class]="celda.tono ? 'rep-sem rep-sem--' + celda.tono : ''">
+              {{ celda.valor > 0 ? formatearEntero(celda.valor) : '' }}
+            </td>
+            }
+          </tr>
+          }
+        </tbody>
+      </table>
+      }
+    </article>
+    }
+
+    <article class="rep-bloque rep-bloque--general">
+      <header class="rep-bloque__cabecera">
+        <span class="rep-cluster rep-cluster--general">Total general</span>
+        <span class="rep-bloque__resumen">Todos los clusters · operarios = máximo de sus olas</span>
+      </header>
+      @for (t of totalGeneral(); track $index) {
+      <table class="rep-grid">
+        <thead>
+          <tr>
+            <th class="rep-grid__concepto">Concepto</th>
+            @for (ch of t.chutes; track ch.id) {
+            <th>{{ ch.etiqueta }}</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (total of t.totales; track total.etiqueta) {
+          <tr class="rep-grid__total">
+            <th class="rep-grid__concepto">{{ total.etiqueta }}</th>
+            @for (celda of total.celdas; track $index) {
+            <td [class]="celda.tono ? 'rep-sem rep-sem--' + celda.tono : ''">
+              {{ celda.valor > 0 ? formatearEntero(celda.valor) : '' }}
+            </td>
+            }
+          </tr>
+          }
+        </tbody>
+      </table>
+      }
+    </article>
+  </section>
+
+  <footer class="rep-pie">Simulación · {{ d.cfg.archivo.nombreRegistro }} · reporte ejecutivo</footer>
+  }
+</div>

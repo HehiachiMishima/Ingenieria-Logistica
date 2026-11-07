@@ -37,7 +37,7 @@ import {
   colorRegistro,
   datosCarga,
   etiquetaEstado,
-  formatearNumero,
+  formatearEntero,
   nombreRegistroSugerido,
   problemaArchivoExcel,
   tamanoArchivo,
@@ -77,7 +77,9 @@ export class SimulacionRegistro {
   readonly paleta = PALETA_REGISTROS;
   readonly tamanoArchivo = tamanoArchivo;
   readonly colorRegistro = colorRegistro;
-  readonly formatearNumero = formatearNumero;
+  /** Datos sin decimales, redondeados hacia arriba (199,1 → 200); el 2.º argumento se ignora. */
+  readonly formatearNumero = (valor: number | null | undefined, _decimales?: number): string =>
+    formatearEntero(valor);
   readonly estado = etiquetaEstado;
 
   readonly busqueda = signal('');

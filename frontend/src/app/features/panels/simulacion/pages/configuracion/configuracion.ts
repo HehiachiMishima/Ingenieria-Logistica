@@ -4,6 +4,7 @@ import {
   DestroyRef,
   ElementRef,
   computed,
+  effect,
   inject,
   signal,
   viewChild,
@@ -57,15 +58,16 @@ import {
   datosCarga,
   etiquetaEstado,
   etiquetaRegistro,
-  formatearNumero,
+  formatearEntero,
   nombreRegistroSugerido,
+  redondearArriba,
   problemaArchivoExcel,
   tamanoArchivo,
 } from '../../simulacion-formato';
 import {
   Paso,
   ResumenCluster,
-  normalizarEquipo,
+  nivelesDeFila,
   normalizarLimite,
   normalizarPorChute,
   normalizarVelocidad,
@@ -75,7 +77,8 @@ import { SimulacionGuiaBalanceo } from './guia-balanceo/guia-balanceo';
 import { SimulacionHistorialCambios } from './historial-cambios/historial-cambios';
 import { ArrastreRutas, DestinoRuta } from './arrastre-rutas.directive';
 import { ScrollMatriz } from './scroll-matriz.directive';
-import { HorasPipe, NumeroPipe } from '../../numero.pipe';
+import { SimulacionExportar } from '../../exportar/exportar';
+import { EnteroPipe, HorasPipe, NumeroPipe } from '../../numero.pipe';
 
 /** Ruta lista para pintar: el título y los permisos ya calculados (sin métodos en la plantilla). */
 interface CeldaRuta {
@@ -96,10 +99,54 @@ interface BloqueMatriz {
 }
 
 /**
- * Filas mínimas de cada bloque: dejan sitio al panel del cluster y huecos
- * libres donde soltar una ruta aunque el chute ya esté lleno.
+ * Filas de cada bloque: también su alto visible (el SCSS lo toma de
+ * --mz-filas). Con más rutas, la tabla crece y se recorre con scroll vertical.
  */
-const MIN_FILAS = 8;
+const MIN_FILAS = 4;
+
+/**
+ * Dónde se dibuja la ficha de detalle: junto a su ancla (abajo o arriba,
+ * según el espacio) o, en pantallas angostas o bajas, como hoja inferior.
+ */
+interface PosicionDetalle {
+  hoja: boolean;
+  left: number | null;
+  top: number | null;
+  bottom: number | null;
+  maxAlto: number | null;
+}
+
+interface DetalleAbierto {
+  tipo: 'ruta' | 'cluster';
+  id: number;
+  /** Elemento que la abrió: tocarlo de nuevo la cierra y recibe el foco al salir. */
+  ancla: HTMLElement;
+  pos: PosicionDetalle;
+}
+
+/** Ancho de la ficha (igual que en el SCSS) y margen con el borde de la ventana. */
+const ANCHO_DETALLE = 320;
+const MARGEN_DETALLE = 12;
+
+function posicionDetalle(ancla: HTMLElement, altoEstimado: number): PosicionDetalle {
+  const caja = ancla.getBoundingClientRect();
+  const ancho = window.innerWidth;
+  const alto = window.innerHeight;
+  const abajo = alto - caja.bottom - MARGEN_DETALLE - 6;
+  const arriba = caja.top - MARGEN_DETALLE - 6;
+  const hoja = { hoja: true, left: null, top: null, bottom: null, maxAlto: null };
+  if (ancho < 640 || Math.max(abajo, arriba) < 220) {
+    return hoja;
+  }
+  const left = Math.min(
+    Math.max(MARGEN_DETALLE, caja.left),
+    ancho - Math.min(ANCHO_DETALLE, ancho - MARGEN_DETALLE * 2) - MARGEN_DETALLE,
+  );
+  if (abajo >= altoEstimado || abajo >= arriba) {
+    return { hoja: false, left, top: caja.bottom + 6, bottom: null, maxAlto: abajo };
+  }
+  return { hoja: false, left, top: null, bottom: alto - caja.top + 6, maxAlto: arriba };
+}
 
 /** Motivo interno: soltar la ruta en su misma celda no hace nada (y no avisa). */
 const SIN_CAMBIO = 'sin-cambio';
@@ -156,7 +203,9 @@ interface EstadoRutasMatriz {
     SimulacionGuiaBalanceo,
     ScrollMatriz,
     ArrastreRutas,
+    SimulacionExportar,
     NumeroPipe,
+    EnteroPipe,
     HorasPipe,
 ],
   templateUrl: './configuracion.html',
@@ -193,15 +242,14 @@ export class SimulacionConfiguracion {
   /** Descarta respuestas viejas si el usuario cambia de registro rápido. */
   private solicitud = 0;
 
-  // ---------------- Equipo y límites en edición ----------------
+  // ---------------- Parámetros y límites en edición ----------------
+  // Ya no hay «equipo por defecto»: cada ola ingresa su cantidad en el paso 2.
   readonly velocidad = signal(VELOCIDAD_INICIAL);
-  /** Operarios del equipo: los mismos pasan de un cluster al siguiente. */
-  readonly equipo = signal(1);
-  /** Máximo de operarios en un chute; null = sin tope propio (hasta todo el equipo). */
+  /** Máximo de operarios en un chute; null = sin tope propio (hasta toda la ola). */
   readonly porChute = signal<number | null>(null);
   readonly limites = signal<Record<number, number>>({});
 
-  /** Hay cambios del equipo o de algún límite sin guardar. */
+  /** Hay cambios de velocidad, máximo por chute o de algún límite sin guardar. */
   readonly dirty = computed(() => {
     const cfg = this.config();
     if (!cfg) {
@@ -213,7 +261,6 @@ export class SimulacionConfiguracion {
     const guardado = equipoNormalizado(cfg);
     return (
       guardado.velocidad !== this.velocidad() ||
-      guardado.equipo !== this.equipo() ||
       guardado.porChute !== this.porChute() ||
       cfg.clusters.some((cluster) => Number(cluster.limiteHoras) !== (limites[cluster.id] ?? 0))
     );
@@ -281,17 +328,6 @@ export class SimulacionConfiguracion {
     () => (this.config()?.clusters ?? []).find((cluster) => cluster.estado === 'CERRADO') ?? null,
   );
 
-  /**
-   * El equipo del registro solo es la cantidad de las olas que nunca eligieron
-   * la suya: lo bloquea el primer cluster cerrado que lo usó (igual que el servidor).
-   */
-  readonly equipoGlobalBloqueado = computed(
-    () =>
-      (this.config()?.clusters ?? []).find(
-        (cluster) => cluster.estado === 'CERRADO' && cluster.operariosOla === null,
-      ) ?? null,
-  );
-
   /** Cluster cuyo paso 2 espera la cantidad de operarios (modal «Operarios para …»). */
   readonly operariosPendiente = signal<{ id: number; nombre: string } | null>(null);
   readonly operariosCantidad = signal<number | null>(null);
@@ -351,8 +387,9 @@ export class SimulacionConfiguracion {
   /**
    * Vista previa del rango: chutes incluidos (orden natural, «desde» y «hasta»
    * incluidos aunque estén invertidos), la carga del cluster, cuántas rutas
-   * están hoy fuera del rango y si el equipo alcanza para un operario en cada
-   * chute que puede quedar con carga (el paso 2 lo exige).
+   * están hoy fuera del rango y cuántos operarios necesitará como mínimo (uno
+   * por chute que puede quedar con carga: el paso 2 lo exige). Si la ola ya
+   * eligió su cantidad, avisa cuando no alcanza para ese mínimo.
    */
   readonly vistaRango = computed(() => {
     const cluster = this.rangoPendiente();
@@ -373,7 +410,7 @@ export class SimulacionConfiguracion {
     const incluidos = new Set(orden.slice(inicio, fin + 1).map((chute) => chute.id));
     const filas = cfg.carga.filter((fila) => fila.clusterId === cluster.id && fila.rutas > 0);
     const rutas = filas.reduce((total, fila) => total + fila.rutas, 0);
-    const equipo = this.equipo();
+    const equipo = cfg.clusters.find((c) => c.id === cluster.id)?.operariosOla ?? null;
     // Con menos rutas que chutes, algunos quedan vacíos: no necesitan gente.
     const conCarga = Math.min(incluidos.size, rutas);
     return {
@@ -385,8 +422,9 @@ export class SimulacionConfiguracion {
       fuera: filas
         .filter((fila) => !incluidos.has(fila.chuteId))
         .reduce((total, fila) => total + fila.rutas, 0),
+      minimo: conCarga,
       equipo,
-      excede: conCarga > equipo,
+      excede: equipo !== null && conCarga > equipo,
     };
   });
 
@@ -583,18 +621,158 @@ export class SimulacionConfiguracion {
     return metricas;
   });
 
-  /** Filas de las tablas de totales (por cluster y general), como en la planilla. */
   /**
    * Filas de las tablas de totales (por cluster y general). Cada una tiene su
    * color (token del sistema) y sus celdas se oscurecen cuanto mayor es el valor.
+   * Los valores se muestran enteros, redondeados hacia arriba (pipe `entero`).
    */
-  readonly filasTotales: { clave: CampoTotal; etiqueta: string; decimales: number; tono: string }[] = [
-    { clave: 'operarios', etiqueta: 'Total operarios', decimales: 0, tono: 'var(--violet)' },
-    { clave: 'bultos', etiqueta: 'Total bultos', decimales: 2, tono: 'var(--accent)' },
-    { clave: 'lineas', etiqueta: 'Total líneas', decimales: 2, tono: 'var(--success)' },
-    { clave: 'unidades', etiqueta: 'Total unidades', decimales: 2, tono: 'var(--warning)' },
-    { clave: 'cod', etiqueta: 'Total locales', decimales: 0, tono: 'var(--cyan)' },
+  readonly filasTotales: { clave: CampoTotal; etiqueta: string; corta: string; tono: string }[] = [
+    { clave: 'operarios', etiqueta: 'Total operarios', corta: 'Ope.', tono: 'var(--violet)' },
+    { clave: 'bultos', etiqueta: 'Total bultos', corta: 'Bul.', tono: 'var(--accent)' },
+    { clave: 'lineas', etiqueta: 'Total líneas', corta: 'Lín.', tono: 'var(--success)' },
+    { clave: 'unidades', etiqueta: 'Total unidades', corta: 'Uni.', tono: 'var(--warning)' },
+    { clave: 'cod', etiqueta: 'Total locales', corta: 'Loc.', tono: 'var(--cyan)' },
   ];
+
+  /** Filas visibles de cada cluster antes del scroll vertical (las fija MIN_FILAS). */
+  readonly filasVisibles = MIN_FILAS;
+
+  // ---------------- Minimizar clusters ----------------
+
+  /**
+   * Un solo interruptor para toda la matriz: minimizado, el panel de cada
+   * cluster y la columna de etiquetas de todos los totales (también el
+   * general) pasan a un riel delgado y los chutes ganan ese ancho.
+   */
+  readonly minimizado = signal(false);
+
+  alternarMinimizado(): void {
+    this.minimizado.update((valor) => !valor);
+  }
+
+  // ---------------- Detalle flotante (ruta o cluster) ----------------
+
+  /** Ficha abierta: qué muestra y dónde se dibuja, junto al elemento que la abrió. */
+  readonly detalle = signal<DetalleAbierto | null>(null);
+
+  /** Ruta de la ficha, siempre la versión vigente (si se mueve, se actualiza). */
+  readonly rutaDetalle = computed(() => {
+    const abierto = this.detalle();
+    if (abierto?.tipo !== 'ruta') {
+      return null;
+    }
+    const ruta = this.rutasPorId().get(abierto.id);
+    if (!ruta) {
+      return null;
+    }
+    const chute = (this.config()?.carga ?? []).find(
+      (fila) => fila.clusterId === ruta.clusterId && fila.chuteId === ruta.chuteId,
+    );
+    const bultosChute = Number(chute?.bultos ?? 0);
+    const cerrado = this.clusterCerrado(ruta.clusterId);
+    return {
+      ruta,
+      color: this.resumenClusters().find((cluster) => cluster.id === ruta.clusterId)?.color ?? null,
+      movida: ruta.chuteId !== ruta.chuteOriginalId || ruta.clusterId !== ruta.clusterOriginalId,
+      /** Parte de los bultos de su chute (en este cluster) que lleva la ruta. */
+      parte: bultosChute > 0 ? Math.min(100, redondearArriba((Number(ruta.totalBultos ?? 0) / bultosChute) * 100)) : null,
+      operarios: chute?.operarios ?? null,
+      aviso: !this.puedeModificar()
+        ? null
+        : cerrado
+          ? `${ruta.cluster} está cerrado: reábrelo para mover sus rutas.`
+          : 'Arrastra ⋮⋮ a otro chute o cluster para moverla.',
+    };
+  });
+
+  /** Cluster de la ficha, con sus métricas vigentes. */
+  readonly clusterDetalle = computed(() => {
+    const abierto = this.detalle();
+    if (abierto?.tipo !== 'cluster') {
+      return null;
+    }
+    const cluster = this.resumenClusters().find((c) => c.id === abierto.id);
+    if (!cluster) {
+      return null;
+    }
+    return { c: cluster, m: this.metricasCluster().get(cluster.id) ?? null };
+  });
+
+  /** Abre (o cierra, si ya estaba abierta) la ficha de una ruta junto a ella. */
+  abrirDetalleRuta(evento: Event, rutaId: number): void {
+    this.abrirDetalle(evento, 'ruta', rutaId, 300);
+  }
+
+  /** Abre (o cierra) la ficha con el detalle de un cluster junto a su botón. */
+  abrirDetalleCluster(evento: Event, clusterId: number): void {
+    this.abrirDetalle(evento, 'cluster', clusterId, 380);
+  }
+
+  cerrarDetalle(): void {
+    this.detalle.set(null);
+  }
+
+  private abrirDetalle(evento: Event, tipo: DetalleAbierto['tipo'], id: number, alto: number): void {
+    const ancla = evento.currentTarget;
+    if (!(ancla instanceof HTMLElement)) {
+      return;
+    }
+    if (evento instanceof KeyboardEvent) {
+      evento.preventDefault();
+    }
+    const actual = this.detalle();
+    if (actual?.tipo === tipo && actual.id === id) {
+      this.detalle.set(null);
+      return;
+    }
+    this.detalle.set({ tipo, id, ancla, pos: posicionDetalle(ancla, alto) });
+  }
+
+  /**
+   * Mientras hay una ficha abierta: se cierra con Escape, al tocar fuera, al
+   * desplazar la página o la matriz (quedaría lejos de su ruta) y al cambiar
+   * el tamaño de la ventana. Listeners nativos (sin zone.js): solo tocan la señal.
+   */
+  private readonly cierreDetalle = effect((alLimpiar) => {
+    const abierto = this.detalle();
+    if (!abierto) {
+      return;
+    }
+    const dentro = (objetivo: EventTarget | null): boolean => {
+      if (!(objetivo instanceof Node)) {
+        return false;
+      }
+      const elemento = objetivo instanceof Element ? objetivo : objetivo.parentElement;
+      return abierto.ancla.contains(objetivo) || !!elemento?.closest('.detalle-pop');
+    };
+    const alTocar = (e: PointerEvent) => {
+      if (!dentro(e.target)) {
+        this.detalle.set(null);
+      }
+    };
+    const alTeclear = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        this.detalle.set(null);
+        abierto.ancla.focus({ preventScroll: true });
+      }
+    };
+    const alDesplazar = (e: Event) => {
+      if (!dentro(e.target)) {
+        this.detalle.set(null);
+      }
+    };
+    const alRedimensionar = () => this.detalle.set(null);
+    document.addEventListener('pointerdown', alTocar, true);
+    document.addEventListener('keydown', alTeclear);
+    document.addEventListener('scroll', alDesplazar, { capture: true, passive: true });
+    window.addEventListener('resize', alRedimensionar);
+    alLimpiar(() => {
+      document.removeEventListener('pointerdown', alTocar, true);
+      document.removeEventListener('keydown', alTeclear);
+      document.removeEventListener('scroll', alDesplazar, true);
+      window.removeEventListener('resize', alRedimensionar);
+    });
+  });
 
   /** Clusters con el desplegable de totales por chute abierto. */
   readonly totalesAbiertos = signal<ReadonlySet<number>>(new Set());
@@ -835,12 +1013,12 @@ export class SimulacionConfiguracion {
     }
   }
 
-  /** Con el equipo o un límite sin guardar, avisa en lugar de descartarlos. */
+  /** Con un parámetro o un límite sin guardar, avisa en lugar de descartarlos. */
   private avisarCambiosSinGuardar(accion: string): boolean {
     if (this.dirty()) {
       this.notificaciones.advertencia(
         'Cambios sin guardar',
-        `Guarda el equipo y los límites antes de ${accion}.`,
+        `Guarda los parámetros y los límites antes de ${accion}.`,
       );
     }
     return this.dirty();
@@ -920,12 +1098,11 @@ export class SimulacionConfiguracion {
       });
   }
 
-  /** Carga la configuración del servidor y descarta lo editado del equipo y los límites. */
+  /** Carga la configuración del servidor y descarta lo editado de los parámetros y los límites. */
   private aplicarConfiguracion(config: ConfiguracionSimulacion): void {
     this.config.set(config);
     const equipo = equipoNormalizado(config);
     this.velocidad.set(equipo.velocidad);
-    this.equipo.set(equipo.equipo);
     this.porChute.set(equipo.porChute);
     this.limites.set(
       Object.fromEntries(
@@ -995,11 +1172,11 @@ export class SimulacionConfiguracion {
 
   /** Detalle de la ruta al pasar el mouse y, si no se puede mover, el motivo. */
   tituloRuta(ruta: RutaSimulacion): string {
-    const n = (valor: number) => formatearNumero(valor, 2);
+    const n = (valor: number) => formatearEntero(valor);
     const detalle =
       `${ruta.codigoRuta} · ${ruta.tipo}\n` +
       `Bultos: ${n(ruta.totalBultos)} · Unidades: ${n(ruta.totalUnidades)} · ` +
-      `Líneas: ${n(ruta.totalLineas)} · COD: ${formatearNumero(ruta.conteoCod)}`;
+      `Líneas: ${n(ruta.totalLineas)} · COD: ${formatearEntero(ruta.conteoCod)}`;
     const origen =
       ruta.chuteId !== ruta.chuteOriginalId || ruta.clusterId !== ruta.clusterOriginalId
         ? `\nEn el Excel: ${ruta.clusterOriginal} · chute ${ruta.chuteOriginal}`
@@ -1193,13 +1370,6 @@ export class SimulacionConfiguracion {
     this.velocidad.set(valor);
   }
 
-  setEquipo(evento: Event): void {
-    const input = evento.target as HTMLInputElement;
-    const equipo = normalizarEquipo(input.value);
-    input.value = String(equipo);
-    this.equipo.set(equipo);
-  }
-
   setPorChute(evento: Event): void {
     const input = evento.target as HTMLInputElement;
     const tope = normalizarPorChute(input.value);
@@ -1226,7 +1396,6 @@ export class SimulacionConfiguracion {
     }
     return {
       velocidadBase: this.velocidad(),
-      operariosMaximos: this.equipo(),
       operariosPorChute: this.porChute(),
       clusters: config.clusters.map((cluster) => ({
         clusterId: cluster.id,
@@ -1235,7 +1404,7 @@ export class SimulacionConfiguracion {
     };
   }
 
-  /** Guarda el equipo y los límites en edición. */
+  /** Guarda la velocidad, el máximo por chute y los límites en edición. */
   guardar(): void {
     const id = this.seleccionado();
     const peticion = this.peticion();
@@ -1256,7 +1425,7 @@ export class SimulacionConfiguracion {
           }
           this.notificaciones.exito(
             'Cambios guardados',
-            'El equipo y los límites quedaron al día.',
+            'Los parámetros y los límites quedaron al día.',
           );
         },
       });
@@ -1324,9 +1493,9 @@ export class SimulacionConfiguracion {
   }
 
   /**
-   * Paso 2: reparte todo el equipo para que la ola cierre lo antes posible,
-   * partiendo de donde quedó en la ola anterior. Necesita el límite de horas
-   * del cluster para decir si cumple.
+   * Paso 2: pide la cantidad de operarios de la ola y los reparte para que
+   * cierre lo antes posible, partiendo de donde quedó la ola anterior. Necesita
+   * el límite de horas del cluster para decir si cumple.
    */
   asignarOperarios(cluster: { id: number; nombre: string }): void {
     if ((this.limites()[cluster.id] ?? 0) <= 0) {
@@ -1336,9 +1505,10 @@ export class SimulacionConfiguracion {
       );
       return;
     }
-    // Propone la cantidad que usó la ola la última vez o, si nunca se eligió, el equipo.
+    // Propone la cantidad que usó la ola la última vez; si nunca la eligió, el campo
+    // queda vacío y hay que ingresarla (ya no hay equipo por defecto).
     const guardada = this.config()?.clusters.find((item) => item.id === cluster.id)?.operariosOla;
-    this.operariosCantidad.set(guardada ?? this.equipo());
+    this.operariosCantidad.set(guardada ?? null);
     this.operariosPendiente.set(cluster);
   }
 
@@ -1368,14 +1538,14 @@ export class SimulacionConfiguracion {
     if (this.cambiosInvalidanOperarios(cluster.id)) {
       this.notificaciones.advertencia(
         'Recalcula los operarios',
-        `Cambiaste el límite de ${cluster.nombre} o el equipo sin guardar: pulsa «Recalcular operarios» (guarda los cambios) y luego ciérralo.`,
+        `Cambiaste el límite de ${cluster.nombre}, la velocidad o el máximo por chute sin guardar: pulsa «Recalcular operarios» (guarda los cambios) y luego ciérralo.`,
       );
       return;
     }
     this.ejecutarPaso('CERRAR', cluster);
   }
 
-  /** Lo editado sin guardar (velocidad, máximo por chute, su límite o, si lo usa, el equipo) cambia sus operarios. */
+  /** Lo editado sin guardar (velocidad, máximo por chute o su límite) cambia sus operarios. */
   private cambiosInvalidanOperarios(clusterId: number): boolean {
     const cfg = this.config();
     if (!cfg) {
@@ -1384,11 +1554,8 @@ export class SimulacionConfiguracion {
     const guardado = equipoNormalizado(cfg);
     const cluster = cfg.clusters.find((item) => item.id === clusterId);
     const limite = Number(cluster?.limiteHoras ?? 0);
-    // El equipo del registro solo cuenta si la ola nunca eligió su cantidad (igual que el servidor).
-    const usaEquipo = (cluster?.operariosOla ?? null) === null;
     return (
       guardado.velocidad !== this.velocidad() ||
-      (usaEquipo && guardado.equipo !== this.equipo()) ||
       guardado.porChute !== this.porChute() ||
       limite !== (this.limites()[clusterId] ?? 0)
     );
@@ -1690,33 +1857,14 @@ function etiquetaChute(nombre: string): string {
   return /^chute\b/i.test(nombre.trim()) ? nombre : `CHUTE ${nombre}`;
 }
 
-/**
- * Nivel de cada valor dentro de su fila para el mapa de color: el menor
- * (distinto de cero) vale 0 y el mayor 1. Los vacíos quedan sin color (null);
- * si todos son iguales, todos van al medio.
- */
-function nivelesDeFila(valores: number[]): (number | null)[] {
-  const conDato = valores.filter((valor) => valor > 0);
-  if (conDato.length === 0) {
-    return valores.map(() => null);
-  }
-  const menor = Math.min(...conDato);
-  const rango = Math.max(...conDato) - menor;
-  return valores.map((valor) =>
-    valor > 0 ? (rango === 0 ? 0.5 : Math.round(((valor - menor) / rango) * 100) / 100) : null,
-  );
-}
-
-/** Equipo tal como se edita: velocidad válida, al menos 1 operario y 0/nulo = sin tope por chute. */
+/** Parámetros tal como se editan: velocidad válida y 0/nulo = sin tope por chute. */
 function equipoNormalizado(config: ConfiguracionSimulacion): {
   velocidad: number;
-  equipo: number;
   porChute: number | null;
 } {
   const porChute = Number(config.operariosPorChute);
   return {
     velocidad: Number(config.velocidadBase) || VELOCIDAD_INICIAL,
-    equipo: Math.max(1, Number(config.operariosMaximos) || 1),
     porChute: config.operariosPorChute === null || !(porChute > 0) ? null : porChute,
   };
 }

@@ -1,5 +1,5 @@
 import { Pipe, PipeTransform } from '@angular/core';
-import { formatearHoras, formatearNumero } from './simulacion-formato';
+import { formatearEntero, formatearHoras, formatearNumero } from './simulacion-formato';
 
 /**
  * Número con separadores de es-PE. Pipe puro: Angular solo lo recalcula cuando
@@ -9,6 +9,14 @@ import { formatearHoras, formatearNumero } from './simulacion-formato';
 export class NumeroPipe implements PipeTransform {
   transform(valor: number | null | undefined, decimales = 0): string {
     return formatearNumero(valor, decimales);
+  }
+}
+
+/** Número sin decimales, redondeado hacia arriba (199.1 → «200»). */
+@Pipe({ name: 'entero' })
+export class EnteroPipe implements PipeTransform {
+  transform(valor: number | null | undefined): string {
+    return formatearEntero(valor);
   }
 }
 
