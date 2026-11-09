@@ -379,6 +379,3 @@ export interface RutasDashboardSimulacion {
   resumen: ResumenRutasSimulacion;
   rutas: Pagina<RutaSimulacion>;
 }
-
-/** Alcance del Excel exportado. */
-export type NivelExportacion = 'EJECUTIVO' | 'DETALLADO';

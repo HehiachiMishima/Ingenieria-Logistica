@@ -41,10 +41,35 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.VerticalAlignment;
 import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.xddf.usermodel.XDDFColor;
+import org.apache.poi.xddf.usermodel.XDDFLineProperties;
+import org.apache.poi.xddf.usermodel.XDDFSolidFillProperties;
+import org.apache.poi.xddf.usermodel.chart.AxisCrossBetween;
+import org.apache.poi.xddf.usermodel.chart.AxisCrosses;
+import org.apache.poi.xddf.usermodel.chart.AxisPosition;
+import org.apache.poi.xddf.usermodel.chart.BarDirection;
+import org.apache.poi.xddf.usermodel.chart.BarGrouping;
+import org.apache.poi.xddf.usermodel.chart.ChartTypes;
+import org.apache.poi.xddf.usermodel.chart.LegendPosition;
+import org.apache.poi.xddf.usermodel.chart.XDDFBarChartData;
+import org.apache.poi.xddf.usermodel.chart.XDDFCategoryAxis;
+import org.apache.poi.xddf.usermodel.chart.XDDFDataSource;
+import org.apache.poi.xddf.usermodel.chart.XDDFDataSourcesFactory;
+import org.apache.poi.xddf.usermodel.chart.XDDFNumericalDataSource;
+import org.apache.poi.xddf.usermodel.chart.XDDFValueAxis;
 import org.apache.poi.xssf.usermodel.XSSFCellStyle;
+import org.apache.poi.xssf.usermodel.XSSFChart;
+import org.apache.poi.xssf.usermodel.XSSFClientAnchor;
+import org.apache.poi.xssf.usermodel.XSSFDrawing;
+import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFColor;
 import org.apache.poi.xssf.usermodel.XSSFFont;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.openxmlformats.schemas.drawingml.x2006.chart.CTBarChart;
+import org.openxmlformats.schemas.drawingml.x2006.chart.CTDLbls;
+import org.openxmlformats.schemas.drawingml.x2006.chart.CTNumFmt;
+import org.openxmlformats.schemas.drawingml.x2006.chart.CTValAx;
+import org.openxmlformats.schemas.drawingml.x2006.chart.STDLblPos;
 import org.springframework.stereotype.Service;
 
 /**
@@ -52,12 +77,12 @@ import org.springframework.stereotype.Service;
  * (las cuadrículas de rutas por cluster y chute con sus totales en semáforo) y
  * en el Dashboard (antes y después, por ola y por chute).
  *
- * <ul>
- *   <li>EJECUTIVO: «Resumen» (parámetros, indicadores, resultado por ola y
- *       conclusiones) y «Configuración» (las cuadrículas).
- *   <li>DETALLADO: lo anterior más «Chutes», «Rutas», «Operarios por ola» e
- *       «Historial».
- * </ul>
+ * Un solo archivo, de lo general a lo detallado: «Resumen» (indicadores,
+ * cierre de cada ola y su gráfico, conclusiones y guía de lectura),
+ * «Comparativo clusters» y «Comparativo por cluster» (antes vs. después con sus
+ * gráficos, como el PDF), «Chutes», «Operarios por ola», «Configuración» (las
+ * cuadrículas), «Rutas» e «Historial». Los gráficos son nativos de Excel y
+ * leen las celdas de su tabla.
  *
  * Los datos se muestran enteros y redondeados hacia arriba, como en la
  * pantalla. Solo lee: reutiliza las consultas (y su caché) de la configuración
@@ -65,12 +90,6 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class SimulacionReporte {
-
-  /** Alcance del archivo. */
-  public enum Nivel {
-    EJECUTIVO,
-    DETALLADO
-  }
 
   private static final int PAGINA_RUTAS = 1_000;
   private static final int PAGINA_HISTORIAL = 100;
@@ -86,18 +105,20 @@ public class SimulacionReporte {
     this.servicio = servicio;
   }
 
-  /** Archivo .xlsx del registro con el alcance pedido. */
-  public byte[] excel(Long archivoId, Nivel nivel) {
+  /** Archivo .xlsx completo del registro: resumen, comparativos con gráficos y detalle. */
+  public byte[] excel(Long archivoId) {
     ConfiguracionSimulacionResponse cfg = servicio.obtener(archivoId).datos();
     DashboardSimulacionResponse dash = servicio.dashboard(archivoId, null).datos();
+    // La vista de cada cluster (su carga por chute antes vs. después), como el PDF.
+    List<DashboardSimulacionResponse> porCluster =
+        cfg.clusters().stream().map((c) -> servicio.dashboard(archivoId, c.id()).datos()).toList();
     List<RutaSimulacionResponse> rutas = todasLasRutas(archivoId);
-    List<HistorialSimulacionResponse> historial =
-        nivel == Nivel.DETALLADO ? todoElHistorial(archivoId) : List.of();
-    return new Libro(cfg, dash, rutas, historial).escribir(nivel);
+    List<HistorialSimulacionResponse> historial = todoElHistorial(archivoId);
+    return new Libro(cfg, dash, rutas, historial, porCluster).escribir();
   }
 
-  /** «simulacion-proyeccion-enero-ejecutivo.xlsx». */
-  public String nombreArchivo(Long archivoId, Nivel nivel) {
+  /** «simulacion-proyeccion-enero.xlsx». */
+  public String nombreArchivo(Long archivoId) {
     String nombre = servicio.obtener(archivoId).datos().archivo().nombreRegistro();
     String base =
         Normalizer.normalize(nombre == null ? "registro" : nombre, Normalizer.Form.NFD)
@@ -105,11 +126,7 @@ public class SimulacionReporte {
             .toLowerCase(Locale.ROOT)
             .replaceAll("[^a-z0-9]+", "-")
             .replaceAll("(^-|-$)", "");
-    return "simulacion-"
-        + (base.isEmpty() ? archivoId : base)
-        + "-"
-        + nivel.name().toLowerCase(Locale.ROOT)
-        + ".xlsx";
+    return "simulacion-" + (base.isEmpty() ? archivoId : base) + ".xlsx";
   }
 
   private List<RutaSimulacionResponse> todasLasRutas(Long archivoId) {
@@ -150,6 +167,8 @@ public class SimulacionReporte {
     private final DashboardSimulacionResponse dash;
     private final List<RutaSimulacionResponse> rutas;
     private final List<HistorialSimulacionResponse> historial;
+    /** Vista del dashboard de cada cluster, en el orden de cfg.clusters(). */
+    private final List<DashboardSimulacionResponse> porCluster;
     private final Map<Long, String> nombreChute = new HashMap<>();
     /** Chutes con rutas en algún cluster, en orden natural: las columnas de las cuadrículas. */
     private final List<Long> columnas;
@@ -163,11 +182,13 @@ public class SimulacionReporte {
         ConfiguracionSimulacionResponse cfg,
         DashboardSimulacionResponse dash,
         List<RutaSimulacionResponse> rutas,
-        List<HistorialSimulacionResponse> historial) {
+        List<HistorialSimulacionResponse> historial,
+        List<DashboardSimulacionResponse> porCluster) {
       this.cfg = cfg;
       this.dash = dash;
       this.rutas = rutas;
       this.historial = historial;
+      this.porCluster = porCluster;
       for (ChuteParametroResponse chute : cfg.chutes()) {
         nombreChute.put(chute.id(), chute.nombre());
       }
@@ -186,19 +207,24 @@ public class SimulacionReporte {
       this.columnas = List.copyOf(conCarga);
     }
 
-    byte[] escribir(Nivel nivel) {
+    /**
+     * Un solo libro, de lo general a lo detallado: resumen con el cierre de cada
+     * ola, comparativos antes vs. después (con su gráfico, como el PDF), las
+     * cuadrículas de Configuración y el detalle de chutes, rutas y cambios.
+     */
+    byte[] escribir() {
       try (XSSFWorkbook nuevo = new XSSFWorkbook();
           ByteArrayOutputStream salida = new ByteArrayOutputStream()) {
         libro = nuevo;
         e = new Estilos(libro);
         hojaResumen();
+        hojaComparativoClusters();
+        hojaComparativoPorCluster();
+        hojaChutes();
+        hojaOperarios();
         hojaConfiguracion();
-        if (nivel == Nivel.DETALLADO) {
-          hojaChutes();
-          hojaRutas();
-          hojaOperarios();
-          hojaHistorial();
-        }
+        hojaRutas();
+        hojaHistorial();
         libro.write(salida);
         return salida.toByteArray();
       } catch (IOException error) {
@@ -287,8 +313,9 @@ public class SimulacionReporte {
         celda(fila, col++, entero(bultos), e.numero);
         BigDecimal limite = valor(cluster.limiteHoras());
         boolean medible = c != null && conLimite(c);
-        celda(fila, col++, limite.signum() > 0 ? horas(limite) : "—", e.derecha);
-        celda(fila, col++, c == null || c.tiempoBalanceado() == null ? "—" : horas(c.tiempoBalanceado()), e.derecha);
+        // Como hora de Excel ([h]:mm): se lee igual que en pantalla y el gráfico la usa.
+        hora(fila, col++, limite.signum() > 0 ? limite : null);
+        hora(fila, col++, c == null || sinOperarios(c.tiempoBalanceado()) ? null : c.tiempoBalanceado());
         celda(fila, col++, medible ? porcentaje(uso(c.tiempoBalanceado(), limite)) : "—", e.derecha);
         if (medible) {
           celda(fila, col++, c.excede() ? "No" : "Sí", c.excede() ? e.rojo : e.verde);
@@ -300,10 +327,28 @@ public class SimulacionReporte {
         Integer dif = dispersion(suya);
         celda(fila, col, dif == null ? "—" : porcentaje((long) dif), e.derecha);
       }
+      int finTabla = f - 1;
       if (f > inicioTabla) {
         hoja.setAutoFilter(new CellRangeAddress(inicioTabla - 1, f - 1, 0, cabecera.length - 1));
       }
       f++;
+
+      // Gráfico del cierre de cada ola (columnas «Cierre establecido» y «Cierre conseguido»).
+      if (finTabla >= inicioTabla) {
+        f = seccion(hoja, f, "Cierre de cada ola: establecido vs. conseguido", anchos.length);
+        f = grafico(
+            hoja,
+            f,
+            0,
+            anchos.length,
+            16,
+            "Cierre de cada ola: establecido vs. conseguido",
+            new CellRangeAddress(inicioTabla, finTabla, 1, 1),
+            List.of(
+                new Serie("Cierre establecido", new CellRangeAddress(inicioTabla, finTabla, 6, 6), "94A3B8"),
+                new Serie("Cierre conseguido", new CellRangeAddress(inicioTabla, finTabla, 7, 7), "7C3AED")),
+            "[h]:mm");
+      }
 
       // Conclusiones en frases cortas.
       f = seccion(hoja, f, "Conclusiones", anchos.length);
@@ -315,7 +360,295 @@ public class SimulacionReporte {
       for (String frase : conclusiones(original, balanceado, cumplen, medibles)) {
         f = texto(hoja, f, "• " + frase, e.texto);
       }
+      f++;
+
+      // Guía de lectura: qué hay en cada hoja.
+      f = seccion(hoja, f, "Cómo leer este archivo", anchos.length);
+      String[][] guia = {
+        {"Resumen", "Indicadores, resultado de cada ola y su cierre establecido vs. conseguido."},
+        {"Comparativo clusters", "Cada cluster antes (Excel) y después (hoy): rutas, bultos, unidades, líneas y COD."},
+        {"Comparativo por cluster", "Cada cluster en sus chutes, antes vs. después, con su gráfico de bultos."},
+        {"Chutes", "Todos los chutes con carga: operarios, rutas, carga y tiempo antes vs. después."},
+        {"Operarios por ola", "Cuántos operarios tuvo cada chute en cada ola."},
+        {"Configuración", "Las cuadrículas de rutas por cluster y chute, con los totales en semáforo."},
+        {"Rutas", "Cada ruta: dónde estaba en el Excel y dónde quedó."},
+        {"Historial", "Todos los cambios: balanceos, movimientos a mano y operarios asignados."},
+      };
+      for (String[] linea : guia) {
+        Row fila = hoja.createRow(f++);
+        celda(fila, 0, linea[0], e.fuerte);
+        hoja.addMergedRegion(new CellRangeAddress(fila.getRowNum(), fila.getRowNum(), 0, 2));
+        celda(fila, 3, linea[1], e.texto);
+        hoja.addMergedRegion(new CellRangeAddress(fila.getRowNum(), fila.getRowNum(), 3, anchos.length - 1));
+      }
       hoja.createFreezePane(0, 3);
+    }
+
+    // ---------------- Comparativos antes vs. después (como el PDF) ----------------
+
+    private static final String[] METRICAS = {"Rutas", "Bultos", "Unidades", "Líneas", "COD"};
+
+    /** Cabecera de dos filas: métrica (Antes · Después · Var.) y, si van, entradas y salidas. */
+    private int cabeceraComparativa(Sheet hoja, int f, String primera, boolean traspasos) {
+      Row arriba = hoja.createRow(f);
+      Row abajo = hoja.createRow(f + 1);
+      arriba.setHeightInPoints(20);
+      abajo.setHeightInPoints(18);
+      celda(arriba, 0, primera, e.cabecera);
+      celda(abajo, 0, "", e.cabecera);
+      hoja.addMergedRegion(new CellRangeAddress(f, f + 1, 0, 0));
+      int col = 1;
+      for (String metrica : METRICAS) {
+        for (int i = 0; i < 3; i++) {
+          celda(arriba, col + i, i == 0 ? metrica : "", e.cabecera);
+        }
+        hoja.addMergedRegion(new CellRangeAddress(f, f, col, col + 2));
+        celda(abajo, col, "Antes", e.cabecera);
+        celda(abajo, col + 1, "Después", e.cabecera);
+        celda(abajo, col + 2, "Var.", e.cabecera);
+        col += 3;
+      }
+      if (traspasos) {
+        for (String titulo : List.of("Entraron", "Salieron")) {
+          celda(arriba, col, titulo, e.cabecera);
+          celda(abajo, col, "", e.cabecera);
+          hoja.addMergedRegion(new CellRangeAddress(f, f + 1, col, col));
+          col++;
+        }
+      }
+      return f + 2;
+    }
+
+    /** Una fila del comparativo: antes (atenuado), después (en negrita) y la variación. */
+    private void filaComparativa(Row fila, String etiqueta, CellStyle estiloEtiqueta, long[] antes, long[] despues) {
+      celda(fila, 0, etiqueta, estiloEtiqueta);
+      int col = 1;
+      for (int i = 0; i < METRICAS.length; i++) {
+        celda(fila, col++, antes[i], e.antes);
+        celda(fila, col++, despues[i], e.despues);
+        if (antes[i] > 0) {
+          celda(fila, col++, (double) (despues[i] - antes[i]) / antes[i], e.variacion);
+        } else {
+          celda(fila, col++, despues[i] > 0 ? "nuevo" : "—", e.centro);
+        }
+      }
+    }
+
+    private static long[] antesCluster(ClusterComparativoResponse c) {
+      return new long[] {
+        c.rutasOriginal(), entero(c.bultosOriginal()), entero(c.unidadesOriginal()),
+        entero(c.lineasOriginal()), c.codOriginal()
+      };
+    }
+
+    private static long[] despuesCluster(ClusterComparativoResponse c) {
+      return new long[] {
+        c.rutasBalanceado(), entero(c.bultosBalanceado()), entero(c.unidadesBalanceado()),
+        entero(c.lineasBalanceado()), c.codBalanceado()
+      };
+    }
+
+    private static long[] antesChute(ChuteComparativoResponse c) {
+      return new long[] {
+        c.rutasOriginal(), entero(c.bultosOriginal()), entero(c.unidadesOriginal()),
+        entero(c.lineasOriginal()), c.codOriginal()
+      };
+    }
+
+    private static long[] despuesChute(ChuteComparativoResponse c) {
+      return new long[] {
+        c.rutasBalanceado(), entero(c.bultosBalanceado()), entero(c.unidadesBalanceado()),
+        entero(c.lineasBalanceado()), c.codBalanceado()
+      };
+    }
+
+    private static long[] sumar(long[] total, long[] fila) {
+      for (int i = 0; i < total.length; i++) {
+        total[i] += fila[i];
+      }
+      return total;
+    }
+
+    /** Todos los clusters antes (Excel) vs. después (hoy), con entradas y salidas y su gráfico. */
+    private void hojaComparativoClusters() {
+      Sheet hoja = libro.createSheet("Comparativo clusters");
+      apaisada(hoja);
+      hoja.setColumnWidth(0, 16 * 256);
+      for (int i = 1; i <= METRICAS.length * 3 + 2; i++) {
+        hoja.setColumnWidth(i, 11 * 256);
+      }
+      int ancho = METRICAS.length * 3 + 3;
+      int f = titulo(hoja, 0, "Comparativo de clusters: antes vs. después", ancho);
+      f = texto(hoja, f, "«Antes» es la carga del Excel; «después», la de hoy (incluye las rutas cambiadas de"
+          + " cluster). Var. = cambio porcentual.", e.subtitulo);
+      f++;
+      f = cabeceraComparativa(hoja, f, "Cluster", true);
+      int inicio = f;
+      long[] totalAntes = new long[METRICAS.length];
+      long[] totalDespues = new long[METRICAS.length];
+      for (ClusterComparativoResponse c : dash.clusters()) {
+        Row fila = hoja.createRow(f++);
+        filaComparativa(fila, c.cluster(), e.fuerte, antesCluster(c), despuesCluster(c));
+        celda(fila, METRICAS.length * 3 + 1, c.rutasEntraron() == 0 ? "—" : (Object) ("+" + c.rutasEntraron()), e.centro);
+        celda(fila, METRICAS.length * 3 + 2, c.rutasSalieron() == 0 ? "—" : (Object) ("−" + c.rutasSalieron()), e.centro);
+        sumar(totalAntes, antesCluster(c));
+        sumar(totalDespues, despuesCluster(c));
+      }
+      int fin = f - 1;
+      if (fin >= inicio) {
+        Row total = hoja.createRow(f++);
+        filaComparativa(total, "Total", e.etiquetaTotal, totalAntes, totalDespues);
+        f++;
+        f = seccion(hoja, f, "Bultos por cluster: antes vs. después", ancho);
+        f = grafico(
+            hoja, f, 0, ancho, 16, "Bultos por cluster: antes vs. después",
+            new CellRangeAddress(inicio, fin, 0, 0),
+            List.of(
+                new Serie("Bultos antes", new CellRangeAddress(inicio, fin, 4, 4), "94A3B8"),
+                new Serie("Bultos después", new CellRangeAddress(inicio, fin, 5, 5), "1D63ED")),
+            "#,##0");
+        f = grafico(
+            hoja, f + 1, 0, ancho, 16, "Rutas por cluster: antes vs. después",
+            new CellRangeAddress(inicio, fin, 0, 0),
+            List.of(
+                new Serie("Rutas antes", new CellRangeAddress(inicio, fin, 1, 1), "94A3B8"),
+                new Serie("Rutas después", new CellRangeAddress(inicio, fin, 2, 2), "059669")),
+            "#,##0");
+      }
+      hoja.createFreezePane(1, inicio);
+    }
+
+    /** Cada cluster en sus chutes (vista del cluster en el dashboard): cuadro y gráfico. */
+    private void hojaComparativoPorCluster() {
+      Sheet hoja = libro.createSheet("Comparativo por cluster");
+      apaisada(hoja);
+      hoja.setColumnWidth(0, 14 * 256);
+      for (int i = 1; i <= METRICAS.length * 3; i++) {
+        hoja.setColumnWidth(i, 11 * 256);
+      }
+      int ancho = METRICAS.length * 3 + 1;
+      int f = titulo(hoja, 0, "Comparativo por cluster: antes vs. después", ancho);
+      f = texto(hoja, f, "Carga de cada cluster en sus chutes al cargar el Excel y después del balanceo.",
+          e.subtitulo);
+      f++;
+      for (int i = 0; i < cfg.clusters().size(); i++) {
+        ClusterParametroResponse cluster = cfg.clusters().get(i);
+        DashboardSimulacionResponse vista = i < porCluster.size() ? porCluster.get(i) : null;
+        List<ChuteComparativoResponse> chutes = new ArrayList<>();
+        if (vista != null) {
+          vista.chutes().stream()
+              .filter((c) -> valor(c.bultosOriginal()).signum() > 0 || valor(c.bultosBalanceado()).signum() > 0)
+              .sorted(Comparator.comparing(ChuteComparativoResponse::chute, PlanoChutes.ORDEN))
+              .forEach(chutes::add);
+        }
+        int movidas = dash.olas().stream().filter((o) -> o.clusterId().equals(cluster.id()))
+            .mapToInt(OlaSimulacionResponse::rutasMovidas).sum();
+        f = seccion(hoja, f, cluster.nombre() + " · " + estadoCluster(cluster.estado()) + " · "
+            + chutes.size() + " chutes · " + movidas + " ruta(s) movidas", ancho);
+        if (chutes.isEmpty()) {
+          f = texto(hoja, f, "Sin carga en este cluster.", e.subtitulo) + 1;
+          continue;
+        }
+        f = cabeceraComparativa(hoja, f, "Chute", false);
+        int inicio = f;
+        long[] totalAntes = new long[METRICAS.length];
+        long[] totalDespues = new long[METRICAS.length];
+        for (ChuteComparativoResponse c : chutes) {
+          filaComparativa(hoja.createRow(f++), etiquetaChute(c.chute()), e.fuerte, antesChute(c), despuesChute(c));
+          sumar(totalAntes, antesChute(c));
+          sumar(totalDespues, despuesChute(c));
+        }
+        int fin = f - 1;
+        filaComparativa(hoja.createRow(f++), "Total", e.etiquetaTotal, totalAntes, totalDespues);
+        f = grafico(
+            hoja, f + 1, 0, ancho, 15, cluster.nombre() + ": bultos por chute, antes vs. después",
+            new CellRangeAddress(inicio, fin, 0, 0),
+            List.of(
+                new Serie("Bultos antes", new CellRangeAddress(inicio, fin, 4, 4), "94A3B8"),
+                new Serie("Bultos después", new CellRangeAddress(inicio, fin, 5, 5), "059669")),
+            "#,##0");
+        f++;
+      }
+    }
+
+    /** «CHUTE 5» para las tablas, aunque el catálogo lo guarde como «5». */
+    private static String etiquetaChute(String nombre) {
+      return nombre != null && nombre.trim().toUpperCase(Locale.ROOT).startsWith("CH") ? nombre : "CHUTE " + nombre;
+    }
+
+    // ---------------- Gráficos nativos de Excel ----------------
+
+    /** Una serie del gráfico: su nombre, el rango de valores y su color (hex). */
+    private record Serie(String nombre, CellRangeAddress valores, String color) {}
+
+    /**
+     * Gráfico de columnas agrupadas (como los del PDF) anclado debajo de una
+     * tabla: categorías y valores apuntan a celdas de la hoja, así el gráfico se
+     * actualiza si alguien edita la tabla. Devuelve la fila siguiente al gráfico.
+     */
+    private int grafico(
+        Sheet hoja, int fila, int col, int columnas, int filas, String titulo,
+        CellRangeAddress categorias, List<Serie> series, String formato) {
+      XSSFDrawing dibujo = ((XSSFSheet) hoja).createDrawingPatriarch();
+      XSSFClientAnchor ancla = dibujo.createAnchor(0, 0, 0, 0, col, fila, col + columnas, fila + filas);
+      XSSFChart chart = dibujo.createChart(ancla);
+      chart.setTitleText(titulo);
+      chart.setTitleOverlay(false);
+      chart.getOrAddLegend().setPosition(LegendPosition.TOP);
+      XDDFCategoryAxis x = chart.createCategoryAxis(AxisPosition.BOTTOM);
+      XDDFValueAxis y = chart.createValueAxis(AxisPosition.LEFT);
+      y.setCrosses(AxisCrosses.AUTO_ZERO);
+      y.setCrossBetween(AxisCrossBetween.BETWEEN);
+      y.getOrAddMajorGridProperties()
+          .setLineProperties(new XDDFLineProperties(new XDDFSolidFillProperties(XDDFColor.from(rgb("E2E8F0")))));
+      XDDFDataSource<String> cats = XDDFDataSourcesFactory.fromStringCellRange((XSSFSheet) hoja, categorias);
+      XDDFBarChartData datos = (XDDFBarChartData) chart.createData(ChartTypes.BAR, x, y);
+      datos.setBarDirection(BarDirection.COL);
+      datos.setBarGrouping(BarGrouping.CLUSTERED);
+      datos.setVaryColors(false);
+      datos.setGapWidth(80);
+      for (Serie serie : series) {
+        XDDFNumericalDataSource<Double> valores =
+            XDDFDataSourcesFactory.fromNumericCellRange((XSSFSheet) hoja, serie.valores());
+        XDDFBarChartData.Series s = (XDDFBarChartData.Series) datos.addSeries(cats, valores);
+        s.setTitle(serie.nombre(), null);
+        s.setFillProperties(new XDDFSolidFillProperties(XDDFColor.from(rgb(serie.color()))));
+      }
+      chart.plot(datos);
+      // Cifra sobre cada barra y formato del eje (horas como [h]:mm o miles con coma).
+      CTBarChart barras = chart.getCTChart().getPlotArea().getBarChartArray(0);
+      CTDLbls etiquetas = barras.addNewDLbls();
+      CTNumFmt formatoEtiqueta = etiquetas.addNewNumFmt();
+      formatoEtiqueta.setFormatCode(formato);
+      formatoEtiqueta.setSourceLinked(false);
+      etiquetas.addNewDLblPos().setVal(STDLblPos.OUT_END);
+      etiquetas.addNewShowLegendKey().setVal(false);
+      etiquetas.addNewShowVal().setVal(true);
+      etiquetas.addNewShowCatName().setVal(false);
+      etiquetas.addNewShowSerName().setVal(false);
+      etiquetas.addNewShowPercent().setVal(false);
+      etiquetas.addNewShowBubbleSize().setVal(false);
+      CTValAx eje = chart.getCTChart().getPlotArea().getValAxArray(0);
+      CTNumFmt formatoEje = eje.isSetNumFmt() ? eje.getNumFmt() : eje.addNewNumFmt();
+      formatoEje.setFormatCode(formato);
+      formatoEje.setSourceLinked(false);
+      return fila + filas + 1;
+    }
+
+    private static byte[] rgb(String hex) {
+      int v = Integer.parseInt(hex, 16);
+      return new byte[] {(byte) (v >> 16), (byte) (v >> 8), (byte) v};
+    }
+
+    /** Horas como hora de Excel (fracción de día, formato [h]:mm); «—» si no hay. */
+    private void hora(Row fila, int col, BigDecimal horas) {
+      if (horas == null || horas.signum() <= 0 || sinOperarios(horas)) {
+        celda(fila, col, "—", e.derecha);
+        return;
+      }
+      Cell celda = fila.createCell(col);
+      celda.setCellValue(horas.doubleValue() / 24d);
+      celda.setCellStyle(e.hora);
     }
 
     private List<String> conclusiones(
@@ -525,7 +858,7 @@ public class SimulacionReporte {
       for (ChuteComparativoResponse c : chutes) {
         Row fila = hoja.createRow(f++);
         int col = 0;
-        celda(fila, col++, c.chute(), e.fuerte);
+        celda(fila, col++, etiquetaChute(c.chute()), e.fuerte);
         celda(fila, col++, String.join(", ", c.clustersBalanceado() == null ? List.of() : c.clustersBalanceado()), e.texto);
         celda(fila, col++, (long) c.operariosOriginal(), e.numero);
         celda(fila, col++, (long) c.operariosBalanceado(), e.numero);
@@ -546,6 +879,23 @@ public class SimulacionReporte {
         celda(fila, col, c.estado() == null ? "" : c.estado(), e.texto);
       }
       cerrarTabla(hoja, inicio, f, cabecera.length, 14);
+      if (f > inicio) {
+        int g = seccion(hoja, f + 1, "Bultos por chute (todos los clusters): antes vs. después", 12);
+        g = grafico(
+            hoja, g, 0, 12, 16, "Bultos por chute: antes vs. después",
+            new CellRangeAddress(inicio, f - 1, 0, 0),
+            List.of(
+                new Serie("Bultos antes", new CellRangeAddress(inicio, f - 1, 8, 8), "94A3B8"),
+                new Serie("Bultos después", new CellRangeAddress(inicio, f - 1, 9, 9), "059669")),
+            "#,##0");
+        grafico(
+            hoja, g + 1, 0, 12, 16, "Operarios por chute: antes vs. después",
+            new CellRangeAddress(inicio, f - 1, 0, 0),
+            List.of(
+                new Serie("Operarios antes", new CellRangeAddress(inicio, f - 1, 2, 2), "94A3B8"),
+                new Serie("Operarios después", new CellRangeAddress(inicio, f - 1, 3, 3), "7C3AED")),
+            "#,##0");
+      }
     }
 
     private void hojaRutas() {
@@ -610,6 +960,15 @@ public class SimulacionReporte {
         celda(total, i + 1, sumas[i], e.totalNumero);
       }
       cerrarTabla(hoja, inicio, f - 1, cabecera.length, 12);
+      if (!olas.isEmpty() && f - 1 > inicio) {
+        // Categorías: los nombres de las olas (cabecera); valores: la fila «Total de la ola».
+        int g = seccion(hoja, f + 1, "Operarios por ola", Math.max(8, cabecera.length));
+        grafico(
+            hoja, g, 0, Math.max(8, cabecera.length), 15, "Operarios por ola",
+            new CellRangeAddress(inicio - 1, inicio - 1, 1, olas.size()),
+            List.of(new Serie("Operarios", new CellRangeAddress(f - 1, f - 1, 1, olas.size()), "1D63ED")),
+            "#,##0");
+      }
     }
 
     private void hojaHistorial() {
@@ -869,9 +1228,23 @@ public class SimulacionReporte {
     final CellStyle semBajo;
     final CellStyle semMedio;
     final CellStyle semAlto;
+    /** Horas como hora de Excel: «2:31» (2 h 31 min); suma bien y se grafica. */
+    final CellStyle hora;
+    /** Comparativo: «antes» atenuado, «después» en negrita y la variación con signo. */
+    final CellStyle antes;
+    final CellStyle despues;
+    final CellStyle variacion;
 
     Estilos(XSSFWorkbook libro) {
       short miles = libro.createDataFormat().getFormat("#,##0");
+      hora = estilo(libro, null, fuente(libro, 10, true, "0F172A"), HorizontalAlignment.RIGHT, true);
+      hora.setDataFormat(libro.createDataFormat().getFormat("[h]:mm"));
+      antes = estilo(libro, null, fuente(libro, 10, false, "64748B"), HorizontalAlignment.RIGHT, true);
+      antes.setDataFormat(miles);
+      despues = estilo(libro, null, fuente(libro, 10, true, "0F172A"), HorizontalAlignment.RIGHT, true);
+      despues.setDataFormat(miles);
+      variacion = estilo(libro, "F8FAFC", fuente(libro, 9, true, "1D63ED"), HorizontalAlignment.RIGHT, true);
+      variacion.setDataFormat(libro.createDataFormat().getFormat("+0%;[Color10]-0%;0%"));
       titulo = estilo(libro, null, fuente(libro, 16, true, "0F1E3D"), HorizontalAlignment.LEFT, false);
       subtitulo = estilo(libro, null, fuente(libro, 10, false, "64748B"), HorizontalAlignment.LEFT, false);
       seccion = estilo(libro, "E2E8F0", fuente(libro, 11, true, "0F1E3D"), HorizontalAlignment.LEFT, false);

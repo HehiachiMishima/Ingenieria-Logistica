@@ -10,7 +10,6 @@ import {
   FaseBalanceo,
   HistorialRegistroSimulacion,
   HistorialSimulacion,
-  NivelExportacion,
   PaginaRutas,
   RegistroSimulacionActualizarRequest,
   RutasDashboardFiltros,
@@ -178,11 +177,11 @@ export class SimulacionApi {
   }
 
   /**
-   * Excel de la simulación: EJECUTIVO (resumen y cuadrículas) o DETALLADO (además
-   * chutes, rutas, operarios por ola e historial).
+   * Excel completo de la simulación (un solo archivo): resumen, comparativos con
+   * gráficos, cuadrículas de Configuración y el detalle de chutes, rutas e historial.
    */
-  exportarExcel(id: number, nivel: NivelExportacion): Observable<Blob> {
-    return this.api.getArchivo(`/simulacion/registros/${id}/exportar?nivel=${nivel}`);
+  exportarExcel(id: number): Observable<Blob> {
+    return this.api.getArchivo(`/simulacion/registros/${id}/exportar`);
   }
 
   /** Rutas de un lado del chute (antes o después), paginadas y con totales del filtro. */

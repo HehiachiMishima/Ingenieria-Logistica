@@ -262,21 +262,20 @@ public class SimulacionController {
   }
 
   /**
-   * Excel de la simulación: EJECUTIVO (resumen y cuadrículas de configuración) o
-   * DETALLADO (además chutes, rutas, operarios por ola e historial). Solo lee.
+   * Excel completo de la simulación (un solo archivo): resumen, comparativos con
+   * gráficos, cuadrículas de Configuración y el detalle de chutes, rutas,
+   * operarios e historial. Solo lee.
    */
   @GetMapping("/{id}/exportar")
   @PreAuthorize("hasAuthority('VER_DASHBOARD_SIMULACION')")
-  public ResponseEntity<byte[]> exportar(
-      @PathVariable Long id,
-      @RequestParam(defaultValue = "EJECUTIVO") SimulacionReporte.Nivel nivel) {
-    byte[] contenido = reporte.excel(id, nivel);
+  public ResponseEntity<byte[]> exportar(@PathVariable Long id) {
+    byte[] contenido = reporte.excel(id);
     return ResponseEntity.ok()
         .contentType(XLSX)
         .header(
             HttpHeaders.CONTENT_DISPOSITION,
             ContentDisposition.attachment()
-                .filename(reporte.nombreArchivo(id, nivel), StandardCharsets.UTF_8)
+                .filename(reporte.nombreArchivo(id), StandardCharsets.UTF_8)
                 .build()
                 .toString())
         .body(contenido);

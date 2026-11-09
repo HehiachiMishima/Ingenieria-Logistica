@@ -15,13 +15,11 @@ import { descargarArchivo } from '../../../../core/utils/archivo.util';
 import { Notificaciones } from '../../../../core/services/notificaciones';
 import { Icon } from '../../../../shared/ui/icon/icon';
 import { SimulacionApi } from '../data/simulacion.api';
-import { NivelExportacion } from '../data/simulacion.model';
-
-type Formato = NivelExportacion | 'PDF';
+type Formato = 'EXCEL' | 'PDF';
 
 /**
- * Botón «Exportar» de la simulación: Excel ejecutivo, Excel detallado o el
- * reporte ejecutivo en PDF (se abre en otra pestaña, listo para imprimir o
+ * Botón «Exportar» de la simulación: el Excel completo (un solo archivo, con
+ * gráficos) o el reporte ejecutivo en PDF (se abre en otra pestaña, listo para imprimir o
  * guardar como PDF). Se habilita cuando la simulación terminó (todos los
  * clusters cerrados).
  */
@@ -51,18 +49,11 @@ type Formato = NivelExportacion | 'PDF';
       @if (abierto()) {
         <div class="exp__menu" role="menu" aria-label="Formatos de exportación"
           [style.left.px]="posicion().left" [style.top.px]="posicion().top">
-          <button type="button" role="menuitem" class="exp__item" (click)="exportar('EJECUTIVO')">
+          <button type="button" role="menuitem" class="exp__item" (click)="exportar('EXCEL')">
             <span class="exp__icono exp__icono--excel"><ui-icon name="analisis" [size]="18" /></span>
             <span class="exp__texto">
-              <strong>Excel ejecutivo</strong>
-              <small>Resumen, resultado por ola y cuadrículas</small>
-            </span>
-          </button>
-          <button type="button" role="menuitem" class="exp__item" (click)="exportar('DETALLADO')">
-            <span class="exp__icono exp__icono--excel"><ui-icon name="layers" [size]="18" /></span>
-            <span class="exp__texto">
-              <strong>Excel detallado</strong>
-              <small>Además chutes, rutas, operarios e historial</small>
+              <strong>Excel</strong>
+              <small>Resumen, comparativos con gráficos, cuadrículas, rutas e historial</small>
             </span>
           </button>
           <button type="button" role="menuitem" class="exp__item" (click)="exportar('PDF')">
@@ -212,29 +203,26 @@ export class SimulacionExportar {
     }
     this.generando.set(formato);
     this.api
-      .exportarExcel(id, formato)
+      .exportarExcel(id)
       .pipe(
         finalize(() => this.generando.set(null)),
         takeUntilDestroyed(this.destroyRef),
       )
       // Los errores los avisa el interceptor global.
       .subscribe((archivo) => {
-        descargarArchivo(archivo, nombreArchivo(this.registroNombre(), formato));
-        this.notificaciones.exito(
-          'Excel generado',
-          formato === 'EJECUTIVO' ? 'Reporte ejecutivo descargado.' : 'Reporte detallado descargado.',
-        );
+        descargarArchivo(archivo, nombreArchivo(this.registroNombre()));
+        this.notificaciones.exito('Excel generado', 'Reporte completo de la simulación descargado.');
       });
   }
 }
 
-/** «simulacion-proyeccion-enero-ejecutivo.xlsx». */
-function nombreArchivo(nombre: string, nivel: NivelExportacion): string {
+/** «simulacion-proyeccion-enero.xlsx». */
+function nombreArchivo(nombre: string): string {
   const base = nombre
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '');
-  return `simulacion-${base || 'registro'}-${nivel.toLowerCase()}.xlsx`;
+  return `simulacion-${base || 'registro'}.xlsx`;
 }

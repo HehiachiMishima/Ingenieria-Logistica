@@ -27,6 +27,7 @@ import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFChart;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 
@@ -35,11 +36,68 @@ class SimulacionReporteTest {
   private static final BigDecimal CIEN = new BigDecimal("100");
 
   @Test
-  void ejecutivoTieneResumenYCuadriculas() throws Exception {
-    try (Workbook libro = abrir(SimulacionReporte.Nivel.EJECUTIVO)) {
-      assertEquals(2, libro.getNumberOfSheets());
-      assertEquals("Resumen", libro.getSheetName(0));
-      assertEquals("Configuración", libro.getSheetName(1));
+  void unSoloLibroConTodasLasHojasEnOrden() throws Exception {
+    try (Workbook libro = abrir()) {
+      List<String> hojas = new ArrayList<>();
+      for (int i = 0; i < libro.getNumberOfSheets(); i++) {
+        hojas.add(libro.getSheetName(i));
+      }
+      assertEquals(
+          List.of(
+              "Resumen", "Comparativo clusters", "Comparativo por cluster", "Chutes",
+              "Operarios por ola", "Configuración", "Rutas", "Historial"),
+          hojas);
+    }
+  }
+
+  @Test
+  void losGraficosSonNativosYLeenSuTabla() throws Exception {
+    try (XSSFWorkbook libro = (XSSFWorkbook) abrir()) {
+      // Resumen: cierre por ola; clusters: bultos y rutas; por cluster: uno por cluster;
+      // chutes: bultos y operarios; operarios por ola: uno.
+      assertEquals(1, graficos(libro, "Resumen"));
+      assertEquals(2, graficos(libro, "Comparativo clusters"));
+      assertEquals(1, graficos(libro, "Comparativo por cluster"));
+      assertEquals(2, graficos(libro, "Chutes"));
+      assertEquals(1, graficos(libro, "Operarios por ola"));
+      XSSFChart cierre = libro.getSheet("Resumen").getDrawingPatriarch().getCharts().get(0);
+      assertEquals("Cierre de cada ola: establecido vs. conseguido", cierre.getTitleText().getString());
+      assertEquals(2, cierre.getChartSeries().get(0).getSeriesCount());
+    }
+  }
+
+  @Test
+  void elCierreSeGuardaComoHoraDeExcel() throws Exception {
+    try (Workbook libro = abrir()) {
+      Sheet hoja = libro.getSheet("Resumen");
+      Cell conseguido = null;
+      for (Row fila : hoja) {
+        Cell c = fila.getCell(7);
+        if (c != null && c.getCellType() == CellType.NUMERIC) {
+          conseguido = c;
+          break;
+        }
+      }
+      // 1 h 30 m = 1.5 / 24 de día, con formato [h]:mm (se ve «1:30»).
+      assertEquals(1.5 / 24, conseguido.getNumericCellValue(), 1e-9);
+      assertEquals("[h]:mm", conseguido.getCellStyle().getDataFormatString());
+    }
+  }
+
+  @Test
+  void elComparativoTraeAntesDespuesYVariacion() throws Exception {
+    try (Workbook libro = abrir()) {
+      List<String> textos = textos(libro.getSheet("Comparativo por cluster"));
+      assertTrue(textos.contains("CHUTE 1"), textos.toString());
+      assertTrue(textos.contains("Antes") && textos.contains("Después") && textos.contains("Var."), textos.toString());
+      // Chute 1: 350 → 200 bultos (−43 %).
+      assertTrue(numeros(libro.getSheet("Comparativo por cluster")).contains(-150.0 / 350), "variación de bultos");
+    }
+  }
+
+  @Test
+  void resumenConIndicadoresYConclusiones() throws Exception {
+    try (Workbook libro = abrir()) {
       List<String> textos = textos(libro.getSheet("Resumen"));
       assertTrue(textos.contains("Reporte ejecutivo de simulación"), textos.toString());
       assertTrue(textos.contains("CL1"), textos.toString());
@@ -52,17 +110,8 @@ class SimulacionReporteTest {
   }
 
   @Test
-  void detalladoSumaChutesRutasOperariosEHistorial() throws Exception {
-    try (Workbook libro = abrir(SimulacionReporte.Nivel.DETALLADO)) {
-      assertEquals(
-          List.of("Resumen", "Configuración", "Chutes", "Rutas", "Operarios por ola", "Historial"),
-          List.of(
-              libro.getSheetName(0),
-              libro.getSheetName(1),
-              libro.getSheetName(2),
-              libro.getSheetName(3),
-              libro.getSheetName(4),
-              libro.getSheetName(5)));
+  void rutasMarcanLasMovidas() throws Exception {
+    try (Workbook libro = abrir()) {
       List<String> rutas = textos(libro.getSheet("Rutas"));
       assertTrue(rutas.contains("2028"), rutas.toString());
       assertTrue(rutas.contains("Sí"), "la ruta movida se marca: " + rutas);
@@ -71,7 +120,7 @@ class SimulacionReporteTest {
 
   @Test
   void cuadriculaMuestraRutasYTotalesEnterosHaciaArriba() throws Exception {
-    try (Workbook libro = abrir(SimulacionReporte.Nivel.EJECUTIVO)) {
+    try (Workbook libro = abrir()) {
       Sheet hoja = libro.getSheet("Configuración");
       List<String> textos = textos(hoja);
       assertTrue(textos.contains("2028 · B2C"), textos.toString());
@@ -105,12 +154,10 @@ class SimulacionReporteTest {
             new SimulacionKpisResponse(null, null, 0), List.of(), List.of(), List.of(), List.of(),
             List.of(), List.of(), 2, null, List.of());
 
-    for (SimulacionReporte.Nivel nivel : SimulacionReporte.Nivel.values()) {
-      byte[] bytes = new SimulacionReporte.Libro(cfg, dash, List.of(), List.of()).escribir(nivel);
-      try (Workbook libro = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
-        // 100 + 50.5 = 150.5 → 151 en el total general.
-        assertTrue(numeros(libro.getSheet("Configuración")).contains(151.0));
-      }
+    byte[] bytes = new SimulacionReporte.Libro(cfg, dash, List.of(), List.of(), List.of()).escribir();
+    try (Workbook libro = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
+      // 100 + 50.5 = 150.5 → 151 en el total general.
+      assertTrue(numeros(libro.getSheet("Configuración")).contains(151.0));
     }
   }
 
@@ -133,8 +180,10 @@ class SimulacionReporteTest {
 
   // ---------------- Datos de ejemplo ----------------
 
-  private static Workbook abrir(SimulacionReporte.Nivel nivel) throws Exception {
-    byte[] bytes = new SimulacionReporte.Libro(configuracion(), dashboard(), rutas(), historial()).escribir(nivel);
+  private static Workbook abrir() throws Exception {
+    byte[] bytes =
+        new SimulacionReporte.Libro(configuracion(), dashboard(), rutas(), historial(), List.of(dashboard()))
+            .escribir();
     return new XSSFWorkbook(new ByteArrayInputStream(bytes));
   }
 
@@ -204,6 +253,11 @@ class SimulacionReporteTest {
   private static List<HistorialSimulacionResponse> historial() {
     return List.of(new HistorialSimulacionResponse(1L, null, "MOVER_RUTA", "MANUAL", 3L, "2005",
         "CL1", "B2C", new BigDecimal("150"), "1", "2", null, null, null, 1, 1, Instant.now(), 1L));
+  }
+
+  private static int graficos(XSSFWorkbook libro, String hoja) {
+    var dibujo = libro.getSheet(hoja).getDrawingPatriarch();
+    return dibujo == null ? 0 : dibujo.getCharts().size();
   }
 
   private static List<String> textos(Sheet hoja) {
