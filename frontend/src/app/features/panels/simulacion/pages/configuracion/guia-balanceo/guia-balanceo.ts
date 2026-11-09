@@ -41,6 +41,12 @@ const DETALLES: readonly GrupoDetalle[] = [
           'Tope de operarios en un mismo chute. Vacío: un chute puede recibir a toda la ola. Se bloquea cuando un cluster ya se cerró: reábrelo para cambiarlo.',
       },
       {
+        icono: 'lock',
+        termino: 'Chutes del 1 al 33',
+        texto:
+          'Siempre se ven del CHUTE 1 al 33, aunque el Excel no los traiga. El 19, 20 y 21 están bloqueados: no se muestran, el Excel no puede traer rutas en ellos y un rango que los cruza (p. ej. 18 → 22) reparte solo en los disponibles.',
+      },
+      {
         icono: 'reloj',
         termino: 'Límite de horas',
         texto: 'Por cluster. La barra muestra cuánto usa: verde cumple, rojo excede.',

@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
 import oracle.common.config.CacheRespuestas;
 import oracle.common.config.Transacciones;
@@ -66,6 +67,8 @@ import oracle.simulacion.request.LadoChute;
 import oracle.simulacion.request.MoverRutaRequest;
 import oracle.simulacion.response.BalanceoResponse;
 import oracle.simulacion.response.ChuteComparativoResponse;
+import oracle.simulacion.response.ChuteParametroResponse;
+import oracle.simulacion.response.ConfiguracionSimulacionResponse;
 import oracle.simulacion.response.ClusterComparativoResponse;
 import oracle.simulacion.response.DashboardSimulacionResponse;
 import oracle.simulacion.response.FlujoOperariosResponse;
@@ -129,7 +132,8 @@ class SimulacionBalanceoTest {
             lanzamientoRepo,
             lotes,
             transacciones,
-            new CacheRespuestas(false, 1, 1));
+            new CacheRespuestas(false, 1, 1),
+            PlanoChutes.fijo(1, 33, Set.of(19, 20, 21), Map.of()));
     lenient()
         .when(transacciones.ejecutar(any()))
         .thenAnswer(invocacion -> ((Supplier<?>) invocacion.getArgument(0)).get());
@@ -1241,6 +1245,106 @@ class SimulacionBalanceoTest {
     assertEquals(1L, ruta.getChuteId());
     assertEquals(ParametroCluster.ESTADO_RUTAS, cl1.getEstado());
     assertEquals(ParametroCluster.ESTADO_LISTO, cl3.getEstado());
+  }
+
+  // ---------------- Chutes bloqueados (19, 20, 21) ----------------
+
+  @Test
+  void noSeMuevenRutasAUnChuteBloqueado() {
+    prepararRegistro(
+        archivo(),
+        configuracion("100", null),
+        List.of(limite(CL1, "2", ParametroCluster.ESTADO_RUTAS)),
+        List.of(operarios(18L, 0), operarios(19L, 0)),
+        List.of(),
+        List.of(cluster(CL1, "CL1")),
+        List.of(chute(18L, "18"), chute(19L, "19")));
+    RutaProyeccion ruta = ruta(1L, CL1, 18L, "3030", "10");
+    when(rutaRepo.findByIdAndArchivoId(1L, 10L)).thenReturn(Optional.of(ruta));
+
+    ConflictoException error =
+        assertThrows(ConflictoException.class, () -> servicio.mover(10L, 1L, new MoverRutaRequest(19L)));
+
+    assertTrue(error.getMessage().contains("CHUTE 19 está bloqueado"), error.getMessage());
+    assertEquals(18L, ruta.getChuteId());
+  }
+
+  @Test
+  void elRangoSeSaltaLosChutesBloqueados() {
+    // Rango CHUTE 18 → CHUTE 22: el 19 está en medio pero bloqueado, así que
+    // las cuatro rutas quedan repartidas solo en 18 y 22.
+    ParametroCluster cl3 = limite(CL3, "100");
+    prepararRegistro(
+        archivo(),
+        configuracion("100", null),
+        List.of(cl3),
+        List.of(operarios(18L, 0), operarios(19L, 0), operarios(22L, 0)),
+        List.of(),
+        List.of(cluster(CL3, "CL3")),
+        List.of(chute(18L, "18"), chute(19L, "19"), chute(22L, "22")));
+    List<RutaProyeccion> rutas =
+        List.of(
+            ruta(1L, CL3, 18L, "3030", "100"),
+            ruta(2L, CL3, 18L, "3031", "100"),
+            ruta(3L, CL3, 18L, "3032", "100"),
+            ruta(4L, CL3, 18L, "3033", "100"));
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL3)).thenReturn(rutas);
+
+    lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(18L, 22L));
+
+    Map<Long, Long> porChute = new HashMap<>();
+    rutas.forEach((r) -> porChute.merge(r.getChuteId(), 1L, Long::sum));
+    assertEquals(Map.of(18L, 2L, 22L, 2L), porChute);
+  }
+
+  @Test
+  void elPlanoAgregaLosChutesQueFaltanSinDuplicarNiMostrarBloqueados() {
+    // El registro tiene «CHUTE 18» (id 18); el catálogo del plano tiene el 18 como
+    // «18» (id 918), el 19 bloqueado y el 22. Debe verse un solo chute 18, el 22
+    // agregado y nunca el 19.
+    SimulacionConfiguracionService conPlano =
+        new SimulacionConfiguracionService(
+            archivoRepo, configRepo, clusterRepo, chuteRepo, parametroClusterRepo,
+            parametroChuteRepo, rutaRepo, historialRepo, operarioOlaRepo, lanzamientoRepo,
+            lotes, transacciones, new CacheRespuestas(false, 1, 1),
+            PlanoChutes.fijo(1, 33, Set.of(19, 20, 21), Map.of(18, 918L, 19, 919L, 22, 922L)));
+    prepararLectura(
+        archivo(),
+        List.of(limite(CL1, "2")),
+        List.of(operarios(18L, 0)),
+        List.of(),
+        List.of(cluster(CL1, "CL1")),
+        List.of(chute(18L, "CHUTE 18")));
+    when(rutaRepo.cargaPorArchivo(10L)).thenReturn(List.of(carga(CL1, 18L, 1, "10")));
+
+    ConfiguracionSimulacionResponse cfg = conPlano.obtener(10L).datos();
+
+    assertEquals(
+        List.of("CHUTE 18", "22"),
+        cfg.chutes().stream().map(ChuteParametroResponse::nombre).toList());
+    assertEquals(List.of("19", "20", "21"), cfg.chutesBloqueados());
+    assertFalse(cfg.chutes().stream().anyMatch(ChuteParametroResponse::bloqueado));
+  }
+
+  @Test
+  void unRangoQueEmpiezaEnUnChuteBloqueadoSeRechaza() {
+    ParametroCluster cl3 = limite(CL3, "100");
+    prepararRegistro(
+        archivo(),
+        configuracion("100", null),
+        List.of(cl3),
+        List.of(operarios(18L, 0), operarios(19L, 0), operarios(22L, 0)),
+        List.of(),
+        List.of(cluster(CL3, "CL3")),
+        List.of(chute(18L, "18"), chute(19L, "19"), chute(22L, "22")));
+
+    SolicitudInvalidaException error =
+        assertThrows(
+            SolicitudInvalidaException.class,
+            () -> lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(19L, 22L)));
+
+    assertTrue(error.getMessage().contains("CHUTE 19 está bloqueado"), error.getMessage());
+    assertEquals(ParametroCluster.ESTADO_PENDIENTE, cl3.getEstado());
   }
 
   @Test

@@ -54,6 +54,8 @@ import {
   LIMITES,
   PALETA_REGISTROS,
   VELOCIDAD_INICIAL,
+  compararChute,
+  numeroChute,
   compararNombre,
   datosCarga,
   etiquetaEstado,
@@ -413,9 +415,18 @@ export class SimulacionConfiguracion {
     const equipo = cfg.clusters.find((c) => c.id === cluster.id)?.operariosOla ?? null;
     // Con menos rutas que chutes, algunos quedan vacíos: no necesitan gente.
     const conCarga = Math.min(incluidos.size, rutas);
+    // Bloqueados que quedan entre «desde» y «hasta»: el rango se los salta.
+    const numero = (nombre: string) => numeroChute(nombre) ?? Number.NaN;
+    const n1 = numero(orden[inicio].etiqueta);
+    const n2 = numero(orden[fin].etiqueta);
+    const saltados = (cfg.chutesBloqueados ?? []).filter((nombre) => {
+      const n = numero(nombre);
+      return n > n1 && n < n2;
+    });
     return {
       primero: orden[inicio].etiqueta,
       ultimo: orden[fin].etiqueta,
+      saltados,
       chutes: incluidos.size,
       rutas,
       bultos: filas.reduce((total, fila) => total + Number(fila.bultos), 0),
@@ -459,7 +470,7 @@ export class SimulacionConfiguracion {
     const elegidos = new Set(this.filtroChute());
     return (this.config()?.chutes ?? [])
       .filter((chute) => elegidos.size === 0 || elegidos.has(chute.id))
-      .sort((a, b) => compararNombre(a.nombre, b.nombre))
+      .sort((a, b) => compararChute(a.nombre, b.nombre))
       .map((chute) => ({ ...chute, etiqueta: etiquetaChute(chute.nombre) }));
   });
 
@@ -841,9 +852,11 @@ export class SimulacionConfiguracion {
     this.registros().map((registro) => ({ id: registro.id, etiqueta: etiquetaRegistro(registro) })),
   );
 
+  /** Chutes que se pueden elegir (filtro y rango): sin los bloqueados. */
   readonly opcionesChute = computed(() =>
     [...(this.config()?.chutes ?? [])]
-      .sort((a, b) => compararNombre(a.nombre, b.nombre))
+      .filter((chute) => !chute.bloqueado)
+      .sort((a, b) => compararChute(a.nombre, b.nombre))
       .map((chute) => ({ id: chute.id, etiqueta: chute.nombre })),
   );
 
@@ -1228,6 +1241,12 @@ export class SimulacionConfiguracion {
       return SIN_CAMBIO;
     }
     const destino = cfg.clusters.find((cluster) => cluster.id === clusterId);
+    // Chute bloqueado (solo visible si un registro antiguo aún tiene rutas ahí):
+    // sus rutas pueden salir, pero ninguna puede entrar.
+    const chuteDestino = cfg.chutes.find((chute) => chute.id === chuteId);
+    if (chuteDestino?.bloqueado && chuteId !== ruta.chuteId) {
+      return `${etiquetaChute(chuteDestino.nombre)} está bloqueado: no se pueden mover rutas ahí.`;
+    }
     if (this.clusterCerrado(ruta.clusterId)) {
       return `${ruta.cluster} está cerrado: reábrelo para mover sus rutas.`;
     }

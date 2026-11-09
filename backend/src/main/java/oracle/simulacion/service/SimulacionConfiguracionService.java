@@ -44,6 +44,7 @@ import oracle.simulacion.model.LanzamientoBalanceo;
 import oracle.simulacion.model.OperarioOla;
 import oracle.simulacion.model.OperarioOlaId;
 import oracle.simulacion.model.ParametroChute;
+import oracle.simulacion.model.ParametroChuteId;
 import oracle.simulacion.model.ParametroCluster;
 import oracle.simulacion.model.RutaProyeccion;
 import oracle.simulacion.model.SimulacionConfig;
@@ -148,6 +149,8 @@ public class SimulacionConfiguracionService {
   private final HistorialBalanceoRepository historialRepo;
   private final OperarioOlaRepository operarioOlaRepo;
   private final LanzamientoBalanceoRepository lanzamientoRepo;
+  /** Chutes 1–33 que existen siempre y los bloqueados (19, 20, 21). */
+  private final PlanoChutes plano;
   private final SimulacionLotesRepository lotes;
   private final Transacciones transacciones;
   private final CacheRespuestas cache;
@@ -165,7 +168,9 @@ public class SimulacionConfiguracionService {
       LanzamientoBalanceoRepository lanzamientoRepo,
       SimulacionLotesRepository lotes,
       Transacciones transacciones,
-      CacheRespuestas cache) {
+      CacheRespuestas cache,
+      PlanoChutes plano) {
+    this.plano = plano;
     this.archivoRepo = archivoRepo;
     this.configRepo = configRepo;
     this.clusterRepo = clusterRepo;
@@ -405,6 +410,11 @@ public class SimulacionConfiguracionService {
               // La base solo es el «antes» y lo que usa una ola sin asignar:
               // cambiarla no invalida las olas que ya tienen operarios.
               parametro.setOperarios(operarios.operarios());
+              if (ctx.chutesAgregados().contains(operarios.chuteId())) {
+                // Chute del plano que el registro no tenía guardado: se persiste
+                // (si no, el cambio se perdería sin aviso).
+                parametroChuteRepo.save(parametro);
+              }
             }
           }
           validarOperarios(ctx);
@@ -462,6 +472,7 @@ public class SimulacionConfiguracionService {
             throw new SolicitudInvalidaException(
                 "El chute " + req.chuteId() + " no pertenece al registro.");
           }
+          exigirNoBloqueado(ctx, req.chuteId());
           if (cerrado(ctx, ruta.getClusterId())) {
             throw new ConflictoException(
                 ctx.nombreCluster(ruta.getClusterId())
@@ -538,6 +549,11 @@ public class SimulacionConfiguracionService {
           if (!ctx.parametrosChute().containsKey(chuteFinal)) {
             throw new SolicitudInvalidaException(
                 "El chute " + chuteFinal + " no pertenece al registro.");
+          }
+          if (!chuteFinal.equals(chuteAntes)) {
+            // Quedarse donde está se permite (registros anteriores al bloqueo);
+            // llevarla a un chute bloqueado, no.
+            exigirNoBloqueado(ctx, chuteFinal);
           }
           ruta.setClusterId(destino);
           HistorialBalanceo log =
@@ -957,17 +973,24 @@ public class SimulacionConfiguracionService {
       return null;
     }
     for (Long chute : List.of(desde, hasta)) {
-      if (!ctx.parametrosChute().containsKey(chute)) {
+      if (!ctx.parametrosChute().containsKey(chute) || bloqueado(ctx, chute)) {
         if (pedido == null) {
-          // El rango guardado ya no sirve (el chute salió del registro): se ignora.
+          // El rango guardado ya no sirve (el chute salió del registro o se
+          // bloqueó): se ignora.
           return null;
+        }
+        if (bloqueado(ctx, chute)) {
+          throw new SolicitudInvalidaException(
+              "El " + etiquetaChute(ctx, chute) + " está bloqueado: elige otro chute para el rango.");
         }
         throw new SolicitudInvalidaException("El chute " + chute + " no pertenece al registro.");
       }
     }
+    // Los bloqueados no cuentan: «desde 18 hasta 22» reparte en 18 y 22.
     List<Long> ordenados =
         ctx.parametrosChute().keySet().stream()
-            .sorted(Comparator.comparing(ctx::nombreChute, ORDEN_NATURAL))
+            .filter((chute) -> !bloqueado(ctx, chute))
+            .sorted(Comparator.comparing(ctx::nombreChute, PlanoChutes.ORDEN))
             .toList();
     int a = ordenados.indexOf(desde);
     int b = ordenados.indexOf(hasta);
@@ -1686,6 +1709,26 @@ public class SimulacionConfiguracionService {
     return parametro;
   }
 
+  /** El chute está bloqueado en el plano (19, 20, 21): no recibe rutas. */
+  private boolean bloqueado(Contexto ctx, Long chuteId) {
+    return plano.bloqueado(ctx.nombreChute(chuteId));
+  }
+
+  /** «CHUTE 20» para los mensajes, aunque el catálogo lo guarde como «20». */
+  private static String etiquetaChute(Contexto ctx, Long chuteId) {
+    String nombre = ctx.nombreChute(chuteId);
+    return nombre != null && nombre.trim().toUpperCase(java.util.Locale.ROOT).startsWith("CHUTE")
+        ? nombre
+        : "CHUTE " + nombre;
+  }
+
+  private void exigirNoBloqueado(Contexto ctx, Long chuteId) {
+    if (bloqueado(ctx, chuteId)) {
+      throw new ConflictoException(
+          "El " + etiquetaChute(ctx, chuteId) + " está bloqueado: no se pueden mover rutas ahí.");
+    }
+  }
+
   /**
    * Cambiar rutas de cluster exige que el cluster no esté cerrado (antes o
    * después de balancear; si ya tenía operarios, vuelve al paso 2).
@@ -1890,7 +1933,7 @@ public class SimulacionConfiguracionService {
     chuteIds.addAll(original.porChute().keySet());
     List<ChuteComparativoResponse> chutes =
         chuteIds.stream()
-            .sorted(Comparator.comparing(ctx::nombreChute, ORDEN_NATURAL))
+            .sorted(Comparator.comparing(ctx::nombreChute, PlanoChutes.ORDEN))
             .map(
                 (chuteId) -> {
                   Estadistica antes = original.porChute().getOrDefault(chuteId, Estadistica.VACIA);
@@ -2001,7 +2044,7 @@ public class SimulacionConfiguracionService {
               }
             });
     return chutes.stream()
-        .sorted(Comparator.comparing(ctx::nombreChute, ORDEN_NATURAL))
+        .sorted(Comparator.comparing(ctx::nombreChute, PlanoChutes.ORDEN))
         .map(
             (chute) ->
                 new DotacionChuteResponse(
@@ -2051,7 +2094,7 @@ public class SimulacionConfiguracionService {
         llegan += Math.max(0, despues - antes);
         detalle.add(new FlujoChuteResponse(chute, ctx.nombreChute(chute), antes, despues));
       }
-      detalle.sort(Comparator.comparing(FlujoChuteResponse::chute, ORDEN_NATURAL));
+      detalle.sort(Comparator.comparing(FlujoChuteResponse::chute, PlanoChutes.ORDEN));
       flujo.add(
           new FlujoOperariosResponse(
               origen,
@@ -2208,7 +2251,9 @@ public class SimulacionConfiguracionService {
       Map<Long, ParametroChute> parametrosChute,
       Map<Par, OperarioOla> operariosOla,
       Map<Long, String> clusters,
-      Map<Long, String> chutes) {
+      Map<Long, String> chutes,
+      /** Chutes del plano agregados en memoria (sin fila en parametros_chutes). */
+      Set<Long> chutesAgregados) {
 
     String nombreCluster(Long id) {
       return clusters.getOrDefault(id, "Cluster " + id);
@@ -2250,6 +2295,35 @@ public class SimulacionConfiguracionService {
             .collect(
                 Collectors.toMap(
                     (p) -> p.getId().getChuteId(), Function.identity(), (a, b) -> a, LinkedHashMap::new));
+    // Nombres de los chutes que el registro ya tiene (los del Excel).
+    Map<Long, String> chutes =
+        new HashMap<>(
+            chuteRepo.findAllById(parametrosChute.keySet()).stream()
+                .collect(Collectors.toMap(Chute::getId, Chute::getNombre)));
+    // Los chutes del plano (1–33 sin bloqueados) existen en todo registro aunque su
+    // Excel no los traiga: los números que falten se agregan sin carga y sin
+    // guardarse (registros antiguos). Se compara por número, no por id: si el
+    // registro ya tiene «CHUTE 5», no se agrega otro chute 5 con el nombre «5».
+    Set<Integer> presentes =
+        chutes.values().stream()
+            .map(PlanoChutes::numero)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+    Set<Long> agregados = new LinkedHashSet<>();
+    plano
+        .idsVisiblesPorNumero()
+        .forEach(
+            (numero, chuteId) -> {
+              if (presentes.contains(numero) || parametrosChute.containsKey(chuteId)) {
+                return;
+              }
+              ParametroChute vacio = new ParametroChute();
+              vacio.setId(new ParametroChuteId(archivoId, chuteId));
+              vacio.setOperarios(ParametroChute.OPERARIOS_INICIALES);
+              parametrosChute.put(chuteId, vacio);
+              chutes.put(chuteId, plano.nombreCatalogo(numero));
+              agregados.add(chuteId);
+            });
     Map<Par, OperarioOla> operariosOla = new HashMap<>();
     operarioOlaRepo
         .findByIdArchivoId(archivoId)
@@ -2260,11 +2334,15 @@ public class SimulacionConfiguracionService {
     Map<Long, String> clusters =
         clusterRepo.findAllById(parametrosCluster.keySet()).stream()
             .collect(Collectors.toMap(Cluster::getId, Cluster::getNombre));
-    Map<Long, String> chutes =
-        chuteRepo.findAllById(parametrosChute.keySet()).stream()
-            .collect(Collectors.toMap(Chute::getId, Chute::getNombre));
     return new Contexto(
-        archivo, config, parametrosCluster, parametrosChute, operariosOla, clusters, chutes);
+        archivo,
+        config,
+        parametrosCluster,
+        parametrosChute,
+        operariosOla,
+        clusters,
+        chutes,
+        Set.copyOf(agregados));
   }
 
   private ConfiguracionSimulacionResponse aConfiguracion(Contexto ctx) {
@@ -2297,16 +2375,20 @@ public class SimulacionConfiguracionService {
                 .add(fila.getClusterId());
           }
         });
+    // Los bloqueados no se muestran. Solo si un registro anterior al bloqueo aún
+    // tiene rutas en uno, va marcado (no recibe rutas; las suyas se pueden sacar).
     List<ChuteParametroResponse> chutes =
         ctx.parametrosChute().entrySet().stream()
+            .filter((entrada) -> !bloqueado(ctx, entrada.getKey()) || clustersEnChute.containsKey(entrada.getKey()))
             .map(
                 (entrada) ->
                     new ChuteParametroResponse(
                         entrada.getKey(),
                         ctx.nombreChute(entrada.getKey()),
                         operarios.get(entrada.getKey()),
-                        clustersEnChute.getOrDefault(entrada.getKey(), List.of())))
-            .sorted(Comparator.comparing(ChuteParametroResponse::nombre, ORDEN_NATURAL))
+                        clustersEnChute.getOrDefault(entrada.getKey(), List.of()),
+                        bloqueado(ctx, entrada.getKey())))
+            .sorted(Comparator.comparing(ChuteParametroResponse::nombre, PlanoChutes.ORDEN))
             .toList();
     List<CargaSimulacionResponse> cargaResponse =
         carga.stream()
@@ -2334,7 +2416,8 @@ public class SimulacionConfiguracionService {
         topePorChute(ctx, operarios),
         clusters,
         chutes,
-        cargaResponse);
+        cargaResponse,
+        plano.nombresBloqueados());
   }
 
   private static Map<Long, BigDecimal> limites(Contexto ctx) {
@@ -2399,7 +2482,11 @@ public class SimulacionConfiguracionService {
     int asignados = operarios.values().stream().mapToInt(Integer::intValue).sum();
     // Sin tope y sin operarios: al menos uno por chute para que el balanceo
     // pueda repartir el mínimo en cada ola.
-    return asignados > 0 ? asignados : Math.max(1, ctx.parametrosChute().size());
+    // Uno por chute del registro: los del plano agregados en memoria no cuentan
+    // (mismo valor que antes del plano).
+    return asignados > 0
+        ? asignados
+        : Math.max(1, ctx.parametrosChute().size() - ctx.chutesAgregados().size());
   }
 
   /** La consulta agrega COD como decimal; los contadores del balanceo son enteros. */

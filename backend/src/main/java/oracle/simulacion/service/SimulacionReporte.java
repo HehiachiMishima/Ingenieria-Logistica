@@ -172,7 +172,7 @@ public class SimulacionReporte {
         nombreChute.put(chute.id(), chute.nombre());
       }
       TreeSet<Long> conCarga =
-          new TreeSet<>(Comparator.comparing((Long id) -> nombre(id), NATURAL).thenComparing(id -> id));
+          new TreeSet<>(Comparator.comparing((Long id) -> nombre(id), PlanoChutes.ORDEN).thenComparing(id -> id));
       for (CargaSimulacionResponse fila : cfg.carga()) {
         if (fila.rutas() > 0) {
           conCarga.add(fila.chuteId());
@@ -521,7 +521,7 @@ public class SimulacionReporte {
       f = cabecera(hoja, f + 1, 0, cabecera);
       int inicio = f;
       List<ChuteComparativoResponse> chutes = new ArrayList<>(dash.chutes());
-      chutes.sort(Comparator.comparing(ChuteComparativoResponse::chute, NATURAL));
+      chutes.sort(Comparator.comparing(ChuteComparativoResponse::chute, PlanoChutes.ORDEN));
       for (ChuteComparativoResponse c : chutes) {
         Row fila = hoja.createRow(f++);
         int col = 0;
@@ -559,7 +559,7 @@ public class SimulacionReporte {
       int inicio = f;
       List<RutaSimulacionResponse> orden = new ArrayList<>(rutas);
       orden.sort(Comparator.comparing(RutaSimulacionResponse::cluster, NATURAL)
-          .thenComparing(RutaSimulacionResponse::chute, NATURAL)
+          .thenComparing(RutaSimulacionResponse::chute, PlanoChutes.ORDEN)
           .thenComparing(RutaSimulacionResponse::codigoRuta, NATURAL));
       for (RutaSimulacionResponse r : orden) {
         boolean otroChute = !Objects.equals(r.chuteId(), r.chuteOriginalId());

@@ -60,6 +60,11 @@ export interface ChuteParametroSimulacion {
   operarios: number;
   /** Clusters con rutas hoy en el chute. */
   clusterIds: number[];
+  /**
+   * Chute bloqueado del plano (19, 20, 21): no recibe rutas. Solo llega si un
+   * registro anterior al bloqueo aún tiene rutas en él (se pueden sacar).
+   */
+  bloqueado: boolean;
 }
 
 export interface RutaSimulacion {
@@ -111,6 +116,8 @@ export interface ConfiguracionSimulacion {
   clusters: ClusterParametroSimulacion[];
   chutes: ChuteParametroSimulacion[];
   carga: CargaSimulacion[];
+  /** Nombres de los chutes bloqueados («19», «20», «21»): no se muestran ni se usan. */
+  chutesBloqueados: string[];
 }
 
 /** Página de rutas por keyset: `siguiente` es el cursor de la próxima; `total` solo en la primera. */

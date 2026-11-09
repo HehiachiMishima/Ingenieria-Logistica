@@ -2,6 +2,15 @@ package oracle.simulacion.response;
 
 import java.util.List;
 
-/** Operarios base de un chute (los que fija el usuario) y los clusters con rutas en él. */
+/**
+ * Operarios base de un chute (los que fija el usuario) y los clusters con rutas
+ * en él. {@code bloqueado}: chute del plano que no recibe rutas (19, 20, 21);
+ * solo se envía si un registro anterior al bloqueo aún tiene rutas en él.
+ */
 public record ChuteParametroResponse(
-    Long id, String nombre, Integer operarios, List<Long> clusterIds) {}
+    Long id, String nombre, Integer operarios, List<Long> clusterIds, boolean bloqueado) {
+
+  public ChuteParametroResponse(Long id, String nombre, Integer operarios, List<Long> clusterIds) {
+    this(id, nombre, operarios, clusterIds, false);
+  }
+}

@@ -246,7 +246,14 @@
     <thead>
       <tr>
         @for (chute of chutes; track chute.id) {
-        <th scope="col" [class.mz-der]="$last">{{ chute.etiqueta }}</th>
+        <!-- Un bloqueado solo aparece si un registro antiguo aún tiene rutas ahí: candado y sin recibir rutas. -->
+        <th scope="col" [class.mz-der]="$last" [class.mz-bloqueado]="chute.bloqueado"
+          [attr.title]="chute.bloqueado ? chute.etiqueta + ' está bloqueado: sus rutas pueden salir, ninguna puede entrar' : null">
+          @if (chute.bloqueado) {
+          <ui-icon name="lock" [size]="12" />
+          }
+          {{ chute.etiqueta }}
+        </th>
         }
       </tr>
     </thead>
@@ -556,6 +563,12 @@
   </dl>
   @if (v.chutes === 1) {
   <p class="rango__aviso"><ui-icon name="info" [size]="14" /> Un solo chute: todas sus rutas irán ahí, sin nivelar.</p>
+  }
+  @if (v.saltados.length > 0) {
+  <p class="rango__aviso">
+    <ui-icon name="lock" [size]="14" /> Se omiten los chutes bloqueados {{ v.saltados.join(', ') }}: el reparto va
+    solo a los {{ v.chutes }} chutes disponibles del rango.
+  </p>
   }
   @if (v.excede) {
   <p class="rango__aviso rango__aviso--alerta">

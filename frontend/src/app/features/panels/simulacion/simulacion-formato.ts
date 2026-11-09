@@ -183,3 +183,25 @@ export function redondearArriba(valor: number | null | undefined): number {
 export function formatearEntero(valor: number | null | undefined): string {
   return formatearNumero(redondearArriba(valor));
 }
+
+/** Número de un chute según su nombre («CHUTE 18», «CH-18», «018» → 18), o null. */
+export function numeroChute(nombre: string): number | null {
+  const m = /^(?:CH(?:UTE)?)?[\s\-_#.:]*(?:N[°º.O]?\s*)?0*(\d{1,6})$/i.exec(nombre.trim().replace(/\s+/g, ' '));
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Orden de los chutes por su número, aunque los nombres mezclen estilos
+ * («CHUTE 18» antes que «22»), igual que el servidor; sin número, al final.
+ */
+export function compararChute(a: string, b: string): number {
+  const na = numeroChute(a);
+  const nb = numeroChute(b);
+  if (na !== null && nb !== null && na !== nb) {
+    return na - nb;
+  }
+  if ((na === null) !== (nb === null)) {
+    return na === null ? 1 : -1;
+  }
+  return compararNombre(a, b);
+}

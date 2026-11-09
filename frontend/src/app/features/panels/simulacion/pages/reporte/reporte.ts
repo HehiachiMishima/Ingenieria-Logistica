@@ -26,6 +26,7 @@ import {
   RutaSimulacion,
 } from '../../data/simulacion.model';
 import {
+  compararChute,
   compararNombre,
   etiquetaEstado,
   etiquetaEstadoCluster,
@@ -409,7 +410,7 @@ export class SimulacionReporteEjecutivo {
       return [];
     }
     return [...d.dash.chutes]
-      .sort((a, b) => compararNombre(a.chute, b.chute))
+      .sort((a, b) => compararChute(a.chute, b.chute))
       .map((c) => ({ etiqueta: c.chute, antes: Number(c.bultosOriginal), despues: Number(c.bultosBalanceado) }));
   });
 
@@ -477,7 +478,7 @@ export class SimulacionReporteEjecutivo {
       const vista = d.porCluster[i];
       const chutes = [...(vista?.chutes ?? [])]
         .filter((c) => Number(c.bultosOriginal) > 0 || Number(c.bultosBalanceado) > 0)
-        .sort((a, b) => compararNombre(a.chute, b.chute));
+        .sort((a, b) => compararChute(a.chute, b.chute));
       const filas: FilaComparativa[] = chutes.map((c) => ({
         etiqueta: etiquetaChute(c.chute),
         celdas: celdas(c as unknown as Record<ClaveMetrica, number>),
@@ -540,7 +541,7 @@ export class SimulacionReporteEjecutivo {
     d.rutas.forEach((r) => conRutas.add(r.chuteId));
     return d.cfg.chutes
       .filter((chute) => conRutas.has(chute.id))
-      .sort((a, b) => compararNombre(a.nombre, b.nombre))
+      .sort((a, b) => compararChute(a.nombre, b.nombre))
       .map((chute) => ({ id: chute.id, etiqueta: etiquetaChute(chute.nombre) }));
   });
 

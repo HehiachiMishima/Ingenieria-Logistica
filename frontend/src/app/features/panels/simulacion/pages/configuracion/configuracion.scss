@@ -1458,3 +1458,16 @@
     padding-inline: var(--space-3);
   }
 }
+
+/* Chute bloqueado (solo si un registro antiguo aún tiene rutas en él): no recibe rutas. */
+.mz-tabla thead th.mz-bloqueado {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--table-head-bg, #0f1e3d) 0 6px,
+    color-mix(in srgb, var(--table-head-bg, #0f1e3d) 80%, #fff) 6px 12px
+  );
+
+  ui-icon {
+    vertical-align: -1px;
+  }
+}

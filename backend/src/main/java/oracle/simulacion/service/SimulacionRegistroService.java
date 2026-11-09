@@ -74,6 +74,7 @@ public class SimulacionRegistroService {
   private final ArchivoExcelRepository archivoRepo;
   private final SimulacionLotesRepository lotes;
   private final Transacciones transacciones;
+  private final PlanoChutes plano;
   private final Semaphore cargas = new Semaphore(MAX_CARGAS_SIMULTANEAS);
   private final Semaphore memoria = new Semaphore(PRESUPUESTO_MEMORIA_MB);
   private final CargasRecientes recientes;
@@ -82,18 +83,21 @@ public class SimulacionRegistroService {
   public SimulacionRegistroService(
       ArchivoExcelRepository archivoRepo,
       SimulacionLotesRepository lotes,
-      Transacciones transacciones) {
-    this(archivoRepo, lotes, transacciones, Clock.systemUTC());
+      Transacciones transacciones,
+      PlanoChutes plano) {
+    this(archivoRepo, lotes, transacciones, plano, Clock.systemUTC());
   }
 
   SimulacionRegistroService(
       ArchivoExcelRepository archivoRepo,
       SimulacionLotesRepository lotes,
       Transacciones transacciones,
+      PlanoChutes plano,
       Clock reloj) {
     this.archivoRepo = archivoRepo;
     this.lotes = lotes;
     this.transacciones = transacciones;
+    this.plano = plano;
     this.recientes = new CargasRecientes(reloj, VENTANA_DUPLICADOS);
   }
 
@@ -322,11 +326,65 @@ public class SimulacionRegistroService {
   private ArchivoSimulacionResponse registrar(
       MultipartFile archivo, String nombreRegistro, String etiqueta, String color, Long actor) {
     String nombreOriginal = archivo.getOriginalFilename();
-    SimulacionExcel.Analisis analisis = SimulacionExcel.analizar(archivo);
+    SimulacionExcel.Analisis analisis = alPlano(SimulacionExcel.analizar(archivo));
     ArchivoExcel guardado =
         transacciones.ejecutar(
             () -> persistir(nombreOriginal, nombreRegistro, etiqueta, color, analisis, actor));
     return aResponses(List.of(guardado)).get(0);
+  }
+
+  /** Rutas mostradas como ejemplo en el error de chutes no permitidos. */
+  private static final int MAX_EJEMPLOS_CHUTE = 5;
+
+  /**
+   * Ajusta el Excel al plano de chutes: rechaza la carga si alguna ruta está en
+   * un chute bloqueado o fuera del plano (se dice cuáles) y guarda cada chute
+   * con su número como nombre, para que «CHUTE 5» y «5» sean el mismo.
+   */
+  SimulacionExcel.Analisis alPlano(SimulacionExcel.Analisis analisis) {
+    Map<String, List<String>> problemas = new java.util.TreeMap<>();
+    for (SimulacionExcel.FilaRuta fila : analisis.rutas()) {
+      String problema = plano.problema(fila.chute());
+      if (problema != null) {
+        problemas
+            .computeIfAbsent(fila.chute() + " (" + problema + ")", (k) -> new ArrayList<>())
+            .add(fila.codigoRuta());
+      }
+    }
+    if (!problemas.isEmpty()) {
+      StringBuilder detalle = new StringBuilder();
+      problemas.forEach(
+          (chute, rutas) -> {
+            if (!detalle.isEmpty()) {
+              detalle.append("; ");
+            }
+            detalle
+                .append("chute ")
+                .append(chute)
+                .append(": ")
+                .append(String.join(", ", rutas.subList(0, Math.min(MAX_EJEMPLOS_CHUTE, rutas.size()))))
+                .append(rutas.size() > MAX_EJEMPLOS_CHUTE ? " y " + (rutas.size() - MAX_EJEMPLOS_CHUTE) + " más" : "");
+          });
+      throw SimulacionExcel.ArchivoInvalidoException.contenido(
+          "Hay rutas en chutes que no se pueden usar: "
+              + detalle
+              + ".");
+    }
+    List<SimulacionExcel.FilaRuta> rutas =
+        analisis.rutas().stream()
+            .map(
+                (f) ->
+                    new SimulacionExcel.FilaRuta(
+                        f.codigoRuta(),
+                        f.cluster(),
+                        plano.nombreCanonico(f.chute()),
+                        f.tipo(),
+                        f.bultos(),
+                        f.unidades(),
+                        f.lineas(),
+                        f.conteoCod()))
+            .toList();
+    return new SimulacionExcel.Analisis(rutas, analisis.totalBultos());
   }
 
   private ArchivoExcel persistir(
@@ -361,7 +419,11 @@ public class SimulacionRegistroService {
 
     lotes.insertarConfig(archivoId, SimulacionConfig.VELOCIDAD_INICIAL, chutes.size(), actor);
     lotes.insertarParametrosCluster(archivoId, clusters.values());
-    lotes.insertarParametrosChute(archivoId, chutes.values(), ParametroChute.OPERARIOS_INICIALES);
+    // El registro tiene todos los chutes del plano (sin bloqueados), aunque el
+    // Excel no los traiga: se ven vacíos y se pueden usar al mover o balancear.
+    java.util.Set<Long> delRegistro = new java.util.LinkedHashSet<>(chutes.values());
+    delRegistro.addAll(plano.idsVisibles());
+    lotes.insertarParametrosChute(archivoId, delRegistro, ParametroChute.OPERARIOS_INICIALES);
     lotes.insertarRutas(archivoId, rutas, clusters, chutes);
     return guardado;
   }

@@ -24,6 +24,7 @@ import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -75,7 +76,9 @@ class SimulacionRegistroServiceTest {
     when(lotes.asegurarClusters(anyList())).thenReturn(Map.of("CL1", 1L));
     when(lotes.asegurarChutes(anyList())).thenReturn(Map.of("CHUTE 1", 2L));
     reloj = new RelojMovil();
-    servicio = new SimulacionRegistroService(archivoRepo, lotes, transacciones, reloj);
+    servicio =
+        new SimulacionRegistroService(
+            archivoRepo, lotes, transacciones, PlanoChutes.fijo(1, 33, Set.of(19, 20, 21), Map.of()), reloj);
   }
 
   @Test
