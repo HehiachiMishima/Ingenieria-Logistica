@@ -17,7 +17,6 @@ import lombok.extern.slf4j.Slf4j;
 import oracle.simulacion.model.Chute;
 import oracle.simulacion.repository.ChuteRepository;
 import oracle.simulacion.repository.SimulacionLotesRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -57,7 +56,6 @@ public class PlanoChutes {
   /** Se reemplaza entero: nunca se lee un id de una versión y el nombre de otra. */
   private volatile Catalogo catalogo = Catalogo.VACIO;
 
-  @Autowired
   public PlanoChutes(
       @Value("${simulacion.chutes.primero:1}") int primero,
       @Value("${simulacion.chutes.ultimo:33}") int ultimo,
