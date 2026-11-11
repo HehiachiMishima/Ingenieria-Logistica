@@ -338,7 +338,7 @@
         @for (fila of filasTotales; track fila.clave) {
         @let etiqueta = global && fila.clave === 'operarios' ? 'Máx. operarios por ola' : fila.etiqueta;
 
-        <div [style.--tono]="fila.tono" class="mz-totales__fila">
+        <div class="mz-totales__fila">
           <!-- Etiqueta completa con su ícono -->
           <span class="mz-totales__largo">
             <ng-container [ngTemplateOutlet]="tplIconoConcepto" [ngTemplateOutletContext]="{ $implicit: fila.clave }" />
@@ -360,7 +360,7 @@
           }
           <tbody>
             @for (fila of filasTotales; track fila.clave) {
-            <tr [style.--tono]="fila.tono">
+            <tr>
               @for (chute of chutes; track chute.id; let i = $index) {
               @let nivel = t.niveles[fila.clave][i];
               <!-- Semáforo por línea: amarillo = lo más bajo, verde = intermedio, rojo = lo más alto. -->
@@ -1071,7 +1071,7 @@
   }
   @if (k.grupos.length > 0) {
   <div class="detalle-pop__grupos">
-    <span class="detalle-pop__kicker">Grupos por prioridad</span>
+    <span class="detalle-pop__kicker">{{ k.grupos.length > 1 ? 'Grupos por prioridad' : 'Grupo' }}</span>
     <ol>
       @for (g of k.grupos; track g.nombre) {
       <li [style.--grupo-color]="g.color">
@@ -1080,6 +1080,9 @@
         <span class="detalle-pop__tramo">
           @if (g.chuteDesde) {
           {{ g.chuteDesde }}@if (g.chuteHastaId !== g.chuteDesdeId) { → {{ g.chuteHasta }} }
+          } @else if (k.grupos.length === 1) {
+          <!-- Un solo grupo balanceado sin rango usa todos los chutes del cluster: no tiene tramo propio. -->
+          Todos sus chutes
           } @else {
           Sin balancear
           }

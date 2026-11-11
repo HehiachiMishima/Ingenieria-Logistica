@@ -571,9 +571,9 @@ export class SimulacionReporteEjecutivo {
       );
       const rutas = [...carga.values()].reduce((t, f) => t + f.rutas, 0);
       const bultos = [...carga.values()].reduce((t, f) => t + Number(f.bultos), 0);
-      // Con dos o más grupos, cada ruta lleva el suyo y el resumen dice el tramo de cada uno.
+      // Con grupos (aunque sea uno), cada ruta lleva el suyo y el resumen dice el tramo de cada uno.
       const grupos = cluster.grupos ?? [];
-      const conGrupos = grupos.length > 1;
+      const conGrupos = grupos.length > 0;
       const partes = [
         etiquetaEstadoCluster(cluster.estado),
         `${formatearEntero(rutas)} rutas`,

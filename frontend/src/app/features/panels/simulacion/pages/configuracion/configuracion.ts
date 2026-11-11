@@ -108,9 +108,9 @@ interface CeldaRuta {
   /** Ya no está en el chute o cluster del Excel. */
   movida: boolean;
   cambioCluster: boolean;
-  /** Grupo de la ruta si su cluster tiene dos o más grupos (si no, null). */
+  /** Grupo de la ruta (null solo si su cluster aún no tiene grupos cargados). */
   grupo: string | null;
-  /** Color de la franja de su grupo (null con un solo grupo). */
+  /** Color de la pestaña de su grupo (null si el cluster no tiene grupos). */
   grupoColor: string | null;
   /** Bultos redondeados hacia arriba y con miles («1.250»), para la pastilla. */
   bultos: string;
@@ -609,7 +609,7 @@ export class SimulacionConfiguracion {
    * (que sí cambian el panel) no vuelve a armar miles de celdas.
    */
   /**
-   * Color de cada grupo, por cluster (solo clusters con dos o más grupos). Se
+   * Color de cada grupo, por cluster (también con un solo grupo). Se
    * asigna por nombre en orden natural, no por prioridad: reordenar la prioridad
    * no le cambia el color a ningún grupo.
    */
@@ -617,7 +617,7 @@ export class SimulacionConfiguracion {
     const resultado = new Map<number, Map<string, string>>();
     for (const cluster of this.config()?.clusters ?? []) {
       const grupos = cluster.grupos ?? [];
-      if (grupos.length < 2) {
+      if (grupos.length === 0) {
         continue;
       }
       const nombres = grupos.map((g) => g.nombre).sort(compararNombre);
@@ -637,7 +637,7 @@ export class SimulacionConfiguracion {
       (this.config()?.clusters ?? []).filter((c) => c.estado === 'CERRADO').map((c) => c.id),
     );
     const editable = this.puedeModificar();
-    // La franja de grupo solo aporta si el cluster tiene más de uno.
+    // Toda ruta muestra su grupo, aunque el cluster tenga uno solo.
     const colores = this.coloresGrupo();
     const porCluster = new Map<number, Map<number, RutaSimulacion[]>>();
 
@@ -785,16 +785,16 @@ export class SimulacionConfiguracion {
   });
 
   /**
-   * Filas de las tablas de totales (por cluster y general). Cada una tiene su
-   * color (token del sistema) y sus celdas se oscurecen cuanto mayor es el valor.
+   * Filas de las tablas de totales (por cluster y general). Cada una se
+   * identifica con su ícono a color y sus celdas llevan el semáforo por línea.
    * Los valores se muestran enteros, redondeados hacia arriba (pipe `entero`).
    */
-  readonly filasTotales: { clave: CampoTotal; etiqueta: string; corta: string; tono: string }[] = [
-    { clave: 'operarios', etiqueta: 'Total operarios', corta: 'Ope.', tono: 'var(--violet)' },
-    { clave: 'bultos', etiqueta: 'Total bultos', corta: 'Bul.', tono: 'var(--accent)' },
-    { clave: 'lineas', etiqueta: 'Total líneas', corta: 'Lín.', tono: 'var(--success)' },
-    { clave: 'unidades', etiqueta: 'Total unidades', corta: 'Uni.', tono: 'var(--warning)' },
-    { clave: 'cod', etiqueta: 'Total locales', corta: 'Loc.', tono: 'var(--cyan)' },
+  readonly filasTotales: { clave: CampoTotal; etiqueta: string; corta: string }[] = [
+    { clave: 'operarios', etiqueta: 'Total operarios', corta: 'Ope.' },
+    { clave: 'bultos', etiqueta: 'Total bultos', corta: 'Bul.' },
+    { clave: 'lineas', etiqueta: 'Total líneas', corta: 'Lín.' },
+    { clave: 'unidades', etiqueta: 'Total unidades', corta: 'Uni.' },
+    { clave: 'cod', etiqueta: 'Total locales', corta: 'Loc.' },
   ];
 
   /** Filas visibles de cada cluster antes del scroll vertical (las fija MIN_FILAS). */
@@ -862,14 +862,11 @@ export class SimulacionConfiguracion {
     return {
       c: cluster,
       m: this.metricasCluster().get(cluster.id) ?? null,
-      // Con un solo grupo no hay tramos que mostrar. Cada grupo lleva el color de su franja.
-      grupos:
-        grupos.length > 1
-          ? grupos.map((g) => ({
-              ...g,
-              color: this.coloresGrupo().get(cluster.id)?.get(g.nombre) ?? null,
-            }))
-          : [],
+      // Todos sus grupos (aunque sea uno), con el color de su pestaña y su tramo.
+      grupos: grupos.map((g) => ({
+        ...g,
+        color: this.coloresGrupo().get(cluster.id)?.get(g.nombre) ?? null,
+      })),
     };
   });
 

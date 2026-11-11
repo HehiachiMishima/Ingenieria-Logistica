@@ -1247,7 +1247,7 @@
   }
 }
 
-/* Grupo de la ruta (clusters con dos o más grupos): pestaña pegada al borde
+/* Grupo de la ruta (todo cluster con grupos, aunque sea uno): pestaña pegada al borde
    izquierdo, del color del grupo, con su número en blanco. Usa el margen
    izquierdo de la ruta (margen negativo), así ocupa solo unos píxeles más.
    El color se oscurece un poco para que el blanco se lea en todos los tonos. */
@@ -1552,12 +1552,8 @@
 
 /*
  * Totales con ícono a color por concepto (mismo estilo que la caja de bultos
- * de las rutas): solo el ícono y el nombre, sin el cuadrito de color.
+ * de las rutas): solo el ícono y el nombre.
  */
-.mz-totales__etiquetas > .mz-totales__fila::before {
-  content: none;
-}
-
 .mz-totales__largo {
   display: inline-flex;
   align-items: center;
