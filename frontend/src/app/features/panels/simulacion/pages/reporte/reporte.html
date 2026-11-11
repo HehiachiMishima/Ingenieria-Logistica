@@ -210,41 +210,7 @@
         color="var(--success)" [altura]="190" [anchoGrupo]="g.ancho" />
     </div>
     }
-
-    @if (graficoOperarios().length > 0) {
-    <h2 class="rep-titulo"><ui-icon name="usuarios" [size]="16" /> Operarios por ola</h2>
-    <div class="rep-grafico">
-      <ui-bars [datos]="graficoOperarios()" [altura]="200" />
-    </div>
-    }
   </section>
-
-  <!-- ============ Comparativo de cada cluster por chute (vista del cluster en el dashboard) ============ -->
-  <section class="rep-hoja rep-hoja--nueva">
-    <h2 class="rep-titulo rep-titulo--grande"><ui-icon name="analisis" [size]="18" /> Comparativo por cluster: antes vs. después</h2>
-    <p class="rep-nota">Carga de cada cluster en sus chutes al cargar el Excel y después del balanceo.</p>
-    @for (c of comparativosCluster(); track c.id) {
-    <article class="rep-bloque rep-bloque--comparativo" [style.--c]="c.color">
-      <header class="rep-bloque__cabecera">
-        <span class="rep-cluster" [style.--c]="c.color">{{ c.nombre }}</span>
-        <span class="rep-bloque__resumen">{{ c.estado }} · {{ c.filas.length }} chutes · {{ c.rutasMovidas }} ruta(s) movidas</span>
-      </header>
-      @if (c.graficos.length > 0) {
-      @for (g of c.graficos; track $index) {
-      <div class="rep-bloque__grafico">
-        <ui-comparativo [datos]="g.grupos" [formato]="formatoEntero" etiquetaAntes="Bultos antes"
-          etiquetaDespues="Bultos después" color="var(--success)" [altura]="170" [anchoGrupo]="g.ancho" />
-      </div>
-      }
-      <ng-container [ngTemplateOutlet]="tplCuadro" [ngTemplateOutletContext]="{
-          $implicit: c.filas, total: c.total, primera: 'Chute', traspasos: false }" />
-      } @else {
-      <p class="rep-bloque__vacio">Sin carga en este cluster.</p>
-      }
-    </article>
-    }
-  </section>
-
   <!-- ============ Cuadrículas de configuración ============ -->
   <section class="rep-hoja rep-hoja--nueva">
     <h2 class="rep-titulo rep-titulo--grande"><ui-icon name="layers" [size]="18" /> Configuración: rutas por cluster y chute</h2>
@@ -331,7 +297,5 @@
       }
     </article>
   </section>
-
-  <footer class="rep-pie">Simulación · {{ d.cfg.archivo.nombreRegistro }} · reporte ejecutivo</footer>
   }
 </div>

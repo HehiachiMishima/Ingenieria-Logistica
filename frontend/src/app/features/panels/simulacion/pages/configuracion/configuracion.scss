@@ -1478,23 +1478,6 @@
 }
 
 /*
- * Cada fila de totales se identifica con el cuadrito de su tono (--tono) en
- * la etiqueta; las celdas se pintan con el semáforo de abajo.
- */
-.mz-totales__etiquetas > div[style] {
-  gap: var(--space-2);
-
-  &::before {
-    content: '';
-    width: 8px;
-    height: 8px;
-    flex: none;
-    border-radius: 2px;
-    background: var(--tono);
-  }
-}
-
-/*
  * Semáforo por línea (cada fila se compara consigo misma): amarillo = lo más
  * bajo, verde = intermedio, rojo = lo más alto. Fondo suave mezclado con
  * --surface (sirve en tema claro y oscuro) y cifra en el tono fuerte.
@@ -1563,6 +1546,71 @@
     &__etiquetas > div {
       padding-left: var(--space-3);
       letter-spacing: 0.04em;
+    }
+  }
+}
+
+/*
+ * Totales con ícono a color por concepto (mismo estilo que la caja de bultos
+ * de las rutas): solo el ícono y el nombre, sin el cuadrito de color.
+ */
+.mz-totales__etiquetas > .mz-totales__fila::before {
+  content: none;
+}
+
+.mz-totales__largo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.mz-totales__texto {
+  min-width: 0;
+}
+
+.ico-total,
+.mz-totales .caja-bulto {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  overflow: visible;
+}
+
+/* Tipografía: etiqueta legible y cifra con dígitos de ancho fijo para que las columnas se lean en vertical. */
+.mz-totales__etiquetas > .mz-totales__fila {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text-2);
+}
+
+.mz-totales .mz-tabla td.mz-totales__valor {
+  font-family: var(--font-display);
+  font-size: 0.92rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.mz-totales--global .mz-tabla td.mz-totales__valor {
+  font-size: 0.98rem;
+}
+
+/* Minimizado (riel de 64 px): el ícono arriba y la abreviatura debajo. */
+@include bp.up(sm) {
+  .mz-tablero--min .mz-totales .mz-totales__corto {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    font-size: 0.6rem;
+    line-height: 1;
+
+    .ico-total,
+    .caja-bulto {
+      width: 16px;
+      height: 16px;
     }
   }
 }
