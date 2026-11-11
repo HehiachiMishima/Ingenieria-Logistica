@@ -15,6 +15,7 @@ import {
   RutasDashboardFiltros,
   RutasDashboardSimulacion,
   RutasSimulacionFiltros,
+  VistaBalanceo,
 } from './simulacion.model';
 import { Pagina } from '../../../../core/models';
 import { Api } from '../../../../core/services/api';
@@ -96,6 +97,24 @@ export class SimulacionApi {
     return this.api.post<BalanceoSimulacion>(
       `/simulacion/registros/${id}/clusters/${clusterId}/balancear?fase=${fase}`,
       cuerpo,
+    );
+  }
+
+  /**
+   * Vista previa del paso 1 (no cambia nada): los grupos del cluster en orden de
+   * prioridad y el tramo de chutes de cada uno con ese rango. La prioridad viaja
+   * como un parámetro por grupo, así un nombre con coma no se parte.
+   */
+  vistaBalanceo(
+    id: number,
+    clusterId: number,
+    desde: number | null,
+    hasta: number | null,
+    prioridad: string[],
+  ): Observable<VistaBalanceo> {
+    return this.api.get<VistaBalanceo>(
+      `/simulacion/registros/${id}/clusters/${clusterId}/balanceo/vista`,
+      { desde, hasta, ...(prioridad.length > 0 ? { prioridad } : {}) },
     );
   }
 

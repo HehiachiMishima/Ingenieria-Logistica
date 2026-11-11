@@ -23,6 +23,7 @@ import {
   CargaSimulacion,
   ConfiguracionSimulacion,
   DashboardSimulacion,
+  GrupoCluster,
   RutaSimulacion,
 } from '../../data/simulacion.model';
 import {
@@ -570,12 +571,16 @@ export class SimulacionReporteEjecutivo {
       );
       const rutas = [...carga.values()].reduce((t, f) => t + f.rutas, 0);
       const bultos = [...carga.values()].reduce((t, f) => t + Number(f.bultos), 0);
+      // Con dos o más grupos, cada ruta lleva el suyo y el resumen dice el tramo de cada uno.
+      const grupos = cluster.grupos ?? [];
+      const conGrupos = grupos.length > 1;
       const partes = [
         etiquetaEstadoCluster(cluster.estado),
         `${formatearEntero(rutas)} rutas`,
         `${formatearEntero(bultos)} bultos`,
         ...(cluster.operariosOla ? [`${cluster.operariosOla} operarios`] : []),
         ...(Number(cluster.limiteHoras) > 0 ? [`límite ${formatearHoras(Number(cluster.limiteHoras))}`] : []),
+        ...(conGrupos ? [`grupos: ${grupos.map(textoGrupo).join(', ')}`] : []),
       ];
       return {
         id: cluster.id,
@@ -588,6 +593,7 @@ export class SimulacionReporteEjecutivo {
           (chute) => porCelda.get(`${cluster.id}:${chute}`) ?? [],
           (chute) => carga.get(chute),
           false,
+          conGrupos,
         ),
       };
     });
@@ -690,12 +696,23 @@ function etiquetaChute(nombre: string): string {
   return /^chute\b/i.test(nombre.trim()) ? nombre : `CHUTE ${nombre}`;
 }
 
+/** «B (15 → 17)» o, sin balancear, solo el nombre: el orden ya es el de prioridad. */
+function textoGrupo(grupo: GrupoCluster): string {
+  if (!grupo.chuteDesde) {
+    return grupo.nombre;
+  }
+  const tramo =
+    grupo.chuteHastaId !== grupo.chuteDesdeId ? `${grupo.chuteDesde} → ${grupo.chuteHasta}` : grupo.chuteDesde;
+  return `${grupo.nombre} (${tramo})`;
+}
+
 /** Parte las columnas en tramos que caben a lo ancho de la hoja. */
 function tramos(
   columnas: ColumnaChute[],
   rutasDe: (chute: number) => RutaSimulacion[],
   cargaDe: (chute: number) => CargaSimulacion | undefined,
   general: boolean,
+  conGrupo = false,
 ): Tramo[] {
   const resultado: Tramo[] = [];
   // Tramos parejos: 29 chutes van en 3 tablas de 10, 10 y 9 (no 12, 12 y 5).
@@ -709,7 +726,7 @@ function tramos(
         const ruta = lista[f];
         return ruta
           ? {
-              texto: `${ruta.codigoRuta} · ${ruta.tipo}`,
+              texto: `${ruta.codigoRuta} · ${ruta.tipo}${conGrupo && ruta.grupo ? ` · ${ruta.grupo}` : ''}`,
               movida: ruta.chuteId !== ruta.chuteOriginalId || ruta.clusterId !== ruta.clusterOriginalId,
             }
           : null;

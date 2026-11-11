@@ -27,6 +27,7 @@ import oracle.simulacion.response.ClusterParametroResponse;
 import oracle.simulacion.response.ConfiguracionSimulacionResponse;
 import oracle.simulacion.response.DashboardSimulacionResponse;
 import oracle.simulacion.response.DotacionChuteResponse;
+import oracle.simulacion.response.GrupoClusterResponse;
 import oracle.simulacion.response.HistorialSimulacionResponse;
 import oracle.simulacion.response.OlaSimulacionResponse;
 import oracle.simulacion.response.PaginaRutasResponse;
@@ -223,6 +224,7 @@ public class SimulacionReporte {
         hojaChutes();
         hojaOperarios();
         hojaConfiguracion();
+        hojaGrupos();
         hojaRutas();
         hojaHistorial();
         libro.write(salida);
@@ -371,6 +373,7 @@ public class SimulacionReporte {
         {"Chutes", "Todos los chutes con carga: operarios, rutas, carga y tiempo antes vs. después."},
         {"Operarios por ola", "Cuántos operarios tuvo cada chute en cada ola."},
         {"Configuración", "Las cuadrículas de rutas por cluster y chute, con los totales en semáforo."},
+        {"Grupos", "Los grupos de rutas de cada cluster: su prioridad, su carga y su tramo de chutes."},
         {"Rutas", "Cada ruta: dónde estaba en el Excel y dónde quedó."},
         {"Historial", "Todos los cambios: balanceos, movimientos a mano y operarios asignados."},
       };
@@ -898,10 +901,42 @@ public class SimulacionReporte {
       }
     }
 
+    /** Grupos de cada cluster en orden de prioridad, con su carga y el tramo del último balanceo. */
+    private void hojaGrupos() {
+      Sheet hoja = libro.createSheet("Grupos");
+      String[] cabecera = {"Cluster", "Prioridad", "Grupo", "Rutas", "Bultos", "Tramo de chutes"};
+      int f = titulo(hoja, 0, "Grupos de rutas: prioridad y tramo de cada uno", cabecera.length);
+      f = texto(hoja, f, "El balanceo automático reparte cada grupo solo en su tramo; a mano, una ruta puede ir a cualquier chute.", e.texto);
+      f = cabecera(hoja, f + 1, 0, cabecera);
+      int inicio = f;
+      for (ClusterParametroResponse cluster : cfg.clusters()) {
+        List<GrupoClusterResponse> grupos = cluster.grupos() == null ? List.of() : cluster.grupos();
+        for (GrupoClusterResponse g : grupos) {
+          Row fila = hoja.createRow(f++);
+          celda(fila, 0, cluster.nombre(), e.fuerte);
+          celda(fila, 1, g.prioridad() == null ? "—" : (Object) (long) g.prioridad(), e.centro);
+          celda(fila, 2, g.nombre(), e.texto);
+          celda(fila, 3, g.rutas(), e.numero);
+          celda(fila, 4, entero(g.bultos()), e.numero);
+          celda(fila, 5, tramo(g), e.texto);
+        }
+      }
+      cerrarTabla(hoja, inicio, f, cabecera.length, 18);
+    }
+
+    private static String tramo(GrupoClusterResponse g) {
+      if (g.chuteDesde() == null) {
+        return "Sin balancear";
+      }
+      return Objects.equals(g.chuteDesdeId(), g.chuteHastaId())
+          ? g.chuteDesde()
+          : g.chuteDesde() + " → " + g.chuteHasta();
+    }
+
     private void hojaRutas() {
       Sheet hoja = libro.createSheet("Rutas");
       String[] cabecera = {
-        "Código", "Tipo", "Cluster (Excel)", "Chute (Excel)", "Cluster final", "Chute final",
+        "Código", "Tipo", "Grupo", "Cluster (Excel)", "Chute (Excel)", "Cluster final", "Chute final",
         "Cambió de chute", "Cambió de cluster", "Bultos", "Unidades", "Líneas", "COD"
       };
       int f = titulo(hoja, 0, "Detalle de rutas: dónde estaban y dónde quedaron", cabecera.length);
@@ -918,6 +953,7 @@ public class SimulacionReporte {
         int col = 0;
         celda(fila, col++, r.codigoRuta(), e.fuerte);
         celda(fila, col++, r.tipo(), e.centro);
+        celda(fila, col++, r.grupo(), e.texto);
         celda(fila, col++, r.clusterOriginal(), e.texto);
         celda(fila, col++, r.chuteOriginal(), e.texto);
         celda(fila, col++, r.cluster(), otroCluster ? e.resaltado : e.texto);

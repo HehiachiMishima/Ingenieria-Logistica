@@ -220,7 +220,8 @@ class SimulacionExcelBenchmark {
         "BULTOS PROMEDIO",
         "UNIDADES PROMEDIO",
         "LÍNEAS PROMEDIO",
-        "TIPO"
+        "TIPO",
+        "GRUPO"
       };
       Row primera = hoja.createRow(0);
       for (int c = 0; c < cabecera.length; c++) {
@@ -246,6 +247,7 @@ class SimulacionExcelBenchmark {
           }
         }
         fila.createCell(7).setCellValue("B2C");
+        fila.createCell(8).setCellValue("G" + (ruta % 3));
       }
       libro.write(salida);
     }
@@ -262,7 +264,7 @@ class SimulacionExcelBenchmark {
     try (BufferedWriter salida = Files.newBufferedWriter(destino, charset)) {
       String s = String.valueOf(separador);
       salida.write(String.join(s, "COD.", "RUTA", "CLUSTER", "CHUTE", "BULTOS PROMEDIO",
-          "UNIDADES PROMEDIO", "LÍNEAS PROMEDIO", "TIPO"));
+          "UNIDADES PROMEDIO", "LÍNEAS PROMEDIO", "TIPO", "GRUPO"));
       salida.write("\r\n");
       for (int i = 0; i < filas; i++) {
         int ruta = azar.nextInt(rutas);
@@ -273,7 +275,7 @@ class SimulacionExcelBenchmark {
           valores[v] = comaDecimal ? texto.replace('.', ',') : texto;
         }
         salida.write(String.join(s, "COD-" + i, "R" + (3000 + ruta), "CL" + (ruta % 20),
-            "CHUTE " + (ruta % 60), valores[0], valores[1], valores[2], "B2C"));
+            "CHUTE " + (ruta % 60), valores[0], valores[1], valores[2], "B2C", "G" + (ruta % 3)));
         salida.write("\r\n");
       }
     }

@@ -49,7 +49,6 @@ public class PlanoChutes {
   private record Catalogo(Map<Integer, Long> ids, Map<Integer, String> nombres) {
     static final Catalogo VACIO = new Catalogo(Map.of(), Map.of());
   }
-
   private final int primero;
   private final int ultimo;
   private final Set<Integer> bloqueados;

@@ -83,6 +83,7 @@ class SimulacionLotesRepositoryTest {
             "R  30",
             "Cl 1",
             "Chuté 1",
+            "Grupo  A",
             TipoRuta.B2C,
             new BigDecimal("1.00"),
             BigDecimal.ZERO,
@@ -104,12 +105,15 @@ class SimulacionLotesRepositoryTest {
     verify(ps).setInt(10, 3);
     // El cluster original se congela igual que el chute.
     verify(ps).setLong(11, 11L);
+    // El grupo se guarda con su nombre canónico (espacios internos colapsados).
+    verify(ps).setString(12, "Grupo A");
 
     FilaRuta huerfana =
         new FilaRuta(
             "R1",
             "CL9",
             "Chuté 1",
+            "A",
             TipoRuta.B2B,
             BigDecimal.ONE,
             BigDecimal.ZERO,

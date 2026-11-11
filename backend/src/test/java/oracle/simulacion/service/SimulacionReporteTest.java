@@ -45,7 +45,7 @@ class SimulacionReporteTest {
       assertEquals(
           List.of(
               "Resumen", "Comparativo clusters", "Comparativo por cluster", "Chutes",
-              "Operarios por ola", "Configuración", "Rutas", "Historial"),
+              "Operarios por ola", "Configuración", "Grupos", "Rutas", "Historial"),
           hojas);
     }
   }
@@ -247,7 +247,7 @@ class SimulacionReporteTest {
       Long id, String codigo, Long chute, Long chuteOriginal, BigDecimal bultos) {
     return new RutaSimulacionResponse(id, chute, String.valueOf(chute), chuteOriginal,
         String.valueOf(chuteOriginal), 1L, "CL1", 1L, "CL1", false, codigo, "B2C", bultos,
-        CIEN, BigDecimal.TEN, 4);
+        CIEN, BigDecimal.TEN, 4, "A");
   }
 
   private static List<HistorialSimulacionResponse> historial() {

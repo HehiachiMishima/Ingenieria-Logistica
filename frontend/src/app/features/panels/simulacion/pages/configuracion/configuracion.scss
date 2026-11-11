@@ -836,6 +836,53 @@
     }
   }
 
+  &__grupos {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+
+    ol {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      counter-reset: grupo;
+    }
+
+    li {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      align-items: baseline;
+      gap: var(--space-2);
+      padding: 4px var(--space-2);
+      font-size: var(--fs-xs);
+      color: var(--text-3);
+      background: var(--surface-2);
+      border-radius: var(--radius-xs);
+      counter-increment: grupo;
+
+      strong {
+        overflow: hidden;
+        color: var(--text);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+
+        &::before {
+          content: counter(grupo) ". ";
+          color: var(--accent);
+        }
+      }
+    }
+  }
+
+  &__tramo {
+    font-weight: 600;
+    color: var(--text-2);
+    font-variant-numeric: tabular-nums;
+  }
+
   &__ubicacion {
     display: flex;
     flex-wrap: wrap;
@@ -852,6 +899,14 @@
     font-weight: 700;
     color: var(--text);
     background: color-mix(in srgb, var(--pop-color, var(--accent)) 12%, var(--surface-2));
+    max-width: 100%;
+    overflow-wrap: anywhere;
+
+    &--grupo {
+      font-weight: 600;
+      color: var(--accent);
+      background: var(--accent-soft);
+    }
   }
 
   &__datos {
@@ -1129,6 +1184,22 @@
     background: var(--success-soft);
     border-color: color-mix(in srgb, var(--success) 22%, var(--border));
   }
+}
+
+/* Grupo de la ruta (solo en clusters con dos o más grupos): corto y recortable. */
+.matriz-ruta__grupo {
+  flex: 0 1 auto;
+  min-width: 2ch;
+  max-width: 7ch;
+  overflow: hidden;
+  padding: 0 4px;
+  font-size: 0.64rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--accent-soft);
+  border-radius: var(--radius-xs);
 }
 
 .matriz-ruta .cluster-original {
@@ -1447,6 +1518,165 @@
     color: var(--danger);
     background: var(--danger-soft);
     border-radius: var(--radius-sm);
+  }
+}
+
+/* Prioridad de grupos del modal de balanceo: cada fila es un grupo con su carga,
+   el tramo que recibiría y las flechas para subirlo o bajarlo. */
+.grupos {
+  margin-top: var(--space-4);
+}
+
+.grupos__cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.grupos__titulo {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--text);
+}
+
+.grupos__ayuda {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.grupos__lista {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: min(40vh, 320px);
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.grupos__fila {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, auto) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+
+  /* En celular el tramo baja a su propia línea: nombre y flechas no se aplastan. */
+  @include bp.down(sm) {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+
+    .grupos__tramo {
+      grid-column: 2 / 4;
+      grid-row: 2;
+      align-items: flex-start;
+    }
+  }
+}
+
+.grupos__orden {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-soft, var(--surface));
+  border-radius: 50%;
+}
+
+.grupos__datos,
+.grupos__tramo {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.grupos__nombre {
+  overflow: hidden;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grupos__carga,
+.grupos__tramo span {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.grupos__tramo {
+  align-items: flex-end;
+  text-align: right;
+
+  strong {
+    font-size: var(--fs-sm);
+    color: var(--text);
+    overflow-wrap: anywhere;
+  }
+
+  &--vacio span {
+    font-style: italic;
+  }
+}
+
+.grupos__mover {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.grupos__boton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+
+  &--subir ui-icon {
+    transform: rotate(-90deg);
+  }
+
+  &--bajar ui-icon {
+    transform: rotate(90deg);
+  }
+
+  /* Táctil: área de 44 px. */
+  @media (pointer: coarse) {
+    width: 44px;
+    height: 44px;
   }
 }
 

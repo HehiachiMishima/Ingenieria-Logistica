@@ -54,6 +54,29 @@ const DETALLES: readonly GrupoDetalle[] = [
     ],
   },
   {
+    titulo: 'Grupos',
+    items: [
+      {
+        icono: 'nodos',
+        termino: 'Qué es un grupo',
+        texto:
+          'Columna GRUPO del Excel: rutas de un mismo cluster que se balancean juntas. Cada ruta tiene un solo grupo y no cambia.',
+      },
+      {
+        icono: 'layers',
+        termino: 'Prioridad y tramos',
+        texto:
+          'Al balancear eliges el rango y ordenas los grupos. El primero ocupa los primeros chutes del rango; cada grupo recibe chutes seguidos según sus bultos (al menos uno, nunca más que sus rutas).',
+      },
+      {
+        icono: 'control',
+        termino: 'Balanceo por grupo',
+        texto:
+          'Cada grupo se iguala solo dentro de su tramo: el balanceo nunca junta rutas de grupos distintos en un chute. A mano sí puedes moverlas a cualquier chute.',
+      },
+    ],
+  },
+  {
     titulo: 'Mover rutas a mano',
     items: [
       {
@@ -82,7 +105,7 @@ const DETALLES: readonly GrupoDetalle[] = [
         icono: 'control',
         termino: 'Volver a balancear',
         texto:
-          'Con el cluster en curso ya balanceado, reparte de nuevo sus rutas desde como están hoy, sin perder lo que moviste a mano.',
+          'Con el cluster en curso ya balanceado, reparte de nuevo sus rutas desde como están hoy. Si tiene varios grupos, una ruta que moviste a mano al tramo de otro grupo vuelve al de su grupo (el modal te dice cuántas entrarán).',
       },
     ],
   },

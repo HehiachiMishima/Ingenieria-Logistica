@@ -51,6 +51,13 @@ public class RutaProyeccion {
   @Column(name = "cluster_cambiado", insertable = false, updatable = false)
   private boolean clusterCambiado;
 
+  /**
+   * Grupo de rutas dentro de su cluster (columna GRUPO del Excel). No cambia: el
+   * balanceo automático reparte cada grupo en su propio tramo de chutes.
+   */
+  @Column(name = "grupo", length = 50, nullable = false, updatable = false)
+  private String grupo;
+
   @Column(name = "codigo_ruta", length = 50, nullable = false)
   private String codigoRuta;
 

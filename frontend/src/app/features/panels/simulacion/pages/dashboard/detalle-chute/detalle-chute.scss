@@ -312,7 +312,7 @@
     z-index: 1;
   }
 
-  /* Ocho columnas (ruta, tipo, cluster, bultos, unidades, líneas, COD, movimiento)
+  /* Nueve columnas (ruta, tipo, cluster, grupo, bultos, unidades, líneas, COD, movimiento)
      en media pantalla: menos relleno para que quepan sin desplazar la tabla. */
   th,
   td {
@@ -335,6 +335,14 @@
   }
 
   &__chute {
+    white-space: nowrap;
+  }
+
+  /* Grupo de la ruta: un nombre largo se recorta (el completo, en el title). */
+  &__grupo-ruta {
+    max-width: 12ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
 

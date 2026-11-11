@@ -51,9 +51,11 @@ import oracle.simulacion.model.SimulacionConfig;
 import oracle.simulacion.model.TipoRuta;
 import oracle.simulacion.repository.ArchivoExcelRepository;
 import oracle.simulacion.repository.CambioClusterRutas;
+import oracle.simulacion.repository.CargaGrupo;
 import oracle.simulacion.repository.CargaRutas;
 import oracle.simulacion.repository.ChuteRepository;
 import oracle.simulacion.repository.ClusterRepository;
+import oracle.simulacion.repository.GrupoGuardado;
 import oracle.simulacion.repository.HistorialBalanceoRepository;
 import oracle.simulacion.repository.LanzamientoBalanceoRepository;
 import oracle.simulacion.repository.MovimientoRutas;
@@ -77,6 +79,9 @@ import oracle.simulacion.request.MoverRutaRequest;
 import oracle.simulacion.response.BalanceoResponse;
 import oracle.simulacion.response.CambioClusterResponse;
 import oracle.simulacion.response.CargaSimulacionResponse;
+import oracle.simulacion.response.GrupoClusterResponse;
+import oracle.simulacion.response.TramoGrupoResponse;
+import oracle.simulacion.response.VistaBalanceoResponse;
 import oracle.simulacion.response.PaginaRutasResponse;
 import oracle.simulacion.response.ChuteComparativoResponse;
 import oracle.simulacion.response.ChuteParametroResponse;
@@ -343,7 +348,13 @@ public class SimulacionConfiguracionService {
         ruta.getTotalBultos(),
         ruta.getTotalUnidades(),
         ruta.getTotalLineas(),
-        ruta.getConteoCod());
+        ruta.getConteoCod(),
+        grupo(ruta));
+  }
+
+  /** Grupo de la ruta; «» si no tiene (no ocurre con rutas del Excel). */
+  private static String grupo(RutaProyeccion ruta) {
+    return ruta.getGrupo() == null ? "" : ruta.getGrupo();
   }
 
   public ApiResponse<ConfiguracionSimulacionResponse> guardar(
@@ -851,12 +862,15 @@ public class SimulacionConfiguracionService {
 
   /**
    * Paso 1 del cluster en curso: reparte sus rutas hasta que su carga (bultos)
-   * quede pareja. Con rango de chutes, primero saca las rutas que están fuera
-   * del rango (la más pesada primero, al chute del rango con menos carga) y
-   * luego nivela entre todos los chutes del rango, también los que aún no
-   * usaba; sin rango, nivela entre los chutes que ya lo atienden. No toca
-   * operarios, pero el rango puede sumar chutes a la ola: si la ola pasa el
-   * máximo de operarios, no se guarda nada.
+   * quede pareja, grupo por grupo. Las rutas de un grupo nunca se mezclan con las
+   * de otro: con varios grupos, el rango es obligatorio y se divide en tramos de
+   * chutes seguidos, uno por grupo en el orden de su prioridad, del tamaño que
+   * le toca por sus bultos ({@link TramosGrupos}). Luego cada grupo se balancea
+   * solo dentro de su tramo: primero entran sus rutas que están fuera (también
+   * las movidas a mano a otro tramo; la más pesada primero, al chute del tramo
+   * con menos carga) y después se iguala la carga entre sus chutes. Con un solo
+   * grupo es el balanceo de siempre: con rango, todo el rango; sin rango, los
+   * chutes que ya usa. No toca operarios.
    */
   private BalanceoResponse balancearRutas(
       Long archivoId, Long clusterId, BalanceoRequest pedido, Long actor) {
@@ -864,28 +878,75 @@ public class SimulacionConfiguracionService {
     ParametroCluster parametro = exigirEnCurso(ctx, clusterId);
     String nombre = ctx.nombreCluster(clusterId);
     List<Long> rango = rangoDeBalanceo(ctx, parametro, pedido);
-    // Volver a balancear un cluster ya balanceado (p. ej. tras pasarle rutas de
-    // otro cluster) reparte desde como está hoy, sin perder los cambios a mano;
-    // si ya tenía operarios, su carga cambia y vuelve al paso 2.
-    invalidarOperarios(ctx, List.of(clusterId));
-    Reparto reparto = new Reparto(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(archivoId, clusterId));
-    Integer dispersionAntes = reparto.dispersion(clusterId);
-    Traslado traslado;
-    List<Traslado> nivelaciones = new ArrayList<>();
-    int fueraDelRango = 0;
-    if (rango != null) {
-      reparto.limitar(clusterId, rango);
-      // Cada ruta de fuera entra una sola vez: termina en a lo sumo rutasDe pasos.
-      while ((traslado = reparto.traerAlRango(clusterId)) != null) {
-        nivelaciones.add(traslado);
-        fueraDelRango++;
+    List<RutaProyeccion> rutasCluster =
+        rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(archivoId, clusterId);
+    Map<String, List<RutaProyeccion>> porGrupo = new LinkedHashMap<>();
+    rutasCluster.forEach(
+        (ruta) -> porGrupo.computeIfAbsent(grupo(ruta), (g) -> new ArrayList<>()).add(ruta));
+    List<GrupoGuardado> guardados = gruposGuardados(archivoId, clusterId);
+    List<String> orden =
+        ordenGrupos(
+            nombre,
+            porGrupo.keySet(),
+            guardados,
+            pedido == null ? null : pedido.prioridad(),
+            porGrupo.size() > 1);
+    List<TramosGrupos.Tramo> tramos;
+    int sinUsar = 0;
+    if (porGrupo.size() > 1) {
+      if (rango == null) {
+        throw new SolicitudInvalidaException(
+            nombre
+                + " tiene "
+                + porGrupo.size()
+                + " grupos: elige el chute inicial y el final del rango para repartirlos.");
       }
+      exigirChutesParaGrupos(nombre, rango.size(), porGrupo.size());
+      TramosGrupos.Reparto reparto =
+          TramosGrupos.repartir(rango, cargaDeGrupos(orden, porGrupo));
+      tramos = reparto.tramos();
+      sinUsar = reparto.sinUsar();
+    } else {
+      // Un solo grupo (o ninguno): el balanceo de siempre sobre todo el rango.
+      tramos =
+          cargaDeGrupos(orden, porGrupo).stream()
+              .map((g) -> new TramosGrupos.Tramo(g.nombre(), 1, g.rutas(), g.bultos(), rango))
+              .toList();
     }
-    // Cada movimiento baja la suma de cuadrados de la carga, así que el
-    // proceso termina solo; el tope es una red de seguridad.
-    int tope = fueraDelRango + Math.max(MAX_ITERACIONES, 4 * reparto.rutasDe(clusterId));
-    while (nivelaciones.size() < tope && (traslado = reparto.nivelar(clusterId)) != null) {
-      nivelaciones.add(traslado);
+    // Volver a balancear un cluster ya balanceado (p. ej. tras pasarle rutas de
+    // otro cluster) reparte desde como está hoy; si ya tenía operarios, su
+    // carga cambia y vuelve al paso 2.
+    invalidarOperarios(ctx, List.of(clusterId));
+    Integer dispersionAntes = dispersionPorChute(rutasCluster);
+    List<Traslado> nivelaciones = new ArrayList<>();
+    Map<Long, Long> chutesNuevos = new LinkedHashMap<>();
+    int fueraDelRango = 0;
+    boolean tope = false;
+    for (TramosGrupos.Tramo tramo : tramos) {
+      List<RutaProyeccion> rutasGrupo = porGrupo.getOrDefault(tramo.grupo(), List.of());
+      // Cada grupo se compara solo consigo mismo: su propio reparto.
+      Reparto reparto = new Reparto(rutasGrupo);
+      int traidas = 0;
+      Traslado traslado;
+      if (tramo.chutes() != null) {
+        reparto.limitar(clusterId, tramo.chutes());
+        // Cada ruta de fuera entra una sola vez: termina en a lo sumo rutasDe pasos.
+        while ((traslado = reparto.traerAlRango(clusterId)) != null) {
+          nivelaciones.add(traslado);
+          traidas++;
+        }
+      }
+      fueraDelRango += traidas;
+      // Cada movimiento baja la suma de cuadrados de la carga, así que el
+      // proceso termina solo; el tope es una red de seguridad.
+      int maximo = traidas + Math.max(MAX_ITERACIONES, 4 * reparto.rutasDe(clusterId));
+      int pasos = traidas;
+      while (pasos < maximo && (traslado = reparto.nivelar(clusterId)) != null) {
+        nivelaciones.add(traslado);
+        pasos++;
+      }
+      tope |= pasos >= maximo;
+      chutesNuevos.putAll(reparto.chutesNuevos());
     }
 
     int movidas =
@@ -901,10 +962,35 @@ public class SimulacionConfiguracionService {
     }
     mensaje.append(": ").append(movidas).append(" ruta(s) movida(s)");
     if (fueraDelRango > 0) {
-      mensaje.append(", ").append(fueraDelRango).append(" desde chutes fuera del rango");
+      mensaje
+          .append(", ")
+          .append(fueraDelRango)
+          .append(tramos.size() > 1 ? " desde chutes fuera de su tramo" : " desde chutes fuera del rango");
     }
     mensaje.append(".");
-    Integer dispersionDespues = reparto.dispersion(clusterId);
+    if (tramos.size() > 1) {
+      mensaje.append(" Grupos por prioridad: ");
+      for (int i = 0; i < tramos.size(); i++) {
+        TramosGrupos.Tramo tramo = tramos.get(i);
+        mensaje
+            .append(i == 0 ? "" : "; ")
+            .append(tramo.grupo())
+            .append(" ")
+            .append(ctx.nombreChute(tramo.chutes().getFirst()));
+        if (tramo.chutes().size() > 1) {
+          mensaje.append(" → ").append(ctx.nombreChute(tramo.chutes().getLast()));
+        }
+        mensaje.append(" (").append(tramo.chutes().size()).append(" chute(s))");
+      }
+      mensaje.append(".");
+      if (sinUsar > 0) {
+        mensaje
+            .append(" ")
+            .append(sinUsar)
+            .append(" chute(s) del rango quedan libres: los grupos tienen menos rutas que chutes.");
+      }
+    }
+    Integer dispersionDespues = dispersionPorChute(rutasCluster);
     if (dispersionAntes != null) {
       mensaje
           .append(" Diferencia de carga entre sus chutes: ")
@@ -913,16 +999,31 @@ public class SimulacionConfiguracionService {
           .append(dispersionDespues == null ? 0 : dispersionDespues)
           .append(" %.");
     }
-    if (nivelaciones.size() >= tope) {
+    if (tope) {
       mensaje.append(" Se alcanzó el máximo de movimientos por ejecución.");
     }
 
     // Las rutas se leyeron en solo lectura: los chutes nuevos se guardan en lote.
-    lotes.moverRutas(reparto.chutesNuevos());
+    lotes.moverRutas(chutesNuevos);
     if (rango != null) {
       parametro.setChuteDesdeId(rango.getFirst());
       parametro.setChuteHastaId(rango.getLast());
     }
+    // Prioridad y tramo de cada grupo: el modal los propone la próxima vez y la
+    // configuración muestra dónde quedó cada grupo.
+    lotes.guardarGrupos(
+        archivoId,
+        clusterId,
+        tramos.stream()
+            .map(
+                (t) ->
+                    new GrupoGuardado(
+                        clusterId,
+                        t.grupo(),
+                        t.prioridad(),
+                        t.chutes() == null ? null : t.chutes().getFirst(),
+                        t.chutes() == null ? null : t.chutes().getLast()))
+            .toList());
     Instant momento = Instant.now();
     LanzamientoBalanceo lanzamiento =
         lanzar(archivoId, clusterId, FaseBalanceo.RUTAS, mensaje.toString(), actor, momento);
@@ -952,6 +1053,220 @@ public class SimulacionConfiguracionService {
         0,
         mensaje.toString(),
         aConfiguracion(ctx));
+  }
+
+  /**
+   * Vista previa del paso 1: los grupos del cluster en el orden de prioridad
+   * (la pedida o, si no, la guardada y luego por nombre) y el tramo que recibiría
+   * cada uno con el rango (el pedido o, si no, el último). No cambia nada; si
+   * así no se podría balancear, lo dice en {@code aviso}.
+   */
+  public ApiResponse<VistaBalanceoResponse> vistaBalanceo(
+      Long archivoId, Long clusterId, BalanceoRequest pedido) {
+    return leer(
+        "vista balanceo id=" + archivoId + " cluster=" + clusterId,
+        () -> {
+          Contexto ctx = contexto(archivoId, false);
+          ParametroCluster parametro = parametroCluster(ctx, clusterId);
+          String nombre = ctx.nombreCluster(clusterId);
+          // Carga de cada grupo por chute: totales y cuántas rutas quedan fuera de su tramo.
+          Map<String, Map<Long, Long>> rutasPorChute = new LinkedHashMap<>();
+          Map<String, TramosGrupos.Grupo> grupos = new LinkedHashMap<>();
+          for (CargaGrupo fila : rutaRepo.cargaPorGrupo(archivoId)) {
+            if (!clusterId.equals(fila.getClusterId()) || fila.getRutas() == null || fila.getRutas() == 0) {
+              continue;
+            }
+            String g = fila.getGrupo() == null ? "" : fila.getGrupo();
+            rutasPorChute.computeIfAbsent(g, (k) -> new HashMap<>()).merge(fila.getChuteId(), fila.getRutas(), Long::sum);
+            BigDecimal bultos = fila.getBultos() == null ? BigDecimal.ZERO : fila.getBultos();
+            grupos.merge(
+                g,
+                new TramosGrupos.Grupo(g, fila.getRutas(), bultos),
+                (a, b) -> new TramosGrupos.Grupo(g, a.rutas() + b.rutas(), a.bultos().add(b.bultos())));
+          }
+          List<String> orden =
+              ordenGrupos(
+                  nombre,
+                  grupos.keySet(),
+                  gruposGuardados(archivoId, clusterId),
+                  pedido == null ? null : pedido.prioridad(),
+                  false);
+          List<TramosGrupos.Grupo> enOrden = orden.stream().map(grupos::get).toList();
+          String aviso = null;
+          List<Long> rango = null;
+          try {
+            rango = rangoDeBalanceo(ctx, parametro, pedido);
+            if (rango == null && grupos.size() > 1) {
+              aviso = "Elige el chute inicial y el final del rango para repartir sus " + grupos.size() + " grupos.";
+            } else if (rango != null && grupos.size() > 1) {
+              exigirChutesParaGrupos(nombre, rango.size(), grupos.size());
+            }
+          } catch (SolicitudInvalidaException error) {
+            aviso = error.getMessage();
+          }
+          List<TramosGrupos.Tramo> tramos;
+          int sinUsar = 0;
+          if (aviso == null && rango != null && grupos.size() > 1) {
+            TramosGrupos.Reparto reparto = TramosGrupos.repartir(rango, enOrden);
+            tramos = reparto.tramos();
+            sinUsar = reparto.sinUsar();
+          } else {
+            List<Long> todo = aviso == null && grupos.size() == 1 ? rango : null;
+            List<TramosGrupos.Tramo> lista = new ArrayList<>();
+            for (int i = 0; i < enOrden.size(); i++) {
+              TramosGrupos.Grupo g = enOrden.get(i);
+              lista.add(new TramosGrupos.Tramo(g.nombre(), i + 1, g.rutas(), g.bultos(), todo));
+            }
+            tramos = lista;
+          }
+          List<TramoGrupoResponse> respuesta =
+              tramos.stream()
+                  .map(
+                      (t) -> {
+                        List<Long> chutes = t.chutes();
+                        long fuera = 0;
+                        if (chutes != null) {
+                          Set<Long> dentro = new HashSet<>(chutes);
+                          for (Map.Entry<Long, Long> e :
+                              rutasPorChute.getOrDefault(t.grupo(), Map.of()).entrySet()) {
+                            if (!dentro.contains(e.getKey())) {
+                              fuera += e.getValue();
+                            }
+                          }
+                        }
+                        return new TramoGrupoResponse(
+                            t.grupo(),
+                            t.prioridad(),
+                            t.rutas(),
+                            t.bultos(),
+                            chutes == null ? 0 : chutes.size(),
+                            chutes == null ? null : chutes.getFirst(),
+                            chutes == null ? null : ctx.nombreChute(chutes.getFirst()),
+                            chutes == null ? null : chutes.getLast(),
+                            chutes == null ? null : ctx.nombreChute(chutes.getLast()),
+                            fuera);
+                      })
+                  .toList();
+          return new VistaBalanceoResponse(
+              clusterId,
+              nombre,
+              rango == null ? null : rango.size(),
+              sinUsar,
+              aviso,
+              respuesta);
+        },
+        "Vista previa del balanceo.");
+  }
+
+  /** Cada grupo necesita al menos un chute del rango. */
+  private static void exigirChutesParaGrupos(String nombre, int chutes, int grupos) {
+    if (chutes < grupos) {
+      throw new SolicitudInvalidaException(
+          "El rango tiene "
+              + chutes
+              + " chute(s) que se pueden usar y "
+              + nombre
+              + " tiene "
+              + grupos
+              + " grupos: cada grupo necesita al menos un chute. Amplía el rango.");
+    }
+  }
+
+  /** Grupos guardados del cluster (prioridad y último tramo), en orden de prioridad. */
+  private List<GrupoGuardado> gruposGuardados(Long archivoId, Long clusterId) {
+    return lotes.grupos(archivoId).stream()
+        .filter((g) -> clusterId.equals(g.clusterId()))
+        .sorted(Comparator.comparingInt(GrupoGuardado::prioridad))
+        .toList();
+  }
+
+  /**
+   * Orden de prioridad de los grupos del cluster. Con prioridad pedida, debe
+   * nombrar cada grupo una sola vez (se compara sin distinguir mayúsculas ni
+   * tildes). Sin pedirla: la guardada; si falta o ya no coincide con los grupos
+   * de hoy (p. ej. entró una ruta de otro grupo), con {@code exigir} se pide
+   * ordenarla de nuevo y, si no, se completa por nombre (vista previa).
+   */
+  private static List<String> ordenGrupos(
+      String cluster,
+      Collection<String> grupos,
+      List<GrupoGuardado> guardados,
+      List<String> pedida,
+      boolean exigir) {
+    Map<String, String> porClave = new LinkedHashMap<>();
+    grupos.forEach((g) -> porClave.put(SimulacionExcel.clave(g), g));
+    if (pedida != null && !pedida.isEmpty()) {
+      List<String> orden = new ArrayList<>();
+      Set<String> vistos = new HashSet<>();
+      for (String nombre : pedida) {
+        String clave = SimulacionExcel.clave(nombre);
+        String grupo = porClave.get(clave);
+        if (grupo == null || !vistos.add(clave)) {
+          throw prioridadInvalida(cluster, grupos);
+        }
+        orden.add(grupo);
+      }
+      if (orden.size() != grupos.size()) {
+        throw prioridadInvalida(cluster, grupos);
+      }
+      return orden;
+    }
+    List<String> orden = new ArrayList<>();
+    for (GrupoGuardado guardado : guardados) {
+      String grupo = porClave.get(SimulacionExcel.clave(guardado.grupo()));
+      if (grupo != null && !orden.contains(grupo)) {
+        orden.add(grupo);
+      }
+    }
+    if (exigir && orden.size() != grupos.size()) {
+      throw new SolicitudInvalidaException(
+          guardados.isEmpty()
+              ? "Ordena la prioridad de los grupos de " + cluster + "."
+              : "Los grupos de " + cluster + " cambiaron: vuelve a ordenar su prioridad.");
+    }
+    grupos.stream()
+        .filter((g) -> !orden.contains(g))
+        .sorted(ORDEN_NATURAL)
+        .forEach(orden::add);
+    return orden;
+  }
+
+  private static SolicitudInvalidaException prioridadInvalida(String cluster, Collection<String> grupos) {
+    return new SolicitudInvalidaException(
+        "La prioridad de "
+            + cluster
+            + " debe nombrar cada uno de sus grupos una sola vez ("
+            + grupos.stream().sorted(ORDEN_NATURAL).collect(Collectors.joining(", "))
+            + "). Vuelve a abrir el balanceo si los grupos cambiaron.");
+  }
+
+  /** Rutas y bultos de cada grupo, en el orden dado. */
+  private static List<TramosGrupos.Grupo> cargaDeGrupos(
+      List<String> orden, Map<String, List<RutaProyeccion>> porGrupo) {
+    return orden.stream()
+        .map(
+            (g) -> {
+              List<RutaProyeccion> rutas = porGrupo.getOrDefault(g, List.of());
+              BigDecimal bultos =
+                  rutas.stream()
+                      .map(RutaProyeccion::getTotalBultos)
+                      .filter(Objects::nonNull)
+                      .reduce(BigDecimal.ZERO, BigDecimal::add);
+              return new TramosGrupos.Grupo(g, rutas.size(), bultos);
+            })
+        .toList();
+  }
+
+  /** Diferencia de carga entre los chutes de esas rutas (todas de un cluster), en %. */
+  private static Integer dispersionPorChute(List<RutaProyeccion> rutas) {
+    Map<Long, BigDecimal> porChute = new HashMap<>();
+    rutas.forEach(
+        (r) ->
+            porChute.merge(
+                r.getChuteId(),
+                r.getTotalBultos() == null ? BigDecimal.ZERO : r.getTotalBultos(),
+                BigDecimal::add));
+    return diferenciaBultos(porChute.values());
   }
 
   /**
@@ -1514,6 +1829,7 @@ public class SimulacionConfiguracionService {
     borrarOlas(ctx, ctx.parametrosCluster().keySet());
     historialRepo.borrarPorArchivo(archivoId);
     lanzamientoRepo.borrarPorArchivo(archivoId);
+    lotes.borrarGrupos(archivoId);
     // Todo vuelve a la proyección: también el rango de chutes y la cantidad de
     // operarios que cada ola había elegido (si no, los modales los propondrían).
     ctx.parametrosCluster()
@@ -1564,6 +1880,8 @@ public class SimulacionConfiguracionService {
     lotes.moverRutas(chutes);
     lotes.cambiarClusters(clusters);
     borrarOlas(ctx, clusterIds);
+    // Sus grupos conservan la prioridad (el modal la propone) pero ya no tienen tramo.
+    lotes.quitarTramos(archivoId, clusterIds);
   }
 
   /**
@@ -2345,12 +2663,74 @@ public class SimulacionConfiguracionService {
         Set.copyOf(agregados));
   }
 
+  /**
+   * Grupos de cada cluster con su carga de hoy, en orden de prioridad (la
+   * guardada; los que no tienen, después y por nombre) y el tramo de su último
+   * balanceo.
+   */
+  private Map<Long, List<GrupoClusterResponse>> gruposPorCluster(Contexto ctx) {
+    Long archivoId = ctx.archivo().getId();
+    Map<Long, Map<String, long[]>> rutas = new HashMap<>();
+    Map<Long, Map<String, BigDecimal>> bultos = new HashMap<>();
+    for (CargaGrupo fila : rutaRepo.cargaPorGrupo(archivoId)) {
+      if (fila.getRutas() == null || fila.getRutas() == 0) {
+        continue;
+      }
+      String g = fila.getGrupo() == null ? "" : fila.getGrupo();
+      rutas
+          .computeIfAbsent(fila.getClusterId(), (id) -> new HashMap<>())
+          .computeIfAbsent(g, (k) -> new long[1])[0] += fila.getRutas();
+      bultos
+          .computeIfAbsent(fila.getClusterId(), (id) -> new HashMap<>())
+          .merge(g, fila.getBultos() == null ? BigDecimal.ZERO : fila.getBultos(), BigDecimal::add);
+    }
+    Map<Long, Map<String, GrupoGuardado>> guardados = new HashMap<>();
+    lotes
+        .grupos(archivoId)
+        .forEach(
+            (g) ->
+                guardados
+                    .computeIfAbsent(g.clusterId(), (id) -> new HashMap<>())
+                    .put(SimulacionExcel.clave(g.grupo()), g));
+    Map<Long, List<GrupoClusterResponse>> resultado = new HashMap<>();
+    rutas.forEach(
+        (clusterId, porGrupo) -> {
+          Map<String, GrupoGuardado> suyos = guardados.getOrDefault(clusterId, Map.of());
+          List<GrupoClusterResponse> lista =
+              porGrupo.keySet().stream()
+                  .map(
+                      (g) -> {
+                        GrupoGuardado guardado = suyos.get(SimulacionExcel.clave(g));
+                        Long desde = guardado == null ? null : guardado.chuteDesdeId();
+                        Long hasta = guardado == null ? null : guardado.chuteHastaId();
+                        return new GrupoClusterResponse(
+                            g,
+                            guardado == null ? null : guardado.prioridad(),
+                            porGrupo.get(g)[0],
+                            bultos.get(clusterId).get(g),
+                            desde,
+                            ctx.nombreChute(desde),
+                            hasta,
+                            ctx.nombreChute(hasta));
+                      })
+                  .sorted(
+                      Comparator.comparing(
+                              GrupoClusterResponse::prioridad,
+                              Comparator.nullsLast(Comparator.<Integer>naturalOrder()))
+                          .thenComparing(GrupoClusterResponse::nombre, ORDEN_NATURAL))
+                  .toList();
+          resultado.put(clusterId, lista);
+        });
+    return resultado;
+  }
+
   private ConfiguracionSimulacionResponse aConfiguracion(Contexto ctx) {
     List<CargaRutas> carga = rutaRepo.cargaPorArchivo(ctx.archivo().getId());
     Map<Long, BigDecimal> limites = limites(ctx);
     Map<Long, Integer> operarios = operariosBase(ctx);
     Map<Long, Integer> diferenciasOriginales =
         diferenciasPorCluster(rutaRepo.cargaOriginalPorArchivo(ctx.archivo().getId()));
+    Map<Long, List<GrupoClusterResponse>> grupos = gruposPorCluster(ctx);
     List<ClusterParametroResponse> clusters =
         ctx.parametrosCluster().keySet().stream()
             .map(
@@ -2363,7 +2743,8 @@ public class SimulacionConfiguracionService {
                         diferenciasOriginales.get(id),
                         ctx.parametrosCluster().get(id).getChuteDesdeId(),
                         ctx.parametrosCluster().get(id).getChuteHastaId(),
-                        ctx.parametrosCluster().get(id).getOperariosOla()))
+                        ctx.parametrosCluster().get(id).getOperariosOla(),
+                        grupos.getOrDefault(id, List.of())))
             .sorted(Comparator.comparing(ClusterParametroResponse::nombre, ORDEN_NATURAL))
             .toList();
     Map<Long, List<Long>> clustersEnChute = new HashMap<>();

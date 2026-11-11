@@ -41,6 +41,54 @@ export interface ClusterParametroSimulacion {
   chuteHastaId: number | null;
   /** Operarios con que se calculó su ola la última vez; null si nunca se eligió. */
   operariosOla: number | null;
+  /** Grupos de rutas del cluster en orden de prioridad (la guardada y luego por nombre). */
+  grupos: GrupoCluster[];
+}
+
+/**
+ * Grupo de rutas de un cluster (columna GRUPO del Excel): el balanceo automático
+ * lo reparte solo en su tramo de chutes; a mano, sus rutas pueden ir a cualquiera.
+ */
+export interface GrupoCluster {
+  nombre: string;
+  /** Prioridad elegida en el último balanceo; null si nunca se eligió. */
+  prioridad: number | null;
+  rutas: number;
+  bultos: number;
+  /** Tramo que le dio el último balanceo; null sin balancear o tras restablecer. */
+  chuteDesdeId: number | null;
+  chuteDesde: string | null;
+  chuteHastaId: number | null;
+  chuteHasta: string | null;
+}
+
+/** Tramo que recibiría un grupo con el rango y la prioridad elegidos (vista previa). */
+export interface TramoGrupo {
+  grupo: string;
+  prioridad: number;
+  rutas: number;
+  bultos: number;
+  /** Chutes del tramo; 0 sin rango o si el rango no alcanza. */
+  chutes: number;
+  chuteDesdeId: number | null;
+  chuteDesde: string | null;
+  chuteHastaId: number | null;
+  chuteHasta: string | null;
+  /** Rutas del grupo hoy fuera de su tramo (también las movidas a mano): el balanceo las traerá. */
+  rutasFuera: number;
+}
+
+/** Vista previa del paso 1 de un cluster: no cambia nada. */
+export interface VistaBalanceo {
+  clusterId: number;
+  cluster: string;
+  /** Chutes útiles del rango (sin bloqueados); null sin rango. */
+  chutesRango: number | null;
+  /** Chutes del rango que no recibe ningún grupo (tienen menos rutas que chutes). */
+  chutesSinUsar: number;
+  /** Por qué así no se podría balancear; null si se puede. */
+  aviso: string | null;
+  grupos: TramoGrupo[];
 }
 
 /**
@@ -51,6 +99,8 @@ export interface BalanceoCuerpo {
   chuteDesdeId?: number;
   chuteHastaId?: number;
   operarios?: number;
+  /** Paso 1 con varios grupos: sus nombres del de mayor prioridad al de menor. */
+  prioridad?: string[];
 }
 
 export interface ChuteParametroSimulacion {
@@ -88,6 +138,8 @@ export interface RutaSimulacion {
   totalUnidades: number;
   totalLineas: number;
   conteoCod: number;
+  /** Grupo de la ruta dentro de su cluster (columna GRUPO del Excel). */
+  grupo: string;
 }
 
 /** Rutas y totales de un cluster asignados a un chute. */

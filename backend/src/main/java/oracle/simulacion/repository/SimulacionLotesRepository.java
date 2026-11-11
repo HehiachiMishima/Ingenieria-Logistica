@@ -100,6 +100,73 @@ public class SimulacionLotesRepository {
     actualizarEnLote(clusters, "cluster_id");
   }
 
+  /** Prioridad y último tramo de los grupos de cada cluster del registro, en orden de prioridad. */
+  public List<GrupoGuardado> grupos(Long archivoId) {
+    return jdbc.query(
+        """
+        SELECT cluster_id, grupo, prioridad, chute_desde_id, chute_hasta_id
+        FROM parametros_grupos
+        WHERE archivo_id = ?
+        ORDER BY cluster_id, prioridad
+        """,
+        (rs, fila) ->
+            new GrupoGuardado(
+                rs.getLong("cluster_id"),
+                rs.getString("grupo"),
+                rs.getInt("prioridad"),
+                rs.getObject("chute_desde_id", Long.class),
+                rs.getObject("chute_hasta_id", Long.class)),
+        archivoId);
+  }
+
+  /** Reemplaza la prioridad y los tramos de los grupos de un cluster. */
+  public void guardarGrupos(Long archivoId, Long clusterId, List<GrupoGuardado> grupos) {
+    jdbc.update(
+        "DELETE FROM parametros_grupos WHERE archivo_id = ? AND cluster_id = ?", archivoId, clusterId);
+    jdbc.batchUpdate(
+        """
+        INSERT INTO parametros_grupos
+            (archivo_id, cluster_id, grupo, prioridad, chute_desde_id, chute_hasta_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        grupos,
+        LOTE,
+        (ps, grupo) -> {
+          ps.setLong(1, archivoId);
+          ps.setLong(2, clusterId);
+          ps.setString(3, grupo.grupo());
+          ps.setInt(4, grupo.prioridad());
+          ps.setObject(5, grupo.chuteDesdeId(), Types.BIGINT);
+          ps.setObject(6, grupo.chuteHastaId(), Types.BIGINT);
+        });
+  }
+
+  /**
+   * Restablecer esos clusters: sus grupos conservan la prioridad (el modal la
+   * propone) pero ya no tienen tramo, porque sus rutas volvieron atrás.
+   */
+  public void quitarTramos(Long archivoId, Collection<Long> clusterIds) {
+    if (clusterIds.isEmpty()) {
+      return;
+    }
+    Long[] ids = clusterIds.toArray(Long[]::new);
+    jdbc.update(
+        conexion -> {
+          var ps =
+              conexion.prepareStatement(
+                  "UPDATE parametros_grupos SET chute_desde_id = NULL, chute_hasta_id = NULL"
+                      + " WHERE archivo_id = ? AND cluster_id = ANY (?)");
+          ps.setLong(1, archivoId);
+          ps.setArray(2, conexion.createArrayOf("bigint", ids));
+          return ps;
+        });
+  }
+
+  /** Todo el registro vuelve a la proyección: sin prioridades ni tramos de grupos. */
+  public void borrarGrupos(Long archivoId) {
+    jdbc.update("DELETE FROM parametros_grupos WHERE archivo_id = ?", archivoId);
+  }
+
   /** UPDATE por bloques de pares (id de ruta, valor); la columna es una constante interna. */
   private void actualizarEnLote(Map<Long, Long> valores, String columna) {
     if (valores.isEmpty()) {
@@ -170,8 +237,8 @@ public class SimulacionLotesRepository {
         """
         INSERT INTO rutas_proyeccion
             (archivo_id, chute_id, chute_original_id, cluster_id, codigo_ruta, tipo,
-             total_bultos, total_unidades, total_lineas, conteo_cod, cluster_original_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             total_bultos, total_unidades, total_lineas, conteo_cod, cluster_original_id, grupo)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         rutas,
         LOTE,
@@ -191,6 +258,7 @@ public class SimulacionLotesRepository {
           ps.setInt(10, ruta.conteoCod());
           // Igual que el chute: el cluster original se congela al cargar.
           ps.setLong(11, clusterId);
+          ps.setString(12, SimulacionExcel.nombre(ruta.grupo()));
         });
   }
 

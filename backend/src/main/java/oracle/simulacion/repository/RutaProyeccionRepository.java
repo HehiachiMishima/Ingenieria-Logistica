@@ -67,6 +67,23 @@ public interface RutaProyeccionRepository
   List<CargaRutas> cargaPorArchivo(@Param("archivoId") Long archivoId);
 
   /**
+   * Carga por (cluster, grupo, chute): grupos de cada cluster, su carga y
+   * dónde están hoy sus rutas (modal de balanceo y configuración). Usa
+   * idx_rutas_archivo_cluster.
+   */
+  @Query("""
+      SELECT r.clusterId AS clusterId,
+             r.grupo AS grupo,
+             r.chuteId AS chuteId,
+             COUNT(r) AS rutas,
+             COALESCE(SUM(r.totalBultos), 0) AS bultos
+        FROM RutaProyeccion r
+       WHERE r.archivoId = :archivoId
+       GROUP BY r.clusterId, r.grupo, r.chuteId
+      """)
+  List<CargaGrupo> cargaPorGrupo(@Param("archivoId") Long archivoId);
+
+  /**
    * Carga original por (cluster original, chute original). Ambos se congelan al cargar el Excel,
    * así que el comparativo "antes" no depende de que el historial siga existiendo ni de los
    * cambios de cluster.

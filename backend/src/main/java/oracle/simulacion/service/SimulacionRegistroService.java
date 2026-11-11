@@ -378,6 +378,7 @@ public class SimulacionRegistroService {
                         f.codigoRuta(),
                         f.cluster(),
                         plano.nombreCanonico(f.chute()),
+                        f.grupo(),
                         f.tipo(),
                         f.bultos(),
                         f.unidades(),

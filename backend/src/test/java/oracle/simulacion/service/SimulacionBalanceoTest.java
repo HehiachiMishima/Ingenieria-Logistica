@@ -43,7 +43,9 @@ import oracle.simulacion.model.SimulacionConfig;
 import oracle.simulacion.model.TipoRuta;
 import oracle.simulacion.repository.ArchivoExcelRepository;
 import oracle.simulacion.repository.CambioClusterRutas;
+import oracle.simulacion.repository.CargaGrupo;
 import oracle.simulacion.repository.CargaRutas;
+import oracle.simulacion.repository.GrupoGuardado;
 import oracle.simulacion.repository.ChuteRepository;
 import oracle.simulacion.repository.ClusterRepository;
 import oracle.simulacion.repository.HistorialBalanceoRepository;
@@ -76,6 +78,8 @@ import oracle.simulacion.response.HistorialRegistroResponse;
 import oracle.simulacion.response.HistorialSimulacionResponse;
 import oracle.simulacion.response.OlaSimulacionResponse;
 import oracle.simulacion.response.RutasDashboardResponse;
+import oracle.simulacion.response.TramoGrupoResponse;
+import oracle.simulacion.response.VistaBalanceoResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -1852,6 +1856,280 @@ class SimulacionBalanceoTest {
     assertEquals("CL3", dashboard.cambiosCluster().get(0).origen());
     assertEquals("CL1", dashboard.cambiosCluster().get(0).destino());
     assertEquals(new BigDecimal("50"), dashboard.cambiosCluster().get(0).bultos());
+  }
+
+  // ---------------- Paso 1 por grupos ----------------
+
+  /** CL3 con seis chutes (CHUTE 1 … CHUTE 6) y sus rutas. */
+  private ParametroCluster prepararGrupos(List<RutaProyeccion> rutas) {
+    ParametroCluster cl3 = limite(CL3, "100");
+    List<ParametroChute> base = new ArrayList<>();
+    List<Chute> chutes = new ArrayList<>();
+    for (long c = 1; c <= 6; c++) {
+      base.add(operarios(c, 0));
+      chutes.add(chute(c, "CHUTE " + c));
+    }
+    prepararRegistro(
+        archivo(),
+        configuracion("100", null),
+        List.of(cl3),
+        base,
+        List.of(),
+        List.of(cluster(CL3, "CL3")),
+        chutes);
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL3)).thenReturn(rutas);
+    return cl3;
+  }
+
+  /** A: 4 rutas de 100 (400); B: 2 rutas de 100 (200). Todas empiezan en CHUTE 1. */
+  private static List<RutaProyeccion> rutasDeDosGrupos() {
+    return List.of(
+        rutaDe(1L, CL3, 1L, "A1", "100", "A"),
+        rutaDe(2L, CL3, 1L, "A2", "100", "A"),
+        rutaDe(3L, CL3, 1L, "A3", "100", "A"),
+        rutaDe(4L, CL3, 1L, "A4", "100", "A"),
+        rutaDe(5L, CL3, 1L, "B1", "100", "B"),
+        rutaDe(6L, CL3, 1L, "B2", "100", "B"));
+  }
+
+  @Test
+  void cadaGrupoQuedaEnSuTramoSegunPrioridadYBultosSinMezclarse() {
+    List<RutaProyeccion> rutas = rutasDeDosGrupos();
+    ParametroCluster cl3 = prepararGrupos(rutas);
+
+    BalanceoResponse resultado =
+        lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 6L, null, List.of("B", "A")));
+
+    // 6 chutes: B (200 de 600 bultos) recibe 2 y va primero; A (400) recibe 4.
+    Map<String, Set<Long>> chutesPorGrupo = new HashMap<>();
+    Map<Long, Long> rutasPorChute = new HashMap<>();
+    rutas.forEach(
+        (r) -> {
+          chutesPorGrupo.computeIfAbsent(r.getGrupo(), (g) -> new java.util.TreeSet<>()).add(r.getChuteId());
+          rutasPorChute.merge(r.getChuteId(), 1L, Long::sum);
+        });
+    assertEquals(Set.of(1L, 2L), chutesPorGrupo.get("B"));
+    assertEquals(Set.of(3L, 4L, 5L, 6L), chutesPorGrupo.get("A"));
+    // Cada grupo se nivela solo: una ruta por chute.
+    assertEquals(Map.of(1L, 1L, 2L, 1L, 3L, 1L, 4L, 1L, 5L, 1L, 6L, 1L), rutasPorChute);
+    assertTrue(
+        resultado.mensaje().contains("Grupos por prioridad: B CHUTE 1 → CHUTE 2 (2 chute(s)); A CHUTE 3 → CHUTE 6 (4 chute(s))"),
+        resultado.mensaje());
+    assertEquals(1L, cl3.getChuteDesdeId());
+    assertEquals(6L, cl3.getChuteHastaId());
+    verify(lotes)
+        .guardarGrupos(
+            10L,
+            CL3,
+            List.of(
+                new GrupoGuardado(CL3, "B", 1, 1L, 2L), new GrupoGuardado(CL3, "A", 2, 3L, 6L)));
+    assertEquals(ParametroCluster.ESTADO_RUTAS, cl3.getEstado());
+  }
+
+  @Test
+  void unaRutaMovidaAManoAlTramoDeOtroGrupoVuelveAlSuyo() {
+    // Tramos de la vez anterior: B en 1–2, A en 3–6. A mano, A4 quedó en CHUTE 2 (de B).
+    List<RutaProyeccion> rutas =
+        List.of(
+            rutaDe(1L, CL3, 3L, "A1", "100", "A"),
+            rutaDe(2L, CL3, 4L, "A2", "100", "A"),
+            rutaDe(3L, CL3, 5L, "A3", "100", "A"),
+            rutaDe(4L, CL3, 2L, "A4", "100", "A"),
+            rutaDe(5L, CL3, 1L, "B1", "100", "B"),
+            rutaDe(6L, CL3, 1L, "B2", "100", "B"));
+    prepararGrupos(rutas);
+    when(lotes.grupos(10L))
+        .thenReturn(
+            List.of(new GrupoGuardado(CL3, "B", 1, 1L, 2L), new GrupoGuardado(CL3, "A", 2, 3L, 6L)));
+
+    // Sin prioridad en la petición: usa la guardada.
+    lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 6L));
+
+    assertEquals(6L, rutas.get(3).getChuteId());
+    assertTrue(rutas.stream().filter((r) -> r.getGrupo().equals("B")).allMatch((r) -> r.getChuteId() <= 2L));
+  }
+
+  @Test
+  void conVariosGruposElRangoEsObligatorio() {
+    prepararGrupos(rutasDeDosGrupos());
+
+    SolicitudInvalidaException error =
+        assertThrows(
+            SolicitudInvalidaException.class,
+            () -> lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(null, null, null, List.of("A", "B"))));
+
+    assertTrue(error.getMessage().contains("2 grupos"), error.getMessage());
+    verify(lotes, never()).moverRutas(anyMap());
+  }
+
+  @Test
+  void laPrioridadDebeNombrarCadaGrupoUnaSolaVez() {
+    prepararGrupos(rutasDeDosGrupos());
+
+    for (List<String> mala : List.of(List.of("A"), List.of("A", "A"), List.of("A", "C"), List.of("A", "B", "C"))) {
+      SolicitudInvalidaException error =
+          assertThrows(
+              SolicitudInvalidaException.class,
+              () -> lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 6L, null, mala)));
+      assertTrue(error.getMessage().contains("(A, B)"), error.getMessage());
+    }
+    verify(lotes, never()).moverRutas(anyMap());
+  }
+
+  @Test
+  void sinPrioridadNiGuardadaConVariosGruposSePideOrdenarla() {
+    prepararGrupos(rutasDeDosGrupos());
+
+    SolicitudInvalidaException error =
+        assertThrows(
+            SolicitudInvalidaException.class,
+            () -> lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 6L)));
+
+    assertTrue(error.getMessage().contains("Ordena la prioridad"), error.getMessage());
+  }
+
+  @Test
+  void laPrioridadIgnoraMayusculasYTildes() {
+    List<RutaProyeccion> rutas = rutasDeDosGrupos();
+    prepararGrupos(rutas);
+
+    lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 6L, null, List.of("b", "a")));
+
+    assertTrue(rutas.stream().filter((r) -> r.getGrupo().equals("B")).allMatch((r) -> r.getChuteId() <= 2L));
+  }
+
+  @Test
+  void unRangoConMenosChutesQueGruposSeRechaza() {
+    prepararGrupos(rutasDeDosGrupos());
+
+    SolicitudInvalidaException error =
+        assertThrows(
+            SolicitudInvalidaException.class,
+            () -> lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(2L, 2L, null, List.of("A", "B"))));
+
+    assertTrue(error.getMessage().contains("cada grupo necesita al menos un chute"), error.getMessage());
+    verify(lotes, never()).moverRutas(anyMap());
+  }
+
+  @Test
+  void vistaPreviaMuestraElTramoDeCadaGrupoYLasRutasQueEntraran() {
+    List<ParametroChute> base = new ArrayList<>();
+    List<Chute> chutes = new ArrayList<>();
+    for (long c = 1; c <= 6; c++) {
+      base.add(operarios(c, 0));
+      chutes.add(chute(c, "CHUTE " + c));
+    }
+    prepararLectura(archivo(), List.of(limite(CL3, "100")), base, List.of(), List.of(cluster(CL3, "CL3")), chutes);
+    when(rutaRepo.cargaPorGrupo(10L))
+        .thenReturn(
+            List.of(
+                cargaGrupo(CL3, "A", 1L, 4, "400"),
+                cargaGrupo(CL3, "B", 1L, 2, "200"),
+                // Otro cluster: no cuenta.
+                cargaGrupo(CL1, "A", 1L, 9, "900")));
+
+    VistaBalanceoResponse vista =
+        servicio.vistaBalanceo(10L, CL3, new BalanceoRequest(1L, 6L, null, List.of("B", "A"))).datos();
+
+    assertNull(vista.aviso());
+    assertEquals(6, vista.chutesRango());
+    assertEquals(0, vista.chutesSinUsar());
+    TramoGrupoResponse b = vista.grupos().get(0);
+    TramoGrupoResponse a = vista.grupos().get(1);
+    assertEquals(List.of("B", "A"), List.of(b.grupo(), a.grupo()));
+    assertEquals(2, b.chutes());
+    assertEquals("CHUTE 1", b.chuteDesde());
+    assertEquals("CHUTE 2", b.chuteHasta());
+    assertEquals(0, b.rutasFuera());
+    assertEquals(4, a.chutes());
+    assertEquals("CHUTE 3", a.chuteDesde());
+    assertEquals("CHUTE 6", a.chuteHasta());
+    // Las 4 rutas de A están hoy en CHUTE 1, fuera de su tramo.
+    assertEquals(4, a.rutasFuera());
+  }
+
+  @Test
+  void vistaPreviaAvisaSiElRangoNoAlcanzaYNoFalla() {
+    prepararLectura(
+        archivo(),
+        List.of(limite(CL3, "100")),
+        List.of(operarios(1L, 0)),
+        List.of(),
+        List.of(cluster(CL3, "CL3")),
+        List.of(chute(1L, "CHUTE 1")));
+    when(rutaRepo.cargaPorGrupo(10L))
+        .thenReturn(List.of(cargaGrupo(CL3, "A", 1L, 4, "400"), cargaGrupo(CL3, "B", 1L, 2, "200")));
+
+    VistaBalanceoResponse vista =
+        servicio.vistaBalanceo(10L, CL3, new BalanceoRequest(1L, 1L, null, null)).datos();
+
+    assertTrue(vista.aviso().contains("cada grupo necesita al menos un chute"), vista.aviso());
+    // Sin prioridad guardada: por nombre.
+    assertEquals(List.of("A", "B"), vista.grupos().stream().map(TramoGrupoResponse::grupo).toList());
+    assertTrue(vista.grupos().stream().allMatch((g) -> g.chutes() == 0 && g.chuteDesdeId() == null));
+  }
+
+  @Test
+  void unSoloGrupoBalanceaComoSiempreYGuardaSuTramo() {
+    List<RutaProyeccion> rutas =
+        List.of(
+            rutaDe(1L, CL3, 1L, "A1", "100", "A"),
+            rutaDe(2L, CL3, 1L, "A2", "100", "A"));
+    prepararGrupos(rutas);
+
+    lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 3L));
+
+    Map<Long, Long> porChute = new HashMap<>();
+    rutas.forEach((r) -> porChute.merge(r.getChuteId(), 1L, Long::sum));
+    assertEquals(2, porChute.size());
+    verify(lotes).guardarGrupos(10L, CL3, List.of(new GrupoGuardado(CL3, "A", 1, 1L, 3L)));
+  }
+
+  @Test
+  void restablecerElRegistroBorraLasPrioridadesDeGrupos() {
+    prepararRegistro(
+        archivo(),
+        configuracion("100", null),
+        List.of(limite(CL1, "2", ParametroCluster.ESTADO_RUTAS)),
+        List.of(operarios(1L, 0)),
+        List.of(),
+        List.of(cluster(CL1, "CL1")),
+        List.of(chute(1L, "CHUTE 1")));
+
+    servicio.restablecer(10L);
+
+    verify(lotes).borrarGrupos(10L);
+  }
+
+  private static CargaGrupo cargaGrupo(Long clusterId, String grupo, Long chuteId, long rutas, String bultos) {
+    return new CargaGrupo() {
+      public Long getClusterId() {
+        return clusterId;
+      }
+
+      public String getGrupo() {
+        return grupo;
+      }
+
+      public Long getChuteId() {
+        return chuteId;
+      }
+
+      public Long getRutas() {
+        return rutas;
+      }
+
+      public BigDecimal getBultos() {
+        return new BigDecimal(bultos);
+      }
+    };
+  }
+
+  private static RutaProyeccion rutaDe(
+      Long id, Long clusterId, Long chuteId, String codigo, String bultos, String grupo) {
+    RutaProyeccion ruta = ruta(id, clusterId, chuteId, codigo, bultos);
+    ruta.setGrupo(grupo);
+    return ruta;
   }
 
   private BalanceoResponse lanzar(Long clusterId, FaseBalanceo fase) {

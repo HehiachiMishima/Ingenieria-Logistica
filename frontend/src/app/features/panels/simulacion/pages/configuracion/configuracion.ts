@@ -37,6 +37,8 @@ import {
   ConfiguracionSimulacion,
   ConfiguracionSimulacionRequest,
   RutaSimulacion,
+  TramoGrupo,
+  VistaBalanceo,
 } from '../../data/simulacion.model';
 import { Notificaciones } from '../../../../../core/services/notificaciones';
 import { SesionStore } from '../../../../../core/services/sesion';
@@ -91,6 +93,8 @@ interface CeldaRuta {
   /** Ya no está en el chute o cluster del Excel. */
   movida: boolean;
   cambioCluster: boolean;
+  /** Grupo a mostrar en la celda: solo si su cluster tiene dos o más grupos. */
+  grupo: string | null;
 }
 
 /** Un cluster de la matriz: una fila por nivel de apilado y una celda por chute. */
@@ -387,6 +391,99 @@ export class SimulacionConfiguracion {
   readonly rangoHasta = signal<number | null>(null);
 
   /**
+   * Grupos del cluster del modal, del de mayor prioridad al de menor: se
+   * reordenan con las flechas. Con dos o más, cada uno recibe un tramo de chutes
+   * seguidos del rango en este orden.
+   */
+  readonly prioridadGrupos = signal<string[]>([]);
+  /** Vista previa del servidor: el tramo de cada grupo con el rango y la prioridad elegidos. */
+  readonly vistaGrupos = signal<VistaBalanceo | null>(null);
+  readonly cargandoGrupos = signal(false);
+  private readonly pedidosVistaGrupos = new Subject<{
+    id: number;
+    clusterId: number;
+    desde: number | null;
+    hasta: number | null;
+    prioridad: string[];
+  } | null>();
+
+  /** Cada cambio de rango o de prioridad pide la vista previa (la última gana). */
+  private readonly vistaGruposSuscripcion = this.pedidosVistaGrupos
+    .pipe(
+      debounceTime(150),
+      switchMap((pedido) =>
+        pedido === null
+          ? of(null)
+          : this.api
+              .vistaBalanceo(pedido.id, pedido.clusterId, pedido.desde, pedido.hasta, pedido.prioridad)
+              .pipe(catchError(() => of(null))),
+      ),
+      takeUntilDestroyed(this.destroyRef),
+    )
+    .subscribe((vista) => {
+      this.vistaGrupos.set(vista);
+      this.cargandoGrupos.set(false);
+    });
+
+  private readonly pedirVistaGrupos = effect(() => {
+    const cluster = this.rangoPendiente();
+    const id = this.seleccionado();
+    const prioridad = this.prioridadGrupos();
+    const desde = this.rangoDesde();
+    const hasta = this.rangoHasta();
+    if (!cluster || id === null || prioridad.length < 2) {
+      this.cargandoGrupos.set(false);
+      this.vistaGrupos.set(null);
+      this.pedidosVistaGrupos.next(null);
+      return;
+    }
+    this.cargandoGrupos.set(true);
+    this.pedidosVistaGrupos.next({ id, clusterId: cluster.id, desde, hasta, prioridad });
+  });
+
+  /**
+   * Se puede balancear: con un solo grupo, basta el rango; con varios, la vista
+   * previa del servidor llegó para este cluster y no tiene aviso.
+   */
+  readonly rangoListo = computed(() => {
+    if (this.prioridadGrupos().length < 2) {
+      return true;
+    }
+    const vista = this.vistaGrupos();
+    return (
+      !this.cargandoGrupos() &&
+      vista !== null &&
+      vista.aviso === null &&
+      vista.clusterId === this.rangoPendiente()?.id
+    );
+  });
+
+  /** Sube (−1) o baja (+1) un grupo en la prioridad. */
+  moverGrupo(indice: number, paso: -1 | 1): void {
+    const destino = indice + paso;
+    this.prioridadGrupos.update((lista) => {
+      if (destino < 0 || destino >= lista.length) {
+        return lista;
+      }
+      const nueva = [...lista];
+      [nueva[indice], nueva[destino]] = [nueva[destino], nueva[indice]];
+      return nueva;
+    });
+  }
+
+  /** Tramo de un grupo en la vista previa (null mientras no llega o sin rango). */
+  tramoDe(grupo: string): TramoGrupo | null {
+    return this.vistaGrupos()?.grupos.find((t) => t.grupo === grupo) ?? null;
+  }
+
+  /** Carga de cada grupo del cluster del modal (rutas y bultos), por nombre. */
+  readonly gruposDelModal = computed(() => {
+    const cluster = this.rangoPendiente();
+    const grupos = this.config()?.clusters.find((c) => c.id === cluster?.id)?.grupos ?? [];
+    return new Map(grupos.map((g) => [g.nombre, g]));
+  });
+
+  /**
    * Vista previa del rango: chutes incluidos (orden natural, «desde» y «hasta»
    * incluidos aunque estén invertidos), la carga del cluster, cuántas rutas
    * están hoy fuera del rango y cuántos operarios necesitará como mínimo (uno
@@ -423,6 +520,11 @@ export class SimulacionConfiguracion {
       const n = numero(nombre);
       return n > n1 && n < n2;
     });
+    // Con grupos, cada uno entra a su propio tramo: «fuera» cuenta las rutas fuera
+    // de su tramo y el mínimo, los chutes que reciben grupo (la vista del servidor).
+    const tramos = this.prioridadGrupos().length > 1 ? this.vistaGrupos() : null;
+    const conTramos = tramos !== null && tramos.aviso === null && tramos.clusterId === cluster.id;
+    const minimo = conTramos ? tramos.grupos.reduce((total, t) => total + t.chutes, 0) : conCarga;
     return {
       primero: orden[inicio].etiqueta,
       ultimo: orden[fin].etiqueta,
@@ -430,12 +532,15 @@ export class SimulacionConfiguracion {
       chutes: incluidos.size,
       rutas,
       bultos: filas.reduce((total, fila) => total + Number(fila.bultos), 0),
-      fuera: filas
-        .filter((fila) => !incluidos.has(fila.chuteId))
-        .reduce((total, fila) => total + fila.rutas, 0),
-      minimo: conCarga,
+      fuera: conTramos
+        ? tramos.grupos.reduce((total, t) => total + t.rutasFuera, 0)
+        : filas
+            .filter((fila) => !incluidos.has(fila.chuteId))
+            .reduce((total, fila) => total + fila.rutas, 0),
+      conTramos,
+      minimo,
       equipo,
-      excede: equipo !== null && conCarga > equipo,
+      excede: equipo !== null && minimo > equipo,
     };
   });
 
@@ -490,6 +595,10 @@ export class SimulacionConfiguracion {
       (this.config()?.clusters ?? []).filter((c) => c.estado === 'CERRADO').map((c) => c.id),
     );
     const editable = this.puedeModificar();
+    // La etiqueta de grupo solo aporta si el cluster tiene más de uno.
+    const conGrupos = new Set(
+      (this.config()?.clusters ?? []).filter((c) => (c.grupos?.length ?? 0) > 1).map((c) => c.id),
+    );
     const porCluster = new Map<number, Map<number, RutaSimulacion[]>>();
 
     for (const ruta of this.rutasMatriz()) {
@@ -512,6 +621,7 @@ export class SimulacionConfiguracion {
       movible: editable && !cerrados.has(ruta.clusterId),
       movida: ruta.chuteId !== ruta.chuteOriginalId || ruta.clusterId !== ruta.clusterOriginalId,
       cambioCluster: ruta.clusterId !== ruta.clusterOriginalId,
+      grupo: conGrupos.has(ruta.clusterId) ? ruta.grupo : null,
     });
 
     const resultado = new Map<number, (CeldaRuta | null)[][]>();
@@ -706,7 +816,13 @@ export class SimulacionConfiguracion {
     if (!cluster) {
       return null;
     }
-    return { c: cluster, m: this.metricasCluster().get(cluster.id) ?? null };
+    const grupos = this.config()?.clusters.find((c) => c.id === cluster.id)?.grupos ?? [];
+    return {
+      c: cluster,
+      m: this.metricasCluster().get(cluster.id) ?? null,
+      // Con un solo grupo no hay tramos que mostrar.
+      grupos: grupos.length > 1 ? grupos : [],
+    };
   });
 
   /** Abre (o cierra, si ya estaba abierta) la ficha de una ruta junto a ella. */
@@ -1187,7 +1303,7 @@ export class SimulacionConfiguracion {
   tituloRuta(ruta: RutaSimulacion): string {
     const n = (valor: number) => formatearEntero(valor);
     const detalle =
-      `${ruta.codigoRuta} · ${ruta.tipo}\n` +
+      `${ruta.codigoRuta} · ${ruta.tipo}${ruta.grupo ? ` · Grupo ${ruta.grupo}` : ''}\n` +
       `Bultos: ${n(ruta.totalBultos)} · Unidades: ${n(ruta.totalUnidades)} · ` +
       `Líneas: ${n(ruta.totalLineas)} · COD: ${formatearEntero(ruta.conteoCod)}`;
     const origen =
@@ -1496,6 +1612,9 @@ export class SimulacionConfiguracion {
     }
     this.rangoDesde.set(desde);
     this.rangoHasta.set(hasta);
+    // Propone la prioridad guardada (los grupos ya vienen en ese orden, y los nuevos al final).
+    this.prioridadGrupos.set((guardado?.grupos ?? []).map((g) => g.nombre));
+    this.vistaGrupos.set(null);
     this.rangoPendiente.set(cluster);
   }
 
@@ -1504,11 +1623,16 @@ export class SimulacionConfiguracion {
     const cluster = this.rangoPendiente();
     const desde = this.rangoDesde();
     const hasta = this.rangoHasta();
-    if (!cluster || desde === null || hasta === null) {
+    if (!cluster || desde === null || hasta === null || !this.rangoListo()) {
       return;
     }
+    const prioridad = this.prioridadGrupos();
     this.rangoPendiente.set(null);
-    this.ejecutarPaso('RUTAS', cluster, { chuteDesdeId: desde, chuteHastaId: hasta });
+    this.ejecutarPaso('RUTAS', cluster, {
+      chuteDesdeId: desde,
+      chuteHastaId: hasta,
+      ...(prioridad.length > 1 ? { prioridad } : {}),
+    });
   }
 
   /**

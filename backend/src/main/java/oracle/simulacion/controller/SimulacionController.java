@@ -2,6 +2,7 @@ package oracle.simulacion.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -26,6 +27,7 @@ import oracle.simulacion.response.HistorialRegistroResponse;
 import oracle.simulacion.response.HistorialSimulacionResponse;
 import oracle.simulacion.response.PaginaRutasResponse;
 import oracle.simulacion.response.RutasDashboardResponse;
+import oracle.simulacion.response.VistaBalanceoResponse;
 import oracle.simulacion.service.SimulacionConfiguracionService;
 import oracle.simulacion.service.SimulacionExcel;
 import oracle.simulacion.service.SimulacionRegistroService;
@@ -35,6 +37,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -184,6 +187,30 @@ public class SimulacionController {
       @RequestParam FaseBalanceo fase,
       @Valid @RequestBody(required = false) BalanceoRequest rango) {
     return configuracionService.balancear(id, clusterId, fase, rango);
+  }
+
+  /**
+   * Vista previa del paso 1 (no cambia nada): los grupos del cluster en orden de
+   * prioridad y el tramo de chutes que recibiría cada uno. Parámetros opcionales:
+   * desde y hasta (rango; sin ellos, el último) y prioridad, repetido una vez
+   * por grupo en orden (los nombres se leen tal cual, sin partir por comas).
+   */
+  @GetMapping("/{id}/clusters/{clusterId}/balanceo/vista")
+  @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
+  public ApiResponse<VistaBalanceoResponse> vistaBalanceo(
+      @PathVariable Long id,
+      @PathVariable Long clusterId,
+      @RequestParam(required = false) @Positive Long desde,
+      @RequestParam(required = false) @Positive Long hasta,
+      @RequestParam MultiValueMap<String, String> parametros) {
+    List<String> prioridad = parametros.get("prioridad");
+    if (prioridad != null
+        && (prioridad.size() > BalanceoRequest.MAX_GRUPOS
+            || prioridad.stream().anyMatch((g) -> g == null || g.isBlank() || g.length() > 50))) {
+      throw new SolicitudInvalidaException("La prioridad de los grupos no es válida.");
+    }
+    return configuracionService.vistaBalanceo(
+        id, clusterId, new BalanceoRequest(desde, hasta, null, prioridad));
   }
 
   @PostMapping("/{id}/clusters/{clusterId}/restablecer")

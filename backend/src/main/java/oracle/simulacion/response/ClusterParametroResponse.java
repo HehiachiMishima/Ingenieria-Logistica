@@ -1,6 +1,7 @@
 package oracle.simulacion.response;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * Límite de un cluster, su avance (PENDIENTE, RUTAS, LISTO o CERRADO), la
@@ -17,4 +18,28 @@ public record ClusterParametroResponse(
     Long chuteDesdeId,
     Long chuteHastaId,
     /** Operarios con que se calculó su ola la última vez; null si nunca se eligió. */
-    Integer operariosOla) {}
+    Integer operariosOla,
+    /** Grupos de rutas del cluster en orden de prioridad (la guardada y luego por nombre). */
+    List<GrupoClusterResponse> grupos) {
+
+  public ClusterParametroResponse(
+      Long id,
+      String nombre,
+      BigDecimal limiteHoras,
+      String estado,
+      Integer diferenciaOriginal,
+      Long chuteDesdeId,
+      Long chuteHastaId,
+      Integer operariosOla) {
+    this(
+        id,
+        nombre,
+        limiteHoras,
+        estado,
+        diferenciaOriginal,
+        chuteDesdeId,
+        chuteHastaId,
+        operariosOla,
+        List.of());
+  }
+}

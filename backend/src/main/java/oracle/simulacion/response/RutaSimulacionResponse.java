@@ -21,4 +21,6 @@ public record RutaSimulacionResponse(
     BigDecimal totalBultos,
     BigDecimal totalUnidades,
     BigDecimal totalLineas,
-    Integer conteoCod) {}
+    Integer conteoCod,
+    /** Grupo de la ruta dentro de su cluster (columna GRUPO del Excel). */
+    String grupo) {}

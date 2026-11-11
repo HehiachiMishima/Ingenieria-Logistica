@@ -478,6 +478,9 @@
                   <span class="matriz-ruta__codigo">{{ ruta.codigoRuta }}</span>
                   <span class="matriz-ruta__tipo" [class.matriz-ruta__tipo--b2b]="ruta.tipo === 'B2B'"
                     [class.matriz-ruta__tipo--b2c]="ruta.tipo === 'B2C'">{{ ruta.tipo }}</span>
+                  @if (celda.grupo !== null) {
+                  <span class="matriz-ruta__grupo">{{ celda.grupo }}</span>
+                  }
                   @if (celda.cambioCluster) {
                   <small class="cluster-original" [title]="'Cluster original: ' + ruta.clusterOriginal">
                     ← {{ ruta.clusterOriginal }}
@@ -524,11 +527,16 @@
 <app-simulacion-historial-cambios [registroId]="seleccionado()" [abierto]="historialAbierto()"
   (cerrar)="historialAbierto.set(false)" />
 
-<ui-modal [abierto]="rangoPendiente() !== null" ancho="sm" [compacto]="true"
+<ui-modal [abierto]="rangoPendiente() !== null" [ancho]="prioridadGrupos().length > 1 ? 'md' : 'sm'" [compacto]="true"
   [titulo]="'Chutes para balancear ' + (rangoPendiente()?.nombre ?? '')" (cerrar)="rangoPendiente.set(null)">
   <p class="rango__intro">
+    @if (prioridadGrupos().length > 1) {
+    Cada grupo queda en su propio tramo de chutes seguidos, en el orden de prioridad, y el tamaño de
+    cada tramo depende de sus bultos. El balanceo nunca mezcla rutas de grupos distintos.
+    } @else {
     Sus rutas quedarán solo entre estos chutes, repartidas parejas en bultos. Las que hoy están
     fuera del rango entran a él.
+    }
   </p>
   <div class="rango__campos">
     <div class="rango__campo">
@@ -553,7 +561,7 @@
       <dd>{{ (v.rutas | numero) }} <span>{{ (v.bultos | entero) }} bultos</span></dd>
     </div>
     <div>
-      <dt>Fuera del rango</dt>
+      <dt>{{ v.conTramos ? 'Fuera de su tramo' : 'Fuera del rango' }}</dt>
       <dd>{{ (v.fuera | numero) }} <span>ruta(s) entrarán</span></dd>
     </div>
     <div>
@@ -578,10 +586,69 @@
   </p>
   }
   }
+  @if (prioridadGrupos().length > 1) {
+  <section class="grupos" aria-labelledby="grupos-titulo">
+    <div class="grupos__cabecera">
+      <h3 id="grupos-titulo" class="grupos__titulo">Prioridad de grupos</h3>
+      <span class="grupos__ayuda">El primero ocupa los primeros chutes del rango</span>
+    </div>
+    <ol class="grupos__lista">
+      @for (nombre of prioridadGrupos(); track nombre; let i = $index, primero = $first, ultimo = $last) {
+      @let carga = gruposDelModal().get(nombre);
+      @let tramo = tramoDe(nombre);
+      <li class="grupos__fila">
+        <span class="grupos__orden" aria-hidden="true">{{ i + 1 }}</span>
+        <div class="grupos__datos">
+          <strong class="grupos__nombre" [title]="nombre">{{ nombre }}</strong>
+          <span class="grupos__carga">
+            {{ ((carga?.rutas ?? 0) | numero) }} ruta(s) · {{ ((carga?.bultos ?? 0) | entero) }} bultos
+          </span>
+        </div>
+        <div class="grupos__tramo" [class.grupos__tramo--vacio]="!tramo || tramo.chutes === 0">
+          @if (tramo && tramo.chutes > 0) {
+          <strong>
+            {{ tramo.chuteDesde }}@if (tramo.chutes > 1) { → {{ tramo.chuteHasta }} }
+          </strong>
+          <span>
+            {{ tramo.chutes }} chute(s)@if (tramo.rutasFuera > 0) { · {{ (tramo.rutasFuera | numero) }} entrarán }
+          </span>
+          } @else if (cargandoGrupos()) {
+          <span>Calculando…</span>
+          } @else {
+          <span>Sin tramo</span>
+          }
+        </div>
+        <div class="grupos__mover">
+          <button type="button" class="grupos__boton grupos__boton--subir" [disabled]="primero"
+            [attr.aria-label]="'Subir la prioridad de ' + nombre" (click)="moverGrupo(i, -1)">
+            <ui-icon name="chevronRight" [size]="16" />
+          </button>
+          <button type="button" class="grupos__boton grupos__boton--bajar" [disabled]="ultimo"
+            [attr.aria-label]="'Bajar la prioridad de ' + nombre" (click)="moverGrupo(i, 1)">
+            <ui-icon name="chevronRight" [size]="16" />
+          </button>
+        </div>
+      </li>
+      }
+    </ol>
+    @if (vistaGrupos(); as vg) {
+    @if (vg.aviso) {
+    <p class="rango__aviso rango__aviso--alerta" role="alert">
+      <ui-icon name="alerta" [size]="14" /> {{ vg.aviso }}
+    </p>
+    } @else if (vg.chutesSinUsar > 0) {
+    <p class="rango__aviso">
+      <ui-icon name="info" [size]="14" /> {{ vg.chutesSinUsar }} chute(s) del rango quedan libres: los
+      grupos tienen menos rutas que chutes.
+    </p>
+    }
+    }
+  </section>
+  }
   <div modal-footer class="modal-foot">
     <button type="button" class="ui-btn ui-btn--ghost" (click)="rangoPendiente.set(null)">Cancelar</button>
     <button type="button" class="ui-btn ui-btn--primary" (click)="confirmarRango()"
-      [disabled]="ocupado() || rangoDesde() === null || rangoHasta() === null">
+      [disabled]="ocupado() || rangoDesde() === null || rangoHasta() === null || !rangoListo()">
       <ui-icon name="play" [size]="14" /> Balancear
     </button>
   </div>
@@ -776,8 +843,8 @@
   </div>
 
   <p class="hint">
-    Columnas requeridas: RUTA, CLUSTER, CHUTE, TIPO (B2C o B2B) y BULTOS PROMEDIO. Opcionales: COD.,
-    UNIDADES y LÍNEAS. También se aceptan CSV.
+    Columnas requeridas: RUTA, CLUSTER, CHUTE, GRUPO, TIPO (B2C o B2B) y BULTOS PROMEDIO. Opcionales:
+    COD., UNIDADES y LÍNEAS. Cada ruta tiene un solo grupo. También se aceptan CSV.
   </p>
 
   <div modal-footer class="modal-foot">
@@ -816,6 +883,9 @@
   </header>
   <p class="detalle-pop__ubicacion">
     <span class="detalle-pop__chip">{{ r.ruta.cluster }}</span>
+    @if (r.ruta.grupo) {
+    <span class="detalle-pop__chip detalle-pop__chip--grupo">Grupo {{ r.ruta.grupo }}</span>
+    }
     <ui-icon name="flecha" [size]="12" />
     <span class="detalle-pop__chip">Chute {{ r.ruta.chute }}</span>
   </p>
@@ -925,6 +995,26 @@
   }
   @if (c.previo && c.siguen > 0) {
   <p class="detalle-pop__nota"><ui-icon name="usuarios" [size]="13" /> {{ c.siguen }} operario(s) siguen en su chute desde {{ c.previo }}</p>
+  }
+  @if (k.grupos.length > 0) {
+  <div class="detalle-pop__grupos">
+    <span class="detalle-pop__kicker">Grupos por prioridad</span>
+    <ol>
+      @for (g of k.grupos; track g.nombre) {
+      <li>
+        <strong [title]="g.nombre">{{ g.nombre }}</strong>
+        <span>{{ g.rutas | entero }} ruta(s)</span>
+        <span class="detalle-pop__tramo">
+          @if (g.chuteDesde) {
+          {{ g.chuteDesde }}@if (g.chuteHastaId !== g.chuteDesdeId) { → {{ g.chuteHasta }} }
+          } @else {
+          Sin balancear
+          }
+        </span>
+      </li>
+      }
+    </ol>
+  </div>
   }
   }
 </div>

@@ -64,12 +64,13 @@ import org.xml.sax.XMLReader;
  * Interpreta el Excel de proyección y agrupa sus filas por RUTA y TIPO.
  *
  * <p>Columnas esperadas (sin distinguir mayúsculas ni tildes): COD./COD, RUTA, CLUSTER, CHUTE,
- * TIPO (B2C/B2B), BULTOS PROMEDIO/BULTOS y, opcionalmente, UNIDADES PROMEDIO/UNIDADES y LINEAS
+ * GRUPO, TIPO (B2C/B2B), BULTOS PROMEDIO/BULTOS y, opcionalmente, UNIDADES PROMEDIO/UNIDADES y LINEAS
  * PROMEDIO/LINEAS. La cabecera se busca en las primeras {@value #FILAS_BUSCAR_CABECERA} filas
  * (puede haber un título encima).
  *
  * <p>La misma ruta puede aparecer con tipos distintos (una ruta B2C y la misma ruta B2B), pero no
- * puede repetirse dos veces con el mismo tipo ni cambiar de cluster/chute dentro del mismo tipo.
+ * puede repetirse dos veces con el mismo tipo ni cambiar de cluster, chute o grupo dentro del mismo
+ * tipo. Los grupos que solo difieren en mayúsculas, tildes o espacios son el mismo grupo.
  *
  * <p>Memoria y CPU acotadas: los .xlsx se leen en streaming (SAX) y la hoja y sharedStrings.xml
  * tienen un tope de bytes descomprimidos; el CSV se lee con un búfer propio sin marcas. Por fila
@@ -103,7 +104,7 @@ public final class SimulacionExcel {
    */
   private static final long MAX_ENTRADA_ZIP = 128L * 1024 * 1024;
 
-  private static final String[] COLUMNAS_OBLIGATORIAS = {"RUTA", "CLUSTER", "CHUTE", "TIPO", "BULTOS"};
+  private static final String[] COLUMNAS_OBLIGATORIAS = {"RUTA", "CLUSTER", "CHUTE", "GRUPO", "TIPO", "BULTOS"};
   private static final Pattern MARCAS = Pattern.compile("\\p{M}+");
   private static final Pattern ESPACIOS = Pattern.compile("[\\s\\u00A0\\u2007\\u202F\\uFEFF]+");
   private static final Charset WINDOWS_1252 = Charset.forName("windows-1252");
@@ -129,6 +130,8 @@ public final class SimulacionExcel {
       String codigoRuta,
       String cluster,
       String chute,
+      /** Grupo de rutas dentro de su cluster: el balanceo automático no lo mezcla con otro. */
+      String grupo,
       TipoRuta tipo,
       BigDecimal bultos,
       BigDecimal unidades,
@@ -696,6 +699,7 @@ public final class SimulacionExcel {
     private int iRuta = -1;
     private int iCluster = -1;
     private int iChute = -1;
+    private int iGrupo = -1;
     private int iTipo = -1;
     private int iBultos = -1;
     private int iUnidades = -1;
@@ -709,6 +713,8 @@ public final class SimulacionExcel {
     private Map<String, Integer> candidata;
     private int filaCandidata;
     private final Map<String, Acumulado> porRuta = new LinkedHashMap<>();
+    /** Nombre de cada grupo por su clave: «a» y «A» se guardan con el primero que apareció. */
+    private final Map<String, String> grupos = new HashMap<>();
     private long totalBultos;
 
     Agrupador(Limites limites) {
@@ -755,6 +761,7 @@ public final class SimulacionExcel {
       iRuta = columnas.get("RUTA");
       iCluster = columnas.get("CLUSTER");
       iChute = columnas.get("CHUTE");
+      iGrupo = columnas.get("GRUPO");
       iTipo = columnas.get("TIPO");
       iBultos = columnas.get("BULTOS");
       iUnidades = columnas.getOrDefault("UNIDADES", -1);
@@ -791,9 +798,14 @@ public final class SimulacionExcel {
       }
       String cluster = nombre(texto(fila, iCluster));
       String chute = nombre(texto(fila, iChute));
-      if (cluster.isEmpty() || chute.isEmpty()) {
+      String grupoLeido = nombre(texto(fila, iGrupo));
+      if (cluster.isEmpty() || chute.isEmpty() || grupoLeido.isEmpty()) {
         throw ArchivoInvalidoException.contenido(
-            "La fila " + numero + " no tiene " + (cluster.isEmpty() ? "CLUSTER" : "CHUTE") + ".");
+            "La fila "
+                + numero
+                + " no tiene "
+                + (cluster.isEmpty() ? "CLUSTER" : chute.isEmpty() ? "CHUTE" : "GRUPO")
+                + ".");
       }
       String tipoTexto = texto(fila, iTipo);
       TipoRuta tipo = TipoRuta.desdeTexto(tipoTexto);
@@ -804,15 +816,18 @@ public final class SimulacionExcel {
       exigirLongitud(ruta, "RUTA", numero);
       exigirLongitud(cluster, "CLUSTER", numero);
       exigirLongitud(chute, "CHUTE", numero);
+      exigirLongitud(grupoLeido, "GRUPO", numero);
+      // «a», «A» y « A » son el mismo grupo: se guarda con el primer nombre que apareció.
+      String grupo = grupos.computeIfAbsent(clave(grupoLeido), (k) -> grupoLeido);
       String cod = texto(fila, iCod);
 
       String claveRuta = clave(ruta) + '\u0000' + tipo.name();
       Acumulado acumulado = porRuta.get(claveRuta);
       if (acumulado == null) {
-        acumulado = new Acumulado(ruta, cluster, chute, tipo);
+        acumulado = new Acumulado(ruta, cluster, chute, grupo, tipo);
         porRuta.put(claveRuta, acumulado);
       } else {
-        acumulado.exigirMismo(cluster, chute, numero);
+        acumulado.exigirMismo(cluster, chute, grupo, numero);
       }
       acumulado.sumar(bultos, unidades, lineas, cod, numero);
       totalBultos += bultos;
@@ -860,6 +875,8 @@ public final class SimulacionExcel {
     private final String ruta;
     private final String cluster;
     private final String chute;
+    /** Ya canónico: el mismo grupo llega siempre con el mismo nombre. */
+    private final String grupo;
     private final TipoRuta tipo;
     private final String claveCluster;
     private final String claveChute;
@@ -871,21 +888,25 @@ public final class SimulacionExcel {
     private Set<String> cods;
     private int filas;
 
-    Acumulado(String ruta, String cluster, String chute, TipoRuta tipo) {
+    Acumulado(String ruta, String cluster, String chute, String grupo, TipoRuta tipo) {
       this.ruta = ruta;
       this.cluster = cluster;
       this.chute = chute;
+      this.grupo = grupo;
       this.tipo = tipo;
       this.claveCluster = clave(cluster);
       this.claveChute = clave(chute);
     }
 
-    void exigirMismo(String otroCluster, String otroChute, int numero) {
+    void exigirMismo(String otroCluster, String otroChute, String otroGrupo, int numero) {
       if (!cluster.equals(otroCluster) && !claveCluster.equals(clave(otroCluster))) {
         throw distinto("CLUSTER", cluster, otroCluster, numero);
       }
       if (!chute.equals(otroChute) && !claveChute.equals(clave(otroChute))) {
         throw distinto("CHUTE", chute, otroChute, numero);
+      }
+      if (!grupo.equals(otroGrupo)) {
+        throw distinto("GRUPO", grupo, otroGrupo, numero);
       }
     }
 
@@ -921,6 +942,7 @@ public final class SimulacionExcel {
           ruta,
           cluster,
           chute,
+          grupo,
           tipo,
           BigDecimal.valueOf(bultos, 2),
           BigDecimal.valueOf(unidades, 2),
@@ -1171,6 +1193,7 @@ public final class SimulacionExcel {
         case "RUTA" -> columnas.putIfAbsent("RUTA", i);
         case "CLUSTER" -> columnas.putIfAbsent("CLUSTER", i);
         case "CHUTE" -> columnas.putIfAbsent("CHUTE", i);
+        case "GRUPO", "GRUPOS" -> columnas.putIfAbsent("GRUPO", i);
         case "TIPO" -> columnas.putIfAbsent("TIPO", i);
         case "BULTOS", "BULTOS PROMEDIO" -> columnas.putIfAbsent("BULTOS", i);
         case "UNIDADES", "UNIDADES PROMEDIO" -> columnas.putIfAbsent("UNIDADES", i);

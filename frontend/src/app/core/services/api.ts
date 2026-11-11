@@ -57,6 +57,13 @@ export class Api {
       if (valor === undefined || valor === null || valor === '') {
         continue;
       }
+      if (Array.isArray(valor)) {
+        // Un parámetro repetido por elemento (?g=A&g=B): un valor con coma no se parte.
+        for (const elemento of valor) {
+          httpParams = httpParams.append(clave, String(elemento));
+        }
+        continue;
+      }
       httpParams = httpParams.set(clave, String(valor));
     }
     return httpParams;
