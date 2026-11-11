@@ -472,17 +472,15 @@
                   [class.matriz-ruta--guardando]="guardando" [class.matriz-ruta--movida]="celda.movida"
                   [class.matriz-ruta--activa]="detalle()?.tipo === 'ruta' && detalle()?.id === ruta.id"
                   [title]="celda.titulo" role="button" tabindex="0" aria-haspopup="dialog"
-                  [attr.aria-label]="'Detalle de la ruta ' + ruta.codigoRuta + ', ' + celda.bultos + ' bultos'"
+                  [attr.aria-label]="'Detalle de la ruta ' + ruta.codigoRuta + ', ' + celda.bultos + ' bultos' + (celda.grupo !== null ? ', grupo ' + celda.grupo : '')"
+                  [class.matriz-ruta--grupo]="celda.grupoColor !== null" [style.--grupo-color]="celda.grupoColor"
                   (click)="abrirDetalleRuta($event, ruta.id)" (keydown.enter)="abrirDetalleRuta($event, ruta.id)"
                   (keydown.space)="abrirDetalleRuta($event, ruta.id)">
                   <span class="matriz-ruta__codigo">{{ ruta.codigoRuta }}</span>
-                  <!-- El tipo (B2C/B2B) está en la ficha al hacer clic y en el title. -->
+                  <!-- El tipo (B2C/B2B) y el nombre del grupo están en la ficha al hacer clic y en el title. -->
                   <span class="matriz-ruta__bultos" [title]="celda.bultos + ' bultos'">
-                    <ui-icon name="paquete" [size]="11" />{{ celda.bultos }}
+                    <ng-container [ngTemplateOutlet]="cajaBulto" />{{ celda.bultos }}
                   </span>
-                  @if (celda.grupo !== null) {
-                  <span class="matriz-ruta__grupo">{{ celda.grupo }}</span>
-                  }
                   @if (celda.cambioCluster) {
                   <small class="cluster-original" [title]="'Cluster original: ' + ruta.clusterOriginal">
                     ← {{ ruta.clusterOriginal }}
@@ -1003,8 +1001,8 @@
     <span class="detalle-pop__kicker">Grupos por prioridad</span>
     <ol>
       @for (g of k.grupos; track g.nombre) {
-      <li>
-        <strong [title]="g.nombre">{{ g.nombre }}</strong>
+      <li [style.--grupo-color]="g.color">
+        <strong [title]="g.nombre"><span class="detalle-pop__franja" aria-hidden="true"></span>{{ g.nombre }}</strong>
         <span>{{ g.rutas | entero }} ruta(s)</span>
         <span class="detalle-pop__tramo">
           @if (g.chuteDesde) {
@@ -1024,3 +1022,13 @@
 }
 
 <app-simulacion-guia-balanceo [abierto]="explicacionAbierta()" (cerrar)="explicacionAbierta.set(false)" />
+
+<!-- Caja de cartón a color (bultos): caras kraft, cinta de embalaje y contorno marrón. -->
+<ng-template #cajaBulto>
+  <svg class="caja-bulto" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+    <path class="caja-bulto__tapa" d="M8 1.5 14.5 4.5 8 7.5 1.5 4.5Z" />
+    <path class="caja-bulto__frente" d="M1.5 4.5 8 7.5V14.5L1.5 11.5Z" />
+    <path class="caja-bulto__lado" d="M8 7.5 14.5 4.5V11.5L8 14.5Z" />
+    <path class="caja-bulto__cinta" d="M4.75 3 11.25 6V13" />
+  </svg>
+</ng-template>

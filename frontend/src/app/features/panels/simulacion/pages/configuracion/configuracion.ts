@@ -84,6 +84,21 @@ import { ScrollMatriz } from './scroll-matriz.directive';
 import { SimulacionExportar } from '../../exportar/exportar';
 import { EnteroPipe, HorasPipe, NumeroPipe } from '../../numero.pipe';
 
+/**
+ * Colores de las franjas de grupo: distintos del semáforo (rojo, amarillo y
+ * verde) y del acento de la app, legibles en tema claro y oscuro.
+ */
+const PALETA_GRUPOS = [
+  '#7c3aed',
+  '#0891b2',
+  '#db2777',
+  '#4f46e5',
+  '#0d9488',
+  '#c2410c',
+  '#9333ea',
+  '#0369a1',
+] as const;
+
 /** Ruta lista para pintar: el título y los permisos ya calculados (sin métodos en la plantilla). */
 interface CeldaRuta {
   ruta: RutaSimulacion;
@@ -93,8 +108,10 @@ interface CeldaRuta {
   /** Ya no está en el chute o cluster del Excel. */
   movida: boolean;
   cambioCluster: boolean;
-  /** Grupo a mostrar en la celda: solo si su cluster tiene dos o más grupos. */
+  /** Grupo de la ruta si su cluster tiene dos o más grupos (si no, null). */
   grupo: string | null;
+  /** Color de la franja de su grupo (null con un solo grupo). */
+  grupoColor: string | null;
   /** Bultos redondeados hacia arriba y con miles («1.250»), para la pastilla. */
   bultos: string;
 }
@@ -591,16 +608,37 @@ export class SimulacionConfiguracion {
    * chutes y qué clusters están cerrados: cambiar un límite o la velocidad
    * (que sí cambian el panel) no vuelve a armar miles de celdas.
    */
+  /**
+   * Color de cada grupo, por cluster (solo clusters con dos o más grupos). Se
+   * asigna por nombre en orden natural, no por prioridad: reordenar la prioridad
+   * no le cambia el color a ningún grupo.
+   */
+  readonly coloresGrupo = computed(() => {
+    const resultado = new Map<number, Map<string, string>>();
+    for (const cluster of this.config()?.clusters ?? []) {
+      const grupos = cluster.grupos ?? [];
+      if (grupos.length < 2) {
+        continue;
+      }
+      const nombres = grupos.map((g) => g.nombre).sort(compararNombre);
+      resultado.set(
+        cluster.id,
+        new Map<string, string>(
+          nombres.map((nombre, i) => [nombre, PALETA_GRUPOS[i % PALETA_GRUPOS.length]]),
+        ),
+      );
+    }
+    return resultado;
+  });
+
   private readonly celdasPorCluster = computed(() => {
     const chutes = this.chutesMatriz();
     const cerrados = new Set(
       (this.config()?.clusters ?? []).filter((c) => c.estado === 'CERRADO').map((c) => c.id),
     );
     const editable = this.puedeModificar();
-    // La etiqueta de grupo solo aporta si el cluster tiene más de uno.
-    const conGrupos = new Set(
-      (this.config()?.clusters ?? []).filter((c) => (c.grupos?.length ?? 0) > 1).map((c) => c.id),
-    );
+    // La franja de grupo solo aporta si el cluster tiene más de uno.
+    const colores = this.coloresGrupo();
     const porCluster = new Map<number, Map<number, RutaSimulacion[]>>();
 
     for (const ruta of this.rutasMatriz()) {
@@ -623,7 +661,8 @@ export class SimulacionConfiguracion {
       movible: editable && !cerrados.has(ruta.clusterId),
       movida: ruta.chuteId !== ruta.chuteOriginalId || ruta.clusterId !== ruta.clusterOriginalId,
       cambioCluster: ruta.clusterId !== ruta.clusterOriginalId,
-      grupo: conGrupos.has(ruta.clusterId) ? ruta.grupo : null,
+      grupo: colores.get(ruta.clusterId)?.has(ruta.grupo) ? ruta.grupo : null,
+      grupoColor: colores.get(ruta.clusterId)?.get(ruta.grupo) ?? null,
       bultos: formatearEntero(ruta.totalBultos),
     });
 
@@ -823,8 +862,14 @@ export class SimulacionConfiguracion {
     return {
       c: cluster,
       m: this.metricasCluster().get(cluster.id) ?? null,
-      // Con un solo grupo no hay tramos que mostrar.
-      grupos: grupos.length > 1 ? grupos : [],
+      // Con un solo grupo no hay tramos que mostrar. Cada grupo lleva el color de su franja.
+      grupos:
+        grupos.length > 1
+          ? grupos.map((g) => ({
+              ...g,
+              color: this.coloresGrupo().get(cluster.id)?.get(g.nombre) ?? null,
+            }))
+          : [],
     };
   });
 

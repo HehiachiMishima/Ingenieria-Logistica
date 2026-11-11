@@ -877,6 +877,17 @@
     }
   }
 
+  /* Franja del grupo: el mismo color que marca sus rutas en la cuadrícula. */
+  &__franja {
+    display: inline-block;
+    width: 3px;
+    height: 0.9em;
+    margin-right: 5px;
+    vertical-align: -1px;
+    border-radius: 2px;
+    background: var(--grupo-color, var(--accent));
+  }
+
   &__tramo {
     font-weight: 600;
     color: var(--text-2);
@@ -1143,12 +1154,16 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  /* Separación y margen justos: el código y la pastilla de bultos caben sin recortarse. */
+  gap: 4px;
   min-width: 0;
   height: 100%;
   min-height: var(--mz-fila);
-  padding: 0 26px 0 var(--space-3);
+  padding: 0 26px 0 var(--space-2);
   white-space: nowrap;
+  /* El ancho lo fija la columna, no el contenido: una ruta con mucho texto no
+     ensancha su columna (cada cluster es otra tabla y se desalinearían). */
+  contain: inline-size;
 }
 
 .matriz-ruta__codigo {
@@ -1161,27 +1176,84 @@
   color: var(--text);
 }
 
-/* Bultos de la ruta (redondeados hacia arriba): pastilla con icono que nunca se recorta. */
+/* Bultos de la ruta (redondeados hacia arriba): pastilla kraft con la caja a color.
+   Nunca se recorta; lo que se encoge si falta espacio es «← CLx». */
 .matriz-ruta__bultos {
+  --kraft: #c8894a;
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: 3px;
-  padding: 1px 6px 1px 5px;
+  gap: 4px;
+  padding: 2px 7px 2px 4px;
   border-radius: 999px;
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   font-weight: 700;
-  line-height: 1.4;
-  color: var(--text-2);
+  line-height: 1.25;
+  color: var(--text);
   font-variant-numeric: tabular-nums;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--kraft) 16%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--kraft) 45%, var(--border));
   user-select: none;
 
-  ui-icon {
-    flex: none;
-    color: var(--text-3);
+  /* Columnas angostas (tablet y celular): un poco más compacta para que el
+     código no se recorte con montos de 4 o 5 cifras. */
+  @include bp.down(md) {
+    gap: 3px;
+    padding: 1px 6px 1px 3px;
+    font-size: 0.7rem;
+
+    .caja-bulto {
+      width: 14px;
+      height: 14px;
+    }
   }
+}
+
+/* Caja de cartón: caras kraft, cinta clara y contorno marrón (se ve en ambos temas). */
+.caja-bulto {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  overflow: visible;
+
+  path {
+    stroke: #6b4220;
+    stroke-width: 0.8;
+    stroke-linejoin: round;
+  }
+
+  &__tapa {
+    fill: #e8b97a;
+  }
+
+  &__frente {
+    fill: #c8894a;
+  }
+
+  &__lado {
+    fill: #a9692f;
+  }
+
+  path.caja-bulto__cinta {
+    fill: none;
+    stroke: #f6e2b3;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+  }
+}
+
+/* Grupo de la ruta (clusters con dos o más grupos): franja de su color a la
+   izquierda; el nombre está en la ficha y en el title. */
+.matriz-ruta--grupo::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 2px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--grupo-color, var(--accent));
+  pointer-events: none;
 }
 
 /* Tipo con el aspecto de `ui-badge`. */
@@ -1211,26 +1283,11 @@
   }
 }
 
-/* Grupo de la ruta (solo en clusters con dos o más grupos): corto y recortable. */
-.matriz-ruta__grupo {
-  /* Si falta espacio se encoge antes que el código (el nombre completo, en la ficha). */
-  flex: 0 10 auto;
-  min-width: 2ch;
-  max-width: 7ch;
-  overflow: hidden;
-  padding: 0 4px;
-  font-size: 0.64rem;
-  font-weight: 600;
-  color: var(--accent);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  background: var(--accent-soft);
-  border-radius: var(--radius-xs);
-}
-
 .matriz-ruta .cluster-original {
-  flex: 0 10 auto;
-  min-width: 3ch;
+  /* Es lo primero que se acorta: la columna nunca crece (los clusters son tablas
+     distintas y se desalinearían). El cluster original sigue en la ficha y el rayado. */
+  flex: 0 1000 auto;
+  min-width: 0;
   overflow: hidden;
   font-size: 0.66rem;
   text-overflow: ellipsis;
