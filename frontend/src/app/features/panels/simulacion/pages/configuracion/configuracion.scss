@@ -1164,6 +1164,11 @@
   /* El ancho lo fija la columna, no el contenido: una ruta con mucho texto no
      ensancha su columna (cada cluster es otra tabla y se desalinearían). */
   contain: inline-size;
+
+  /* Columnas angostas: 1 px menos entre elementos para que entre la pestaña de grupo. */
+  @include bp.down(md) {
+    gap: 3px;
+  }
 }
 
 .matriz-ruta__codigo {
@@ -1199,7 +1204,7 @@
      código no se recorte con montos de 4 o 5 cifras. */
   @include bp.down(md) {
     gap: 3px;
-    padding: 1px 6px 1px 3px;
+    padding: 1px 4px 1px 3px;
     font-size: 0.7rem;
 
     .caja-bulto {
@@ -1242,18 +1247,46 @@
   }
 }
 
-/* Grupo de la ruta (clusters con dos o más grupos): franja de su color a la
-   izquierda; el nombre está en la ficha y en el title. */
-.matriz-ruta--grupo::before {
-  content: '';
-  position: absolute;
-  top: 4px;
-  bottom: 4px;
-  left: 2px;
-  width: 3px;
-  border-radius: 2px;
-  background: var(--grupo-color, var(--accent));
-  pointer-events: none;
+/* Grupo de la ruta (clusters con dos o más grupos): pestaña pegada al borde
+   izquierdo, del color del grupo, con su número en blanco. Usa el margen
+   izquierdo de la ruta (margen negativo), así ocupa solo unos píxeles más.
+   El color se oscurece un poco para que el blanco se lea en todos los tonos. */
+.matriz-ruta__pestana {
+  display: inline-flex;
+  flex: 0 100 auto;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  min-width: 14px;
+  max-width: 6ch;
+  /* Deja 1 px del borde izquierdo libre para el contorno de la ruta activa. */
+  margin: 5px 0 5px -7px;
+  padding: 0 2px;
+  overflow: hidden;
+  border-radius: 0 4px 4px 0;
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1;
+  color: #fff;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--grupo-color, var(--accent)) 82%, #000);
+  user-select: none;
+
+  /* Nombres de 1 o 2 caracteres (números de grupo): nunca se recortan. */
+  &--corta {
+    flex: none;
+  }
+
+  @include bp.down(md) {
+    padding: 0 1px;
+  }
+
+  /* Nombres largos: se acortan con «…» antes que el código, dejando 2 letras. */
+  &:not(&--corta) {
+    min-width: calc(2ch + 12px);
+  }
 }
 
 /* Tipo con el aspecto de `ui-badge`. */

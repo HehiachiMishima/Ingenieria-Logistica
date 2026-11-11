@@ -476,8 +476,13 @@
                   [class.matriz-ruta--grupo]="celda.grupoColor !== null" [style.--grupo-color]="celda.grupoColor"
                   (click)="abrirDetalleRuta($event, ruta.id)" (keydown.enter)="abrirDetalleRuta($event, ruta.id)"
                   (keydown.space)="abrirDetalleRuta($event, ruta.id)">
+                  @if (celda.grupo !== null) {
+                  <!-- Pestaña del grupo: su número sobre su color (el aria-label de la ruta ya lo dice). -->
+                  <span class="matriz-ruta__pestana" [class.matriz-ruta__pestana--corta]="celda.grupo.length <= 2"
+                    aria-hidden="true" [title]="'Grupo ' + celda.grupo">{{ celda.grupo }}</span>
+                  }
                   <span class="matriz-ruta__codigo">{{ ruta.codigoRuta }}</span>
-                  <!-- El tipo (B2C/B2B) y el nombre del grupo están en la ficha al hacer clic y en el title. -->
+                  <!-- El tipo (B2C/B2B) está en la ficha al hacer clic y en el title. -->
                   <span class="matriz-ruta__bultos" [title]="celda.bultos + ' bultos'">
                     <ng-container [ngTemplateOutlet]="cajaBulto" />{{ celda.bultos }}
                   </span>
