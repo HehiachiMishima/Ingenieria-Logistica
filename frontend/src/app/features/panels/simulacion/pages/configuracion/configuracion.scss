@@ -1152,11 +1152,36 @@
 }
 
 .matriz-ruta__codigo {
-  min-width: 0;
+  /* Se recorta solo si ya no queda nada más que encoger (código muy largo). */
+  flex: 0 1 auto;
+  min-width: 3ch;
   overflow: hidden;
   font-weight: 700;
   text-overflow: ellipsis;
   color: var(--text);
+}
+
+/* Bultos de la ruta (redondeados hacia arriba): pastilla con icono que nunca se recorta. */
+.matriz-ruta__bultos {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px 1px 5px;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  user-select: none;
+
+  ui-icon {
+    flex: none;
+    color: var(--text-3);
+  }
 }
 
 /* Tipo con el aspecto de `ui-badge`. */
@@ -1188,7 +1213,8 @@
 
 /* Grupo de la ruta (solo en clusters con dos o más grupos): corto y recortable. */
 .matriz-ruta__grupo {
-  flex: 0 1 auto;
+  /* Si falta espacio se encoge antes que el código (el nombre completo, en la ficha). */
+  flex: 0 10 auto;
   min-width: 2ch;
   max-width: 7ch;
   overflow: hidden;
@@ -1203,8 +1229,11 @@
 }
 
 .matriz-ruta .cluster-original {
-  flex: none;
+  flex: 0 10 auto;
+  min-width: 3ch;
+  overflow: hidden;
   font-size: 0.66rem;
+  text-overflow: ellipsis;
 }
 
 /* Ruta con otro chute o cluster que en el Excel: fondo rayado suave. */

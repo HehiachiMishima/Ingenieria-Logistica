@@ -472,12 +472,14 @@
                   [class.matriz-ruta--guardando]="guardando" [class.matriz-ruta--movida]="celda.movida"
                   [class.matriz-ruta--activa]="detalle()?.tipo === 'ruta' && detalle()?.id === ruta.id"
                   [title]="celda.titulo" role="button" tabindex="0" aria-haspopup="dialog"
-                  [attr.aria-label]="'Detalle de la ruta ' + ruta.codigoRuta"
+                  [attr.aria-label]="'Detalle de la ruta ' + ruta.codigoRuta + ', ' + celda.bultos + ' bultos'"
                   (click)="abrirDetalleRuta($event, ruta.id)" (keydown.enter)="abrirDetalleRuta($event, ruta.id)"
                   (keydown.space)="abrirDetalleRuta($event, ruta.id)">
                   <span class="matriz-ruta__codigo">{{ ruta.codigoRuta }}</span>
-                  <span class="matriz-ruta__tipo" [class.matriz-ruta__tipo--b2b]="ruta.tipo === 'B2B'"
-                    [class.matriz-ruta__tipo--b2c]="ruta.tipo === 'B2C'">{{ ruta.tipo }}</span>
+                  <!-- El tipo (B2C/B2B) está en la ficha al hacer clic y en el title. -->
+                  <span class="matriz-ruta__bultos" [title]="celda.bultos + ' bultos'">
+                    <ui-icon name="paquete" [size]="11" />{{ celda.bultos }}
+                  </span>
                   @if (celda.grupo !== null) {
                   <span class="matriz-ruta__grupo">{{ celda.grupo }}</span>
                   }

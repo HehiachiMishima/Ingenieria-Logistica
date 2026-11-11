@@ -95,6 +95,8 @@ interface CeldaRuta {
   cambioCluster: boolean;
   /** Grupo a mostrar en la celda: solo si su cluster tiene dos o más grupos. */
   grupo: string | null;
+  /** Bultos redondeados hacia arriba y con miles («1.250»), para la pastilla. */
+  bultos: string;
 }
 
 /** Un cluster de la matriz: una fila por nivel de apilado y una celda por chute. */
@@ -622,6 +624,7 @@ export class SimulacionConfiguracion {
       movida: ruta.chuteId !== ruta.chuteOriginalId || ruta.clusterId !== ruta.clusterOriginalId,
       cambioCluster: ruta.clusterId !== ruta.clusterOriginalId,
       grupo: conGrupos.has(ruta.clusterId) ? ruta.grupo : null,
+      bultos: formatearEntero(ruta.totalBultos),
     });
 
     const resultado = new Map<number, (CeldaRuta | null)[][]>();

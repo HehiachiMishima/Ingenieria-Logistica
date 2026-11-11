@@ -726,7 +726,8 @@ function tramos(
         const ruta = lista[f];
         return ruta
           ? {
-              texto: `${ruta.codigoRuta} · ${ruta.tipo}${conGrupo && ruta.grupo ? ` · ${ruta.grupo}` : ''}`,
+              // Código y bultos redondeados hacia arriba, como en la pantalla (el tipo va en el Excel).
+              texto: `${ruta.codigoRuta} · ${formatearEntero(ruta.totalBultos)}${conGrupo && ruta.grupo ? ` · ${ruta.grupo}` : ''}`,
               movida: ruta.chuteId !== ruta.chuteOriginalId || ruta.clusterId !== ruta.clusterOriginalId,
             }
           : null;
