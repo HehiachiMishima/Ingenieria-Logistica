@@ -135,6 +135,8 @@ public final class SimulacionExcel {
       String grupo,
       /** DIARIA, LXV o MJS (ver {@link Balanceo}). */
       String frecuencia,
+      /** Días tal como vienen en el Excel, en orden («L-X», «V», «L-X-V»). */
+      String dias,
       TipoRuta tipo,
       BigDecimal bultos,
       BigDecimal unidades,
@@ -822,7 +824,7 @@ public final class SimulacionExcel {
       exigirLongitud(cluster, "CLUSTER", numero);
       exigirLongitud(chute, "CHUTE", numero);
       exigirLongitud(grupoLeido, "GRUPO", numero);
-      String frecuencia = frecuencia(texto(fila, iFrecuencia), numero);
+      Frecuencia frecuencia = frecuencia(texto(fila, iFrecuencia), numero);
       // «a», «A» y « A » son el mismo grupo: se guarda con el primer nombre que apareció.
       String grupo = grupos.computeIfAbsent(clave(grupoLeido), (k) -> grupoLeido);
       String cod = texto(fila, iCod);
@@ -883,8 +885,8 @@ public final class SimulacionExcel {
     private final String chute;
     /** Ya canónico: el mismo grupo llega siempre con el mismo nombre. */
     private final String grupo;
-    /** DIARIA, LXV o MJS. */
-    private final String frecuencia;
+    /** Balanceo (DIARIA, LXV o MJS) y días de la ruta. */
+    private final Frecuencia frecuencia;
     private final TipoRuta tipo;
     private final String claveCluster;
     private final String claveChute;
@@ -897,7 +899,7 @@ public final class SimulacionExcel {
     private int filas;
 
     Acumulado(
-        String ruta, String cluster, String chute, String grupo, String frecuencia, TipoRuta tipo) {
+        String ruta, String cluster, String chute, String grupo, Frecuencia frecuencia, TipoRuta tipo) {
       this.ruta = ruta;
       this.cluster = cluster;
       this.chute = chute;
@@ -909,7 +911,7 @@ public final class SimulacionExcel {
     }
 
     void exigirMismo(
-        String otroCluster, String otroChute, String otroGrupo, String otraFrecuencia, int numero) {
+        String otroCluster, String otroChute, String otroGrupo, Frecuencia otraFrecuencia, int numero) {
       if (!cluster.equals(otroCluster) && !claveCluster.equals(clave(otroCluster))) {
         throw distinto("CLUSTER", cluster, otroCluster, numero);
       }
@@ -919,8 +921,8 @@ public final class SimulacionExcel {
       if (!grupo.equals(otroGrupo)) {
         throw distinto("GRUPO", grupo, otroGrupo, numero);
       }
-      if (!frecuencia.equals(otraFrecuencia)) {
-        throw distinto("FRECUENCIA", textoFrecuencia(frecuencia), textoFrecuencia(otraFrecuencia), numero);
+      if (!frecuencia.dias().equals(otraFrecuencia.dias())) {
+        throw distinto("FRECUENCIA", frecuencia.dias(), otraFrecuencia.dias(), numero);
       }
     }
 
@@ -957,7 +959,8 @@ public final class SimulacionExcel {
           cluster,
           chute,
           grupo,
-          frecuencia,
+          frecuencia.balanceo(),
+          frecuencia.dias(),
           tipo,
           BigDecimal.valueOf(bultos, 2),
           BigDecimal.valueOf(unidades, 2),
@@ -1200,49 +1203,66 @@ public final class SimulacionExcel {
     }
   }
 
-  private static final Set<String> DIAS_DIARIA = Set.of("L", "M", "X", "J", "V", "S");
+  /** Días de la semana en su orden: lunes a sábado. */
+  private static final List<String> DIAS = List.of("L", "M", "X", "J", "V", "S");
   private static final Set<String> DIAS_LXV = Set.of("L", "X", "V");
   private static final Set<String> DIAS_MJS = Set.of("M", "J", "S");
 
   /**
-   * FRECUENCIA de la fila: «L-M-X-J-V-S» (o «DIARIA») es diaria, «L-X-V» y «M-J-S» son los dos
-   * balanceos. Acepta cualquier separador (guion, coma, barra o espacios) o ninguno («LXV»),
-   * sin distinguir mayúsculas ni el orden de los días.
+   * FRECUENCIA leída: la clase de balanceo (DIARIA, LXV o MJS) y los días tal como vienen, en
+   * orden («L-X», «V», «L-X-V»).
    */
-  static String frecuencia(String texto, int numero) {
+  public record Frecuencia(String balanceo, String dias) {}
+
+  /**
+   * FRECUENCIA de la fila, clasificada por sus días:
+   *
+   * <ul>
+   *   <li>solo lunes, miércoles o viernes («L-X-V», «L-X», «X-V», «V»…) → balanceo L-X-V;
+   *   <li>solo martes, jueves o sábado («M-J-S», «M-J», «S»…) → balanceo M-J-S;
+   *   <li>días de los dos («L-M-X-J-V-S», «L-M»…) o «DIARIA» → aparece en los dos (diaria).
+   * </ul>
+   *
+   * Acepta cualquier separador (guion, coma, barra o espacios) o ninguno («LXV»), sin distinguir
+   * mayúsculas ni el orden de los días.
+   */
+  static Frecuencia frecuencia(String texto, int numero) {
     String limpio = clave(texto);
     if (limpio.isEmpty()) {
       throw ArchivoInvalidoException.contenido("La fila " + numero + " no tiene FRECUENCIA.");
     }
     if (limpio.equals("DIARIA") || limpio.equals("DIARIO")) {
-      return Balanceo.DIARIA;
+      return new Frecuencia(Balanceo.DIARIA, String.join("-", DIAS));
     }
-    String[] partes = limpio.split("[^A-Z]+");
     Set<String> dias = new HashSet<>();
-    for (String parte : partes) {
-      if (parte.isEmpty()) {
-        continue;
-      }
+    for (String parte : limpio.split("[^A-Z]+")) {
       // «LXV» sin separadores: cada letra es un día.
       for (char dia : parte.toCharArray()) {
-        dias.add(String.valueOf(dia));
+        String letra = String.valueOf(dia);
+        if (!DIAS.contains(letra)) {
+          throw frecuenciaInvalida(texto, numero);
+        }
+        dias.add(letra);
       }
     }
-    if (dias.equals(DIAS_DIARIA)) {
-      return Balanceo.DIARIA;
+    if (dias.isEmpty()) {
+      throw frecuenciaInvalida(texto, numero);
     }
-    if (dias.equals(DIAS_LXV)) {
-      return Balanceo.LXV.name();
-    }
-    if (dias.equals(DIAS_MJS)) {
-      return Balanceo.MJS.name();
-    }
-    throw ArchivoInvalidoException.contenido(
+    String enOrden = String.join("-", DIAS.stream().filter(dias::contains).toList());
+    String balanceo =
+        DIAS_LXV.containsAll(dias)
+            ? Balanceo.LXV.name()
+            : DIAS_MJS.containsAll(dias) ? Balanceo.MJS.name() : Balanceo.DIARIA;
+    return new Frecuencia(balanceo, enOrden);
+  }
+
+  private static ArchivoInvalidoException frecuenciaInvalida(String texto, int numero) {
+    return ArchivoInvalidoException.contenido(
         "La fila "
             + numero
             + " tiene FRECUENCIA '"
             + texto
-            + "'; solo se admite L-M-X-J-V-S (diaria), L-X-V o M-J-S.");
+            + "'; usa los días L, M, X, J, V y S (por ejemplo L-X-V, M-J-S, L-X o L-M-X-J-V-S).");
   }
 
   /** «L-M-X-J-V-S», «L-X-V» o «M-J-S» para los mensajes. */

@@ -591,7 +591,7 @@
                   }
                   @if (celda.marca) {
                   <!-- «Ambos»: de qué días es la ruta. -->
-                  <span class="matriz-ruta__dias" [attr.data-dias]="celda.marca" aria-hidden="true">{{ celda.marca }}</span>
+                  <span class="matriz-ruta__dias" [attr.data-dias]="celda.marca.tipo" aria-hidden="true">{{ celda.marca.texto }}</span>
                   }
                   <span class="matriz-ruta__codigo">{{ ruta.codigoRuta }}</span>
                   @if (celda.fija && !celda.marca) {

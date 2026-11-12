@@ -252,14 +252,42 @@ class SimulacionExcelTest {
   }
 
   @Test
-  void rechazaUnaFrecuenciaQueNoEsDeLasTres() {
+  void rechazaUnaFrecuenciaConLetrasQueNoSonDias() {
     String csv =
-        "RUTA,CLUSTER,CHUTE,GRUPO,FRECUENCIA,TIPO,BULTOS\n3030,CL1,CHUTE 1,A,L-M,B2C,5\n";
+        "RUTA,CLUSTER,CHUTE,GRUPO,FRECUENCIA,TIPO,BULTOS\n3030,CL1,CHUTE 1,A,L-Z,B2C,5\n";
 
     ConflictoException error =
         assertThrows(ConflictoException.class, () -> SimulacionExcel.analizar(csv(csv)));
 
     assertTrue(error.getMessage().contains("FRECUENCIA"), error.getMessage());
+  }
+
+  @Test
+  void clasificaLasFrecuenciasParcialesPorSusDias() {
+    String csv =
+        "RUTA,CLUSTER,CHUTE,GRUPO,FRECUENCIA,TIPO,BULTOS\n"
+            + "3015,CL4,CHUTE 15,1,L-X,B2C,5\n"
+            + "3035,CL3,CHUTE 29,2,X-V,B2C,5\n"
+            + "3036,CL3,CHUTE 29,2,V,B2C,5\n"
+            + "3040,CL3,CHUTE 29,2,j-m,B2C,5\n"
+            + "3041,CL3,CHUTE 29,2,L-M,B2C,5\n";
+
+    java.util.Map<String, SimulacionExcel.FilaRuta> rutas = new java.util.HashMap<>();
+    SimulacionExcel.analizar(csv(csv)).rutas().forEach((r) -> rutas.put(r.codigoRuta(), r));
+
+    // Solo días de L-X-V: balanceo L-X-V, con sus días tal cual.
+    assertEquals("LXV", rutas.get("3015").frecuencia());
+    assertEquals("L-X", rutas.get("3015").dias());
+    assertEquals("LXV", rutas.get("3035").frecuencia());
+    assertEquals("X-V", rutas.get("3035").dias());
+    assertEquals("LXV", rutas.get("3036").frecuencia());
+    assertEquals("V", rutas.get("3036").dias());
+    // Solo días de M-J-S (en cualquier orden): balanceo M-J-S.
+    assertEquals("MJS", rutas.get("3040").frecuencia());
+    assertEquals("M-J", rutas.get("3040").dias());
+    // Días de los dos: aparece en los dos balanceos, como una diaria.
+    assertEquals("DIARIA", rutas.get("3041").frecuencia());
+    assertEquals("L-M", rutas.get("3041").dias());
   }
 
   @Test

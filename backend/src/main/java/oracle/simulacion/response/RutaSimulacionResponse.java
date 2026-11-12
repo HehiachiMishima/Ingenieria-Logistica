@@ -27,7 +27,36 @@ public record RutaSimulacionResponse(
     /** DIARIA, LXV o MJS: en qué balanceo aparece (las diarias, en los dos). */
     String frecuencia,
     /** Ruta diaria ya acomodada por un balanceo automático: ningún automático la vuelve a mover. */
-    boolean diariaFija) {
+    boolean diariaFija,
+    /** Días tal como vienen en el Excel («L-X», «V»); null en rutas anteriores a las frecuencias. */
+    String dias) {
+
+  public RutaSimulacionResponse(
+      Long id,
+      Long chuteId,
+      String chute,
+      Long chuteOriginalId,
+      String chuteOriginal,
+      Long clusterId,
+      String cluster,
+      Long clusterOriginalId,
+      String clusterOriginal,
+      boolean clusterEditable,
+      String codigoRuta,
+      String tipo,
+      BigDecimal totalBultos,
+      BigDecimal totalUnidades,
+      BigDecimal totalLineas,
+      Integer conteoCod,
+      String grupo,
+      String frecuencia,
+      boolean diariaFija) {
+    this(
+        id, chuteId, chute, chuteOriginalId, chuteOriginal, clusterId, cluster, clusterOriginalId,
+        clusterOriginal, clusterEditable, codigoRuta, tipo, totalBultos, totalUnidades, totalLineas,
+        conteoCod, grupo, frecuencia, diariaFija, null);
+  }
+
 
   public RutaSimulacionResponse(
       Long id,

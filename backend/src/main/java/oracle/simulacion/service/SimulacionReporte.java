@@ -969,7 +969,11 @@ public class SimulacionReporte {
         celda(fila, col++, r.codigoRuta(), e.fuerte);
         celda(fila, col++, r.tipo(), e.centro);
         celda(fila, col++, r.grupo(), e.texto);
-        celda(fila, col++, SimulacionExcel.textoFrecuencia(r.frecuencia()), e.centro);
+        celda(
+            fila,
+            col++,
+            r.dias() != null ? r.dias() : SimulacionExcel.textoFrecuencia(r.frecuencia()),
+            e.centro);
         celda(fila, col++, r.clusterOriginal(), e.texto);
         celda(fila, col++, r.chuteOriginal(), e.texto);
         celda(fila, col++, r.cluster(), otroCluster ? e.resaltado : e.texto);

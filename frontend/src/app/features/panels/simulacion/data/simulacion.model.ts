@@ -172,6 +172,8 @@ export interface RutaSimulacion {
   frecuencia?: FrecuenciaRuta;
   /** Ruta diaria ya acomodada por un balanceo automático: el automático no la vuelve a mover. */
   diariaFija?: boolean;
+  /** Días tal como vienen en el Excel («L-X», «V», «L-X-V»); null en rutas antiguas. */
+  dias?: string | null;
 }
 
 /** Rutas y totales de un cluster asignados a un chute. */

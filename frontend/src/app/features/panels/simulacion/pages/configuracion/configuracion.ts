@@ -120,8 +120,8 @@ interface CeldaRuta {
   bultos: string;
   /** Ruta diaria ya fija para el balanceo automático (candado). */
   fija: boolean;
-  /** Solo en «Ambos»: marca de su frecuencia (D, LXV o MJS). */
-  marca: 'D' | 'LXV' | 'MJS' | null;
+  /** Solo en «Ambos»: sus días (D = toda la semana; si no, «L-X-V», «L-X»…) y su balanceo, para el color. */
+  marca: { texto: string; tipo: 'D' | 'LXV' | 'MJS' } | null;
 }
 
 /** Lo que muestra un cluster: un balanceo o los dos apilados (solo mirar). */
@@ -845,12 +845,8 @@ export class SimulacionConfiguracion {
       grupoColor: colores.get(ruta.clusterId)?.get(ruta.grupo) ?? null,
       bultos: formatearEntero(ruta.totalBultos),
       fija: !!ruta.diariaFija,
-      marca:
-        vistas[ruta.clusterId] !== 'AMBOS'
-          ? null
-          : !ruta.frecuencia || ruta.frecuencia === 'DIARIA'
-            ? 'D'
-            : ruta.frecuencia,
+      // En «Ambos», todas llevan sus días; en un balanceo, solo las de días parciales («L-X»).
+      marca: vistas[ruta.clusterId] === 'AMBOS' || diasParciales(ruta) ? marcaDias(ruta) : null,
     });
 
     const resultado = new Map<number, (CeldaRuta | null)[][]>();
@@ -1608,7 +1604,7 @@ export class SimulacionConfiguracion {
   tituloRuta(ruta: RutaSimulacion): string {
     const n = (valor: number) => formatearEntero(valor);
     const detalle =
-      `${ruta.codigoRuta} · ${ruta.tipo}${ruta.grupo ? ` · Grupo ${ruta.grupo}` : ''} · ${textoFrecuencia(ruta.frecuencia)}${ruta.diariaFija ? ' (fija)' : ''}\n` +
+      `${ruta.codigoRuta} · ${ruta.tipo}${ruta.grupo ? ` · Grupo ${ruta.grupo}` : ''} · ${textoFrecuencia(ruta.frecuencia, ruta.dias)}${ruta.diariaFija ? ' (fija)' : ''}\n` +
       `Bultos: ${n(ruta.totalBultos)} · Unidades: ${n(ruta.totalUnidades)} · ` +
       `Líneas: ${n(ruta.totalLineas)} · COD: ${formatearEntero(ruta.conteoCod)}`;
     const origen =
@@ -2403,7 +2399,25 @@ function equipoNormalizado(config: ConfiguracionSimulacion): {
   };
 }
 
-/** «L-M-X-J-V-S», «L-X-V» o «M-J-S». */
-export function textoFrecuencia(frecuencia: string | null | undefined): string {
+/** Días de la ruta: los del Excel («L-X») o, en rutas antiguas, los de su frecuencia. */
+export function textoFrecuencia(frecuencia: string | null | undefined, dias?: string | null): string {
+  if (dias) {
+    return dias;
+  }
   return frecuencia === 'LXV' ? 'L-X-V' : frecuencia === 'MJS' ? 'M-J-S' : 'L-M-X-J-V-S';
+}
+
+/** Marca de «Ambos»: D si va toda la semana; si no, sus días, con el color de su balanceo. */
+function marcaDias(ruta: RutaSimulacion): { texto: string; tipo: 'D' | 'LXV' | 'MJS' } {
+  const dias = textoFrecuencia(ruta.frecuencia, ruta.dias);
+  const corto = dias === 'L-M-X-J-V-S' ? 'D' : dias === 'L-X-V' ? 'LXV' : dias === 'M-J-S' ? 'MJS' : dias;
+  if (!ruta.frecuencia || ruta.frecuencia === 'DIARIA') {
+    return { texto: corto, tipo: 'D' };
+  }
+  return { texto: corto, tipo: ruta.frecuencia === 'MJS' ? 'MJS' : 'LXV' };
+}
+
+/** La ruta no va todos los días de su balanceo («L-X», «V», «L-M»…). */
+function diasParciales(ruta: RutaSimulacion): boolean {
+  return !!ruta.dias && !['L-M-X-J-V-S', 'L-X-V', 'M-J-S'].includes(ruta.dias);
 }

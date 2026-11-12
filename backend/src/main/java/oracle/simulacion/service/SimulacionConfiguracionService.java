@@ -377,7 +377,8 @@ public class SimulacionConfiguracionService {
         ruta.getConteoCod(),
         grupo(ruta),
         frecuencia(ruta),
-        Balanceo.diaria(ruta.getFrecuencia()) && diariasFijas(ctx, ruta.getClusterId()));
+        Balanceo.diaria(ruta.getFrecuencia()) && diariasFijas(ctx, ruta.getClusterId()),
+        ruta.getDias());
   }
 
   /** DIARIA, LXV o MJS; las rutas sin dato (anteriores a las frecuencias) son diarias. */

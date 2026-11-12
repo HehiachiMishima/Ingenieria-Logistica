@@ -85,6 +85,7 @@ class SimulacionLotesRepositoryTest {
             "Chuté 1",
             "Grupo  A",
             "DIARIA",
+            "L-M-X-J-V-S",
             TipoRuta.B2C,
             new BigDecimal("1.00"),
             BigDecimal.ZERO,
@@ -108,6 +109,9 @@ class SimulacionLotesRepositoryTest {
     verify(ps).setLong(11, 11L);
     // El grupo se guarda con su nombre canónico (espacios internos colapsados).
     verify(ps).setString(12, "Grupo A");
+    // La frecuencia se guarda clasificada y con sus días tal cual.
+    verify(ps).setString(13, "DIARIA");
+    verify(ps).setString(14, "L-M-X-J-V-S");
 
     FilaRuta huerfana =
         new FilaRuta(
@@ -116,6 +120,7 @@ class SimulacionLotesRepositoryTest {
             "Chuté 1",
             "A",
             "LXV",
+            "L-X-V",
             TipoRuta.B2B,
             BigDecimal.ONE,
             BigDecimal.ZERO,

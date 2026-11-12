@@ -92,6 +92,6 @@ class PlanoChutesTest {
 
   private static SimulacionExcel.FilaRuta fila(String codigo, String chute) {
     return new SimulacionExcel.FilaRuta(
-        codigo, "CL1", chute, "A", "DIARIA", TipoRuta.B2C, BigDecimal.TEN, BigDecimal.ONE, BigDecimal.ONE, 1);
+        codigo, "CL1", chute, "A", "DIARIA", "L-M-X-J-V-S", TipoRuta.B2C, BigDecimal.TEN, BigDecimal.ONE, BigDecimal.ONE, 1);
   }
 }

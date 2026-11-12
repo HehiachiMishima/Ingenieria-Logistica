@@ -65,6 +65,10 @@ public class RutaProyeccion {
   @Column(name = "frecuencia", length = 10, nullable = false, updatable = false)
   private String frecuencia;
 
+  /** Días tal como vienen en el Excel («L-X», «V», «L-X-V»); null en rutas anteriores a las frecuencias. */
+  @Column(name = "dias", length = 20, updatable = false)
+  private String dias;
+
   @Column(name = "codigo_ruta", length = 50, nullable = false)
   private String codigoRuta;
 

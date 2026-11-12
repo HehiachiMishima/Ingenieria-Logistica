@@ -380,6 +380,7 @@ public class SimulacionRegistroService {
                         plano.nombreCanonico(f.chute()),
                         f.grupo(),
                         f.frecuencia(),
+                        f.dias(),
                         f.tipo(),
                         f.bultos(),
                         f.unidades(),

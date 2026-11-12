@@ -262,8 +262,8 @@ public class SimulacionLotesRepository {
         INSERT INTO rutas_proyeccion
             (archivo_id, chute_id, chute_original_id, cluster_id, codigo_ruta, tipo,
              total_bultos, total_unidades, total_lineas, conteo_cod, cluster_original_id, grupo,
-             frecuencia)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             frecuencia, dias)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         rutas,
         LOTE,
@@ -285,6 +285,7 @@ public class SimulacionLotesRepository {
           ps.setLong(11, clusterId);
           ps.setString(12, SimulacionExcel.nombre(ruta.grupo()));
           ps.setString(13, ruta.frecuencia());
+          ps.setString(14, ruta.dias());
         });
   }
 
