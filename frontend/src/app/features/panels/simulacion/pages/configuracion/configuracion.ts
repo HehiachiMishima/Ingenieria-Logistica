@@ -64,7 +64,6 @@ import {
   numeroChute,
   compararNombre,
   datosCarga,
-  etiquetaEstado,
   etiquetaRegistro,
   formatearEntero,
   nombreRegistroSugerido,
@@ -118,14 +117,12 @@ interface CeldaRuta {
   grupoColor: string | null;
   /** Bultos redondeados hacia arriba y con miles («1.250»), para la pastilla. */
   bultos: string;
-  /** Ruta diaria ya fija para el balanceo automático (candado). */
-  fija: boolean;
-  /** Solo en «Ambos»: sus días (D = toda la semana; si no, «L-X-V», «L-X»…) y su balanceo, para el color. */
-  marca: { texto: string; tipo: 'D' | 'LXV' | 'MJS' } | null;
+  /** Pestaña de su frecuencia (al estilo de la del grupo, en el borde derecho). */
+  frecuencia: PestanaFrecuencia;
 }
 
 /** Lo que muestra un cluster: un balanceo o los dos apilados (solo mirar). */
-export type VistaCluster = Balanceo | 'AMBOS';
+export type VistaCluster = Balanceo | 'AMBOS' | 'DIARIA';
 
 /** Un cluster de la matriz: una fila por nivel de apilado y una celda por chute. */
 interface BloqueMatriz {
@@ -136,6 +133,12 @@ interface BloqueMatriz {
   ambosListo: boolean;
   /** Sus rutas diarias ya están fijas para el automático. */
   diariasFijas: boolean;
+  /** Frecuencias que muestra (filtros del panel). */
+  filtros: { lxv: boolean; mjs: boolean; diaria: boolean };
+  /** El cluster está cerrado en las dos frecuencias. */
+  cerrado: boolean;
+  /** Estado para el título del cluster. */
+  estado: string;
   /** filas[f][c]: ruta en la fila f del chute c (en el orden de `chutesMatriz`), o null. */
   filas: (CeldaRuta | null)[][];
 }
@@ -270,7 +273,6 @@ export class SimulacionConfiguracion {
   readonly puedeModificar = computed(() =>
     this.sesion.permisos().includes(PERMISOS.MODIFICAR_CONFIGURACION_SIMULACION),
   );
-  readonly estadoRegistro = etiquetaEstado;
   readonly limitesValidos = LIMITES;
 
   readonly registros = signal<ArchivoSimulacion[]>([]);
@@ -302,16 +304,300 @@ export class SimulacionConfiguracion {
     }
     const vistas = this.vistas();
     const enMjs = (clusterId: number) => vistas[clusterId] === 'MJS';
+    // «Ambos» y «Diarias» suman lo que muestran desde sus rutas (ver cargaDesdeRutas).
+    const desdeRutas = (clusterId: number) =>
+      vistas[clusterId] === 'AMBOS' || vistas[clusterId] === 'DIARIA';
     return {
       ...lxv,
       clusters: lxv.clusters.map((cluster) =>
         enMjs(cluster.id) ? (mjs.clusters.find((c) => c.id === cluster.id) ?? cluster) : cluster,
       ),
       carga: [
-        ...lxv.carga.filter((fila) => !enMjs(fila.clusterId)),
+        ...lxv.carga.filter((fila) => !enMjs(fila.clusterId) && !desdeRutas(fila.clusterId)),
         ...mjs.carga.filter((fila) => enMjs(fila.clusterId)),
+        ...this.cargaDesdeRutas(),
       ],
     };
+  });
+
+  /**
+   * Carga de los clusters con «Ambos» (las dos frecuencias) o «Diarias» (solo las diarias): el
+   * total de lo que se ve, sacado de sus rutas (cada una una vez: una diaria no se cuenta dos
+   * veces). Los operarios no se suman: son la misma gente en días distintos, así que cada chute
+   * muestra el mayor de los dos días.
+   */
+  private readonly cargaDesdeRutas = computed<CargaSimulacion[]>(() => {
+    const vistas = this.vistas();
+    const elegidos = new Map(
+      Object.entries(vistas)
+        .filter(([, vista]) => vista === 'AMBOS' || vista === 'DIARIA')
+        .map(([id, vista]) => [Number(id), vista]),
+    );
+    if (elegidos.size === 0) {
+      return [];
+    }
+    const { LXV: lxv, MJS: mjs } = this.configs();
+    const operarios = new Map<string, number>();
+    for (const fila of [...(lxv?.carga ?? []), ...(mjs?.carga ?? [])]) {
+      if (elegidos.has(fila.clusterId) && fila.operarios !== null) {
+        const clave = `${fila.clusterId}:${fila.chuteId}`;
+        operarios.set(clave, Math.max(operarios.get(clave) ?? 0, Number(fila.operarios)));
+      }
+    }
+    const porPar = new Map<string, CargaSimulacion>();
+    for (const ruta of this.rutasMatriz()) {
+      const vista = elegidos.get(ruta.clusterId);
+      if (!vista || (vista === 'DIARIA' && !esDiaria(ruta))) {
+        continue;
+      }
+      const clave = `${ruta.clusterId}:${ruta.chuteId}`;
+      let fila = porPar.get(clave);
+      if (!fila) {
+        fila = {
+          clusterId: ruta.clusterId,
+          chuteId: ruta.chuteId,
+          rutas: 0,
+          bultos: 0,
+          unidades: 0,
+          lineas: 0,
+          cod: 0,
+          operarios: operarios.get(clave) ?? null,
+        };
+        porPar.set(clave, fila);
+      }
+      fila.rutas += 1;
+      fila.bultos += Number(ruta.totalBultos ?? 0);
+      fila.unidades += Number(ruta.totalUnidades ?? 0);
+      fila.lineas += Number(ruta.totalLineas ?? 0);
+      fila.cod += Number(ruta.conteoCod ?? 0);
+    }
+    return [...porPar.values()];
+  });
+
+  /** Filtros del cluster: qué rutas muestra (siempre al menos uno pulsado). */
+  filtrosDe(clusterId: number): { lxv: boolean; mjs: boolean; diaria: boolean } {
+    const vista = this.vistaDe(clusterId);
+    return {
+      lxv: vista === 'LXV' || vista === 'AMBOS',
+      mjs: vista === 'MJS' || vista === 'AMBOS',
+      diaria: vista === 'DIARIA',
+    };
+  }
+
+  /**
+   * Pulsa o suelta un filtro. L-X-V y M-J-S se combinan (los dos = todo); «Diarias» va sola y
+   * solo para ver: pulsarla suelta las otras y pulsar otra la suelta. Nunca quedan todos sueltos.
+   */
+  alternarFiltro(clusterId: number, filtro: Balanceo | 'DIARIA'): void {
+    const filtros = this.filtrosDe(clusterId);
+    if (filtro === 'DIARIA') {
+      this.cambiarVista(clusterId, filtros.diaria ? 'LXV' : 'DIARIA');
+      return;
+    }
+    if (filtros.diaria) {
+      this.cambiarVista(clusterId, filtro);
+      return;
+    }
+    const lxv = filtro === 'LXV' ? !filtros.lxv : filtros.lxv;
+    const mjs = filtro === 'MJS' ? !filtros.mjs : filtros.mjs;
+    if (!lxv && !mjs) {
+      return;
+    }
+    this.cambiarVista(clusterId, lxv && mjs ? 'AMBOS' : lxv ? 'LXV' : 'MJS');
+  }
+
+  // ---------------- Menú «Acciones» del cluster ----------------
+
+  /** Menú abierto: de qué cluster y dónde se dibuja (fijo, bajo su botón). */
+  readonly menuAcciones = signal<{ id: number; nombre: string; left: number; top: number } | null>(
+    null,
+  );
+
+  /**
+   * Avance del cluster en las dos frecuencias. Los clusters se trabajan en orden:
+   * el en curso es el primero sin cerrar (se cierra en las dos a la vez).
+   */
+  avanceCluster(clusterId: number): {
+    lxv: string;
+    mjs: string;
+    cerrado: boolean;
+    enCurso: boolean;
+    esperaA: string | null;
+    siguiente: string | null;
+  } {
+    const { LXV: lxv, MJS: mjs } = this.configs();
+    const estado = (cfg: ConfiguracionSimulacion | null) =>
+      cfg?.clusters.find((c) => c.id === clusterId)?.estado ?? 'PENDIENTE';
+    const lista = lxv?.clusters ?? [];
+    const enCurso = lista.find((c) => c.estado !== 'CERRADO') ?? null;
+    const indice = lista.findIndex((c) => c.id === clusterId);
+    const eLxv = estado(lxv);
+    const eMjs = estado(mjs);
+    return {
+      lxv: eLxv,
+      mjs: eMjs,
+      cerrado: eLxv === 'CERRADO' && eMjs === 'CERRADO',
+      enCurso: enCurso?.id === clusterId,
+      esperaA: enCurso && enCurso.id !== clusterId ? enCurso.nombre : null,
+      siguiente: lista[indice + 1]?.nombre ?? null,
+    };
+  }
+
+  /** Cerrado y texto del estado del cluster (título de su nombre). */
+  private estadoBloque(clusterId: number): { cerrado: boolean; estado: string } {
+    const a = this.avanceCluster(clusterId);
+    const paso = (e: string) => (e === 'PENDIENTE' ? 'pendiente' : 'hecho');
+    return {
+      cerrado: a.cerrado,
+      estado: a.cerrado
+        ? 'Cerrado'
+        : a.esperaA
+          ? `En espera de ${a.esperaA}`
+          : `En curso · chutes L-X-V ${paso(a.lxv)} · M-J-S ${paso(a.mjs)}`,
+    };
+  }
+
+  /** Opciones del menú abierto, cada una habilitada solo cuando le toca. */
+  readonly accionesMenu = computed(() => {
+    const menu = this.menuAcciones();
+    if (!menu) {
+      return [];
+    }
+    this.configs();
+    const a = this.avanceCluster(menu.id);
+    const activo = a.enCurso && !a.cerrado && this.puedeModificar();
+    const chutes = (b: Balanceo, estado: string) => ({
+      clave: b === 'LXV' ? ('CHUTES_LXV' as const) : ('CHUTES_MJS' as const),
+      titulo: `${estado === 'PENDIENTE' ? 'Balancear' : 'Volver a balancear'} chutes ${ETIQUETA_BALANCEO[b]}`,
+      detalle: estado === 'PENDIENTE' ? 'Pendiente' : 'Hecho',
+      hecha: estado !== 'PENDIENTE',
+      habilitada: activo,
+    });
+    const conChutes = a.lxv !== 'PENDIENTE' && a.mjs !== 'PENDIENTE';
+    const conOperarios =
+      ['LISTO', 'CERRADO'].includes(a.lxv) && ['LISTO', 'CERRADO'].includes(a.mjs);
+    const acciones = [
+      chutes('LXV', a.lxv),
+      chutes('MJS', a.mjs),
+      {
+        clave: 'OPERARIOS' as const,
+        titulo: conOperarios ? 'Recalcular operarios' : 'Balancear operarios',
+        detalle: conChutes ? 'Misma cantidad en L-X-V y M-J-S' : 'Primero los chutes de L-X-V y M-J-S',
+        hecha: conOperarios,
+        habilitada: activo && conChutes,
+      },
+      {
+        clave: 'CERRAR' as const,
+        titulo: a.siguiente ? `Cerrar y pasar a ${a.siguiente}` : 'Cerrar y terminar',
+        detalle: conOperarios ? 'Cierra L-X-V y M-J-S' : 'Primero los operarios',
+        hecha: false,
+        habilitada: activo && a.lxv === 'LISTO' && a.mjs === 'LISTO',
+      },
+      {
+        clave: 'RESTABLECER' as const,
+        titulo: 'Restablecer cluster',
+        detalle: 'Deshace L-X-V y M-J-S',
+        hecha: false,
+        habilitada: activo && (a.lxv !== 'PENDIENTE' || a.mjs !== 'PENDIENTE'),
+      },
+    ];
+    if (a.cerrado) {
+      return [
+        {
+          clave: 'REABRIR' as const,
+          titulo: 'Reabrir cluster',
+          detalle: 'Los siguientes vuelven a la proyección',
+          hecha: false,
+          habilitada: this.puedeModificar(),
+        },
+      ];
+    }
+    return acciones;
+  });
+
+  /** Aviso del menú: por qué está en espera. */
+  readonly avisoMenu = computed(() => {
+    const menu = this.menuAcciones();
+    if (!menu) {
+      return null;
+    }
+    this.configs();
+    const a = this.avanceCluster(menu.id);
+    return a.esperaA && !a.cerrado ? `Se habilita cuando cierres ${a.esperaA}.` : null;
+  });
+
+  abrirAcciones(evento: Event, cluster: { id: number; nombre: string }): void {
+    const boton = evento.currentTarget;
+    if (!(boton instanceof HTMLElement)) {
+      return;
+    }
+    if (this.menuAcciones()?.id === cluster.id) {
+      this.menuAcciones.set(null);
+      return;
+    }
+    const caja = boton.getBoundingClientRect();
+    const ancho = Math.min(280, window.innerWidth - 32);
+    const left = Math.min(Math.max(16, caja.left), window.innerWidth - ancho - 16);
+    this.detalle.set(null);
+    this.menuAcciones.set({ id: cluster.id, nombre: cluster.nombre, left, top: caja.bottom + 6 });
+  }
+
+  ejecutarAccion(clave: string): void {
+    const menu = this.menuAcciones();
+    this.menuAcciones.set(null);
+    if (!menu) {
+      return;
+    }
+    const cluster = { id: menu.id, nombre: menu.nombre };
+    if (clave === 'CHUTES_LXV') {
+      this.balancear(cluster, 'LXV');
+    } else if (clave === 'CHUTES_MJS') {
+      this.balancear(cluster, 'MJS');
+    } else if (clave === 'OPERARIOS') {
+      this.asignarOperarios(cluster);
+    } else if (clave === 'CERRAR') {
+      this.cerrar(cluster);
+    } else if (clave === 'RESTABLECER') {
+      this.confirmarRestablecerCluster(cluster);
+    } else if (clave === 'REABRIR') {
+      this.confirmarReabrir(cluster);
+    }
+  }
+
+  /** El menú se cierra al tocar fuera, con Escape, al desplazar o al cambiar el tamaño. */
+  private readonly cierreAcciones = effect((alLimpiar) => {
+    if (!this.menuAcciones()) {
+      return;
+    }
+    const fuera = (objetivo: EventTarget | null) =>
+      !(objetivo instanceof Element) ||
+      (!objetivo.closest('.mz-menu') && !objetivo.closest('.mz-panel__acciones-boton'));
+    const alTocar = (e: PointerEvent) => {
+      if (fuera(e.target)) {
+        this.menuAcciones.set(null);
+      }
+    };
+    const alTeclear = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        this.menuAcciones.set(null);
+      }
+    };
+    const alMover = (e: Event) => {
+      if (fuera(e.target)) {
+        this.menuAcciones.set(null);
+      }
+    };
+    const alRedimensionar = () => this.menuAcciones.set(null);
+    document.addEventListener('pointerdown', alTocar, true);
+    document.addEventListener('keydown', alTeclear);
+    document.addEventListener('scroll', alMover, { capture: true, passive: true });
+    window.addEventListener('resize', alRedimensionar);
+    alLimpiar(() => {
+      document.removeEventListener('pointerdown', alTocar, true);
+      document.removeEventListener('keydown', alTeclear);
+      document.removeEventListener('scroll', alMover, true);
+      window.removeEventListener('resize', alRedimensionar);
+    });
   });
 
   /** Vista de un cluster: L-X-V, M-J-S o Ambos. */
@@ -339,9 +625,6 @@ export class SimulacionConfiguracion {
     if (vista === this.vistaDe(clusterId) || this.ocupado()) {
       return;
     }
-    if (vista === 'AMBOS' && !this.ambosListo(clusterId)) {
-      return;
-    }
     this.vistas.update((actual) => ({ ...actual, [clusterId]: vista }));
     this.detalle.set(null);
     const cfg = this.configs()[vista === 'MJS' ? 'MJS' : 'LXV'];
@@ -354,6 +637,9 @@ export class SimulacionConfiguracion {
     const vistas = this.vistas();
     return this.rutasMatriz().filter((ruta) => {
       const vista = vistas[ruta.clusterId] ?? 'LXV';
+      if (vista === 'DIARIA') {
+        return esDiaria(ruta);
+      }
       return vista === 'AMBOS' || rutaEnBalanceo(ruta.frecuencia, vista);
     });
   });
@@ -442,14 +728,6 @@ export class SimulacionConfiguracion {
     () => (this.config()?.clusters ?? []).find((cluster) => cluster.estado !== 'CERRADO') ?? null,
   );
 
-  /** «L-X-V 2/5 · M-J-S 0/5»: clusters cerrados en cada balanceo. */
-  readonly clustersCerrados = computed(() => {
-    const { LXV: lxv, MJS: mjs } = this.configs();
-    const cerrados = (cfg: ConfiguracionSimulacion | null) =>
-      `${(cfg?.clusters ?? []).filter((c) => c.estado === 'CERRADO').length}/${cfg?.clusters.length ?? 0}`;
-    return `L-X-V ${cerrados(lxv)} · M-J-S ${cerrados(mjs)}`;
-  });
-
   /**
    * El equipo ya trabajó en clusters cerrados (de cualquiera de los dos
    * balanceos): para cambiarlo hay que reabrir el primero de ellos.
@@ -495,25 +773,33 @@ export class SimulacionConfiguracion {
    */
   readonly vistaOperarios = computed(() => {
     const cluster = this.operariosPendiente();
-    const cfg = this.config();
-    if (!cluster || !cfg) {
+    const { LXV: lxv, MJS: mjs } = this.configs();
+    if (!cluster || !lxv) {
       return null;
     }
-    const filas = cfg.carga.filter((fila) => fila.clusterId === cluster.id && fila.rutas > 0);
-    const porChute = new Map<number, number>();
-    for (const fila of filas) {
-      porChute.set(fila.chuteId, (porChute.get(fila.chuteId) ?? 0) + Number(fila.bultos));
-    }
+    // La misma cantidad vale para L-X-V y M-J-S: el mínimo y lo necesario son los
+    // del día que más pide (cada frecuencia la reparte según su carga).
     const velocidad = this.velocidad();
     const limite = this.limites()[cluster.id] ?? 0;
-    let necesarios = 0;
-    for (const bultos of porChute.values()) {
-      if (bultos > 0 && velocidad > 0 && limite > 0) {
-        necesarios += Math.max(1, Math.ceil(bultos / (velocidad * limite)));
+    const delDia = (cfg: ConfiguracionSimulacion | null) => {
+      const porChute = new Map<number, number>();
+      for (const fila of cfg?.carga ?? []) {
+        if (fila.clusterId === cluster.id && fila.rutas > 0) {
+          porChute.set(fila.chuteId, (porChute.get(fila.chuteId) ?? 0) + Number(fila.bultos));
+        }
       }
-    }
+      let necesarios = 0;
+      for (const bultos of porChute.values()) {
+        if (bultos > 0 && velocidad > 0 && limite > 0) {
+          necesarios += Math.max(1, Math.ceil(bultos / (velocidad * limite)));
+        }
+      }
+      return { chutes: porChute.size, necesarios };
+    };
+    const dias = [delDia(lxv), delDia(mjs)];
+    const necesarios = Math.max(...dias.map((d) => d.necesarios));
     const cantidad = this.operariosCantidad();
-    const minimo = porChute.size;
+    const minimo = Math.max(...dias.map((d) => d.chutes));
     const valida =
       cantidad !== null &&
       Number.isInteger(cantidad) &&
@@ -535,7 +821,8 @@ export class SimulacionConfiguracion {
   readonly historialAbierto = signal(false);
 
   /** Cluster cuyo paso 1 espera el rango de chutes (modal «Chutes para balancear»). */
-  readonly rangoPendiente = signal<{ id: number; nombre: string } | null>(null);
+  /** Cluster y frecuencia cuyo balanceo de chutes espera el rango (modal «Chutes para balancear»). */
+  readonly rangoPendiente = signal<{ id: number; nombre: string; balanceo: Balanceo } | null>(null);
   readonly rangoDesde = signal<number | null>(null);
   readonly rangoHasta = signal<number | null>(null);
 
@@ -548,7 +835,7 @@ export class SimulacionConfiguracion {
     if (!cluster) {
       return null;
     }
-    const balanceo = this.balanceoDe(cluster.id);
+    const balanceo = cluster.balanceo;
     const propio = this.configs()[balanceo]?.clusters.find((c) => c.id === cluster.id);
     return propio?.rangoDelOtro ? ETIQUETA_BALANCEO[balanceo === 'LXV' ? 'MJS' : 'LXV'] : null;
   });
@@ -563,7 +850,7 @@ export class SimulacionConfiguracion {
       (ruta) => ruta.clusterId === cluster.id && (!ruta.frecuencia || ruta.frecuencia === 'DIARIA'),
     );
     const propias = this.rutasMatriz().filter(
-      (ruta) => ruta.clusterId === cluster.id && ruta.frecuencia === this.balanceoDe(cluster.id),
+      (ruta) => ruta.clusterId === cluster.id && ruta.frecuencia === cluster.balanceo,
     );
     return {
       diarias: rutas.length,
@@ -634,7 +921,7 @@ export class SimulacionConfiguracion {
       desde,
       hasta,
       prioridad,
-      balanceo: this.balanceoDe(cluster.id),
+      balanceo: cluster.balanceo,
     });
   });
 
@@ -654,19 +941,6 @@ export class SimulacionConfiguracion {
       vista.clusterId === this.rangoPendiente()?.id
     );
   });
-
-  /** Sube (−1) o baja (+1) un grupo en la prioridad. */
-  moverGrupo(indice: number, paso: -1 | 1): void {
-    const destino = indice + paso;
-    this.prioridadGrupos.update((lista) => {
-      if (destino < 0 || destino >= lista.length) {
-        return lista;
-      }
-      const nueva = [...lista];
-      [nueva[indice], nueva[destino]] = [nueva[destino], nueva[indice]];
-      return nueva;
-    });
-  }
 
   /** Tramo de un grupo en la vista previa (null mientras no llega o sin rango). */
   tramoDe(grupo: string): TramoGrupo | null {
@@ -837,16 +1111,14 @@ export class SimulacionConfiguracion {
     const vista = (ruta: RutaSimulacion): CeldaRuta => ({
       ruta,
       titulo: this.tituloEnCache(ruta),
-      // En «Ambos» solo se mira: nada se arrastra.
-      movible: editable && !cerrados.has(ruta.clusterId) && vistas[ruta.clusterId] !== 'AMBOS',
+      // «Diarias» es solo para ver: nada se arrastra.
+      movible: editable && !cerrados.has(ruta.clusterId) && vistas[ruta.clusterId] !== 'DIARIA',
       movida: ruta.chuteId !== ruta.chuteOriginalId || ruta.clusterId !== ruta.clusterOriginalId,
       cambioCluster: ruta.clusterId !== ruta.clusterOriginalId,
       grupo: colores.get(ruta.clusterId)?.has(ruta.grupo) ? ruta.grupo : null,
       grupoColor: colores.get(ruta.clusterId)?.get(ruta.grupo) ?? null,
       bultos: formatearEntero(ruta.totalBultos),
-      fija: !!ruta.diariaFija,
-      // En «Ambos», todas llevan sus días; en un balanceo, solo las de días parciales («L-X»).
-      marca: vistas[ruta.clusterId] === 'AMBOS' || diasParciales(ruta) ? marcaDias(ruta) : null,
+      frecuencia: pestanaFrecuencia(ruta),
     });
 
     const resultado = new Map<number, (CeldaRuta | null)[][]>();
@@ -885,6 +1157,8 @@ export class SimulacionConfiguracion {
         vista: this.vistaDe(cluster.id),
         ambosListo: this.ambosListo(cluster.id),
         diariasFijas: !!this.config()?.clusters.find((c) => c.id === cluster.id)?.diariasFijas,
+        filtros: this.filtrosDe(cluster.id),
+        ...this.estadoBloque(cluster.id),
         filas: celdas.get(cluster.id) ?? vacias(),
       }));
   });
@@ -912,12 +1186,8 @@ export class SimulacionConfiguracion {
   readonly totalesMatriz = computed(() => {
     const clusters = new Set(this.filtroCluster());
     const chutes = new Set(this.filtroChute());
-    // Un cluster en «Ambos» mezcla días distintos: no suma al total general.
-    const vistas = this.vistas();
-    const enAmbos = (clusterId: number) => vistas[clusterId] === 'AMBOS';
     const carga = (this.config()?.carga ?? []).filter(
       (fila) =>
-        !enAmbos(fila.clusterId) &&
         (clusters.size === 0 || clusters.has(fila.clusterId)) &&
         (chutes.size === 0 || chutes.has(fila.chuteId)),
     );
@@ -927,9 +1197,6 @@ export class SimulacionConfiguracion {
     const operarios = new Map(carga.map((fila) => [`${fila.clusterId}:${fila.chuteId}`, fila.operarios]));
     const porPar = new Map<string, CargaSimulacion>();
     for (const ruta of this.rutasVisibles()) {
-      if (enAmbos(ruta.clusterId)) {
-        continue;
-      }
       const clave = `${ruta.clusterId}:${ruta.chuteId}`;
       let fila = porPar.get(clave);
       if (!fila) {
@@ -1667,9 +1934,6 @@ export class SimulacionConfiguracion {
     if (this.clusterCerrado(ruta.clusterId)) {
       return `${ruta.cluster} está cerrado: reábrelo para mover sus rutas.`;
     }
-    if (this.vistaDe(ruta.clusterId) === 'AMBOS') {
-      return 'En «Ambos» solo se mira: elige L-X-V o M-J-S para mover rutas.';
-    }
     // Una diaria también cambia en el otro balanceo: allí su cluster no puede estar cerrado.
     if (!ruta.frecuencia || ruta.frecuencia === 'DIARIA') {
       const otro: Balanceo = this.balanceoDe(ruta.clusterId) === 'LXV' ? 'MJS' : 'LXV';
@@ -1718,8 +1982,12 @@ export class SimulacionConfiguracion {
     const nombreChute = cfg.chutes.find((c) => c.id === chuteId)?.nombre ?? ruta.chute;
     const cambiaCluster = clusterId !== ruta.clusterId;
     const cambiaChute = chuteId !== ruta.chuteId;
-    const balanceo = this.balanceoDe(ruta.clusterId);
     const diaria = !ruta.frecuencia || ruta.frecuencia === 'DIARIA';
+    // Con los dos filtros, la ruta se mueve en su frecuencia (una diaria, en cualquiera).
+    const balanceo: Balanceo =
+      this.vistaDe(ruta.clusterId) === 'AMBOS'
+        ? ruta.frecuencia === 'MJS' ? 'MJS' : 'LXV'
+        : this.balanceoDe(ruta.clusterId);
 
     this.rutaGuardando.set(ruta.id);
     // Cambio de cluster (con o sin chute) en un solo llamado: el servidor valida
@@ -1860,15 +2128,14 @@ export class SimulacionConfiguracion {
     if (!config) {
       return null;
     }
-    const enEste = (clusterId: number) => (this.vistaDe(clusterId) === 'MJS') === (balanceo === 'MJS');
     const buff = new Set(this.buffElegidos());
     const buffGuardado = new Set(this.buffGuardado());
     const cambiaBuff = buff.size !== buffGuardado.size || [...buff].some((id) => !buffGuardado.has(id));
     return {
       velocidadBase: this.velocidad(),
       operariosPorChute: this.porChute(),
+      // Un solo límite por cluster: el servidor lo aplica a L-X-V y M-J-S.
       clusters: config.clusters
-        .filter((cluster) => enEste(cluster.id))
         .map((cluster) => ({
           clusterId: cluster.id,
           limiteHoras: this.limites()[cluster.id] ?? 0,
@@ -1883,33 +2150,19 @@ export class SimulacionConfiguracion {
     };
   }
 
-  /** Algún cluster que muestra M-J-S tiene su límite cambiado sin guardar. */
-  private limitesMjsCambiados(): boolean {
-    const mjs = this.configs().MJS;
-    return (mjs?.clusters ?? []).some(
-      (cluster) =>
-        this.vistaDe(cluster.id) === 'MJS' &&
-        Number(cluster.limiteHoras) !== (this.limites()[cluster.id] ?? 0),
-    );
-  }
-
   /**
    * Guarda lo editado: lo del registro y los límites de L-X-V en una petición y,
    * si cambió algún límite de M-J-S, otra para ese balanceo.
    */
   private guardarTodo(id: number): Observable<void> {
-    const lxv = this.peticion('LXV');
-    const mjs = this.limitesMjsCambiados() ? this.peticion('MJS') : null;
-    if (!lxv) {
+    const peticion = this.peticion('LXV');
+    if (!peticion) {
       return of(undefined);
     }
-    return this.api.guardarConfiguracion(id, lxv, 'LXV').pipe(
-      switchMap((config) =>
-        mjs ? this.api.guardarConfiguracion(id, mjs, 'MJS').pipe(map((otra) => [config, otra])) : of([config]),
-      ),
-      tap((configs) => {
+    return this.api.guardarConfiguracion(id, peticion, 'LXV').pipe(
+      tap((config) => {
         if (this.seleccionado() === id) {
-          configs.forEach((config) => this.aplicarConfiguracion(config));
+          this.aplicarConfiguracion(config);
         }
       }),
       // La velocidad o el máximo por chute también invalidan operarios de M-J-S.
@@ -1955,8 +2208,8 @@ export class SimulacionConfiguracion {
    * rutas. Propone el último rango usado o, si no hay, del primer al último
    * chute que el cluster usa hoy.
    */
-  balancear(cluster: { id: number; nombre: string }): void {
-    const cfg = this.config();
+  balancear(cluster: { id: number; nombre: string }, balanceo: Balanceo): void {
+    const cfg = this.configs()[balanceo];
     if (!cfg || this.ocupado()) {
       return;
     }
@@ -1964,7 +2217,7 @@ export class SimulacionConfiguracion {
     const existe = (id: number | null) => id !== null && orden.some((chute) => chute.id === id);
     const guardado = cfg.clusters.find((item) => item.id === cluster.id);
     // Si el otro balanceo ya definió el rango, se usa el suyo (aquí no se elige).
-    const otro: Balanceo = this.balanceoDe(cluster.id) === 'LXV' ? 'MJS' : 'LXV';
+    const otro: Balanceo = balanceo === 'LXV' ? 'MJS' : 'LXV';
     const delOtro = guardado?.rangoDelOtro
       ? this.configs()[otro]?.clusters.find((item) => item.id === cluster.id)
       : null;
@@ -1982,10 +2235,12 @@ export class SimulacionConfiguracion {
     }
     this.rangoDesde.set(desde);
     this.rangoHasta.set(hasta);
-    // Propone la prioridad guardada (los grupos ya vienen en ese orden, y los nuevos al final).
-    this.prioridadGrupos.set((guardado?.grupos ?? []).map((g) => g.nombre));
+    // Grupos del cluster en orden natural: cada uno recibe su tramo (ya no hay prioridad).
+    this.prioridadGrupos.set(
+      (guardado?.grupos ?? []).map((g) => g.nombre).sort(compararNombre),
+    );
     this.vistaGrupos.set(null);
-    this.rangoPendiente.set(cluster);
+    this.rangoPendiente.set({ id: cluster.id, nombre: cluster.nombre, balanceo });
   }
 
   /** Confirma el modal de rango y lanza el paso 1 con esos chutes. */
@@ -1996,20 +2251,14 @@ export class SimulacionConfiguracion {
     if (!cluster || desde === null || hasta === null || !this.rangoListo()) {
       return;
     }
-    const prioridad = this.prioridadGrupos();
     const heredado = this.rangoHeredado() !== null;
     this.rangoPendiente.set(null);
-    // Con el rango del otro balanceo, el servidor usa el suyo: no se manda.
+    // Con el rango de la otra frecuencia, el servidor usa el suyo: no se manda.
     this.ejecutarPaso(
       'RUTAS',
       cluster,
-      heredado
-        ? {}
-        : {
-            chuteDesdeId: desde,
-            chuteHastaId: hasta,
-            ...(prioridad.length > 1 ? { prioridad } : {}),
-          },
+      heredado ? {} : { chuteDesdeId: desde, chuteHastaId: hasta },
+      cluster.balanceo,
     );
   }
 
@@ -2082,27 +2331,20 @@ export class SimulacionConfiguracion {
     );
   }
 
-  /** Botón ▶ del panel: ejecuta el paso que le toca al cluster en curso (1 rutas, 2 operarios, 3 cerrar). */
-  ejecutarPasoActual(cluster: ResumenCluster): void {
-    if (cluster.paso === 1) {
-      this.balancear(cluster);
-    } else if (cluster.paso === 2) {
-      this.asignarOperarios(cluster);
-    } else {
-      this.cerrar(cluster);
-    }
-  }
-
+  /**
+   * Paso de un cluster. Los chutes son de una frecuencia (balanceo); operarios y
+   * cerrar valen para las dos (el servidor hace las dos a la vez).
+   */
   private ejecutarPaso(
     paso: Paso,
     cluster: { id: number; nombre: string },
     cuerpo: BalanceoCuerpo | null = null,
+    balanceo: Balanceo = 'LXV',
   ): void {
     const id = this.seleccionado();
     if (!id || this.ocupado()) {
       return;
     }
-    const balanceo = this.balanceoDe(cluster.id);
     this.trabajando.set(paso);
     // Cada paso devuelve la configuración ya actualizada: no hace falta pedirla.
     const operacion: Observable<{ mensaje: string; config: ConfiguracionSimulacion }> =
@@ -2407,17 +2649,32 @@ export function textoFrecuencia(frecuencia: string | null | undefined, dias?: st
   return frecuencia === 'LXV' ? 'L-X-V' : frecuencia === 'MJS' ? 'M-J-S' : 'L-M-X-J-V-S';
 }
 
-/** Marca de «Ambos»: D si va toda la semana; si no, sus días, con el color de su balanceo. */
-function marcaDias(ruta: RutaSimulacion): { texto: string; tipo: 'D' | 'LXV' | 'MJS' } {
-  const dias = textoFrecuencia(ruta.frecuencia, ruta.dias);
-  const corto = dias === 'L-M-X-J-V-S' ? 'D' : dias === 'L-X-V' ? 'LXV' : dias === 'M-J-S' ? 'MJS' : dias;
-  if (!ruta.frecuencia || ruta.frecuencia === 'DIARIA') {
-    return { texto: corto, tipo: 'D' };
-  }
-  return { texto: corto, tipo: ruta.frecuencia === 'MJS' ? 'MJS' : 'LXV' };
+/** Pestaña de frecuencia de una ruta: texto corto, color de su balanceo y título completo. */
+export interface PestanaFrecuencia {
+  /** D (toda la semana), LXV, MJS o sus días sin guiones si son parciales («LX», «V»). */
+  texto: string;
+  tipo: 'D' | 'LXV' | 'MJS';
+  titulo: string;
+  /** Diaria ya fija para el balanceo automático: pestaña más oscura. */
+  fija: boolean;
 }
 
-/** La ruta no va todos los días de su balanceo («L-X», «V», «L-M»…). */
-function diasParciales(ruta: RutaSimulacion): boolean {
-  return !!ruta.dias && !['L-M-X-J-V-S', 'L-X-V', 'M-J-S'].includes(ruta.dias);
+/** La ruta es diaria (aparece en L-X-V y en M-J-S). */
+function esDiaria(ruta: RutaSimulacion): boolean {
+  return !ruta.frecuencia || ruta.frecuencia === 'DIARIA';
+}
+
+function pestanaFrecuencia(ruta: RutaSimulacion): PestanaFrecuencia {
+  const dias = textoFrecuencia(ruta.frecuencia, ruta.dias);
+  const diaria = esDiaria(ruta);
+  // La pestaña apila una letra por línea y caben 3: toda diaria (también la de
+  // días mezclados, p. ej. L-M) es «D»; sus días van en el título de la ruta.
+  const corto = diaria ? 'D' : dias.replaceAll('-', '');
+  const fija = diaria && !!ruta.diariaFija;
+  return {
+    texto: corto,
+    tipo: diaria ? 'D' : ruta.frecuencia === 'MJS' ? 'MJS' : 'LXV',
+    titulo: `Frecuencia ${dias}${diaria ? ' (diaria' + (fija ? ', fija para el balanceo automático)' : ')') : ''}`,
+    fija,
+  };
 }

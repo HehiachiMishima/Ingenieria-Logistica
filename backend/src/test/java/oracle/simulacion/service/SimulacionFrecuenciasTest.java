@@ -346,6 +346,90 @@ class SimulacionFrecuenciasTest {
     verify(parametroChuteRepo).save(any(ParametroChute.class));
   }
 
+  // ---------------- Pasos compartidos por las dos frecuencias ----------------
+
+  @Test
+  void losOperariosSeAsignanEnLasDosFrecuenciasConLaMismaCantidad() {
+    ParametroCluster lxv = parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_RUTAS);
+    ParametroCluster mjs = parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_RUTAS);
+    preparar(List.of(lxv, mjs), List.of(base(1L, false)), List.of());
+
+    servicio.balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.OPERARIOS, BalanceoRequest.conOperarios(4));
+
+    assertEquals(ParametroCluster.ESTADO_LISTO, lxv.getEstado());
+    assertEquals(ParametroCluster.ESTADO_LISTO, mjs.getEstado());
+    assertEquals(4, lxv.getOperariosOla());
+    assertEquals(4, mjs.getOperariosOla());
+  }
+
+  @Test
+  void losOperariosEsperanLosChutesDeLasDosFrecuencias() {
+    ParametroCluster lxv = parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_RUTAS);
+    ParametroCluster mjs = parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE);
+    preparar(List.of(lxv, mjs), List.of(base(1L, false)), List.of());
+
+    ConflictoException error =
+        assertThrows(
+            ConflictoException.class,
+            () ->
+                servicio.balancear(
+                    10L, Balanceo.LXV, CL1, FaseBalanceo.OPERARIOS, BalanceoRequest.conOperarios(4)));
+
+    assertTrue(error.getMessage().contains("M-J-S"), error.getMessage());
+    assertEquals(ParametroCluster.ESTADO_RUTAS, lxv.getEstado());
+  }
+
+  @Test
+  void cerrarCierraLasDosFrecuenciasYSoloConLasDosListas() {
+    ParametroCluster lxv = parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_LISTO);
+    ParametroCluster mjs = parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_RUTAS);
+    preparar(List.of(lxv, mjs), List.of(base(1L, false)), List.of());
+
+    assertThrows(ConflictoException.class, () -> servicio.cerrar(10L, Balanceo.LXV, CL1));
+    assertEquals(ParametroCluster.ESTADO_LISTO, lxv.getEstado());
+
+    mjs.setEstado(ParametroCluster.ESTADO_LISTO);
+    servicio.cerrar(10L, Balanceo.LXV, CL1);
+
+    assertEquals(ParametroCluster.ESTADO_CERRADO, lxv.getEstado());
+    assertEquals(ParametroCluster.ESTADO_CERRADO, mjs.getEstado());
+  }
+
+  @Test
+  void elLimiteDeHorasEsElMismoParaLasDosFrecuencias() {
+    ParametroCluster lxv = parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE);
+    ParametroCluster mjs = parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE);
+    preparar(List.of(lxv, mjs), List.of(base(1L, false)), List.of());
+
+    servicio.guardar(
+        10L,
+        Balanceo.LXV,
+        new ConfiguracionActualizarRequest(
+            new BigDecimal("100"),
+            null,
+            null,
+            List.of(new oracle.simulacion.request.ClusterLimiteRequest(CL1, new BigDecimal("4"))),
+            null));
+
+    assertEquals(0, new BigDecimal("4").compareTo(lxv.getLimiteHoras()));
+    assertEquals(0, new BigDecimal("4").compareTo(mjs.getLimiteHoras()));
+  }
+
+  @Test
+  void restablecerElClusterLoDevuelveEnLasDosFrecuencias() {
+    ParametroCluster lxv = parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_RUTAS);
+    ParametroCluster mjs = parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_RUTAS);
+    preparar(List.of(lxv, mjs), List.of(base(1L, false)), List.of());
+
+    servicio.restablecerCluster(10L, Balanceo.MJS, CL1);
+
+    assertEquals(ParametroCluster.ESTADO_PENDIENTE, lxv.getEstado());
+    assertEquals(ParametroCluster.ESTADO_PENDIENTE, mjs.getEstado());
+    // Se deshacen los dos historiales juntos: también vuelven las diarias.
+    verify(historialRepo).trabajoParaDeshacerAmbos(10L, List.of(CL1));
+    verify(lanzamientoRepo).borrarPorClusters(10L, List.of(CL1));
+  }
+
   // ---------------- Ayudas ----------------
 
   private void preparar(

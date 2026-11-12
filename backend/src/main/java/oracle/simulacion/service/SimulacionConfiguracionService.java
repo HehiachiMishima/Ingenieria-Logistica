@@ -464,6 +464,7 @@ public class SimulacionConfiguracionService {
           configRepo.save(config);
 
           Set<Long> limiteCambiado = new HashSet<>();
+          Set<Long> limiteOtroCambiado = new HashSet<>();
           if (req.clusters() != null) {
             for (ClusterLimiteRequest limite : req.clusters()) {
               ParametroCluster parametro = ctx.parametrosCluster().get(limite.clusterId());
@@ -481,6 +482,19 @@ public class SimulacionConfiguracionService {
                 limiteCambiado.add(limite.clusterId());
               }
               parametro.setLimiteHoras(limite.limiteHoras());
+              // Un solo límite por cluster: vale para L-X-V y M-J-S.
+              ParametroCluster otro = ctx.parametrosOtro().get(limite.clusterId());
+              if (otro != null
+                  && (otro.getLimiteHoras() == null
+                      || otro.getLimiteHoras().compareTo(limite.limiteHoras()) != 0)) {
+                if (ParametroCluster.ESTADO_CERRADO.equals(otro.getEstado())) {
+                  throw new ConflictoException(
+                      ctx.nombreCluster(limite.clusterId())
+                          + " está cerrado: reábrelo para cambiar su límite.");
+                }
+                otro.setLimiteHoras(limite.limiteHoras());
+                limiteOtroCambiado.add(limite.clusterId());
+              }
             }
           }
           if (req.chutes() != null) {
@@ -522,6 +536,7 @@ public class SimulacionConfiguracionService {
             invalidar.addAll(ctx.parametrosCluster().keySet());
             invalidarOperariosOtro(ctx, ctx.parametrosOtro().keySet());
           }
+          invalidarOperariosOtro(ctx, limiteOtroCambiado);
           invalidarOperarios(ctx, invalidar);
           tocar(ctx.archivo(), actor);
           return aConfiguracion(ctx);
@@ -784,13 +799,56 @@ public class SimulacionConfiguracionService {
                     () ->
                         fase == FaseBalanceo.RUTAS
                             ? balancearRutas(archivoId, balanceo, clusterId, pedido, actor)
-                            : asignarOperarios(
+                            : operariosAmbos(
                                 archivoId,
                                 balanceo,
                                 clusterId,
                                 pedido == null ? null : pedido.operarios(),
                                 actor)));
     return ApiResponse.ok(datos.mensaje(), datos);
+  }
+
+  /**
+   * Paso de operarios: la misma cantidad para el cluster en L-X-V y en M-J-S. Cada frecuencia la
+   * reparte según su propia carga (son días distintos). Exige los chutes balanceados en las dos.
+   */
+  private BalanceoResponse operariosAmbos(
+      Long archivoId, Balanceo balanceo, Long clusterId, Integer pedidos, Long actor) {
+    Contexto ctx = contexto(archivoId, balanceo, true);
+    ParametroCluster otro = ctx.parametrosOtro().get(clusterId);
+    if (otro != null && pendiente(otro)) {
+      throw new ConflictoException(
+          "Primero balancea los chutes de "
+              + ctx.nombreCluster(clusterId)
+              + " en "
+              + balanceo.otro().etiqueta()
+              + ".");
+    }
+    // Sin cantidad pedida, la última usada en cualquiera de las dos.
+    Integer cantidad = pedidos;
+    if (cantidad == null) {
+      ParametroCluster propio = ctx.parametrosCluster().get(clusterId);
+      cantidad = propio != null && propio.getOperariosOla() != null
+          ? propio.getOperariosOla()
+          : otro == null ? null : otro.getOperariosOla();
+    }
+    BalanceoResponse este = asignarOperarios(archivoId, balanceo, clusterId, cantidad, actor);
+    if (otro == null) {
+      return este;
+    }
+    BalanceoResponse delOtro =
+        asignarOperarios(archivoId, balanceo.otro(), clusterId, cantidad, actor);
+    // La respuesta trae la configuración del balanceo pedido, ya con los dos pasos hechos.
+    Contexto despues = contexto(archivoId, balanceo, true);
+    return new BalanceoResponse(
+        clusterId,
+        este.cluster(),
+        FaseBalanceo.OPERARIOS.name(),
+        despues.parametrosCluster().get(clusterId).getEstado(),
+        0,
+        este.operariosAsignados(),
+        balanceo.etiqueta() + " · " + este.mensaje() + " " + balanceo.otro().etiqueta() + " · " + delOtro.mensaje(),
+        aConfiguracion(despues));
   }
 
   /** Todo el registro vuelve a la proyección: rutas, operarios, lanzamientos e historial. */
@@ -836,9 +894,10 @@ public class SimulacionConfiguracionService {
         () -> {
           Contexto ctx = contexto(archivoId, balanceo, true);
           exigirEnCurso(ctx, clusterId);
-          // Deshace todo lo hecho mientras estuvo en curso: su balanceo y los
-          // cambios a mano (incluidas rutas que entraron o salieron de él).
-          reiniciarClusters(ctx, List.of(clusterId));
+          // Deshace todo lo hecho mientras estuvo en curso, en L-X-V y en M-J-S: sus
+          // balanceos y los cambios a mano (incluidas rutas que entraron o salieron de
+          // él). Las diarias vuelven a su chute: ningún balanceo las usa ya.
+          reiniciarAmbos(ctx, List.of(clusterId));
           actualizarEstado(ctx);
           tocar(ctx.archivo(), actor);
           return aConfiguracion(ctx);
@@ -865,11 +924,24 @@ public class SimulacionConfiguracionService {
           Contexto ctx = contexto(archivoId, balanceo, true);
           ParametroCluster parametro = exigirEnCurso(ctx, clusterId);
           String nombre = ctx.nombreCluster(clusterId);
-          if (!ParametroCluster.ESTADO_LISTO.equals(parametro.getEstado())) {
+          // Límite y operarios son del cluster: se cierra en las dos frecuencias a la vez.
+          ParametroCluster otro = ctx.parametrosOtro().get(clusterId);
+          boolean otroListo =
+              otro == null || ParametroCluster.ESTADO_LISTO.equals(otro.getEstado());
+          if (!ParametroCluster.ESTADO_LISTO.equals(parametro.getEstado()) || !otroListo) {
             throw new ConflictoException(
-                "Balancea las rutas y asigna los operarios de " + nombre + " antes de cerrarlo.");
+                "Balancea los chutes de L-X-V y M-J-S y asigna los operarios de "
+                    + nombre
+                    + " antes de cerrarlo.");
+          }
+          if (otro != null && !clusterId.equals(enCursoOtro(ctx))) {
+            throw new ConflictoException(
+                nombre + " no está en curso en " + ctx.balanceo().otro().etiqueta() + ".");
           }
           parametro.setEstado(ParametroCluster.ESTADO_CERRADO);
+          if (otro != null) {
+            otro.setEstado(ParametroCluster.ESTADO_CERRADO);
+          }
           actualizarEstado(ctx);
           tocar(ctx.archivo(), actor);
           return aConfiguracion(ctx);
@@ -899,15 +971,20 @@ public class SimulacionConfiguracionService {
             throw new ConflictoException(ctx.nombreCluster(clusterId) + " no está cerrado.");
           }
           List<Long> orden = orden(ctx);
+          // Los siguientes partían de su dotación (en las dos frecuencias): vuelven a la proyección.
           List<Long> siguientes =
               orden.subList(orden.indexOf(clusterId) + 1, orden.size()).stream()
                   .filter(
                       (id) ->
-                          !ParametroCluster.ESTADO_PENDIENTE.equals(
-                              ctx.parametrosCluster().get(id).getEstado()))
+                          !pendiente(ctx.parametrosCluster().get(id))
+                              || !pendiente(ctx.parametrosOtro().get(id)))
                   .toList();
-          reiniciarClusters(ctx, siguientes);
+          reiniciarAmbos(ctx, siguientes);
           parametro.setEstado(ParametroCluster.ESTADO_LISTO);
+          ParametroCluster otro = ctx.parametrosOtro().get(clusterId);
+          if (otro != null && ParametroCluster.ESTADO_CERRADO.equals(otro.getEstado())) {
+            otro.setEstado(ParametroCluster.ESTADO_LISTO);
+          }
           actualizarEstado(ctx);
           tocar(ctx.archivo(), actor);
           return aConfiguracion(ctx);
@@ -1102,13 +1179,8 @@ public class SimulacionConfiguracionService {
     if (heredado) {
       tramos = tramosGuardados(ctx, rango, porGrupoTodas, guardados);
     } else {
-      List<String> orden =
-          ordenGrupos(
-              nombre,
-              porGrupoTodas.keySet(),
-              guardados,
-              pedido == null ? null : pedido.prioridad(),
-              porGrupoTodas.size() > 1);
+      // Sin prioridad: los grupos van en orden natural (1, 2, 3…), cada uno en su tramo.
+      List<String> orden = ordenNatural(porGrupoTodas.keySet());
       if (porGrupoTodas.size() > 1) {
         if (rango == null) {
           throw new SolicitudInvalidaException(
@@ -1119,13 +1191,13 @@ public class SimulacionConfiguracionService {
         }
         exigirChutesParaGrupos(nombre, rango.size(), porGrupoTodas.size());
         TramosGrupos.Reparto reparto =
-            TramosGrupos.repartir(rango, cargaDeGrupos(orden, porGrupoTodas));
+            TramosGrupos.repartir(rango, cargaDelDia(orden, porGrupoTodas));
         tramos = reparto.tramos();
         sinUsar = reparto.sinUsar();
       } else {
         // Un solo grupo (o ninguno): el balanceo de siempre sobre todo el rango.
         tramos =
-            cargaDeGrupos(orden, porGrupoTodas).stream()
+            cargaDelDia(orden, porGrupoTodas).stream()
                 .map((g) -> new TramosGrupos.Tramo(g.nombre(), 1, g.rutas(), g.bultos(), rango))
                 .toList();
       }
@@ -1214,7 +1286,7 @@ public class SimulacionConfiguracionService {
           .append(".");
     }
     if (tramos.size() > 1) {
-      mensaje.append(" Grupos por prioridad: ");
+      mensaje.append(" Tramos de grupos: ");
       for (int i = 0; i < tramos.size(); i++) {
         TramosGrupos.Tramo tramo = tramos.get(i);
         mensaje
@@ -1325,26 +1397,26 @@ public class SimulacionConfiguracionService {
           String nombre = ctx.nombreCluster(clusterId);
           // Carga de cada grupo por chute: totales y cuántas rutas quedan fuera de su tramo.
           Map<String, Map<Long, Long>> rutasPorChute = new LinkedHashMap<>();
-          Map<String, TramosGrupos.Grupo> grupos = new LinkedHashMap<>();
-          for (CargaGrupo fila : cargaGrupos(ctx, true)) {
+          // Carga de cada grupo en su día más pesado (diarias + la mayor entre L-X-V y M-J-S).
+          Map<String, CargaDia> porDia = new LinkedHashMap<>();
+          for (CargaGrupo fila : rutaRepo.cargaPorGrupo(archivoId)) {
             if (!clusterId.equals(fila.getClusterId()) || fila.getRutas() == null || fila.getRutas() == 0) {
               continue;
             }
             String g = fila.getGrupo() == null ? "" : fila.getGrupo();
-            rutasPorChute.computeIfAbsent(g, (k) -> new HashMap<>()).merge(fila.getChuteId(), fila.getRutas(), Long::sum);
-            BigDecimal bultos = fila.getBultos() == null ? BigDecimal.ZERO : fila.getBultos();
-            grupos.merge(
-                g,
-                new TramosGrupos.Grupo(g, fila.getRutas(), bultos),
-                (a, b) -> new TramosGrupos.Grupo(g, a.rutas() + b.rutas(), a.bultos().add(b.bultos())));
+            // Cuántas rutas de cada grupo están hoy en cada chute: las de este balanceo.
+            if (visible(ctx, fila.getFrecuencia())) {
+              rutasPorChute
+                  .computeIfAbsent(g, (k) -> new HashMap<>())
+                  .merge(fila.getChuteId(), fila.getRutas(), Long::sum);
+            }
+            porDia
+                .computeIfAbsent(g, (k) -> new CargaDia())
+                .sumar(fila.getFrecuencia(), fila.getRutas(), ceroSiNulo(fila.getBultos()));
           }
-          List<String> orden =
-              ordenGrupos(
-                  nombre,
-                  grupos.keySet(),
-                  gruposGuardados(archivoId, clusterId),
-                  pedido == null ? null : pedido.prioridad(),
-                  false);
+          Map<String, TramosGrupos.Grupo> grupos = new LinkedHashMap<>();
+          porDia.forEach((g, carga) -> grupos.put(g, carga.grupo(g)));
+          List<String> orden = ordenNatural(grupos.keySet());
           List<TramosGrupos.Grupo> enOrden = orden.stream().map(grupos::get).toList();
           String aviso = null;
           List<Long> rango = null;
@@ -1472,82 +1544,63 @@ public class SimulacionConfiguracionService {
         .toList();
   }
 
+  /** Grupos en orden natural (1, 2, 10…): ya no hay prioridad elegida a mano. */
+  private static List<String> ordenNatural(Collection<String> grupos) {
+    return grupos.stream().sorted(ORDEN_NATURAL).toList();
+  }
+
   /**
-   * Orden de prioridad de los grupos del cluster. Con prioridad pedida, debe
-   * nombrar cada grupo una sola vez (se compara sin distinguir mayúsculas ni
-   * tildes). Sin pedirla: la guardada; si falta o ya no coincide con los grupos
-   * de hoy (p. ej. entró una ruta de otro grupo), con {@code exigir} se pide
-   * ordenarla de nuevo y, si no, se completa por nombre (vista previa).
+   * Carga de cada grupo en su día más pesado, en el orden dado: un chute lleva las diarias más
+   * las L-X-V unos días y las M-J-S otros, así que el tramo del grupo se dimensiona con las
+   * diarias más la mayor de las dos (no con la suma, que no ocurre ningún día).
    */
-  private static List<String> ordenGrupos(
-      String cluster,
-      Collection<String> grupos,
-      List<GrupoGuardado> guardados,
-      List<String> pedida,
-      boolean exigir) {
-    Map<String, String> porClave = new LinkedHashMap<>();
-    grupos.forEach((g) -> porClave.put(SimulacionExcel.clave(g), g));
-    if (pedida != null && !pedida.isEmpty()) {
-      List<String> orden = new ArrayList<>();
-      Set<String> vistos = new HashSet<>();
-      for (String nombre : pedida) {
-        String clave = SimulacionExcel.clave(nombre);
-        String grupo = porClave.get(clave);
-        if (grupo == null || !vistos.add(clave)) {
-          throw prioridadInvalida(cluster, grupos);
-        }
-        orden.add(grupo);
-      }
-      if (orden.size() != grupos.size()) {
-        throw prioridadInvalida(cluster, grupos);
-      }
-      return orden;
-    }
-    List<String> orden = new ArrayList<>();
-    for (GrupoGuardado guardado : guardados) {
-      String grupo = porClave.get(SimulacionExcel.clave(guardado.grupo()));
-      if (grupo != null && !orden.contains(grupo)) {
-        orden.add(grupo);
-      }
-    }
-    if (exigir && orden.size() != grupos.size()) {
-      throw new SolicitudInvalidaException(
-          guardados.isEmpty()
-              ? "Ordena la prioridad de los grupos de " + cluster + "."
-              : "Los grupos de " + cluster + " cambiaron: vuelve a ordenar su prioridad.");
-    }
-    grupos.stream()
-        .filter((g) -> !orden.contains(g))
-        .sorted(ORDEN_NATURAL)
-        .forEach(orden::add);
-    return orden;
-  }
-
-  private static SolicitudInvalidaException prioridadInvalida(String cluster, Collection<String> grupos) {
-    return new SolicitudInvalidaException(
-        "La prioridad de "
-            + cluster
-            + " debe nombrar cada uno de sus grupos una sola vez ("
-            + grupos.stream().sorted(ORDEN_NATURAL).collect(Collectors.joining(", "))
-            + "). Vuelve a abrir el balanceo si los grupos cambiaron.");
-  }
-
-  /** Rutas y bultos de cada grupo, en el orden dado. */
-  private static List<TramosGrupos.Grupo> cargaDeGrupos(
+  private static List<TramosGrupos.Grupo> cargaDelDia(
       List<String> orden, Map<String, List<RutaProyeccion>> porGrupo) {
     return orden.stream()
         .map(
             (g) -> {
-              List<RutaProyeccion> rutas = porGrupo.getOrDefault(g, List.of());
-              BigDecimal bultos =
-                  rutas.stream()
-                      .map(RutaProyeccion::getTotalBultos)
-                      .filter(Objects::nonNull)
-                      .reduce(BigDecimal.ZERO, BigDecimal::add);
-              return new TramosGrupos.Grupo(g, rutas.size(), bultos);
+              CargaDia carga = new CargaDia();
+              porGrupo
+                  .getOrDefault(g, List.of())
+                  .forEach((r) -> carga.sumar(r.getFrecuencia(), 1L, ceroSiNulo(r.getTotalBultos())));
+              return carga.grupo(g);
             })
         .toList();
   }
+
+  /** Rutas y bultos de un grupo por frecuencia, para sacar su día más pesado. */
+  private static final class CargaDia {
+    private long rutasDiarias;
+    private long rutasLxv;
+    private long rutasMjs;
+    private BigDecimal bultosDiarias = BigDecimal.ZERO;
+    private BigDecimal bultosLxv = BigDecimal.ZERO;
+    private BigDecimal bultosMjs = BigDecimal.ZERO;
+
+    void sumar(String frecuencia, Long rutas, BigDecimal bultos) {
+      long n = rutas == null ? 0 : rutas;
+      if (Balanceo.LXV.name().equals(frecuencia)) {
+        rutasLxv += n;
+        bultosLxv = bultosLxv.add(bultos);
+      } else if (Balanceo.MJS.name().equals(frecuencia)) {
+        rutasMjs += n;
+        bultosMjs = bultosMjs.add(bultos);
+      } else {
+        rutasDiarias += n;
+        bultosDiarias = bultosDiarias.add(bultos);
+      }
+    }
+
+    /** Las diarias más el día (L-X-V o M-J-S) con más bultos. */
+    TramosGrupos.Grupo grupo(String nombre) {
+      boolean lxvPesa = bultosLxv.compareTo(bultosMjs) >= 0;
+      return new TramosGrupos.Grupo(
+          nombre,
+          Math.max(1, rutasDiarias + (lxvPesa ? rutasLxv : rutasMjs)),
+          bultosDiarias.add(lxvPesa ? bultosLxv : bultosMjs));
+    }
+  }
+
 
   /** Diferencia de carga entre los chutes de esas rutas (todas de un cluster), en %. */
   private static Integer dispersionPorChute(List<RutaProyeccion> rutas) {
@@ -1644,18 +1697,9 @@ public class SimulacionConfiguracionService {
       List<GrupoGuardado> guardados) {
     Map<String, GrupoGuardado> porClave = new HashMap<>();
     guardados.forEach((g) -> porClave.putIfAbsent(SimulacionExcel.clave(g.grupo()), g));
-    List<String> orden =
-        porGrupo.keySet().stream()
-            .sorted(
-                Comparator.comparing(
-                        (String g) -> {
-                          GrupoGuardado guardado = porClave.get(SimulacionExcel.clave(g));
-                          return guardado == null ? Integer.MAX_VALUE : guardado.prioridad();
-                        })
-                    .thenComparing(ORDEN_NATURAL))
-            .toList();
+    List<String> orden = ordenNatural(porGrupo.keySet());
     List<TramosGrupos.Tramo> tramos = new ArrayList<>();
-    for (TramosGrupos.Grupo g : cargaDeGrupos(orden, porGrupo)) {
+    for (TramosGrupos.Grupo g : cargaDelDia(orden, porGrupo)) {
       GrupoGuardado guardado = porClave.get(SimulacionExcel.clave(g.nombre()));
       List<Long> chutes =
           porGrupo.size() == 1
@@ -2345,6 +2389,73 @@ public class SimulacionConfiguracionService {
     lotes.quitarTramos(
         archivoId,
         clusterIds.stream().filter((id) -> pendiente(ctx.parametrosOtro().get(id))).toList());
+  }
+
+  /**
+   * Como {@link #reiniciarClusters} pero en los dos balanceos a la vez: el cluster completo vuelve
+   * a la proyección (también sus rutas diarias, que ya ningún balanceo usa). Se deshacen los
+   * cambios de los dos historiales juntos, del último al primero.
+   */
+  private void reiniciarAmbos(Contexto ctx, Collection<Long> clusterIds) {
+    if (clusterIds.isEmpty()) {
+      return;
+    }
+    Long archivoId = ctx.archivo().getId();
+    Map<Long, Long> chutes = new LinkedHashMap<>();
+    Map<Long, Long> clusters = new LinkedHashMap<>();
+    for (CambioParaDeshacer cambio : historialRepo.trabajoParaDeshacerAmbos(archivoId, clusterIds)) {
+      if (HistorialBalanceo.ACCION_CAMBIAR_CLUSTER.equals(cambio.getTipoAccion())) {
+        if (cambio.getClusterOrigenId() != null) {
+          clusters.put(cambio.getRutaId(), cambio.getClusterOrigenId());
+        }
+      } else if (cambio.getChuteOrigenId() != null) {
+        chutes.put(cambio.getRutaId(), cambio.getChuteOrigenId());
+      }
+    }
+    historialRepo.borrarManualesDeTrabajoAmbos(archivoId, clusterIds);
+    lanzamientoRepo.borrarPorClusters(archivoId, clusterIds);
+    for (Long clusterId : clusterIds) {
+      ctx.parametrosCluster().get(clusterId).setEstado(ParametroCluster.ESTADO_PENDIENTE);
+      ParametroCluster otro = ctx.parametrosOtro().get(clusterId);
+      if (otro != null) {
+        otro.setEstado(ParametroCluster.ESTADO_PENDIENTE);
+      }
+    }
+    lotes.moverRutas(chutes);
+    lotes.cambiarClusters(clusters);
+    borrarOlas(ctx, clusterIds);
+    borrarOlasOtro(ctx, clusterIds);
+    lotes.quitarTramos(archivoId, clusterIds);
+  }
+
+  /** Quita los operarios de esas olas en el otro balanceo. */
+  private void borrarOlasOtro(Contexto ctx, Collection<Long> clusterIds) {
+    List<OperarioOla> borrar = new ArrayList<>();
+    ctx.operariosOlaOtro()
+        .entrySet()
+        .removeIf(
+            (entrada) -> {
+              if (clusterIds.contains(entrada.getKey().clusterId())) {
+                borrar.add(entrada.getValue());
+                return true;
+              }
+              return false;
+            });
+    if (!borrar.isEmpty()) {
+      operarioOlaRepo.deleteAll(borrar);
+    }
+  }
+
+  /** Primer cluster sin cerrar en el otro balanceo (los dos avanzan juntos al cerrar). */
+  private static Long enCursoOtro(Contexto ctx) {
+    return orden(ctx).stream()
+        .filter(
+            (id) -> {
+              ParametroCluster otro = ctx.parametrosOtro().get(id);
+              return otro == null || !ParametroCluster.ESTADO_CERRADO.equals(otro.getEstado());
+            })
+        .findFirst()
+        .orElse(null);
   }
 
   /**

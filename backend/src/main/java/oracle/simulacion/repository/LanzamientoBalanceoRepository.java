@@ -1,5 +1,6 @@
 package oracle.simulacion.repository;
 
+import java.util.Collection;
 import java.util.List;
 import oracle.simulacion.model.LanzamientoBalanceo;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -23,6 +24,14 @@ public interface LanzamientoBalanceoRepository extends JpaRepository<Lanzamiento
       @Param("archivoId") Long archivoId,
       @Param("balanceo") String balanceo,
       @Param("clusterId") Long clusterId);
+
+  /** Lanzamientos del cluster en los dos balanceos (restablecer o reabrir el cluster completo). */
+  @Modifying
+  @Query(
+      "DELETE FROM LanzamientoBalanceo l"
+          + " WHERE l.archivoId = :archivoId AND l.clusterId IN :clusterIds")
+  void borrarPorClusters(
+      @Param("archivoId") Long archivoId, @Param("clusterIds") Collection<Long> clusterIds);
 
   @Modifying
   @Query("DELETE FROM LanzamientoBalanceo l WHERE l.archivoId = :archivoId AND l.balanceo = :balanceo")

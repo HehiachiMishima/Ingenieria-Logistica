@@ -1043,15 +1043,15 @@ class SimulacionBalanceoTest {
     lenient().when(rutaRepo.cargaPorArchivo(10L)).thenReturn(List.of());
     // Su balanceo llevó la ruta de CHUTE 2 a CHUTE 1 y luego a CHUTE 3: restablecer la
     // devuelve a CHUTE 2 (el origen de su movimiento más antiguo).
-    when(historialRepo.trabajoParaDeshacer(10L, "LXV", List.of(CL3)))
+    when(historialRepo.trabajoParaDeshacerAmbos(10L, List.of(CL3)))
         .thenReturn(List.of(mover(5L, 1L), mover(5L, 2L)));
 
     servicio.restablecerCluster(10L, CL3);
 
     verify(lotes).moverRutas(Map.of(5L, 2L));
     verify(rutaRepo, never()).restaurarRutas(any(), any(), any());
-    verify(lanzamientoRepo).borrarPorCluster(10L, "LXV", CL3);
-    verify(historialRepo).borrarManualesDeTrabajo(10L, "LXV", List.of(CL3));
+    verify(lanzamientoRepo).borrarPorClusters(10L, List.of(CL3));
+    verify(historialRepo).borrarManualesDeTrabajoAmbos(10L, List.of(CL3));
     verify(lotes).cambiarClusters(Map.of());
     verify(operarioOlaRepo).deleteAll(olasBorradas.capture());
     assertEquals(List.of(olaCl3), olasBorradas.getValue());
@@ -1139,8 +1139,8 @@ class SimulacionBalanceoTest {
     servicio.reabrir(10L, CL1);
     assertEquals(ParametroCluster.ESTADO_LISTO, cl1.getEstado());
     assertEquals(ParametroCluster.ESTADO_PENDIENTE, cl3.getEstado());
-    verify(historialRepo).trabajoParaDeshacer(10L, "LXV", List.of(CL3));
-    verify(lanzamientoRepo).borrarPorCluster(10L, "LXV", CL3);
+    verify(historialRepo).trabajoParaDeshacerAmbos(10L, List.of(CL3));
+    verify(lanzamientoRepo).borrarPorClusters(10L, List.of(CL3));
     verify(operarioOlaRepo).deleteAll(olasBorradas.capture());
     assertEquals(List.of(olaCl3), olasBorradas.getValue());
     assertEquals(ArchivoExcel.ESTADO_EN_PROCESO, archivo.getEstado());
@@ -1781,7 +1781,7 @@ class SimulacionBalanceoTest {
     lenient().when(rutaRepo.cargaPorArchivo(10L)).thenReturn(List.of());
     // El balanceo de CL1 llevó la ruta 5 de CHUTE 2 a CHUTE 1 y DESPUÉS se pasó a CL3
     // (estando en CHUTE 1). Del último al primero: el cambio de cluster y el movimiento.
-    when(historialRepo.trabajoParaDeshacer(10L, "LXV", List.of(CL1)))
+    when(historialRepo.trabajoParaDeshacerAmbos(10L, List.of(CL1)))
         .thenReturn(List.of(cambio(5L, 1L, CL1), mover(5L, 2L)));
 
     servicio.restablecerCluster(10L, CL1);
@@ -1789,8 +1789,8 @@ class SimulacionBalanceoTest {
     // Vuelve a CL1 y al chute de antes del balanceo (no al del cambio de cluster).
     verify(lotes).moverRutas(Map.of(5L, 2L));
     verify(lotes).cambiarClusters(Map.of(5L, CL1));
-    verify(lanzamientoRepo).borrarPorCluster(10L, "LXV", CL1);
-    verify(historialRepo).borrarManualesDeTrabajo(10L, "LXV", List.of(CL1));
+    verify(lanzamientoRepo).borrarPorClusters(10L, List.of(CL1));
+    verify(historialRepo).borrarManualesDeTrabajoAmbos(10L, List.of(CL1));
     assertEquals(ParametroCluster.ESTADO_PENDIENTE, cl1.getEstado());
     assertEquals(ParametroCluster.ESTADO_PENDIENTE, cl3.getEstado());
   }
@@ -1811,7 +1811,7 @@ class SimulacionBalanceoTest {
         List.of(chute(1L, "CHUTE 1"), chute(2L, "CHUTE 2")));
     lenient().when(rutaRepo.cargaPorArchivo(10L)).thenReturn(List.of());
     // La ruta 5 era de CL3 en CHUTE 2; con CL1 en curso pasó a CL1 y a CHUTE 1 en un paso.
-    when(historialRepo.trabajoParaDeshacer(10L, "LXV", List.of(CL1)))
+    when(historialRepo.trabajoParaDeshacerAmbos(10L, List.of(CL1)))
         .thenReturn(List.of(mover(5L, 2L), cambio(5L, 2L, CL3)));
 
     servicio.restablecerCluster(10L, CL1);
@@ -1893,14 +1893,15 @@ class SimulacionBalanceoTest {
   }
 
   @Test
-  void cadaGrupoQuedaEnSuTramoSegunPrioridadYBultosSinMezclarse() {
+  void cadaGrupoQuedaEnSuTramoEnOrdenNaturalYPorBultosSinMezclarse() {
     List<RutaProyeccion> rutas = rutasDeDosGrupos();
     ParametroCluster cl3 = prepararGrupos(rutas);
 
+    // Ya no hay prioridad: aunque se pida B primero, los grupos van en orden natural.
     BalanceoResponse resultado =
         lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 6L, null, List.of("B", "A")));
 
-    // 6 chutes: B (200 de 600 bultos) recibe 2 y va primero; A (400) recibe 4.
+    // 6 chutes: A (400 de 600 bultos) va primero y recibe 4; B (200) recibe 2.
     Map<String, Set<Long>> chutesPorGrupo = new HashMap<>();
     Map<Long, Long> rutasPorChute = new HashMap<>();
     rutas.forEach(
@@ -1908,12 +1909,12 @@ class SimulacionBalanceoTest {
           chutesPorGrupo.computeIfAbsent(r.getGrupo(), (g) -> new java.util.TreeSet<>()).add(r.getChuteId());
           rutasPorChute.merge(r.getChuteId(), 1L, Long::sum);
         });
-    assertEquals(Set.of(1L, 2L), chutesPorGrupo.get("B"));
-    assertEquals(Set.of(3L, 4L, 5L, 6L), chutesPorGrupo.get("A"));
+    assertEquals(Set.of(1L, 2L, 3L, 4L), chutesPorGrupo.get("A"));
+    assertEquals(Set.of(5L, 6L), chutesPorGrupo.get("B"));
     // Cada grupo se nivela solo: una ruta por chute.
     assertEquals(Map.of(1L, 1L, 2L, 1L, 3L, 1L, 4L, 1L, 5L, 1L, 6L, 1L), rutasPorChute);
     assertTrue(
-        resultado.mensaje().contains("Grupos por prioridad: B CHUTE 1 → CHUTE 2 (2 chute(s)); A CHUTE 3 → CHUTE 6 (4 chute(s))"),
+        resultado.mensaje().contains("Tramos de grupos: A CHUTE 1 → CHUTE 4 (4 chute(s)); B CHUTE 5 → CHUTE 6 (2 chute(s))"),
         resultado.mensaje());
     assertEquals(1L, cl3.getChuteDesdeId());
     assertEquals(6L, cl3.getChuteHastaId());
@@ -1922,31 +1923,27 @@ class SimulacionBalanceoTest {
             10L,
             CL3,
             List.of(
-                new GrupoGuardado(CL3, "B", 1, 1L, 2L), new GrupoGuardado(CL3, "A", 2, 3L, 6L)));
+                new GrupoGuardado(CL3, "A", 1, 1L, 4L), new GrupoGuardado(CL3, "B", 2, 5L, 6L)));
     assertEquals(ParametroCluster.ESTADO_RUTAS, cl3.getEstado());
   }
 
   @Test
   void unaRutaMovidaAManoAlTramoDeOtroGrupoVuelveAlSuyo() {
-    // Tramos de la vez anterior: B en 1–2, A en 3–6. A mano, A4 quedó en CHUTE 2 (de B).
+    // Tramos en orden natural: A en 1–4, B en 5–6. A mano, A4 quedó en CHUTE 6 (de B).
     List<RutaProyeccion> rutas =
         List.of(
-            rutaDe(1L, CL3, 3L, "A1", "100", "A"),
-            rutaDe(2L, CL3, 4L, "A2", "100", "A"),
-            rutaDe(3L, CL3, 5L, "A3", "100", "A"),
-            rutaDe(4L, CL3, 2L, "A4", "100", "A"),
-            rutaDe(5L, CL3, 1L, "B1", "100", "B"),
-            rutaDe(6L, CL3, 1L, "B2", "100", "B"));
+            rutaDe(1L, CL3, 1L, "A1", "100", "A"),
+            rutaDe(2L, CL3, 2L, "A2", "100", "A"),
+            rutaDe(3L, CL3, 3L, "A3", "100", "A"),
+            rutaDe(4L, CL3, 6L, "A4", "100", "A"),
+            rutaDe(5L, CL3, 5L, "B1", "100", "B"),
+            rutaDe(6L, CL3, 5L, "B2", "100", "B"));
     prepararGrupos(rutas);
-    when(lotes.grupos(10L))
-        .thenReturn(
-            List.of(new GrupoGuardado(CL3, "B", 1, 1L, 2L), new GrupoGuardado(CL3, "A", 2, 3L, 6L)));
 
-    // Sin prioridad en la petición: usa la guardada.
     lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 6L));
 
-    assertEquals(6L, rutas.get(3).getChuteId());
-    assertTrue(rutas.stream().filter((r) -> r.getGrupo().equals("B")).allMatch((r) -> r.getChuteId() <= 2L));
+    assertEquals(4L, rutas.get(3).getChuteId());
+    assertTrue(rutas.stream().filter((r) -> r.getGrupo().equals("B")).allMatch((r) -> r.getChuteId() >= 5L));
   }
 
   @Test
@@ -1963,39 +1960,31 @@ class SimulacionBalanceoTest {
   }
 
   @Test
-  void laPrioridadDebeNombrarCadaGrupoUnaSolaVez() {
-    prepararGrupos(rutasDeDosGrupos());
-
-    for (List<String> mala : List.of(List.of("A"), List.of("A", "A"), List.of("A", "C"), List.of("A", "B", "C"))) {
-      SolicitudInvalidaException error =
-          assertThrows(
-              SolicitudInvalidaException.class,
-              () -> lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 6L, null, mala)));
-      assertTrue(error.getMessage().contains("(A, B)"), error.getMessage());
-    }
-    verify(lotes, never()).moverRutas(anyMap());
-  }
-
-  @Test
-  void sinPrioridadNiGuardadaConVariosGruposSePideOrdenarla() {
-    prepararGrupos(rutasDeDosGrupos());
-
-    SolicitudInvalidaException error =
-        assertThrows(
-            SolicitudInvalidaException.class,
-            () -> lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 6L)));
-
-    assertTrue(error.getMessage().contains("Ordena la prioridad"), error.getMessage());
-  }
-
-  @Test
-  void laPrioridadIgnoraMayusculasYTildes() {
-    List<RutaProyeccion> rutas = rutasDeDosGrupos();
+  void elTramoDeUnGrupoSeDimensionaConSuDiaMasPesado() {
+    // A: 2 diarias (200) + 2 L-X-V (200) + 2 M-J-S (200) → su día más pesado: 400 bultos.
+    // B: 4 L-X-V (400). Con la suma, A pesaría 600 y se llevaría más chutes de los que usa un día.
+    List<RutaProyeccion> rutas = new ArrayList<>();
+    rutas.add(conFrecuencia(rutaDe(1L, CL3, 1L, "A1", "100", "A"), "DIARIA"));
+    rutas.add(conFrecuencia(rutaDe(2L, CL3, 1L, "A2", "100", "A"), "DIARIA"));
+    rutas.add(conFrecuencia(rutaDe(3L, CL3, 1L, "A3", "100", "A"), "LXV"));
+    rutas.add(conFrecuencia(rutaDe(4L, CL3, 1L, "A4", "100", "A"), "LXV"));
+    rutas.add(conFrecuencia(rutaDe(5L, CL3, 1L, "A5", "100", "A"), "MJS"));
+    rutas.add(conFrecuencia(rutaDe(6L, CL3, 1L, "A6", "100", "A"), "MJS"));
+    rutas.add(conFrecuencia(rutaDe(7L, CL3, 1L, "B1", "100", "B"), "LXV"));
+    rutas.add(conFrecuencia(rutaDe(8L, CL3, 1L, "B2", "100", "B"), "LXV"));
+    rutas.add(conFrecuencia(rutaDe(9L, CL3, 1L, "B3", "100", "B"), "LXV"));
+    rutas.add(conFrecuencia(rutaDe(10L, CL3, 1L, "B4", "100", "B"), "LXV"));
     prepararGrupos(rutas);
 
-    lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 6L, null, List.of("b", "a")));
+    BalanceoResponse resultado = lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 6L));
 
-    assertTrue(rutas.stream().filter((r) -> r.getGrupo().equals("B")).allMatch((r) -> r.getChuteId() <= 2L));
+    // 400 y 400: 3 chutes cada uno.
+    assertTrue(resultado.mensaje().contains("A CHUTE 1 → CHUTE 3 (3 chute(s)); B CHUTE 4 → CHUTE 6 (3 chute(s))"), resultado.mensaje());
+  }
+
+  private static RutaProyeccion conFrecuencia(RutaProyeccion ruta, String frecuencia) {
+    ruta.setFrecuencia(frecuencia);
+    return ruta;
   }
 
   @Test
@@ -2034,18 +2023,19 @@ class SimulacionBalanceoTest {
     assertNull(vista.aviso());
     assertEquals(6, vista.chutesRango());
     assertEquals(0, vista.chutesSinUsar());
-    TramoGrupoResponse b = vista.grupos().get(0);
-    TramoGrupoResponse a = vista.grupos().get(1);
-    assertEquals(List.of("B", "A"), List.of(b.grupo(), a.grupo()));
-    assertEquals(2, b.chutes());
-    assertEquals("CHUTE 1", b.chuteDesde());
-    assertEquals("CHUTE 2", b.chuteHasta());
-    assertEquals(0, b.rutasFuera());
+    // Sin prioridad: orden natural aunque se pida B primero.
+    TramoGrupoResponse a = vista.grupos().get(0);
+    TramoGrupoResponse b = vista.grupos().get(1);
+    assertEquals(List.of("A", "B"), List.of(a.grupo(), b.grupo()));
     assertEquals(4, a.chutes());
-    assertEquals("CHUTE 3", a.chuteDesde());
-    assertEquals("CHUTE 6", a.chuteHasta());
-    // Las 4 rutas de A están hoy en CHUTE 1, fuera de su tramo.
-    assertEquals(4, a.rutasFuera());
+    assertEquals("CHUTE 1", a.chuteDesde());
+    assertEquals("CHUTE 4", a.chuteHasta());
+    assertEquals(0, a.rutasFuera());
+    assertEquals(2, b.chutes());
+    assertEquals("CHUTE 5", b.chuteDesde());
+    assertEquals("CHUTE 6", b.chuteHasta());
+    // Las 2 rutas de B están hoy en CHUTE 1, fuera de su tramo.
+    assertEquals(2, b.rutasFuera());
   }
 
   @Test

@@ -11,59 +11,52 @@
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-sm);
 
-  /* Registro (más ancho), velocidad y máximo por chute: etiqueta, control y ayuda
-     alineados. La cantidad de operarios ya no va aquí: la ingresa cada ola. */
+  /* Registro, velocidad y buff en una fila con los botones a la derecha. La
+     cantidad de operarios y su tope ya no van aquí: los define cada ola. */
   &__campos {
-    display: grid;
-    grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr));
-    gap: var(--space-4);
-
-    @include bp.down(lg) {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-
-      > :first-child {
-        grid-column: 1 / -1;
-      }
-    }
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end; /* Alinea los botones a la altura de los inputs */
+    gap: var(--space-3);
+    width: 100%;
   }
 
   &__campo {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
-    min-width: 0;
+    gap: var(--space-1); /* Un poco más compacto */
+    flex: 1 1 0; /* Hace que los 3 campos midan exactamente lo mismo */
+    min-width: 200px; /* Evita que se aplasten si la pantalla es chica */
   }
 
+  /* Texto de ayuda bajo un campo (p. ej. «Se define antes de balancear»). */
   &__ayuda {
     font-size: var(--fs-xs);
     color: var(--text-3);
   }
 
-  /* Ficha del registro a la izquierda y acciones a la derecha, a la misma altura. */
-  &__pie {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-3);
-    padding-top: var(--space-4);
-    border-top: 1px solid var(--border);
-
-    .config-info {
-      flex: 1 1 320px;
-      min-width: 0;
-    }
+  /* Inputs un poco más bajos para que todo se vea más compacto */
+  .ui-input {
+    height: 38px;
   }
 
   &__acciones {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: var(--space-2);
-    justify-content: flex-end;
+    margin-left: auto; /* Empuja los botones hacia la derecha */
+    flex: 0 0 auto; /* Evita que los botones se deformen */
   }
 
+  /* Ajustes para pantallas más pequeñas */
   @include bp.down(lg) {
+    &__campo {
+      flex: 1 1 calc(50% - var(--space-3)); /* En tablet, 2 campos arriba y 1 abajo */
+    }
     &__acciones {
-      flex: 1 1 100%;
+      margin-left: 0;
+      width: 100%;
       justify-content: flex-start;
     }
   }
@@ -71,87 +64,15 @@
   @include bp.down(sm) {
     padding: var(--space-4);
 
-    &__campos {
-      grid-template-columns: 1fr;
+    &__campo {
+      flex: 1 1 100%; /* En celular, 1 campo por fila */
     }
 
     &__acciones .ui-btn {
       flex: 1 1 calc(50% - var(--space-2));
     }
   }
-}
 
-/* Avance de la simulación: clusters cerrados sobre el total. */
-.config-paso {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 28px;
-  padding: 0 var(--space-2);
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  color: var(--success);
-  background: var(--success-soft);
-  border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
-  border-radius: 999px;
-  white-space: nowrap;
-}
-
-/* Avance pendiente: aún faltan clusters por terminar. */
-.config-paso--pendiente {
-  color: var(--text-2);
-  background: var(--surface-2);
-  border-color: var(--border);
-}
-
-.config-info {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-
-  &__icono {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    flex: none;
-    border-radius: var(--radius-sm);
-    color: var(--accent);
-    background: var(--accent-soft);
-  }
-
-  &__datos {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-    /* Base de 160 px: en pantallas angostas bajan las etiquetas, no se aplasta el texto. */
-    flex: 1 1 160px;
-  }
-
-  &__nombre {
-    overflow: hidden;
-    font-size: var(--fs-sm);
-    font-weight: 700;
-    color: var(--text);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  &__meta {
-    font-size: var(--fs-xs);
-    color: var(--text-3);
-  }
-
-  &--vacio {
-    border-style: dashed;
-  }
 }
 
 .config-aviso {
@@ -484,16 +405,6 @@
     font-weight: 800;
     letter-spacing: -0.015em;
     color: var(--text);
-
-    &::before {
-      content: '';
-      width: 10px;
-      height: 10px;
-      flex: none;
-      border-radius: 3px;
-      background: var(--cluster-color, var(--accent));
-    }
-
     > span {
       overflow: hidden;
       text-overflow: ellipsis;
@@ -1159,7 +1070,8 @@
   min-width: 0;
   height: 100%;
   min-height: var(--mz-fila);
-  padding: 0 26px 0 var(--space-2);
+  /* 18 px a la derecha: la pestaña de frecuencia (14 px) y su separación. */
+  padding: 0 18px 0 var(--space-2);
   white-space: nowrap;
   /* El ancho lo fija la columna, no el contenido: una ruta con mucho texto no
      ensancha su columna (cada cluster es otra tabla y se desalinearían). */
@@ -1341,40 +1253,9 @@
 
 .matriz-ruta__spinner {
   position: absolute;
-  right: 6px;
+  right: 2px;
   width: 14px;
   height: 14px;
-}
-
-/* Asa ⋮⋮: indica que la ruta se puede arrastrar. */
-.matriz-ruta__asa {
-  position: absolute;
-  top: 50%;
-  right: 4px;
-  padding: 4px;
-  font-size: 1rem;
-  line-height: 1;
-  letter-spacing: -0.12em;
-  color: var(--text-3);
-  pointer-events: none;
-  opacity: 0.45;
-  transform: translateY(-50%);
-  user-select: none;
-  transition: opacity var(--transition-fast);
-}
-
-.matriz-ruta:hover .matriz-ruta__asa {
-  opacity: 1;
-}
-
-@media (hover: none) {
-  .matriz-ruta__asa {
-    opacity: 1;
-  }
-}
-
-.matriz--ocupada .matriz-ruta__asa {
-  opacity: 0;
 }
 
 /* Arrastre: la ruta tomada se atenúa y la columna destino se resalta. */
@@ -1867,65 +1748,6 @@
 
 /* ---------- Balanceos L-X-V / M-J-S / Ambos ---------- */
 
-/* Selector del balanceo que muestra el cluster, en su panel. */
-.mz-vista {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-
-  &__opcion {
-    min-width: 0;
-    min-height: 28px;
-    padding: 0 4px;
-    overflow: hidden;
-    font: inherit;
-    font-size: var(--fs-xs);
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    color: var(--text-2);
-    background: transparent;
-    border: 0;
-    border-radius: 6px;
-    cursor: pointer;
-    transition:
-      background-color 0.15s ease,
-      color 0.15s ease;
-
-    &:hover:not(:disabled):not(.mz-vista__opcion--activa) {
-      color: var(--text);
-      background: var(--surface-2);
-    }
-
-    &:focus-visible {
-      outline: 2px solid var(--accent);
-      outline-offset: 1px;
-    }
-
-    &:disabled {
-      cursor: not-allowed;
-      opacity: 0.45;
-    }
-
-    &--activa {
-      color: #fff;
-      background: color-mix(in srgb, var(--cluster-color, var(--accent)) 85%, #000);
-    }
-  }
-}
-
-/* Minimizado (riel de 64 px): las tres opciones una debajo de otra. */
-@include bp.up(sm) {
-  .mz-tablero--min .mz-vista {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 .mz-panel__ambos,
 .mz-panel__fijas {
   display: flex;
@@ -1957,32 +1779,6 @@
   border-radius: 4px;
 }
 
-/* Ruta diaria ya fija para el balanceo automático. */
-.matriz-ruta__fija {
-  flex: none;
-  color: color-mix(in srgb, var(--warning) 70%, var(--text));
-}
-
-/* «Ambos»: de qué días es cada ruta. */
-.matriz-ruta__dias {
-  flex: none;
-  padding: 0 4px;
-  font-size: 0.62rem;
-  font-weight: 800;
-  line-height: 1.5;
-  letter-spacing: 0.02em;
-  border-radius: 4px;
-  color: #fff;
-  background: #64748b;
-
-  &[data-dias='LXV'] {
-    background: #2563eb;
-  }
-
-  &[data-dias='MJS'] {
-    background: #c2410c;
-  }
-}
 
 /* Modal de balancear: qué entra y si el rango viene del otro balanceo. */
 .rango__entra {
@@ -2025,4 +1821,263 @@
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+}
+
+/* ---------- Panel del cluster: cuatro filas de dos ---------- */
+
+.mz-panel__fila {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.mz-panel__nombre--cerrado {
+  color: var(--text-2);
+}
+
+/* Filtros de frecuencia: se pulsan uno, otro o los dos. */
+.mz-filtro {
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 4px;
+  overflow: hidden;
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+
+  &:hover:not(:disabled):not(.mz-filtro--activo) {
+    color: var(--text);
+    border-color: var(--border-strong);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  &--activo {
+    color: #fff;
+    background: color-mix(in srgb, var(--cluster-color, var(--accent)) 85%, #000);
+    border-color: transparent;
+  }
+}
+
+/* El límite ocupa las dos columnas: etiqueta a la izquierda, campo a la derecha. */
+.mz-panel__fila.mz-panel__limite {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+/*
+ * Minimizado (riel de 64 px): los mismos controles, más chicos y apilados. El
+ * panel debe caber en el alto de las filas visibles (--mz-alto): si fuera más
+ * alto, estiraría las filas de la tabla y la cuadrícula cambiaría de tamaño al
+ * minimizar. Por eso «Detalle» y «Totales» van lado a lado (solo sus iconos).
+ */
+.mz-bloque--min .mz-panel {
+  gap: var(--space-2);
+}
+
+.mz-bloque--min .mz-panel__fila {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: stretch;
+  gap: var(--space-1);
+}
+
+.mz-bloque--min .mz-panel__fila:last-child {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.mz-bloque--min .mz-panel__accion {
+  width: 100%;
+  min-height: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.mz-bloque--min .mz-filtro {
+  width: 100%;
+  min-height: 24px;
+  font-size: 0.65rem;
+}
+
+/* Menú «Acciones»: fijo bajo su botón, siempre dentro de la pantalla. */
+.mz-menu {
+  position: fixed;
+  z-index: var(--z-modal);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: min(280px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  padding: var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+
+  &__titulo {
+    margin: 0;
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--fs-xs);
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-2);
+  }
+
+  &__aviso {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 var(--space-1);
+    padding: var(--space-2);
+    font-size: var(--fs-xs);
+    color: var(--text-2);
+    background: var(--surface-2);
+    border-radius: var(--radius-sm);
+  }
+
+  &__item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    min-height: 44px;
+    padding: var(--space-2);
+    font: inherit;
+    text-align: left;
+    color: var(--text);
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+
+    &:hover:not(:disabled),
+    &:focus-visible {
+      background: var(--surface-2);
+      outline: none;
+    }
+
+    &:focus-visible {
+      box-shadow: inset 0 0 0 2px var(--accent);
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+    }
+  }
+
+  &__marca {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+    border-radius: 50%;
+
+    &--hecha {
+      color: var(--success);
+      background: color-mix(in srgb, var(--success) 14%, var(--surface));
+    }
+  }
+
+  &__texto {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.25;
+
+    strong {
+      font-size: var(--fs-sm);
+    }
+
+    small {
+      font-size: var(--fs-xs);
+      color: var(--text-2);
+    }
+  }
+}
+
+/* Tres filtros (L-X-V, M-J-S y Diarias) en una fila, también en el riel minimizado
+   (allí con su inicial: L, M, D), así el panel no crece y no estira la cuadrícula. */
+.mz-panel__fila.mz-filtros,
+.mz-bloque--min .mz-panel__fila.mz-filtros {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.mz-bloque--min .mz-panel__fila.mz-filtros .mz-filtro {
+  padding: 0;
+}
+
+/*
+ * Frecuencia de la ruta: pestaña vertical pegada al borde derecho, al estilo de
+ * la del grupo (que va en el izquierdo). Ocupa el espacio reservado a la derecha
+ * de la ruta (18 px), así no le quita ancho al código. Las letras se apilan una
+ * bajo otra: D = diaria, LXV, MJS o los días de una parcial (LX, XV, V…); como
+ * máximo 3 letras, que caben en los 32 px de alto de la pestaña.
+ */
+.matriz-ruta__frecuencia {
+  position: absolute;
+  top: 5px;
+  right: 0;
+  bottom: 5px;
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 14px;
+  overflow: hidden;
+  border-radius: 4px 0 0 4px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  line-height: 1;
+  color: #fff;
+  background: #475569;
+  user-select: none;
+  pointer-events: none;
+
+  &[data-frecuencia='LXV'] {
+    background: #1d4ed8;
+  }
+
+  &[data-frecuencia='MJS'] {
+    background: #c2410c;
+  }
+
+  &--fija {
+    background: #334155;
+  }
+}
+
+/* Una letra por línea: min-content + break-all deja el texto del ancho de una
+   letra (si no, «LX» cabría junto en 14 px y «LXV» quedaría en dos líneas). */
+.matriz-ruta__frecuencia-texto {
+  width: min-content;
+  margin-inline: auto;
+  text-align: center;
+  word-break: break-all;
 }
