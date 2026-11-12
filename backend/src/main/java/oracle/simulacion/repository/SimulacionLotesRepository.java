@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
+import oracle.simulacion.model.Balanceo;
 import oracle.simulacion.model.HistorialBalanceo;
 import oracle.simulacion.service.SimulacionExcel;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -62,14 +63,21 @@ public class SimulacionLotesRepository {
         actor);
   }
 
+  /** Cada cluster arranca pendiente en los dos balanceos (L-X-V y M-J-S). */
   public void insertarParametrosCluster(Long archivoId, Collection<Long> clusterIds) {
+    List<Object[]> filas = new ArrayList<>();
+    for (Balanceo balanceo : Balanceo.values()) {
+      clusterIds.forEach((clusterId) -> filas.add(new Object[] {balanceo.name(), clusterId}));
+    }
     jdbc.batchUpdate(
-        "INSERT INTO parametros_clusters (archivo_id, cluster_id, limite_horas) VALUES (?, ?, 0)",
-        new ArrayList<>(clusterIds),
+        "INSERT INTO parametros_clusters (archivo_id, balanceo, cluster_id, limite_horas)"
+            + " VALUES (?, ?, ?, 0)",
+        filas,
         LOTE,
-        (ps, clusterId) -> {
+        (ps, fila) -> {
           ps.setLong(1, archivoId);
-          ps.setLong(2, clusterId);
+          ps.setString(2, (String) fila[0]);
+          ps.setLong(3, (Long) fila[1]);
         });
   }
 
@@ -162,9 +170,24 @@ public class SimulacionLotesRepository {
         });
   }
 
-  /** Todo el registro vuelve a la proyección: sin prioridades ni tramos de grupos. */
-  public void borrarGrupos(Long archivoId) {
-    jdbc.update("DELETE FROM parametros_grupos WHERE archivo_id = ?", archivoId);
+  /**
+   * Esos clusters vuelven a la proyección en los dos balanceos: sin prioridades ni tramos de
+   * grupos (el próximo balanceo los define de nuevo).
+   */
+  public void borrarGrupos(Long archivoId, Collection<Long> clusterIds) {
+    if (clusterIds.isEmpty()) {
+      return;
+    }
+    Long[] ids = clusterIds.toArray(Long[]::new);
+    jdbc.update(
+        conexion -> {
+          var ps =
+              conexion.prepareStatement(
+                  "DELETE FROM parametros_grupos WHERE archivo_id = ? AND cluster_id = ANY (?)");
+          ps.setLong(1, archivoId);
+          ps.setArray(2, conexion.createArrayOf("bigint", ids));
+          return ps;
+        });
   }
 
   /** UPDATE por bloques de pares (id de ruta, valor); la columna es una constante interna. */
@@ -203,8 +226,8 @@ public class SimulacionLotesRepository {
         INSERT INTO historial_balanceo
             (archivo_id, lanzamiento_id, tipo_accion, ruta_id, chute_origen_id,
              chute_destino_id, chute_modificado_id, motivo, operarios_origen,
-             operarios_destino, creado_por, creado_en)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             operarios_destino, creado_por, creado_en, balanceo)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         logs,
         LOTE,
@@ -221,6 +244,7 @@ public class SimulacionLotesRepository {
           ps.setObject(10, log.getOperariosDestino(), Types.INTEGER);
           ps.setLong(11, log.getCreadoPor());
           ps.setTimestamp(12, Timestamp.from(log.getCreadoEn()));
+          ps.setString(13, log.getBalanceo());
         });
   }
 
@@ -237,8 +261,9 @@ public class SimulacionLotesRepository {
         """
         INSERT INTO rutas_proyeccion
             (archivo_id, chute_id, chute_original_id, cluster_id, codigo_ruta, tipo,
-             total_bultos, total_unidades, total_lineas, conteo_cod, cluster_original_id, grupo)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             total_bultos, total_unidades, total_lineas, conteo_cod, cluster_original_id, grupo,
+             frecuencia)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         rutas,
         LOTE,
@@ -259,6 +284,7 @@ public class SimulacionLotesRepository {
           // Igual que el chute: el cluster original se congela al cargar.
           ps.setLong(11, clusterId);
           ps.setString(12, SimulacionExcel.nombre(ruta.grupo()));
+          ps.setString(13, ruta.frecuencia());
         });
   }
 

@@ -21,7 +21,12 @@ import { Icon } from '../../../../../../shared/ui/icon/icon';
 import { Modal } from '../../../../../../shared/ui/modal/modal';
 import { Paginador } from '../../../../../../shared/ui/paginador/paginador';
 import { SimulacionApi } from '../../../data/simulacion.api';
-import { HistorialRegistroSimulacion, HistorialSimulacion } from '../../../data/simulacion.model';
+import {
+  Balanceo,
+  ETIQUETA_BALANCEO,
+  HistorialRegistroSimulacion,
+  HistorialSimulacion,
+} from '../../../data/simulacion.model';
 import { NumeroPipe } from '../../../numero.pipe';
 
 /** Un lanzamiento (o los cambios sin lanzamiento) tal como se lista. */
@@ -67,6 +72,10 @@ export class SimulacionHistorialCambios {
   readonly cambios = signal<Pagina<HistorialSimulacion> | null>(null);
   readonly cargandoCambios = signal(false);
   readonly pagina = signal(1);
+  /** Cada balanceo tiene su propio historial. */
+  readonly balanceo = signal<Balanceo>('LXV');
+  readonly balanceos: Balanceo[] = ['LXV', 'MJS'];
+  readonly etiquetaBalanceo = ETIQUETA_BALANCEO;
   readonly porPagina = signal(25);
   /** Descarta respuestas viejas si se cambia de grupo o de página rápido. */
   private solicitud = 0;
@@ -120,7 +129,7 @@ export class SimulacionHistorialCambios {
     this.error.set(null);
     this.cargando.set(true);
     this.api
-      .historial(id)
+      .historial(id, this.balanceo())
       .pipe(
         finalize(() => this.cargando.set(false)),
         takeUntilDestroyed(this.destroyRef),
@@ -129,6 +138,15 @@ export class SimulacionHistorialCambios {
         next: (historial) => this.historial.set(historial),
         error: (err: unknown) => this.error.set(mensajeDeError(err)),
       });
+  }
+
+  elegirBalanceo(balanceo: Balanceo): void {
+    const id = this.registroId();
+    if (balanceo === this.balanceo() || id === null) {
+      return;
+    }
+    this.balanceo.set(balanceo);
+    this.cargar(id);
   }
 
   alternar(grupo: GrupoHistorial): void {
@@ -161,7 +179,7 @@ export class SimulacionHistorialCambios {
     const solicitud = ++this.solicitud;
     this.cargandoCambios.set(true);
     this.api
-      .historialCambios(id, grupo.lanzamientoId, this.pagina(), this.porPagina())
+      .historialCambios(id, grupo.lanzamientoId, this.pagina(), this.porPagina(), this.balanceo())
       .pipe(
         finalize(() => {
           if (solicitud === this.solicitud) {

@@ -5,6 +5,12 @@
   subtitulo="Cada lanzamiento de un cluster, del más reciente al más antiguo. Ábrelo para ver sus cambios."
   (cerrar)="cerrar.emit()"
 >
+  <div class="hc-balanceo" role="tablist" aria-label="Balanceo">
+    @for (b of balanceos; track b) {
+      <button type="button" role="tab" class="hc-balanceo__opcion" [class.hc-balanceo__opcion--activa]="balanceo() === b"
+        [attr.aria-selected]="balanceo() === b" (click)="elegirBalanceo(b)">{{ etiquetaBalanceo[b] }}</button>
+    }
+  </div>
   @if (cargando()) {
     <div class="loading"><span class="ui-spinner"></span> Cargando historial…</div>
   } @else if (error()) {

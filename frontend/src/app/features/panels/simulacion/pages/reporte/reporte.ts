@@ -25,6 +25,9 @@ import {
   DashboardSimulacion,
   GrupoCluster,
   RutaSimulacion,
+  Balanceo,
+  ETIQUETA_BALANCEO,
+  rutaEnBalanceo,
 } from '../../data/simulacion.model';
 import {
   compararChute,
@@ -122,6 +125,9 @@ export class SimulacionReporteEjecutivo {
   private readonly injector = inject(Injector);
 
   readonly datos = signal<Datos | null>(null);
+  /** Balanceo del reporte (L-X-V o M-J-S). */
+  readonly balanceo = signal<Balanceo>('LXV');
+  readonly etiquetaBalanceo = ETIQUETA_BALANCEO;
   readonly error = signal<string | null>(null);
   readonly generado = new Date();
   readonly formatearEntero = formatearEntero;
@@ -143,21 +149,29 @@ export class SimulacionReporteEjecutivo {
   constructor() {
     const id = Number(this.route.snapshot.queryParamMap.get('registro'));
     const imprimir = this.route.snapshot.queryParamMap.get('imprimir') !== 'no';
+    const balanceo: Balanceo =
+      this.route.snapshot.queryParamMap.get('balanceo') === 'MJS' ? 'MJS' : 'LXV';
+    this.balanceo.set(balanceo);
     if (!Number.isInteger(id) || id <= 0) {
       this.error.set('Falta el registro a reportar.');
       return;
     }
     forkJoin({
-      cfg: this.api.configuracion(id),
-      dash: this.api.dashboard(id),
-      rutas: this.todasLasRutas(id),
+      cfg: this.api.configuracion(id, balanceo),
+      dash: this.api.dashboard(id, null, balanceo),
+      // Solo las rutas de este balanceo (las suyas y las diarias).
+      rutas: this.todasLasRutas(id).pipe(
+        map((rutas) => rutas.filter((ruta) => rutaEnBalanceo(ruta.frecuencia, balanceo))),
+      ),
     })
       .pipe(
         // Después, la vista de cada cluster (su carga por chute antes vs. después).
         switchMap((base) =>
           (base.cfg.clusters.length === 0
             ? of([] as DashboardSimulacion[])
-            : forkJoin(base.cfg.clusters.map((cluster) => this.api.dashboard(id, cluster.id)))
+            : forkJoin(
+                base.cfg.clusters.map((cluster) => this.api.dashboard(id, cluster.id, balanceo)),
+              )
           ).pipe(map((porCluster) => ({ ...base, porCluster }))),
         ),
         takeUntilDestroyed(this.destroyRef),
@@ -165,7 +179,7 @@ export class SimulacionReporteEjecutivo {
       .subscribe({
         next: (datos) => {
           this.datos.set(datos);
-          document.title = `Reporte · ${datos.cfg.archivo.nombreRegistro}`;
+          document.title = `Reporte · ${datos.cfg.archivo.nombreRegistro} · ${ETIQUETA_BALANCEO[balanceo]}`;
           if (imprimir) {
             // Tras dibujarse (y terminar la animación de los gráficos), abre el diálogo.
             afterNextRender(() => setTimeout(() => this.imprimir(), 1200), {

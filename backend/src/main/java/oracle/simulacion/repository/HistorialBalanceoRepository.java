@@ -17,14 +17,15 @@ public interface HistorialBalanceoRepository extends JpaRepository<HistorialBala
       Long archivoId, Long lanzamientoId, Pageable pageable);
 
   /** Cambios sin lanzamiento (a mano o de versiones anteriores), paginados. */
-  Page<HistorialBalanceo> findByArchivoIdAndLanzamientoIdIsNull(Long archivoId, Pageable pageable);
+  Page<HistorialBalanceo> findByArchivoIdAndBalanceoAndLanzamientoIdIsNull(
+      Long archivoId, String balanceo, Pageable pageable);
 
-  long countByArchivoIdAndLanzamientoIdIsNull(Long archivoId);
+  long countByArchivoIdAndBalanceoAndLanzamientoIdIsNull(Long archivoId, String balanceo);
 
   /** Borrado en una sola sentencia (el derivado deleteBy… carga y borra fila a fila). */
   @Modifying
-  @Query("DELETE FROM HistorialBalanceo h WHERE h.archivoId = :archivoId")
-  void borrarPorArchivo(@Param("archivoId") Long archivoId);
+  @Query("DELETE FROM HistorialBalanceo h WHERE h.archivoId = :archivoId AND h.balanceo = :balanceo")
+  void borrarPorArchivo(@Param("archivoId") Long archivoId, @Param("balanceo") String balanceo);
 
   /**
    * Trabajo hecho mientras alguno de esos clusters estaba en curso, del último cambio al primero:
@@ -39,10 +40,14 @@ public interface HistorialBalanceoRepository extends JpaRepository<HistorialBala
           SELECT h.ruta_id AS rutaId,
                  h.tipo_accion AS tipoAccion,
                  h.chute_origen_id AS chuteOrigenId,
-                 h.cluster_origen_id AS clusterOrigenId
+                 h.cluster_origen_id AS clusterOrigenId,
+                 r.frecuencia AS frecuencia,
+                 r.cluster_id AS clusterId
             FROM historial_balanceo h
             LEFT JOIN lanzamientos_balanceo l ON l.id = h.lanzamiento_id
+            JOIN rutas_proyeccion r ON r.id = h.ruta_id
            WHERE h.archivo_id = :archivoId
+             AND h.balanceo = :balanceo
              AND h.ruta_id IS NOT NULL
              AND h.tipo_accion IN ('MOVER_RUTA', 'CAMBIAR_CLUSTER')
              AND COALESCE(l.cluster_id, h.cluster_trabajo_id) IN (:clusterIds)
@@ -50,7 +55,9 @@ public interface HistorialBalanceoRepository extends JpaRepository<HistorialBala
           """,
       nativeQuery = true)
   List<CambioParaDeshacer> trabajoParaDeshacer(
-      @Param("archivoId") Long archivoId, @Param("clusterIds") Collection<Long> clusterIds);
+      @Param("archivoId") Long archivoId,
+      @Param("balanceo") String balanceo,
+      @Param("clusterIds") Collection<Long> clusterIds);
 
   /**
    * Cambios a mano hechos con alguno de esos clusters en curso (los del balanceo se borran con su
@@ -60,9 +67,12 @@ public interface HistorialBalanceoRepository extends JpaRepository<HistorialBala
   @Query("""
       DELETE FROM HistorialBalanceo h
        WHERE h.archivoId = :archivoId
+         AND h.balanceo = :balanceo
          AND h.lanzamientoId IS NULL
          AND h.clusterTrabajoId IN :clusterIds
       """)
   int borrarManualesDeTrabajo(
-      @Param("archivoId") Long archivoId, @Param("clusterIds") Collection<Long> clusterIds);
+      @Param("archivoId") Long archivoId,
+      @Param("balanceo") String balanceo,
+      @Param("clusterIds") Collection<Long> clusterIds);
 }

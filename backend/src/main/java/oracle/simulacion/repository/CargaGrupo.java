@@ -14,4 +14,7 @@ public interface CargaGrupo {
   Long getRutas();
 
   BigDecimal getBultos();
+
+  /** Frecuencia de esas rutas (DIARIA, LXV o MJS): cada balanceo suma solo las suyas. */
+  String getFrecuencia();
 }

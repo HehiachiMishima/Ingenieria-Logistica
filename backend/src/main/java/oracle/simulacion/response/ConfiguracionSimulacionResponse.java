@@ -21,7 +21,27 @@ public record ConfiguracionSimulacionResponse(
     List<ChuteParametroResponse> chutes,
     List<CargaSimulacionResponse> carga,
     /** Nombres de los chutes bloqueados («19», «20», «21»): no se muestran ni se usan. */
-    List<String> chutesBloqueados) {
+    List<String> chutesBloqueados,
+    /** Balanceo de esta configuración: LXV o MJS. */
+    String balanceo,
+    /** Algún cluster ya se balanceó (en cualquier balanceo): el buff de los chutes ya no cambia. */
+    boolean buffBloqueado) {
+
+  public ConfiguracionSimulacionResponse(
+      ArchivoSimulacionResponse archivo,
+      BigDecimal velocidadBase,
+      Integer operariosMaximos,
+      Integer operariosPorChute,
+      int topePorChute,
+      List<ClusterParametroResponse> clusters,
+      List<ChuteParametroResponse> chutes,
+      List<CargaSimulacionResponse> carga,
+      List<String> chutesBloqueados) {
+    this(
+        archivo, velocidadBase, operariosMaximos, operariosPorChute, topePorChute, clusters, chutes,
+        carga, chutesBloqueados, "LXV", false);
+  }
+
 
   public ConfiguracionSimulacionResponse(
       ArchivoSimulacionResponse archivo,

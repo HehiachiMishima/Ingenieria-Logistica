@@ -86,8 +86,8 @@ class SimulacionExcelFormatosTest {
   void numeroDeExcelConTresDecimalesNoSeConfundeConMiles() throws Exception {
     byte[] libro =
         xlsx(
-            new Object[] {"RUTA", "CLUSTER", "CHUTE", "GRUPO", "TIPO", "BULTOS", "UNIDADES"},
-            new Object[] {"3030", "CL1", "CHUTE 1", "A", "B2C", 1.234, "1.500"});
+            new Object[] {"RUTA", "CLUSTER", "CHUTE", "GRUPO", "FRECUENCIA", "TIPO", "BULTOS", "UNIDADES"},
+            new Object[] {"3030", "CL1", "CHUTE 1", "A", "L-M-X-J-V-S", "B2C", 1.234, "1.500"});
 
     SimulacionExcel.FilaRuta ruta = SimulacionExcel.analizar(archivoXlsx(libro)).rutas().get(0);
 
@@ -98,7 +98,7 @@ class SimulacionExcelFormatosTest {
   @Test
   void codigoDeRutaNumericoSeLeeSinDecimales() throws Exception {
     byte[] libro =
-        xlsx(new Object[] {"RUTA", "CLUSTER", "CHUTE", "GRUPO", "TIPO", "BULTOS"}, new Object[] {3030.0, "CL1", 7.0, "A", "B2C", 4.0});
+        xlsx(new Object[] {"RUTA", "CLUSTER", "CHUTE", "GRUPO", "FRECUENCIA", "TIPO", "BULTOS"}, new Object[] {3030.0, "CL1", 7.0, "A", "L-M-X-J-V-S", "B2C", 4.0});
 
     SimulacionExcel.FilaRuta ruta = SimulacionExcel.analizar(archivoXlsx(libro)).rutas().get(0);
 
@@ -112,7 +112,7 @@ class SimulacionExcelFormatosTest {
 
   @Test
   void csvWindows1252ConservaLaColumnaLineas() {
-    String csv = "RUTA;CLUSTER;CHUTE;GRUPO;TIPO;BULTOS;LÍNEAS PROMEDIO\r\n3030;CL1;CHUTE 1;A;B2C;5;7,5\r\n";
+    String csv = "RUTA;CLUSTER;CHUTE;GRUPO;FRECUENCIA;TIPO;BULTOS;LÍNEAS PROMEDIO\r\n3030;CL1;CHUTE 1;A;L-M-X-J-V-S;B2C;5;7,5\r\n";
 
     SimulacionExcel.Analisis analisis =
         SimulacionExcel.analizar(csv(csv.getBytes(Charset.forName("windows-1252"))));
@@ -122,7 +122,7 @@ class SimulacionExcelFormatosTest {
 
   @Test
   void csvWindows1252ConTildesEnLosDatos() {
-    String csv = "RUTA,CLUSTER,CHUTE,GRUPO,TIPO,BULTOS\n3030,CAÑETE,CHUTE 1,A,B2C,5\n";
+    String csv = "RUTA,CLUSTER,CHUTE,GRUPO,FRECUENCIA,TIPO,BULTOS\n3030,CAÑETE,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n";
 
     SimulacionExcel.Analisis analisis =
         SimulacionExcel.analizar(csv(csv.getBytes(Charset.forName("windows-1252"))));
@@ -132,7 +132,7 @@ class SimulacionExcelFormatosTest {
 
   @Test
   void csvUtf8SinBomConTildes() {
-    String csv = "RUTA,CLUSTER,CHUTE,GRUPO,TIPO,BULTOS,LÍNEAS\n3030,CAÑETE,CHUTE 1,A,B2C,5,3\n";
+    String csv = "RUTA,CLUSTER,CHUTE,GRUPO,FRECUENCIA,TIPO,BULTOS,LÍNEAS\n3030,CAÑETE,CHUTE 1,A,L-M-X-J-V-S,B2C,5,3\n";
 
     SimulacionExcel.Analisis analisis =
         SimulacionExcel.analizar(csv(csv.getBytes(StandardCharsets.UTF_8)));
@@ -143,7 +143,7 @@ class SimulacionExcelFormatosTest {
 
   @Test
   void csvUtf16ConBomYTabuladores() {
-    String csv = "﻿RUTA\tCLUSTER\tCHUTE\tGRUPO\tTIPO\tBULTOS\r\n3030\tCL1\tCHUTE 1\tA\tB2C\t12\r\n";
+    String csv = "﻿RUTA\tCLUSTER\tCHUTE\tGRUPO\tFRECUENCIA\tTIPO\tBULTOS\r\n3030\tCL1\tCHUTE 1\tA\tL-M-X-J-V-S\tB2C\t12\r\n";
 
     SimulacionExcel.Analisis analisis =
         SimulacionExcel.analizar(csv(csv.getBytes(StandardCharsets.UTF_16LE)));
@@ -155,8 +155,8 @@ class SimulacionExcelFormatosTest {
   void cabeceraDebajoDeUnTituloEnCsvConPuntoYComa() {
     String csv =
         "Proyección semana 23\n\n"
-            + "RUTA;CLUSTER;CHUTE;GRUPO;TIPO;BULTOS\n"
-            + "3030;CL1;CHUTE 1;A;B2C;1,5\n";
+            + "RUTA;CLUSTER;CHUTE;GRUPO;FRECUENCIA;TIPO;BULTOS\n"
+            + "3030;CL1;CHUTE 1;A;L-M-X-J-V-S;B2C;1,5\n";
 
     SimulacionExcel.Analisis analisis = SimulacionExcel.analizar(csv(csv.getBytes(StandardCharsets.UTF_8)));
 
@@ -165,11 +165,11 @@ class SimulacionExcelFormatosTest {
 
   @Test
   void cabeceraMayorA64KbNoFalla() {
-    StringBuilder csv = new StringBuilder("RUTA,CLUSTER,CHUTE,GRUPO,TIPO,BULTOS");
+    StringBuilder csv = new StringBuilder("RUTA,CLUSTER,CHUTE,GRUPO,FRECUENCIA,TIPO,BULTOS");
     for (int i = 0; i < 9_000; i++) {
       csv.append(",EXTRA").append(i);
     }
-    csv.append("\n3030,CL1,CHUTE 1,A,B2C,5\n");
+    csv.append("\n3030,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n");
     assertTrue(csv.length() > 64 * 1024);
 
     SimulacionExcel.Analisis analisis =
@@ -188,15 +188,15 @@ class SimulacionExcelFormatosTest {
         xlsx(
             new Object[] {"Proyección de rutas"},
             new Object[] {},
-            new Object[] {"RUTA", "CLUSTER", "CHUTE", "GRUPO", "TIPO", "BULTOS"},
-            new Object[] {"3030", "CL1", "CHUTE 1", "A", "B2C", 9.0});
+            new Object[] {"RUTA", "CLUSTER", "CHUTE", "GRUPO", "FRECUENCIA", "TIPO", "BULTOS"},
+            new Object[] {"3030", "CL1", "CHUTE 1", "A", "L-M-X-J-V-S", "B2C", 9.0});
 
     assertEquals("9.00", SimulacionExcel.analizar(archivoXlsx(libro)).totalBultos().toPlainString());
   }
 
   @Test
   void indicaLaColumnaQueFaltaEnLaCabecera() {
-    String csv = "RUTA,CLUSTER,CHUTE,GRUPO,TIPO\n3030,CL1,CHUTE 1,A,B2C\n";
+    String csv = "RUTA,CLUSTER,CHUTE,GRUPO,FRECUENCIA,TIPO\n3030,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C\n";
 
     ArchivoInvalidoException error =
         assertThrows(
@@ -238,7 +238,7 @@ class SimulacionExcelFormatosTest {
 
   @Test
   void rutasConEspaciosDistintosSonLaMismaYSeGuardaElNombreCanonico() {
-    String csv = "RUTA,CLUSTER,CHUTE,GRUPO,TIPO,BULTOS\n3030,CL  1,CHUTE  1,A,B2C,5\n3030,cl 1,Chute 1,a,B2C,5\n";
+    String csv = "RUTA,CLUSTER,CHUTE,GRUPO,FRECUENCIA,TIPO,BULTOS\n3030,CL  1,CHUTE  1,A,L-M-X-J-V-S,B2C,5\n3030,cl 1,Chute 1,a,L-M-X-J-V-S,B2C,5\n";
 
     SimulacionExcel.Analisis analisis = SimulacionExcel.analizar(csv(csv.getBytes(StandardCharsets.UTF_8)));
 
@@ -253,7 +253,7 @@ class SimulacionExcelFormatosTest {
 
   @Test
   void superarElMaximoDeFilasEs413() {
-    String csv = "RUTA,CLUSTER,CHUTE,GRUPO,TIPO,BULTOS\n1,A,B,G,B2C,1\n2,A,B,G,B2C,1\n3,A,B,G,B2C,1\n";
+    String csv = "RUTA,CLUSTER,CHUTE,GRUPO,FRECUENCIA,TIPO,BULTOS\n1,A,B,G,L-M-X-J-V-S,B2C,1\n2,A,B,G,L-M-X-J-V-S,B2C,1\n3,A,B,G,L-M-X-J-V-S,B2C,1\n";
     Limites limites = new Limites(2, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE);
 
     ArchivoInvalidoException error =
@@ -268,11 +268,11 @@ class SimulacionExcelFormatosTest {
   void lasFilasVaciasNoCuentanParaElTope() throws Exception {
     byte[] libro =
         xlsx(
-            new Object[] {"RUTA", "CLUSTER", "CHUTE", "GRUPO", "TIPO", "BULTOS"},
-            new Object[] {"1", "A", "B", "A", "B2C", 1.0},
+            new Object[] {"RUTA", "CLUSTER", "CHUTE", "GRUPO", "FRECUENCIA", "TIPO", "BULTOS"},
+            new Object[] {"1", "A", "B", "A", "L-M-X-J-V-S", "B2C", 1.0},
             new Object[] {""},
             new Object[] {""},
-            new Object[] {"2", "A", "B", "A", "B2C", 1.0});
+            new Object[] {"2", "A", "B", "A", "L-M-X-J-V-S", "B2C", 1.0});
     Limites limites = new Limites(2, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE);
 
     assertEquals(
@@ -282,9 +282,9 @@ class SimulacionExcelFormatosTest {
   @Test
   void sharedStringsMayorAlTopeEs413() throws Exception {
     Object[][] filas = new Object[201][];
-    filas[0] = new Object[] {"RUTA", "CLUSTER", "CHUTE", "GRUPO", "TIPO", "BULTOS"};
+    filas[0] = new Object[] {"RUTA", "CLUSTER", "CHUTE", "GRUPO", "FRECUENCIA", "TIPO", "BULTOS"};
     for (int i = 1; i < filas.length; i++) {
-      filas[i] = new Object[] {"RUTA-" + i, "CLUSTER-" + i, "CHUTE-" + i, "A", "B2C", 1.0};
+      filas[i] = new Object[] {"RUTA-" + i, "CLUSTER-" + i, "CHUTE-" + i, "A", "L-M-X-J-V-S", "B2C", 1.0};
     }
     Limites limites = new Limites(1_000, Long.MAX_VALUE, Long.MAX_VALUE, 2_048);
 
@@ -300,9 +300,9 @@ class SimulacionExcelFormatosTest {
   @Test
   void hojaMayorAlTopeEs413() throws Exception {
     Object[][] filas = new Object[501][];
-    filas[0] = new Object[] {"RUTA", "CLUSTER", "CHUTE", "GRUPO", "TIPO", "BULTOS"};
+    filas[0] = new Object[] {"RUTA", "CLUSTER", "CHUTE", "GRUPO", "FRECUENCIA", "TIPO", "BULTOS"};
     for (int i = 1; i < filas.length; i++) {
-      filas[i] = new Object[] {"R", "C", "H", "A", "B2C", (double) i};
+      filas[i] = new Object[] {"R", "C", "H", "A", "L-M-X-J-V-S", "B2C", (double) i};
     }
     Limites limites = new Limites(1_000, Long.MAX_VALUE, 4_096, Long.MAX_VALUE);
 
@@ -323,7 +323,7 @@ class SimulacionExcelFormatosTest {
             ArchivoInvalidoException.class,
             () ->
                 SimulacionExcel.analizar(
-                    csv("RUTA,CLUSTER,CHUTE,GRUPO,TIPO,BULTOS\n".getBytes(StandardCharsets.UTF_8)), limites));
+                    csv("RUTA,CLUSTER,CHUTE,GRUPO,FRECUENCIA,TIPO,BULTOS\n".getBytes(StandardCharsets.UTF_8)), limites));
 
     assertEquals(HttpStatus.CONTENT_TOO_LARGE, error.estado());
   }
@@ -362,7 +362,7 @@ class SimulacionExcelFormatosTest {
 
   @Test
   void unaIOExceptionNoFiltraDetallesAlCliente() {
-    byte[] contenido = "RUTA,CLUSTER,CHUTE,GRUPO,TIPO,BULTOS\n3030,CL1,CHUTE 1,A,B2C,5\n".getBytes(StandardCharsets.UTF_8);
+    byte[] contenido = "RUTA,CLUSTER,CHUTE,GRUPO,FRECUENCIA,TIPO,BULTOS\n3030,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n".getBytes(StandardCharsets.UTF_8);
     MockMultipartFile roto =
         new MockMultipartFile("archivo", "proyeccion.csv", "text/csv", contenido) {
           private int aperturas;

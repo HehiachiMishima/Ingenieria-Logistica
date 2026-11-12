@@ -51,6 +51,17 @@
         [disabled]="!config() || !puedeModificar() || equipoBloqueado() !== null || ocupado()"
         (change)="setPorChute($event)" />
     </div>
+    <div class="config-panel__campo">
+      <label class="ui-label" for="config-buff">Chutes con buff</label>
+      <ui-select-multiple campoId="config-buff" [opciones]="opcionesChute()" [valores]="buffElegidos()"
+        placeholder="Ninguno" [deshabilitado]="!config() || !puedeModificar() || buffBloqueado() || ocupado()"
+        (valoresCambia)="setBuff($event)" />
+      @if (buffBloqueado()) {
+      <span class="config-panel__ayuda">
+        <ui-icon name="lock" [size]="12" /> Se define antes de balancear
+      </span>
+      }
+    </div>
   </div>
 
   <div class="config-panel__pie">
@@ -76,7 +87,7 @@
         @if (finalizado()) {
         <ui-icon name="check" [size]="14" />
         }
-        {{ clustersCerrados() }}/{{ cfg.clusters.length }} clusters cerrados
+        {{ clustersCerrados() }} clusters cerrados
       </span>
       @if (dirty()) {
       <span class="ui-badge ui-badge--warning">Cambios sin guardar</span>
@@ -253,6 +264,10 @@
           <ui-icon name="lock" [size]="12" />
           }
           {{ chute.etiqueta }}
+          @if (chutesBuff().has(chute.id)) {
+          <!-- Chute con más capacidad: recibe primero las rutas más pesadas. -->
+          <span class="mz-buff" title="Chute con buff: recibe primero las rutas más pesadas">BUFF</span>
+          }
         </th>
         }
       </tr>
@@ -416,7 +431,9 @@
     <span class="mz-panel__nombre" [title]="c.nombre"><span>{{ c.nombre }}</span></span>
 
     <div class="mz-panel__botones" *hasPermiso="permisos.MODIFICAR_CONFIGURACION_SIMULACION">
-      @if (c.cerrado) {
+      @if (bloque.vista === 'AMBOS') {
+        <!-- «Ambos» solo muestra: sin pasos ni restablecer. -->
+      } @else if (c.cerrado) {
         <button type="button" class="ui-btn ui-btn--secondary mz-panel__btn-play" [disabled]="ocupado()"
           (click)="confirmarReabrir(c)" title="Reabrir cluster" aria-label="Reabrir cluster">
           <ui-icon name="lock" [size]="14" />
@@ -465,9 +482,30 @@
     </div>
   </div>
 
+  <!-- Balanceo que muestra el cluster: L-X-V, M-J-S o los dos apilados (solo mirar). -->
+  <div class="mz-vista" role="group" [attr.aria-label]="'Balanceo de ' + c.nombre">
+    @for (vista of opcionesVista; track vista) {
+    @let deshabilitada = vista === 'AMBOS' && !bloque.ambosListo;
+    <button type="button" class="mz-vista__opcion" [class.mz-vista__opcion--activa]="bloque.vista === vista"
+      [attr.aria-pressed]="bloque.vista === vista" [disabled]="deshabilitada || ocupado()"
+      [title]="deshabilitada ? 'Balancea las rutas de ' + c.nombre + ' en L-X-V y M-J-S para verlos juntos'
+        : vista === 'AMBOS' ? 'Ver los dos balanceos apilados (solo mirar)' : 'Balanceo ' + etiquetaBalanceo[vista]"
+      (click)="cambiarVista(c.id, vista)">
+      {{ vista === 'AMBOS' ? (plegado ? 'Amb' : 'Ambos') : plegado ? vista : etiquetaBalanceo[vista] }}
+    </button>
+    }
+  </div>
+
   <!-- Estado y lo esencial; el resto del detalle va en su ficha («Detalle»).
        Minimizado, el panel es una columna delgada: nombre, ▶ y «Detalle». -->
-  @if (!plegado) {
+  @if (!plegado && bloque.vista === 'AMBOS') {
+  <p class="mz-panel__ambos"><ui-icon name="ver" [size]="13" /> Solo mirar: rutas de los dos balanceos, sin totales.</p>
+  } @else if (!plegado) {
+  @if (bloque.diariasFijas) {
+  <p class="mz-panel__fijas" title="El balanceo automático ya no mueve las rutas diarias de este cluster; a mano sí.">
+    <ui-icon name="lock" [size]="12" /> Diarias fijas
+  </p>
+  }
   <div class="mz-panel__resumen">
     <span class="ui-badge mz-panel__estado" [class.ui-badge--success]="c.cerrado" [class.ui-badge--info]="c.enCurso" [class.ui-badge--neutral]="!c.cerrado && !c.enCurso">
       @if (c.cerrado) {
@@ -508,6 +546,7 @@
       <span>Detalle</span>
       }
     </button>
+    @if (bloque.vista !== 'AMBOS') {
     <button type="button" class="ui-btn ui-btn--sm mz-panel__accion mz-panel__totales" [class.ui-btn--secondary]="!abierto"
       [class.ui-btn--primary]="abierto" [attr.aria-expanded]="abierto"
       [attr.aria-controls]="'totales-cluster-' + c.id" [attr.aria-label]="'Totales de ' + c.nombre"
@@ -518,6 +557,7 @@
       <ui-icon class="mz-panel__flecha" name="chevronRight" [size]="14" />
       }
     </button>
+    }
   </div>
 </aside>
 
@@ -549,7 +589,14 @@
                   <span class="matriz-ruta__pestana" [class.matriz-ruta__pestana--corta]="celda.grupo.length <= 2"
                     aria-hidden="true" [title]="'Grupo ' + celda.grupo">{{ celda.grupo }}</span>
                   }
+                  @if (celda.marca) {
+                  <!-- «Ambos»: de qué días es la ruta. -->
+                  <span class="matriz-ruta__dias" [attr.data-dias]="celda.marca" aria-hidden="true">{{ celda.marca }}</span>
+                  }
                   <span class="matriz-ruta__codigo">{{ ruta.codigoRuta }}</span>
+                  @if (celda.fija && !celda.marca) {
+                  <ui-icon class="matriz-ruta__fija" name="lock" [size]="11" aria-hidden="true" />
+                  }
                   <!-- El tipo (B2C/B2B) está en la ficha al hacer clic y en el title. -->
                   <span class="matriz-ruta__bultos" [title]="celda.bultos + ' bultos'">
                     <ng-container [ngTemplateOutlet]="cajaBulto" />{{ celda.bultos }}
@@ -574,7 +621,7 @@
         </table>
       </div>
 
-      @if (abierto && m) {
+      @if (abierto && m && bloque.vista !== 'AMBOS') {
       <div class="mz-bloque__totales">
         <ng-container [ngTemplateOutlet]="tplTotales" [ngTemplateOutletContext]="{
                       $implicit: m.porChute,
@@ -601,7 +648,31 @@
   (cerrar)="historialAbierto.set(false)" />
 
 <ui-modal [abierto]="rangoPendiente() !== null" [ancho]="prioridadGrupos().length > 1 ? 'md' : 'sm'" [compacto]="true"
-  [titulo]="'Chutes para balancear ' + (rangoPendiente()?.nombre ?? '')" (cerrar)="rangoPendiente.set(null)">
+  [titulo]="'Chutes para balancear ' + (rangoPendiente()?.nombre ?? '') + ' · ' + etiquetaBalanceo[balanceoDe(rangoPendiente()?.id ?? 0)]"
+  (cerrar)="rangoPendiente.set(null)">
+  <!-- Paso 1 · qué entra: las rutas de este balanceo y las diarias (fijas o no). -->
+  @if (diariasDelModal(); as d) {
+  <ul class="rango__entra">
+    <li><strong>{{ d.propias | numero }}</strong> ruta(s) {{ etiquetaBalanceo[balanceoDe(rangoPendiente()?.id ?? 0)] }}</li>
+    <li>
+      <strong>{{ d.diarias | numero }}</strong> diaria(s)
+      @if (d.fijas > 0) {
+      <span class="rango__fijas"><ui-icon name="lock" [size]="12" /> fijas: no se moverán</span>
+      } @else if (d.diarias > 0) {
+      <span>se acomodan en este balanceo y quedan fijas</span>
+      }
+    </li>
+    @if (chutesBuff().size > 0) {
+    <li><span class="mz-buff">BUFF</span> {{ chutesBuff().size }} chute(s) reciben primero las rutas más pesadas</li>
+    }
+  </ul>
+  }
+  @if (rangoHeredado(); as otro) {
+  <p class="rango__heredado">
+    <ui-icon name="lock" [size]="13" /> El rango y los tramos de grupos los definió <strong>{{ otro }}</strong>:
+    aquí se reutilizan para que cada ruta diaria quede en el tramo de su grupo.
+  </p>
+  }
   <p class="rango__intro">
     @if (prioridadGrupos().length > 1) {
     Cada grupo queda en su propio tramo de chutes seguidos, en el orden de prioridad, y el tamaño de
@@ -611,6 +682,7 @@
     fuera del rango entran a él.
     }
   </p>
+  @if (!rangoHeredado()) {
   <div class="rango__campos">
     <div class="rango__campo">
       <label class="ui-label" for="rango-desde">Desde</label>
@@ -623,6 +695,7 @@
         placeholder="Chute final…" (valorCambia)="rangoHasta.set($event)" />
     </div>
   </div>
+  }
   @if (vistaRango(); as v) {
   <dl class="rango__resumen">
     <div>
@@ -692,11 +765,11 @@
           }
         </div>
         <div class="grupos__mover">
-          <button type="button" class="grupos__boton grupos__boton--subir" [disabled]="primero"
+          <button type="button" class="grupos__boton grupos__boton--subir" [disabled]="primero || rangoHeredado() !== null"
             [attr.aria-label]="'Subir la prioridad de ' + nombre" (click)="moverGrupo(i, -1)">
             <ui-icon name="chevronRight" [size]="16" />
           </button>
-          <button type="button" class="grupos__boton grupos__boton--bajar" [disabled]="ultimo"
+          <button type="button" class="grupos__boton grupos__boton--bajar" [disabled]="ultimo || rangoHeredado() !== null"
             [attr.aria-label]="'Bajar la prioridad de ' + nombre" (click)="moverGrupo(i, 1)">
             <ui-icon name="chevronRight" [size]="16" />
           </button>
@@ -916,7 +989,7 @@
   </div>
 
   <p class="hint">
-    Columnas requeridas: RUTA, CLUSTER, CHUTE, GRUPO, TIPO (B2C o B2B) y BULTOS PROMEDIO. Opcionales:
+    Columnas requeridas: RUTA, CLUSTER, CHUTE, GRUPO, FRECUENCIA (L-M-X-J-V-S, L-X-V o M-J-S), TIPO (B2C o B2B) y BULTOS PROMEDIO. Opcionales:
     COD., UNIDADES y LÍNEAS. Cada ruta tiene un solo grupo. También se aceptan CSV.
   </p>
 

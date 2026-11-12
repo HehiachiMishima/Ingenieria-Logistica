@@ -1,6 +1,7 @@
 package oracle.simulacion.repository;
 
 import jakarta.persistence.QueryHint;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import oracle.simulacion.model.RutaProyeccion;
@@ -39,11 +40,12 @@ public interface RutaProyeccionRepository
              COALESCE(SUM(r.totalBultos), 0) AS bultos,
              COALESCE(SUM(r.totalUnidades), 0) AS unidades,
              COALESCE(SUM(r.totalLineas), 0) AS lineas,
-             COALESCE(SUM(r.conteoCod), 0) AS cod
+             COALESCE(SUM(r.conteoCod), 0) AS cod,
+             r.frecuencia AS frecuencia
         FROM RutaProyeccion r
        WHERE r.archivoId = :archivoId
          AND r.clusterCambiado = true
-       GROUP BY r.clusterOriginalId, r.clusterId
+       GROUP BY r.clusterOriginalId, r.clusterId, r.frecuencia
       """)
   List<CambioClusterRutas> cambiosClusterPorArchivo(@Param("archivoId") Long archivoId);
 
@@ -59,10 +61,11 @@ public interface RutaProyeccionRepository
              COALESCE(SUM(r.totalBultos), 0) AS bultos,
              COALESCE(SUM(r.totalUnidades), 0) AS unidades,
              COALESCE(SUM(r.totalLineas), 0) AS lineas,
-             COALESCE(SUM(r.conteoCod), 0) AS cod
+             COALESCE(SUM(r.conteoCod), 0) AS cod,
+             r.frecuencia AS frecuencia
         FROM RutaProyeccion r
        WHERE r.archivoId = :archivoId
-       GROUP BY r.clusterId, r.chuteId
+       GROUP BY r.clusterId, r.chuteId, r.frecuencia
       """)
   List<CargaRutas> cargaPorArchivo(@Param("archivoId") Long archivoId);
 
@@ -76,10 +79,11 @@ public interface RutaProyeccionRepository
              r.grupo AS grupo,
              r.chuteId AS chuteId,
              COUNT(r) AS rutas,
-             COALESCE(SUM(r.totalBultos), 0) AS bultos
+             COALESCE(SUM(r.totalBultos), 0) AS bultos,
+             r.frecuencia AS frecuencia
         FROM RutaProyeccion r
        WHERE r.archivoId = :archivoId
-       GROUP BY r.clusterId, r.grupo, r.chuteId
+       GROUP BY r.clusterId, r.grupo, r.chuteId, r.frecuencia
       """)
   List<CargaGrupo> cargaPorGrupo(@Param("archivoId") Long archivoId);
 
@@ -95,10 +99,11 @@ public interface RutaProyeccionRepository
              COALESCE(SUM(r.totalBultos), 0) AS bultos,
              COALESCE(SUM(r.totalUnidades), 0) AS unidades,
              COALESCE(SUM(r.totalLineas), 0) AS lineas,
-             COALESCE(SUM(r.conteoCod), 0) AS cod
+             COALESCE(SUM(r.conteoCod), 0) AS cod,
+             r.frecuencia AS frecuencia
         FROM RutaProyeccion r
        WHERE r.archivoId = :archivoId
-       GROUP BY r.clusterOriginalId, r.chuteOriginalId
+       GROUP BY r.clusterOriginalId, r.chuteOriginalId, r.frecuencia
       """)
   List<CargaRutas> cargaOriginalPorArchivo(@Param("archivoId") Long archivoId);
 
@@ -109,12 +114,13 @@ public interface RutaProyeccionRepository
   @Query("""
       SELECT r.chuteOriginalId AS origen,
              r.chuteId AS destino,
-             COUNT(r) AS rutas
+             COUNT(r) AS rutas,
+             r.frecuencia AS frecuencia
         FROM RutaProyeccion r
        WHERE r.archivoId = :archivoId
          AND r.movida = true
          AND (:clusterId IS NULL OR r.clusterId = :clusterId)
-       GROUP BY r.chuteOriginalId, r.chuteId
+       GROUP BY r.chuteOriginalId, r.chuteId, r.frecuencia
       """)
   List<MovimientoRutas> movimientosPorArchivo(
       @Param("archivoId") Long archivoId, @Param("clusterId") Long clusterId);
@@ -122,17 +128,20 @@ public interface RutaProyeccionRepository
   /** Rutas movidas de cada cluster (hoy en un chute distinto al original). */
   @Query("""
       SELECT r.clusterId AS clusterId,
-             COUNT(r) AS rutas
+             COUNT(r) AS rutas,
+             r.frecuencia AS frecuencia
         FROM RutaProyeccion r
        WHERE r.archivoId = :archivoId
          AND r.movida = true
-       GROUP BY r.clusterId
+       GROUP BY r.clusterId, r.frecuencia
       """)
   List<RutasMovidasCluster> rutasMovidasPorCluster(@Param("archivoId") Long archivoId);
 
   /**
-   * Devuelve todas las rutas del archivo a su chute y cluster originales (el punto de inicio) sin
-   * recorrerlas una a una.
+   * Un balanceo vuelve a la proyección sin recorrer las rutas una a una: sus rutas propias (de su
+   * frecuencia) vuelven a su chute y cluster originales, y las diarias solo en los clusters donde
+   * el otro balanceo no cuenta con ellas ({@code clustersLibres}; nunca vacío: sin ninguno, pasar
+   * un id que no exista).
    */
   @Modifying
   @Query("""
@@ -141,8 +150,13 @@ public interface RutaProyeccionRepository
              r.clusterId = r.clusterOriginalId
        WHERE r.archivoId = :archivoId
          AND (r.movida = true OR r.clusterCambiado = true)
+         AND (r.frecuencia = :frecuencia
+              OR (r.frecuencia = 'DIARIA' AND r.clusterId IN :clustersLibres))
       """)
-  int restaurarRutas(@Param("archivoId") Long archivoId);
+  int restaurarRutas(
+      @Param("archivoId") Long archivoId,
+      @Param("frecuencia") String frecuencia,
+      @Param("clustersLibres") Collection<Long> clustersLibres);
 
   /**
    * Totales del detalle de rutas; cada lado añade su filtro de chute (ver abajo).
@@ -164,6 +178,7 @@ public interface RutaProyeccionRepository
          AND (CAST(:texto AS text) IS NULL OR codigo_ruta LIKE CAST(:texto AS text))
          AND (CAST(:tipo AS text) IS NULL OR tipo = CAST(:tipo AS text))
          AND (:soloCambios = FALSE OR movida OR cluster_cambiado)
+         AND frecuencia IN (:frecuencias)
       """;
 
   /**
@@ -183,7 +198,8 @@ public interface RutaProyeccionRepository
       @Param("tipo") String tipo,
       @Param("chuteIds") List<Long> chuteIds,
       @Param("clusterId") Long clusterId,
-      @Param("soloCambios") boolean soloCambios);
+      @Param("soloCambios") boolean soloCambios,
+      @Param("frecuencias") Collection<String> frecuencias);
 
   /** Rutas que los chutes tienen hoy, con su cluster actual (usa idx_rutas_archivo_chute_cluster). */
   @Query(
@@ -198,7 +214,8 @@ public interface RutaProyeccionRepository
       @Param("tipo") String tipo,
       @Param("chuteIds") List<Long> chuteIds,
       @Param("clusterId") Long clusterId,
-      @Param("soloCambios") boolean soloCambios);
+      @Param("soloCambios") boolean soloCambios,
+      @Param("frecuencias") Collection<String> frecuencias);
 
   /**
    * Totales de un lado de los chutes elegidos: el detalle muestra los del
@@ -211,9 +228,10 @@ public interface RutaProyeccionRepository
       List<Long> chuteIds,
       boolean antes,
       Long clusterId,
-      boolean soloCambios) {
+      boolean soloCambios,
+      Collection<String> frecuencias) {
     return antes
-        ? resumenAntes(archivoId, texto, tipo, chuteIds, clusterId, soloCambios)
-        : resumenDespues(archivoId, texto, tipo, chuteIds, clusterId, soloCambios);
+        ? resumenAntes(archivoId, texto, tipo, chuteIds, clusterId, soloCambios, frecuencias)
+        : resumenDespues(archivoId, texto, tipo, chuteIds, clusterId, soloCambios, frecuencias);
   }
 }

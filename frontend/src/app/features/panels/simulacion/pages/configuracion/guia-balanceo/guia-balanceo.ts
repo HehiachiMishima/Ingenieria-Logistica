@@ -54,6 +54,35 @@ const DETALLES: readonly GrupoDetalle[] = [
     ],
   },
   {
+    titulo: 'Frecuencias y balanceos',
+    items: [
+      {
+        icono: 'reloj',
+        termino: 'Dos balanceos',
+        texto:
+          'Columna FRECUENCIA del Excel: L-X-V, M-J-S o L-M-X-J-V-S (diaria). Cada cluster se balancea por separado en L-X-V y en M-J-S, con sus propios pasos; los botones del cluster eligen cuál ver.',
+      },
+      {
+        icono: 'lock',
+        termino: 'Rutas diarias',
+        texto:
+          'Aparecen en los dos balanceos. El primer balanceo automático del cluster las acomoda y desde ahí ningún automático las mueve; a mano sí, y cambian en los dos. Se liberan al restablecer el cluster en L-X-V y en M-J-S.',
+      },
+      {
+        icono: 'ver',
+        termino: 'Ambos',
+        texto:
+          'Con las rutas balanceadas en los dos, «Ambos» apila las de L-X-V y M-J-S en sus chutes, solo para mirar y sin totales (son días distintos).',
+      },
+      {
+        icono: 'paquete',
+        termino: 'Buff',
+        texto:
+          'Chutes con más capacidad, elegidos al inicio junto a la velocidad: al balancear reciben primero las rutas más pesadas. Llevan la etiqueta BUFF en su cabecera.',
+      },
+    ],
+  },
+  {
     titulo: 'Grupos',
     items: [
       {

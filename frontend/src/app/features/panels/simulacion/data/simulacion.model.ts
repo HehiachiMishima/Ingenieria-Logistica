@@ -27,6 +27,22 @@ export type EstadoSimulacion = 'PROYECCION' | 'EN_PROCESO' | 'FINALIZADO' | stri
  * Avance de un cluster. Se trabajan de a uno en el orden de las olas: rutas
  * balanceadas (RUTAS), operarios asignados (LISTO) y cerrado (CERRADO).
  */
+/**
+ * Los dos balanceos del registro: L-X-V (lunes, miércoles y viernes) y M-J-S
+ * (martes, jueves y sábado). Son independientes; comparten las rutas diarias.
+ */
+export type Balanceo = 'LXV' | 'MJS';
+
+/** Frecuencia de una ruta (columna FRECUENCIA del Excel): DIARIA aparece en los dos balanceos. */
+export type FrecuenciaRuta = 'DIARIA' | Balanceo;
+
+export const ETIQUETA_BALANCEO: Record<Balanceo, string> = { LXV: 'L-X-V', MJS: 'M-J-S' };
+
+/** La ruta de esa frecuencia aparece en el balanceo (las diarias, en los dos). */
+export function rutaEnBalanceo(frecuencia: string | null | undefined, balanceo: Balanceo): boolean {
+  return !frecuencia || frecuencia === 'DIARIA' || frecuencia === balanceo;
+}
+
 export type EstadoCluster = 'PENDIENTE' | 'RUTAS' | 'LISTO' | 'CERRADO' | string;
 
 export interface ClusterParametroSimulacion {
@@ -43,6 +59,14 @@ export interface ClusterParametroSimulacion {
   operariosOla: number | null;
   /** Grupos de rutas del cluster en orden de prioridad (la guardada y luego por nombre). */
   grupos: GrupoCluster[];
+  /** Balanceo de esta fila. */
+  balanceo?: Balanceo;
+  /** Avance del mismo cluster en el otro balanceo. */
+  estadoOtro?: EstadoCluster;
+  /** Sus rutas diarias ya están fijas: el automático no las mueve (a mano sí). */
+  diariasFijas?: boolean;
+  /** Rango y tramos de grupo definidos por el otro balanceo: aquí se reutilizan. */
+  rangoDelOtro?: boolean;
 }
 
 /**
@@ -89,6 +113,8 @@ export interface VistaBalanceo {
   /** Por qué así no se podría balancear; null si se puede. */
   aviso: string | null;
   grupos: TramoGrupo[];
+  /** Balanceo que ya definió el rango y los tramos («L-X-V» o «M-J-S»); null si se eligen aquí. */
+  heredadoDe?: string | null;
 }
 
 /**
@@ -115,6 +141,8 @@ export interface ChuteParametroSimulacion {
    * registro anterior al bloqueo aún tiene rutas en él (se pueden sacar).
    */
   bloqueado: boolean;
+  /** Chute con más capacidad: al balancear recibe primero las rutas más pesadas. */
+  buff?: boolean;
 }
 
 export interface RutaSimulacion {
@@ -140,6 +168,10 @@ export interface RutaSimulacion {
   conteoCod: number;
   /** Grupo de la ruta dentro de su cluster (columna GRUPO del Excel). */
   grupo: string;
+  /** DIARIA, LXV o MJS. */
+  frecuencia?: FrecuenciaRuta;
+  /** Ruta diaria ya acomodada por un balanceo automático: el automático no la vuelve a mover. */
+  diariaFija?: boolean;
 }
 
 /** Rutas y totales de un cluster asignados a un chute. */
@@ -170,6 +202,10 @@ export interface ConfiguracionSimulacion {
   carga: CargaSimulacion[];
   /** Nombres de los chutes bloqueados («19», «20», «21»): no se muestran ni se usan. */
   chutesBloqueados: string[];
+  /** Balanceo de esta configuración. */
+  balanceo?: Balanceo;
+  /** Algún cluster ya se balanceó (en cualquier balanceo): el buff ya no cambia. */
+  buffBloqueado?: boolean;
 }
 
 /** Página de rutas por keyset: `siguiente` es el cursor de la próxima; `total` solo en la primera. */
@@ -194,6 +230,8 @@ export interface ConfiguracionSimulacionRequest {
   /** Máximo por chute; null = sin tope propio (toda la ola). */
   operariosPorChute: number | null;
   clusters: { clusterId: number; limiteHoras: number }[];
+  /** Buff de los chutes (solo antes de balancear): base de operarios y si tiene buff. */
+  chutes?: { chuteId: number; operarios: number; buff: boolean }[];
 }
 
 export interface RegistroSimulacionActualizarRequest {

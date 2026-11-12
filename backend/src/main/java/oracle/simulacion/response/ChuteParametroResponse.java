@@ -8,7 +8,19 @@ import java.util.List;
  * solo se envía si un registro anterior al bloqueo aún tiene rutas en él.
  */
 public record ChuteParametroResponse(
-    Long id, String nombre, Integer operarios, List<Long> clusterIds, boolean bloqueado) {
+    Long id,
+    String nombre,
+    Integer operarios,
+    List<Long> clusterIds,
+    boolean bloqueado,
+    /** Chute con más capacidad: recibe primero las rutas más pesadas al balancear. */
+    boolean buff) {
+
+  public ChuteParametroResponse(
+      Long id, String nombre, Integer operarios, List<Long> clusterIds, boolean bloqueado) {
+    this(id, nombre, operarios, clusterIds, bloqueado, false);
+  }
+
 
   public ChuteParametroResponse(Long id, String nombre, Integer operarios, List<Long> clusterIds) {
     this(id, nombre, operarios, clusterIds, false);

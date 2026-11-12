@@ -24,6 +24,7 @@ import oracle.simulacion.response.ChuteComparativoResponse;
 import oracle.simulacion.response.ChuteParametroResponse;
 import oracle.simulacion.response.ClusterComparativoResponse;
 import oracle.simulacion.response.ClusterParametroResponse;
+import oracle.simulacion.model.Balanceo;
 import oracle.simulacion.response.ConfiguracionSimulacionResponse;
 import oracle.simulacion.response.DashboardSimulacionResponse;
 import oracle.simulacion.response.DotacionChuteResponse;
@@ -108,17 +109,30 @@ public class SimulacionReporte {
 
   /** Archivo .xlsx completo del registro: resumen, comparativos con gráficos y detalle. */
   public byte[] excel(Long archivoId) {
-    ConfiguracionSimulacionResponse cfg = servicio.obtener(archivoId).datos();
-    DashboardSimulacionResponse dash = servicio.dashboard(archivoId, null).datos();
+    return excel(archivoId, Balanceo.LXV);
+  }
+
+  /** Libro de un balanceo: solo sus rutas (las suyas y las diarias), su avance y su historial. */
+  public byte[] excel(Long archivoId, Balanceo balanceo) {
+    ConfiguracionSimulacionResponse cfg = servicio.obtener(archivoId, balanceo).datos();
+    DashboardSimulacionResponse dash = servicio.dashboard(archivoId, balanceo, null).datos();
     // La vista de cada cluster (su carga por chute antes vs. después), como el PDF.
     List<DashboardSimulacionResponse> porCluster =
-        cfg.clusters().stream().map((c) -> servicio.dashboard(archivoId, c.id()).datos()).toList();
-    List<RutaSimulacionResponse> rutas = todasLasRutas(archivoId);
-    List<HistorialSimulacionResponse> historial = todoElHistorial(archivoId);
+        cfg.clusters().stream()
+            .map((c) -> servicio.dashboard(archivoId, balanceo, c.id()).datos())
+            .toList();
+    List<RutaSimulacionResponse> rutas =
+        todasLasRutas(archivoId).stream().filter((r) -> balanceo.incluye(r.frecuencia())).toList();
+    List<HistorialSimulacionResponse> historial = todoElHistorial(archivoId, balanceo);
     return new Libro(cfg, dash, rutas, historial, porCluster).escribir();
   }
 
   /** «simulacion-proyeccion-enero.xlsx». */
+  public String nombreArchivo(Long archivoId, Balanceo balanceo) {
+    String nombre = nombreArchivo(archivoId);
+    return nombre.replaceFirst("\\.xlsx$", "-" + balanceo.name().toLowerCase(Locale.ROOT) + ".xlsx");
+  }
+
   public String nombreArchivo(Long archivoId) {
     String nombre = servicio.obtener(archivoId).datos().archivo().nombreRegistro();
     String base =
@@ -142,12 +156,13 @@ public class SimulacionReporte {
     return rutas;
   }
 
-  private List<HistorialSimulacionResponse> todoElHistorial(Long archivoId) {
+  private List<HistorialSimulacionResponse> todoElHistorial(Long archivoId, Balanceo balanceo) {
     List<HistorialSimulacionResponse> cambios = new ArrayList<>();
     int pagina = 1;
     PaginaResponse<HistorialSimulacionResponse> actual;
     do {
-      actual = servicio.historialCambios(archivoId, null, pagina, PAGINA_HISTORIAL).datos();
+      actual =
+          servicio.historialCambios(archivoId, balanceo, null, pagina, PAGINA_HISTORIAL).datos();
       cambios.addAll(actual.contenido());
       pagina++;
     } while (pagina <= actual.totalPaginas());
@@ -936,7 +951,7 @@ public class SimulacionReporte {
     private void hojaRutas() {
       Sheet hoja = libro.createSheet("Rutas");
       String[] cabecera = {
-        "Código", "Tipo", "Grupo", "Cluster (Excel)", "Chute (Excel)", "Cluster final", "Chute final",
+        "Código", "Tipo", "Grupo", "Frecuencia", "Cluster (Excel)", "Chute (Excel)", "Cluster final", "Chute final",
         "Cambió de chute", "Cambió de cluster", "Bultos", "Unidades", "Líneas", "COD"
       };
       int f = titulo(hoja, 0, "Detalle de rutas: dónde estaban y dónde quedaron", cabecera.length);
@@ -954,6 +969,7 @@ public class SimulacionReporte {
         celda(fila, col++, r.codigoRuta(), e.fuerte);
         celda(fila, col++, r.tipo(), e.centro);
         celda(fila, col++, r.grupo(), e.texto);
+        celda(fila, col++, SimulacionExcel.textoFrecuencia(r.frecuencia()), e.centro);
         celda(fila, col++, r.clusterOriginal(), e.texto);
         celda(fila, col++, r.chuteOriginal(), e.texto);
         celda(fila, col++, r.cluster(), otroCluster ? e.resaltado : e.texto);

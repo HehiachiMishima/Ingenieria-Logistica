@@ -20,7 +20,31 @@ public record ClusterParametroResponse(
     /** Operarios con que se calculó su ola la última vez; null si nunca se eligió. */
     Integer operariosOla,
     /** Grupos de rutas del cluster en orden de prioridad (la guardada y luego por nombre). */
-    List<GrupoClusterResponse> grupos) {
+    List<GrupoClusterResponse> grupos,
+    /** Balanceo de esta fila: LXV o MJS. */
+    String balanceo,
+    /** Avance del mismo cluster en el otro balanceo. */
+    String estadoOtro,
+    /** Sus rutas diarias ya están fijas: el automático no las mueve (a mano sí). */
+    boolean diariasFijas,
+    /** El rango y los tramos de grupo los definió el otro balanceo: aquí se reutilizan. */
+    boolean rangoDelOtro) {
+
+  public ClusterParametroResponse(
+      Long id,
+      String nombre,
+      BigDecimal limiteHoras,
+      String estado,
+      Integer diferenciaOriginal,
+      Long chuteDesdeId,
+      Long chuteHastaId,
+      Integer operariosOla,
+      List<GrupoClusterResponse> grupos) {
+    this(
+        id, nombre, limiteHoras, estado, diferenciaOriginal, chuteDesdeId, chuteHastaId,
+        operariosOla, grupos, "LXV", "PENDIENTE", false, false);
+  }
+
 
   public ClusterParametroResponse(
       Long id,

@@ -46,7 +46,7 @@ import org.springframework.mock.web.MockMultipartFile;
 /** Idempotencia de la carga (huella SHA-256 en memoria) y topes de concurrencia, sin BD. */
 class SimulacionRegistroServiceTest {
 
-  private static final String CSV = "RUTA,CLUSTER,CHUTE,GRUPO,TIPO,BULTOS\n3030,CL1,CHUTE 1,A,B2C,5\n";
+  private static final String CSV = "RUTA,CLUSTER,CHUTE,GRUPO,FRECUENCIA,TIPO,BULTOS\n3030,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n";
 
   private ArchivoExcelRepository archivoRepo;
   private SimulacionLotesRepository lotes;

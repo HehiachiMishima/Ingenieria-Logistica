@@ -18,4 +18,7 @@ public interface CargaRutas {
   BigDecimal getLineas();
 
   BigDecimal getCod();
+
+  /** Frecuencia de esas rutas (DIARIA, LXV o MJS): cada balanceo suma solo las suyas. */
+  String getFrecuencia();
 }

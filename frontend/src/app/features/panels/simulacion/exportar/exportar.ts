@@ -15,6 +15,7 @@ import { descargarArchivo } from '../../../../core/utils/archivo.util';
 import { Notificaciones } from '../../../../core/services/notificaciones';
 import { Icon } from '../../../../shared/ui/icon/icon';
 import { SimulacionApi } from '../data/simulacion.api';
+import { Balanceo, ETIQUETA_BALANCEO } from '../data/simulacion.model';
 type Formato = 'EXCEL' | 'PDF';
 
 /**
@@ -49,6 +50,13 @@ type Formato = 'EXCEL' | 'PDF';
       @if (abierto()) {
         <div class="exp__menu" role="menu" aria-label="Formatos de exportación"
           [style.left.px]="posicion().left" [style.top.px]="posicion().top">
+          <!-- Cada balanceo tiene su reporte: sus rutas, su avance y su historial. -->
+          <div class="exp__balanceo" role="group" aria-label="Balanceo a exportar">
+            @for (b of balanceos; track b) {
+              <button type="button" class="exp__opcion" [class.exp__opcion--activa]="balanceo() === b"
+                [attr.aria-pressed]="balanceo() === b" (click)="balanceo.set(b)">{{ etiquetas[b] }}</button>
+            }
+          </div>
           <button type="button" role="menuitem" class="exp__item" (click)="exportar('EXCEL')">
             <span class="exp__icono exp__icono--excel"><ui-icon name="analisis" [size]="18" /></span>
             <span class="exp__texto">
@@ -89,6 +97,28 @@ type Formato = 'EXCEL' | 'PDF';
       box-shadow: var(--shadow-lg);
       animation: exp-entra 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
     }
+    .exp__balanceo {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2px;
+      padding: 2px;
+      margin-bottom: var(--space-1);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+    .exp__opcion {
+      min-height: 32px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text-2);
+      font: inherit;
+      font-size: var(--fs-sm);
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .exp__opcion--activa { color: #fff; background: var(--accent); }
+    .exp__opcion:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
     .exp__item {
       display: flex;
       align-items: center;
@@ -139,6 +169,10 @@ export class SimulacionExportar {
 
   readonly abierto = signal(false);
   readonly generando = signal<Formato | null>(null);
+  readonly balanceos: Balanceo[] = ['LXV', 'MJS'];
+  readonly etiquetas = ETIQUETA_BALANCEO;
+  /** Balanceo que se exporta. */
+  readonly balanceo = signal<Balanceo>('LXV');
 
   /** Menú abierto: se cierra al tocar fuera o con Escape (listeners nativos, sin zone.js). */
   private readonly cierre = effect((alLimpiar) => {
@@ -196,33 +230,35 @@ export class SimulacionExportar {
       // El reporte se arma en otra pestaña (recupera la sesión con la cookie) y
       // abre el diálogo de impresión, donde se elige «Guardar como PDF».
       const url = this.router.serializeUrl(
-        this.router.createUrlTree(['/simulacion/reporte'], { queryParams: { registro: id } }),
+        this.router.createUrlTree(['/simulacion/reporte'], {
+          queryParams: { registro: id, balanceo: this.balanceo() },
+        }),
       );
       window.open(url, '_blank', 'noopener');
       return;
     }
     this.generando.set(formato);
     this.api
-      .exportarExcel(id)
+      .exportarExcel(id, this.balanceo())
       .pipe(
         finalize(() => this.generando.set(null)),
         takeUntilDestroyed(this.destroyRef),
       )
       // Los errores los avisa el interceptor global.
       .subscribe((archivo) => {
-        descargarArchivo(archivo, nombreArchivo(this.registroNombre()));
+        descargarArchivo(archivo, nombreArchivo(this.registroNombre(), this.balanceo()));
         this.notificaciones.exito('Excel generado', 'Reporte completo de la simulación descargado.');
       });
   }
 }
 
 /** «simulacion-proyeccion-enero.xlsx». */
-function nombreArchivo(nombre: string): string {
+function nombreArchivo(nombre: string, balanceo: Balanceo): string {
   const base = nombre
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '');
-  return `simulacion-${base || 'registro'}.xlsx`;
+  return `simulacion-${base || 'registro'}-${balanceo.toLowerCase()}.xlsx`;
 }

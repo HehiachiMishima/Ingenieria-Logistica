@@ -58,6 +58,13 @@ public class RutaProyeccion {
   @Column(name = "grupo", length = 50, nullable = false, updatable = false)
   private String grupo;
 
+  /**
+   * Días de la ruta (columna FRECUENCIA del Excel): DIARIA aparece en los dos
+   * balanceos; LXV o MJS solo en el suyo. Ver {@link Balanceo}.
+   */
+  @Column(name = "frecuencia", length = 10, nullable = false, updatable = false)
+  private String frecuencia;
+
   @Column(name = "codigo_ruta", length = 50, nullable = false)
   private String codigoRuta;
 

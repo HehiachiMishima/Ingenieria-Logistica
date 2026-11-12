@@ -8,4 +8,7 @@ public interface MovimientoRutas {
   Long getDestino();
 
   Long getRutas();
+
+  /** Frecuencia de esas rutas (DIARIA, LXV o MJS): cada balanceo suma solo las suyas. */
+  String getFrecuencia();
 }

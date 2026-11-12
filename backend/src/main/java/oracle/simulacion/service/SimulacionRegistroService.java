@@ -379,6 +379,7 @@ public class SimulacionRegistroService {
                         f.cluster(),
                         plano.nombreCanonico(f.chute()),
                         f.grupo(),
+                        f.frecuencia(),
                         f.tipo(),
                         f.bultos(),
                         f.unidades(),

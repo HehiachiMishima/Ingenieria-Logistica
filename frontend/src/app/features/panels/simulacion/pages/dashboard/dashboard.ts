@@ -14,8 +14,10 @@ import { PERMISOS } from '../../../../../core/config/permisos';
 import { mensajeDeError } from '../../../../../core/errors/error.util';
 import {
   ArchivoSimulacion,
+  Balanceo,
   ChuteComparativoSimulacion,
   DashboardSimulacion,
+  ETIQUETA_BALANCEO,
 } from '../../data/simulacion.model';
 import { SimulacionApi } from '../../data/simulacion.api';
 import { HasPermiso } from '../../../../../shared/directives/has-permiso.directive';
@@ -174,6 +176,10 @@ export class SimulacionDashboard {
   readonly metrica = signal<Metrica>('rutas');
   /** Cluster que se ve; null = resumen de todas las olas. */
   readonly vista = signal<number | null>(null);
+  /** Balanceo que se mira: cada uno tiene su avance, su carga y su resumen. */
+  readonly balanceo = signal<Balanceo>('LXV');
+  readonly balanceos: Balanceo[] = ['LXV', 'MJS'];
+  readonly etiquetaBalanceo = ETIQUETA_BALANCEO;
 
   // ---------------- Filtros del panel (múltiples) ----------------
   readonly filtrosAbierto = signal(false);
@@ -681,7 +687,7 @@ export class SimulacionDashboard {
     this.cargando.set(true);
     this.error.set(null);
     this.api
-      .dashboard(id, this.vista())
+      .dashboard(id, this.vista(), this.balanceo())
       .pipe(
         finalize(() => {
           if (solicitud === this.solicitud) {
@@ -732,6 +738,17 @@ export class SimulacionDashboard {
    * los datos anteriores quedan atenuados hasta que llegan los nuevos. El
    * filtro de cluster no aplica dentro de la vista de un cluster.
    */
+  /** Cambia de balanceo: vuelve a la ola por defecto de ese balanceo. */
+  elegirBalanceo(balanceo: Balanceo): void {
+    if (balanceo === this.balanceo()) {
+      return;
+    }
+    this.balanceo.set(balanceo);
+    this.vista.set(null);
+    this.filtroClusters.set([]);
+    this.cargar();
+  }
+
   elegirVista(clusterId: number | null): void {
     if (clusterId === this.vista()) {
       return;

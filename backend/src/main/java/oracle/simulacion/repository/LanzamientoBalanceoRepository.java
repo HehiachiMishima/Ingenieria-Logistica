@@ -9,17 +9,22 @@ import org.springframework.data.repository.query.Param;
 
 public interface LanzamientoBalanceoRepository extends JpaRepository<LanzamientoBalanceo, Long> {
 
-  /** Lanzamientos del registro, del más reciente al más antiguo. */
-  List<LanzamientoBalanceo> findTop200ByArchivoIdOrderByIdDesc(Long archivoId);
+  /** Lanzamientos de un balanceo del registro, del más reciente al más antiguo. */
+  List<LanzamientoBalanceo> findTop200ByArchivoIdAndBalanceoOrderByIdDesc(
+      Long archivoId, String balanceo);
 
   /** El historial de cada lanzamiento se borra con él (ON DELETE CASCADE). */
   @Modifying
   @Query(
       "DELETE FROM LanzamientoBalanceo l"
-          + " WHERE l.archivoId = :archivoId AND l.clusterId = :clusterId")
-  void borrarPorCluster(@Param("archivoId") Long archivoId, @Param("clusterId") Long clusterId);
+          + " WHERE l.archivoId = :archivoId AND l.balanceo = :balanceo"
+          + " AND l.clusterId = :clusterId")
+  void borrarPorCluster(
+      @Param("archivoId") Long archivoId,
+      @Param("balanceo") String balanceo,
+      @Param("clusterId") Long clusterId);
 
   @Modifying
-  @Query("DELETE FROM LanzamientoBalanceo l WHERE l.archivoId = :archivoId")
-  void borrarPorArchivo(@Param("archivoId") Long archivoId);
+  @Query("DELETE FROM LanzamientoBalanceo l WHERE l.archivoId = :archivoId AND l.balanceo = :balanceo")
+  void borrarPorArchivo(@Param("archivoId") Long archivoId, @Param("balanceo") String balanceo);
 }

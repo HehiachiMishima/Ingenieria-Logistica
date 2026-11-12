@@ -22,6 +22,7 @@ import {
   debounceTime,
   expand,
   finalize,
+  forkJoin,
   map,
   of,
   scan,
@@ -32,13 +33,16 @@ import { PERMISOS } from '../../../../../core/config/permisos';
 import { mensajeDeError } from '../../../../../core/errors/error.util';
 import {
   ArchivoSimulacion,
+  Balanceo,
   BalanceoCuerpo,
+  ETIQUETA_BALANCEO,
   CargaSimulacion,
   ConfiguracionSimulacion,
   ConfiguracionSimulacionRequest,
   RutaSimulacion,
   TramoGrupo,
   VistaBalanceo,
+  rutaEnBalanceo,
 } from '../../data/simulacion.model';
 import { Notificaciones } from '../../../../../core/services/notificaciones';
 import { SesionStore } from '../../../../../core/services/sesion';
@@ -114,11 +118,24 @@ interface CeldaRuta {
   grupoColor: string | null;
   /** Bultos redondeados hacia arriba y con miles («1.250»), para la pastilla. */
   bultos: string;
+  /** Ruta diaria ya fija para el balanceo automático (candado). */
+  fija: boolean;
+  /** Solo en «Ambos»: marca de su frecuencia (D, LXV o MJS). */
+  marca: 'D' | 'LXV' | 'MJS' | null;
 }
+
+/** Lo que muestra un cluster: un balanceo o los dos apilados (solo mirar). */
+export type VistaCluster = Balanceo | 'AMBOS';
 
 /** Un cluster de la matriz: una fila por nivel de apilado y una celda por chute. */
 interface BloqueMatriz {
   cluster: ResumenCluster;
+  /** Lo que muestra el cluster (L-X-V, M-J-S o Ambos). */
+  vista: VistaCluster;
+  /** «Ambos» se habilita cuando el cluster ya tiene sus rutas balanceadas en los dos. */
+  ambosListo: boolean;
+  /** Sus rutas diarias ya están fijas para el automático. */
+  diariasFijas: boolean;
   /** filas[f][c]: ruta en la fila f del chute c (en el orden de `chutesMatriz`), o null. */
   filas: (CeldaRuta | null)[][];
 }
@@ -260,7 +277,87 @@ export class SimulacionConfiguracion {
   readonly seleccionado = signal<number | null>(null);
   readonly cargandoOpciones = signal(false);
 
-  readonly config = signal<ConfiguracionSimulacion | null>(null);
+  /** Configuración de cada balanceo tal como la manda el servidor. */
+  readonly configs = signal<Record<Balanceo, ConfiguracionSimulacion | null>>({
+    LXV: null,
+    MJS: null,
+  });
+  /** Vista de cada cluster (por id); sin elegir, L-X-V. */
+  readonly vistas = signal<Readonly<Record<number, VistaCluster>>>({});
+  readonly etiquetaBalanceo = ETIQUETA_BALANCEO;
+  readonly opcionesVista: VistaCluster[] = ['LXV', 'MJS', 'AMBOS'];
+
+  /**
+   * Lo que ve la página: lo del registro (velocidad, chutes, buff) es común y
+   * sale de L-X-V; cada cluster trae su avance y su carga del balanceo que
+   * muestra («Ambos» usa los de L-X-V, solo para mirar).
+   */
+  readonly config = computed<ConfiguracionSimulacion | null>(() => {
+    const { LXV: lxv, MJS: mjs } = this.configs();
+    if (!lxv) {
+      return null;
+    }
+    if (!mjs) {
+      return lxv;
+    }
+    const vistas = this.vistas();
+    const enMjs = (clusterId: number) => vistas[clusterId] === 'MJS';
+    return {
+      ...lxv,
+      clusters: lxv.clusters.map((cluster) =>
+        enMjs(cluster.id) ? (mjs.clusters.find((c) => c.id === cluster.id) ?? cluster) : cluster,
+      ),
+      carga: [
+        ...lxv.carga.filter((fila) => !enMjs(fila.clusterId)),
+        ...mjs.carga.filter((fila) => enMjs(fila.clusterId)),
+      ],
+    };
+  });
+
+  /** Vista de un cluster: L-X-V, M-J-S o Ambos. */
+  vistaDe(clusterId: number): VistaCluster {
+    return this.vistas()[clusterId] ?? 'LXV';
+  }
+
+  /** Balanceo en que trabajan las acciones del cluster («Ambos» no tiene acciones). */
+  balanceoDe(clusterId: number): Balanceo {
+    return this.vistaDe(clusterId) === 'MJS' ? 'MJS' : 'LXV';
+  }
+
+  /** El cluster ya tiene sus rutas balanceadas en L-X-V y en M-J-S. */
+  ambosListo(clusterId: number): boolean {
+    const { LXV: lxv, MJS: mjs } = this.configs();
+    const balanceado = (cfg: ConfiguracionSimulacion | null) => {
+      const estado = cfg?.clusters.find((c) => c.id === clusterId)?.estado;
+      return estado !== undefined && estado !== 'PENDIENTE';
+    };
+    return balanceado(lxv) && balanceado(mjs);
+  }
+
+  /** Cambia lo que muestra un cluster y propone su límite de ese balanceo. */
+  cambiarVista(clusterId: number, vista: VistaCluster): void {
+    if (vista === this.vistaDe(clusterId) || this.ocupado()) {
+      return;
+    }
+    if (vista === 'AMBOS' && !this.ambosListo(clusterId)) {
+      return;
+    }
+    this.vistas.update((actual) => ({ ...actual, [clusterId]: vista }));
+    this.detalle.set(null);
+    const cfg = this.configs()[vista === 'MJS' ? 'MJS' : 'LXV'];
+    const limite = cfg?.clusters.find((c) => c.id === clusterId)?.limiteHoras;
+    this.limites.update((actual) => ({ ...actual, [clusterId]: Number(limite ?? 0) }));
+  }
+
+  /** Rutas que se ven en la matriz: las del balanceo de cada cluster (en «Ambos», todas). */
+  readonly rutasVisibles = computed(() => {
+    const vistas = this.vistas();
+    return this.rutasMatriz().filter((ruta) => {
+      const vista = vistas[ruta.clusterId] ?? 'LXV';
+      return vista === 'AMBOS' || rutaEnBalanceo(ruta.frecuencia, vista);
+    });
+  });
+
   readonly cargando = signal(false);
   readonly error = signal<string | null>(null);
   readonly errorOpciones = signal<string | null>(null);
@@ -284,10 +381,14 @@ export class SimulacionConfiguracion {
     // Se compara con la configuración normalizada igual que al aplicarla: un 0 o
     // un nulo del servidor no dejan «Cambios sin guardar» fijo.
     const guardado = equipoNormalizado(cfg);
+    const buff = new Set(this.buffGuardado());
+    const elegidos = this.buffElegidos();
     return (
       guardado.velocidad !== this.velocidad() ||
       guardado.porChute !== this.porChute() ||
-      cfg.clusters.some((cluster) => Number(cluster.limiteHoras) !== (limites[cluster.id] ?? 0))
+      cfg.clusters.some((cluster) => Number(cluster.limiteHoras) !== (limites[cluster.id] ?? 0)) ||
+      elegidos.length !== buff.size ||
+      elegidos.some((id) => !buff.has(id))
     );
   });
 
@@ -341,17 +442,46 @@ export class SimulacionConfiguracion {
     () => (this.config()?.clusters ?? []).find((cluster) => cluster.estado !== 'CERRADO') ?? null,
   );
 
-  readonly clustersCerrados = computed(
-    () => (this.config()?.clusters ?? []).filter((cluster) => cluster.estado === 'CERRADO').length,
-  );
+  /** «L-X-V 2/5 · M-J-S 0/5»: clusters cerrados en cada balanceo. */
+  readonly clustersCerrados = computed(() => {
+    const { LXV: lxv, MJS: mjs } = this.configs();
+    const cerrados = (cfg: ConfiguracionSimulacion | null) =>
+      `${(cfg?.clusters ?? []).filter((c) => c.estado === 'CERRADO').length}/${cfg?.clusters.length ?? 0}`;
+    return `L-X-V ${cerrados(lxv)} · M-J-S ${cerrados(mjs)}`;
+  });
 
   /**
-   * El equipo ya trabajó en clusters cerrados: para cambiarlo hay que reabrir
-   * el primero de ellos (los siguientes vuelven a la proyección).
+   * El equipo ya trabajó en clusters cerrados (de cualquiera de los dos
+   * balanceos): para cambiarlo hay que reabrir el primero de ellos.
    */
-  readonly equipoBloqueado = computed(
-    () => (this.config()?.clusters ?? []).find((cluster) => cluster.estado === 'CERRADO') ?? null,
+  readonly equipoBloqueado = computed(() => {
+    const { LXV: lxv, MJS: mjs } = this.configs();
+    return (
+      (lxv?.clusters ?? []).find((cluster) => cluster.estado === 'CERRADO') ??
+      (mjs?.clusters ?? []).find((cluster) => cluster.estado === 'CERRADO') ??
+      null
+    );
+  });
+
+  // ---------------- Buff de los chutes ----------------
+
+  /** Chutes con buff elegidos (aún sin guardar). */
+  readonly buffElegidos = signal<number[]>([]);
+
+  /** El buff ya no cambia: algún cluster ya se balanceó en algún balanceo. */
+  readonly buffBloqueado = computed(() => this.configs().LXV?.buffBloqueado ?? false);
+
+  /** Chutes con buff guardados. */
+  private readonly buffGuardado = computed(() =>
+    (this.configs().LXV?.chutes ?? []).filter((chute) => chute.buff).map((chute) => chute.id),
   );
+
+  /** Ids de los chutes con buff guardados, para marcar sus cabeceras. */
+  readonly chutesBuff = computed(() => new Set(this.buffGuardado()));
+
+  setBuff(ids: (number | string)[]): void {
+    this.buffElegidos.set(ids.map(Number));
+  }
 
   /** Cluster cuyo paso 2 espera la cantidad de operarios (modal «Operarios para …»). */
   readonly operariosPendiente = signal<{ id: number; nombre: string } | null>(null);
@@ -410,6 +540,39 @@ export class SimulacionConfiguracion {
   readonly rangoHasta = signal<number | null>(null);
 
   /**
+   * El otro balanceo ya trabajó el cluster del modal: su rango y los tramos de
+   * sus grupos valen aquí (no se eligen). Devuelve el nombre de ese balanceo.
+   */
+  readonly rangoHeredado = computed<string | null>(() => {
+    const cluster = this.rangoPendiente();
+    if (!cluster) {
+      return null;
+    }
+    const balanceo = this.balanceoDe(cluster.id);
+    const propio = this.configs()[balanceo]?.clusters.find((c) => c.id === cluster.id);
+    return propio?.rangoDelOtro ? ETIQUETA_BALANCEO[balanceo === 'LXV' ? 'MJS' : 'LXV'] : null;
+  });
+
+  /** Cuántas rutas diarias ya fijas tiene el cluster del modal (no se moverán). */
+  readonly diariasDelModal = computed(() => {
+    const cluster = this.rangoPendiente();
+    if (!cluster) {
+      return null;
+    }
+    const rutas = this.rutasMatriz().filter(
+      (ruta) => ruta.clusterId === cluster.id && (!ruta.frecuencia || ruta.frecuencia === 'DIARIA'),
+    );
+    const propias = this.rutasMatriz().filter(
+      (ruta) => ruta.clusterId === cluster.id && ruta.frecuencia === this.balanceoDe(cluster.id),
+    );
+    return {
+      diarias: rutas.length,
+      fijas: rutas.filter((ruta) => ruta.diariaFija).length,
+      propias: propias.length,
+    };
+  });
+
+  /**
    * Grupos del cluster del modal, del de mayor prioridad al de menor: se
    * reordenan con las flechas. Con dos o más, cada uno recibe un tramo de chutes
    * seguidos del rango en este orden.
@@ -424,6 +587,7 @@ export class SimulacionConfiguracion {
     desde: number | null;
     hasta: number | null;
     prioridad: string[];
+    balanceo: Balanceo;
   } | null>();
 
   /** Cada cambio de rango o de prioridad pide la vista previa (la última gana). */
@@ -434,7 +598,14 @@ export class SimulacionConfiguracion {
         pedido === null
           ? of(null)
           : this.api
-              .vistaBalanceo(pedido.id, pedido.clusterId, pedido.desde, pedido.hasta, pedido.prioridad)
+              .vistaBalanceo(
+                pedido.id,
+                pedido.clusterId,
+                pedido.desde,
+                pedido.hasta,
+                pedido.prioridad,
+                pedido.balanceo,
+              )
               .pipe(catchError(() => of(null))),
       ),
       takeUntilDestroyed(this.destroyRef),
@@ -457,7 +628,14 @@ export class SimulacionConfiguracion {
       return;
     }
     this.cargandoGrupos.set(true);
-    this.pedidosVistaGrupos.next({ id, clusterId: cluster.id, desde, hasta, prioridad });
+    this.pedidosVistaGrupos.next({
+      id,
+      clusterId: cluster.id,
+      desde,
+      hasta,
+      prioridad,
+      balanceo: this.balanceoDe(cluster.id),
+    });
   });
 
   /**
@@ -465,7 +643,7 @@ export class SimulacionConfiguracion {
    * previa del servidor llegó para este cluster y no tiene aviso.
    */
   readonly rangoListo = computed(() => {
-    if (this.prioridadGrupos().length < 2) {
+    if (this.prioridadGrupos().length < 2 || this.rangoHeredado() !== null) {
       return true;
     }
     const vista = this.vistaGrupos();
@@ -639,9 +817,10 @@ export class SimulacionConfiguracion {
     const editable = this.puedeModificar();
     // Toda ruta muestra su grupo, aunque el cluster tenga uno solo.
     const colores = this.coloresGrupo();
+    const vistas = this.vistas();
     const porCluster = new Map<number, Map<number, RutaSimulacion[]>>();
 
-    for (const ruta of this.rutasMatriz()) {
+    for (const ruta of this.rutasVisibles()) {
       let celdas = porCluster.get(ruta.clusterId);
       if (!celdas) {
         celdas = new Map<number, RutaSimulacion[]>();
@@ -658,12 +837,20 @@ export class SimulacionConfiguracion {
     const vista = (ruta: RutaSimulacion): CeldaRuta => ({
       ruta,
       titulo: this.tituloEnCache(ruta),
-      movible: editable && !cerrados.has(ruta.clusterId),
+      // En «Ambos» solo se mira: nada se arrastra.
+      movible: editable && !cerrados.has(ruta.clusterId) && vistas[ruta.clusterId] !== 'AMBOS',
       movida: ruta.chuteId !== ruta.chuteOriginalId || ruta.clusterId !== ruta.clusterOriginalId,
       cambioCluster: ruta.clusterId !== ruta.clusterOriginalId,
       grupo: colores.get(ruta.clusterId)?.has(ruta.grupo) ? ruta.grupo : null,
       grupoColor: colores.get(ruta.clusterId)?.get(ruta.grupo) ?? null,
       bultos: formatearEntero(ruta.totalBultos),
+      fija: !!ruta.diariaFija,
+      marca:
+        vistas[ruta.clusterId] !== 'AMBOS'
+          ? null
+          : !ruta.frecuencia || ruta.frecuencia === 'DIARIA'
+            ? 'D'
+            : ruta.frecuencia,
     });
 
     const resultado = new Map<number, (CeldaRuta | null)[][]>();
@@ -699,6 +886,9 @@ export class SimulacionConfiguracion {
       .filter((cluster) => !conBusqueda || celdas.has(cluster.id))
       .map((cluster) => ({
         cluster,
+        vista: this.vistaDe(cluster.id),
+        ambosListo: this.ambosListo(cluster.id),
+        diariasFijas: !!this.config()?.clusters.find((c) => c.id === cluster.id)?.diariasFijas,
         filas: celdas.get(cluster.id) ?? vacias(),
       }));
   });
@@ -726,8 +916,12 @@ export class SimulacionConfiguracion {
   readonly totalesMatriz = computed(() => {
     const clusters = new Set(this.filtroCluster());
     const chutes = new Set(this.filtroChute());
+    // Un cluster en «Ambos» mezcla días distintos: no suma al total general.
+    const vistas = this.vistas();
+    const enAmbos = (clusterId: number) => vistas[clusterId] === 'AMBOS';
     const carga = (this.config()?.carga ?? []).filter(
       (fila) =>
+        !enAmbos(fila.clusterId) &&
         (clusters.size === 0 || clusters.has(fila.clusterId)) &&
         (chutes.size === 0 || chutes.has(fila.chuteId)),
     );
@@ -736,7 +930,10 @@ export class SimulacionConfiguracion {
     }
     const operarios = new Map(carga.map((fila) => [`${fila.clusterId}:${fila.chuteId}`, fila.operarios]));
     const porPar = new Map<string, CargaSimulacion>();
-    for (const ruta of this.rutasMatriz()) {
+    for (const ruta of this.rutasVisibles()) {
+      if (enAmbos(ruta.clusterId)) {
+        continue;
+      }
       const clave = `${ruta.clusterId}:${ruta.chuteId}`;
       let fila = porPar.get(clave);
       if (!fila) {
@@ -1067,8 +1264,33 @@ export class SimulacionConfiguracion {
 
   /** Cada cluster en el orden de las olas, tal como lo muestra su tarjeta. */
   readonly resumenClusters = computed(() => {
-    const cfg = this.config();
-    return cfg ? resumirClusters(cfg, this.velocidad() || VELOCIDAD_INICIAL, this.limites()) : [];
+    const { LXV: lxv, MJS: mjs } = this.configs();
+    if (!lxv) {
+      return [];
+    }
+    const velocidad = this.velocidad() || VELOCIDAD_INICIAL;
+    // Cada balanceo tiene su propio orden de olas (en curso, anterior, siguiente):
+    // se resume por separado y cada cluster toma el del balanceo que muestra. El
+    // límite en edición es el del balanceo que muestra cada cluster.
+    const vistas = this.vistas();
+    const limites = this.limites();
+    const limitesDe = (cfg: ConfiguracionSimulacion, balanceo: Balanceo) =>
+      Object.fromEntries(
+        cfg.clusters.map((c) => [
+          c.id,
+          (vistas[c.id] === 'MJS') === (balanceo === 'MJS') ? (limites[c.id] ?? 0) : Number(c.limiteHoras),
+        ]),
+      );
+    const deLxv = resumirClusters(lxv, velocidad, limitesDe(lxv, 'LXV'));
+    if (!mjs) {
+      return deLxv;
+    }
+    const deMjs = new Map(
+      resumirClusters(mjs, velocidad, limitesDe(mjs, 'MJS')).map((c) => [c.id, c]),
+    );
+    return deLxv.map((cluster) =>
+      vistas[cluster.id] === 'MJS' ? { ...(deMjs.get(cluster.id) ?? cluster), color: cluster.color } : cluster,
+    );
   });
 
   constructor() {
@@ -1154,7 +1376,7 @@ export class SimulacionConfiguracion {
           this.registros.set(lista);
           if (lista.length === 0) {
             this.seleccionado.set(null);
-            this.config.set(null);
+            this.configs.set({ LXV: null, MJS: null });
             return;
           }
           const solicitado = Number(this.route.snapshot.queryParamMap.get('registro'));
@@ -1207,9 +1429,10 @@ export class SimulacionConfiguracion {
       this.rutasCargadas.set(0);
       this.totalRutas.set(0);
       this.errorRutas.set(null);
+      this.vistas.set({});
     }
     this.seleccionado.set(id);
-    this.config.set(null);
+    this.configs.set({ LXV: null, MJS: null });
     this.error.set(null);
     void this.router.navigate([], {
       relativeTo: this.route,
@@ -1237,8 +1460,7 @@ export class SimulacionConfiguracion {
     } else {
       this.recargando.set(true);
     }
-    this.api
-      .configuracion(id)
+    forkJoin([this.api.configuracion(id, 'LXV'), this.api.configuracion(id, 'MJS')])
       .pipe(
         finalize(() => {
           if (solicitud === this.solicitud) {
@@ -1249,9 +1471,10 @@ export class SimulacionConfiguracion {
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
-        next: (config) => {
+        next: ([lxv, mjs]) => {
           if (solicitud === this.solicitud) {
-            this.aplicarConfiguracion(config);
+            this.aplicarConfiguracion(mjs);
+            this.aplicarConfiguracion(lxv);
             // Tras un paso, la planilla se mantiene hasta tener la nueva.
             this.recargarRutas(!inicial);
           }
@@ -1274,15 +1497,52 @@ export class SimulacionConfiguracion {
 
   /** Carga la configuración del servidor y descarta lo editado de los parámetros y los límites. */
   private aplicarConfiguracion(config: ConfiguracionSimulacion): void {
-    this.config.set(config);
+    const balanceo: Balanceo = config.balanceo === 'MJS' ? 'MJS' : 'LXV';
+    this.configs.update((actual) => ({ ...actual, [balanceo]: config }));
+    // Lo del registro (velocidad, máximo por chute, buff) es común a los dos.
     const equipo = equipoNormalizado(config);
     this.velocidad.set(equipo.velocidad);
     this.porChute.set(equipo.porChute);
-    this.limites.set(
-      Object.fromEntries(
-        config.clusters.map((cluster) => [cluster.id, Number(cluster.limiteHoras)]),
-      ),
+    this.buffElegidos.set(config.chutes.filter((chute) => chute.buff).map((chute) => chute.id));
+    // Cada cluster muestra el límite del balanceo que tiene a la vista.
+    const vistas = this.vistas();
+    const limites = { ...this.limites() };
+    for (const cluster of config.clusters) {
+      if ((vistas[cluster.id] === 'MJS') === (balanceo === 'MJS')) {
+        limites[cluster.id] = Number(cluster.limiteHoras);
+      }
+    }
+    this.limites.set(limites);
+    // Un cluster que deja de tener los dos balanceos no puede seguir en «Ambos».
+    const sinAmbos = Object.entries(vistas).filter(
+      ([id, vista]) => vista === 'AMBOS' && !this.ambosListo(Number(id)),
     );
+    if (sinAmbos.length > 0) {
+      this.vistas.update((actual) => {
+        const siguiente = { ...actual };
+        sinAmbos.forEach(([id]) => (siguiente[Number(id)] = 'LXV'));
+        return siguiente;
+      });
+    }
+  }
+
+  /**
+   * Tras escribir en un balanceo, el otro también puede haber cambiado (una
+   * ruta diaria movida, operarios invalidados, diarias fijas): se vuelve a pedir.
+   */
+  private refrescarOtro(id: number, balanceo: Balanceo): void {
+    const otro: Balanceo = balanceo === 'LXV' ? 'MJS' : 'LXV';
+    this.api
+      .configuracion(id, otro)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (config) => {
+          if (this.seleccionado() === id) {
+            this.aplicarConfiguracion(config);
+          }
+        },
+        error: () => undefined,
+      });
   }
 
   /**
@@ -1348,7 +1608,7 @@ export class SimulacionConfiguracion {
   tituloRuta(ruta: RutaSimulacion): string {
     const n = (valor: number) => formatearEntero(valor);
     const detalle =
-      `${ruta.codigoRuta} · ${ruta.tipo}${ruta.grupo ? ` · Grupo ${ruta.grupo}` : ''}\n` +
+      `${ruta.codigoRuta} · ${ruta.tipo}${ruta.grupo ? ` · Grupo ${ruta.grupo}` : ''} · ${textoFrecuencia(ruta.frecuencia)}${ruta.diariaFija ? ' (fija)' : ''}\n` +
       `Bultos: ${n(ruta.totalBultos)} · Unidades: ${n(ruta.totalUnidades)} · ` +
       `Líneas: ${n(ruta.totalLineas)} · COD: ${formatearEntero(ruta.conteoCod)}`;
     const origen =
@@ -1411,6 +1671,18 @@ export class SimulacionConfiguracion {
     if (this.clusterCerrado(ruta.clusterId)) {
       return `${ruta.cluster} está cerrado: reábrelo para mover sus rutas.`;
     }
+    if (this.vistaDe(ruta.clusterId) === 'AMBOS') {
+      return 'En «Ambos» solo se mira: elige L-X-V o M-J-S para mover rutas.';
+    }
+    // Una diaria también cambia en el otro balanceo: allí su cluster no puede estar cerrado.
+    if (!ruta.frecuencia || ruta.frecuencia === 'DIARIA') {
+      const otro: Balanceo = this.balanceoDe(ruta.clusterId) === 'LXV' ? 'MJS' : 'LXV';
+      const cerradoAlla = (clusterIdOtro: number) =>
+        this.configs()[otro]?.clusters.find((c) => c.id === clusterIdOtro)?.estado === 'CERRADO';
+      if (cerradoAlla(ruta.clusterId) || cerradoAlla(clusterId)) {
+        return `La ruta es diaria y su cluster está cerrado en ${ETIQUETA_BALANCEO[otro]}: reábrelo allí para moverla.`;
+      }
+    }
     if (!destino || destino.estado === 'CERRADO') {
       return `${destino?.nombre ?? 'Ese cluster'} está cerrado: reábrelo para recibir rutas.`;
     }
@@ -1450,14 +1722,16 @@ export class SimulacionConfiguracion {
     const nombreChute = cfg.chutes.find((c) => c.id === chuteId)?.nombre ?? ruta.chute;
     const cambiaCluster = clusterId !== ruta.clusterId;
     const cambiaChute = chuteId !== ruta.chuteId;
+    const balanceo = this.balanceoDe(ruta.clusterId);
+    const diaria = !ruta.frecuencia || ruta.frecuencia === 'DIARIA';
 
     this.rutaGuardando.set(ruta.id);
     // Cambio de cluster (con o sin chute) en un solo llamado: el servidor valida
     // el destino final, sin un estado intermedio que pueda rechazar.
     this.conCambiosGuardados(id, () =>
       cambiaCluster
-        ? this.api.cambiarCluster(id, ruta.id, clusterId, cambiaChute ? chuteId : null)
-        : this.api.moverRuta(id, ruta.id, chuteId),
+        ? this.api.cambiarCluster(id, ruta.id, clusterId, cambiaChute ? chuteId : null, balanceo)
+        : this.api.moverRuta(id, ruta.id, chuteId, balanceo),
     )
       .pipe(
         finalize(() => this.rutaGuardando.set(null)),
@@ -1468,10 +1742,22 @@ export class SimulacionConfiguracion {
           if (this.seleccionado() === id) {
             this.aplicarConfiguracion(config);
             this.actualizarRuta(ruta.id, { clusterId, cluster: nombreCluster, chuteId, chute: nombreChute });
+            if (diaria) {
+              // Una diaria tiene un solo chute: el otro balanceo también cambió.
+              this.refrescarOtro(id, balanceo);
+            }
           }
           const desde = `${ruta.cluster} · chute ${ruta.chute}`;
           const hasta = `${nombreCluster} · chute ${nombreChute}`;
-          this.notificaciones.exito('Ruta movida', `${ruta.codigoRuta}: ${desde} → ${hasta}.`);
+          if (diaria) {
+            const otro = ETIQUETA_BALANCEO[balanceo === 'LXV' ? 'MJS' : 'LXV'];
+            this.notificaciones.advertencia(
+              'Ruta diaria movida',
+              `${ruta.codigoRuta}: ${desde} → ${hasta}. También cambia en ${otro}.`,
+            );
+          } else {
+            this.notificaciones.exito('Ruta movida', `${ruta.codigoRuta}: ${desde} → ${hasta}.`);
+          }
         },
         // El interceptor ya muestra el motivo del servidor; el cambio es todo o nada.
         error: () => undefined,
@@ -1569,45 +1855,91 @@ export class SimulacionConfiguracion {
     this.setLimite(clusterId, limite);
   }
 
-  private peticion(): ConfiguracionSimulacionRequest | null {
-    const config = this.config();
+  /**
+   * Petición de un balanceo: la velocidad, el máximo por chute y el buff son del
+   * registro; los límites, solo de los clusters que muestran ese balanceo.
+   */
+  private peticion(balanceo: Balanceo = 'LXV'): ConfiguracionSimulacionRequest | null {
+    const config = this.configs()[balanceo];
     if (!config) {
       return null;
     }
+    const enEste = (clusterId: number) => (this.vistaDe(clusterId) === 'MJS') === (balanceo === 'MJS');
+    const buff = new Set(this.buffElegidos());
+    const buffGuardado = new Set(this.buffGuardado());
+    const cambiaBuff = buff.size !== buffGuardado.size || [...buff].some((id) => !buffGuardado.has(id));
     return {
       velocidadBase: this.velocidad(),
       operariosPorChute: this.porChute(),
-      clusters: config.clusters.map((cluster) => ({
-        clusterId: cluster.id,
-        limiteHoras: this.limites()[cluster.id] ?? 0,
-      })),
+      clusters: config.clusters
+        .filter((cluster) => enEste(cluster.id))
+        .map((cluster) => ({
+          clusterId: cluster.id,
+          limiteHoras: this.limites()[cluster.id] ?? 0,
+        })),
+      ...(balanceo === 'LXV' && cambiaBuff
+        ? {
+            chutes: config.chutes
+              .filter((chute) => buff.has(chute.id) !== buffGuardado.has(chute.id))
+              .map((chute) => ({ chuteId: chute.id, operarios: chute.operarios, buff: buff.has(chute.id) })),
+          }
+        : {}),
     };
   }
 
-  /** Guarda la velocidad, el máximo por chute y los límites en edición. */
+  /** Algún cluster que muestra M-J-S tiene su límite cambiado sin guardar. */
+  private limitesMjsCambiados(): boolean {
+    const mjs = this.configs().MJS;
+    return (mjs?.clusters ?? []).some(
+      (cluster) =>
+        this.vistaDe(cluster.id) === 'MJS' &&
+        Number(cluster.limiteHoras) !== (this.limites()[cluster.id] ?? 0),
+    );
+  }
+
+  /**
+   * Guarda lo editado: lo del registro y los límites de L-X-V en una petición y,
+   * si cambió algún límite de M-J-S, otra para ese balanceo.
+   */
+  private guardarTodo(id: number): Observable<void> {
+    const lxv = this.peticion('LXV');
+    const mjs = this.limitesMjsCambiados() ? this.peticion('MJS') : null;
+    if (!lxv) {
+      return of(undefined);
+    }
+    return this.api.guardarConfiguracion(id, lxv, 'LXV').pipe(
+      switchMap((config) =>
+        mjs ? this.api.guardarConfiguracion(id, mjs, 'MJS').pipe(map((otra) => [config, otra])) : of([config]),
+      ),
+      tap((configs) => {
+        if (this.seleccionado() === id) {
+          configs.forEach((config) => this.aplicarConfiguracion(config));
+        }
+      }),
+      // La velocidad o el máximo por chute también invalidan operarios de M-J-S.
+      tap(() => this.refrescarOtro(id, 'LXV')),
+      map(() => undefined),
+    );
+  }
+
+  /** Guarda la velocidad, el máximo por chute, el buff y los límites en edición. */
   guardar(): void {
     const id = this.seleccionado();
-    const peticion = this.peticion();
-    if (!id || !peticion || this.ocupado()) {
+    if (!id || this.ocupado()) {
       return;
     }
     this.guardando.set(true);
-    this.api
-      .guardarConfiguracion(id, peticion)
+    this.guardarTodo(id)
       .pipe(
         finalize(() => this.guardando.set(false)),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
-        next: (config) => {
-          if (this.seleccionado() === id) {
-            this.aplicarConfiguracion(config);
-          }
+        next: () =>
           this.notificaciones.exito(
             'Cambios guardados',
             'Los parámetros y los límites quedaron al día.',
-          );
-        },
+          ),
       });
   }
 
@@ -1616,18 +1948,10 @@ export class SimulacionConfiguracion {
    * falla, lo guardado ya no figura como pendiente.
    */
   private conCambiosGuardados<T>(id: number, paso: () => Observable<T>): Observable<T> {
-    const peticion = this.peticion();
-    if (!this.dirty() || !peticion) {
+    if (!this.dirty()) {
       return paso();
     }
-    return this.api.guardarConfiguracion(id, peticion).pipe(
-      tap((config) => {
-        if (this.seleccionado() === id) {
-          this.aplicarConfiguracion(config);
-        }
-      }),
-      switchMap(() => paso()),
-    );
+    return this.guardarTodo(id).pipe(switchMap(() => paso()));
   }
 
   /**
@@ -1643,8 +1967,13 @@ export class SimulacionConfiguracion {
     const orden = this.opcionesChute();
     const existe = (id: number | null) => id !== null && orden.some((chute) => chute.id === id);
     const guardado = cfg.clusters.find((item) => item.id === cluster.id);
-    let desde = guardado?.chuteDesdeId ?? null;
-    let hasta = guardado?.chuteHastaId ?? null;
+    // Si el otro balanceo ya definió el rango, se usa el suyo (aquí no se elige).
+    const otro: Balanceo = this.balanceoDe(cluster.id) === 'LXV' ? 'MJS' : 'LXV';
+    const delOtro = guardado?.rangoDelOtro
+      ? this.configs()[otro]?.clusters.find((item) => item.id === cluster.id)
+      : null;
+    let desde = (delOtro ?? guardado)?.chuteDesdeId ?? null;
+    let hasta = (delOtro ?? guardado)?.chuteHastaId ?? null;
     if (!existe(desde) || !existe(hasta)) {
       const usados = new Set(
         cfg.carga
@@ -1672,12 +2001,20 @@ export class SimulacionConfiguracion {
       return;
     }
     const prioridad = this.prioridadGrupos();
+    const heredado = this.rangoHeredado() !== null;
     this.rangoPendiente.set(null);
-    this.ejecutarPaso('RUTAS', cluster, {
-      chuteDesdeId: desde,
-      chuteHastaId: hasta,
-      ...(prioridad.length > 1 ? { prioridad } : {}),
-    });
+    // Con el rango del otro balanceo, el servidor usa el suyo: no se manda.
+    this.ejecutarPaso(
+      'RUTAS',
+      cluster,
+      heredado
+        ? {}
+        : {
+            chuteDesdeId: desde,
+            chuteHastaId: hasta,
+            ...(prioridad.length > 1 ? { prioridad } : {}),
+          },
+    );
   }
 
   /**
@@ -1769,15 +2106,16 @@ export class SimulacionConfiguracion {
     if (!id || this.ocupado()) {
       return;
     }
+    const balanceo = this.balanceoDe(cluster.id);
     this.trabajando.set(paso);
     // Cada paso devuelve la configuración ya actualizada: no hace falta pedirla.
     const operacion: Observable<{ mensaje: string; config: ConfiguracionSimulacion }> =
       this.conCambiosGuardados(id, () =>
         paso === 'CERRAR'
           ? this.api
-              .cerrar(id, cluster.id)
+              .cerrar(id, cluster.id, balanceo)
               .pipe(map((config) => ({ mensaje: this.mensajeCierre(cluster.nombre), config })))
-          : this.api.balancear(id, cluster.id, paso, cuerpo).pipe(
+          : this.api.balancear(id, cluster.id, paso, cuerpo, balanceo).pipe(
               map((resultado) => ({
                 mensaje: resultado.mensaje,
                 config: resultado.configuracion,
@@ -1802,6 +2140,7 @@ export class SimulacionConfiguracion {
         this.actualizarEstadoEnLista(id, config.archivo.estado);
         if (this.seleccionado() === id) {
           this.aplicarConfiguracion(config);
+          this.refrescarOtro(id, balanceo);
           this.recargarRutas(true);
         }
       },
@@ -1815,7 +2154,7 @@ export class SimulacionConfiguracion {
     const siguiente = this.config()?.clusters[indice + 1]?.nombre;
     return siguiente
       ? `El equipo pasa a ${siguiente} con la dotación con la que terminó ${nombre}.`
-      : 'Era el último cluster: la simulación terminó. Revisa el resumen en el dashboard.';
+      : 'Era el último cluster de este balanceo. Revisa el resumen en el dashboard.';
   }
 
   confirmarRestablecerCluster(cluster: { id: number; nombre: string }): void {
@@ -1830,9 +2169,10 @@ export class SimulacionConfiguracion {
     if (!id || !cluster || this.ocupado()) {
       return;
     }
+    const balanceo = this.balanceoDe(cluster.id);
     this.restableciendo.set(true);
     this.api
-      .restablecerCluster(id, cluster.id)
+      .restablecerCluster(id, cluster.id, balanceo)
       .pipe(
         finalize(() => this.restableciendo.set(false)),
         takeUntilDestroyed(this.destroyRef),
@@ -1842,6 +2182,7 @@ export class SimulacionConfiguracion {
           this.clusterARestablecer.set(null);
           if (this.seleccionado() === id) {
             this.aplicarConfiguracion(config);
+            this.refrescarOtro(id, balanceo);
             this.recargarRutas(true);
           }
           this.notificaciones.info(
@@ -1857,7 +2198,7 @@ export class SimulacionConfiguracion {
     if (this.ocupado() || this.avisarCambiosSinGuardar('reabrir el cluster')) {
       return;
     }
-    const clusters = this.config()?.clusters ?? [];
+    const clusters = this.configs()[this.balanceoDe(cluster.id)]?.clusters ?? [];
     const indice = clusters.findIndex((otro) => otro.id === cluster.id);
     this.clusterAReabrir.set({
       id: cluster.id,
@@ -1875,9 +2216,10 @@ export class SimulacionConfiguracion {
     if (!id || !cluster || this.ocupado()) {
       return;
     }
+    const balanceo = this.balanceoDe(cluster.id);
     this.restableciendo.set(true);
     this.api
-      .reabrir(id, cluster.id)
+      .reabrir(id, cluster.id, balanceo)
       .pipe(
         finalize(() => this.restableciendo.set(false)),
         takeUntilDestroyed(this.destroyRef),
@@ -1887,6 +2229,7 @@ export class SimulacionConfiguracion {
           this.clusterAReabrir.set(null);
           if (this.seleccionado() === id) {
             this.aplicarConfiguracion(config);
+            this.refrescarOtro(id, balanceo);
             this.recargarRutas(true);
           }
           this.actualizarEstadoEnLista(id, config.archivo.estado);
@@ -1925,9 +2268,12 @@ export class SimulacionConfiguracion {
       return;
     }
     this.restableciendo.set(true);
+    // Los dos balanceos vuelven a la proyección: primero L-X-V y luego M-J-S (al
+    // quedar L-X-V pendiente, las diarias también vuelven a su chute del Excel).
     this.api
-      .restablecer(id)
+      .restablecer(id, 'LXV')
       .pipe(
+        switchMap(() => this.api.restablecer(id, 'MJS')),
         finalize(() => this.restableciendo.set(false)),
         takeUntilDestroyed(this.destroyRef),
       )
@@ -2055,4 +2401,9 @@ function equipoNormalizado(config: ConfiguracionSimulacion): {
     velocidad: Number(config.velocidadBase) || VELOCIDAD_INICIAL,
     porChute: config.operariosPorChute === null || !(porChute > 0) ? null : porChute,
   };
+}
+
+/** «L-M-X-J-V-S», «L-X-V» o «M-J-S». */
+export function textoFrecuencia(frecuencia: string | null | undefined): string {
+  return frecuencia === 'LXV' ? 'L-X-V' : frecuencia === 'MJS' ? 'M-J-S' : 'L-M-X-J-V-S';
 }

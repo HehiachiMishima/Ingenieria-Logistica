@@ -32,4 +32,11 @@ public class ParametroChute {
    */
   @Column(name = "operarios", nullable = false)
   private Integer operarios;
+
+  /**
+   * Chute con más capacidad: al balancear recibe primero las rutas más pesadas
+   * de la ola. Se define al inicio, para todo el registro.
+   */
+  @Column(name = "buff", nullable = false)
+  private boolean buff;
 }

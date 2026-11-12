@@ -2,6 +2,7 @@ import { Service, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import {
   ArchivoSimulacion,
+  Balanceo,
   BalanceoCuerpo,
   BalanceoSimulacion,
   ConfiguracionSimulacion,
@@ -57,8 +58,9 @@ export class SimulacionApi {
     return this.api.delete<void>(`/simulacion/registros/${id}`);
   }
 
-  configuracion(id: number): Observable<ConfiguracionSimulacion> {
-    return this.api.get<ConfiguracionSimulacion>(`/simulacion/registros/${id}/configuracion`);
+  /** Configuración de un balanceo (L-X-V o M-J-S): sus clusters, su carga y los chutes. */
+  configuracion(id: number, balanceo: Balanceo = 'LXV'): Observable<ConfiguracionSimulacion> {
+    return this.api.get<ConfiguracionSimulacion>(`/simulacion/registros/${id}/configuracion`, { balanceo });
   }
 
   /** Rutas paginadas del registro; el texto filtra por prefijo del código. */
@@ -77,9 +79,10 @@ export class SimulacionApi {
   guardarConfiguracion(
     id: number,
     peticion: ConfiguracionSimulacionRequest,
+    balanceo: Balanceo = 'LXV',
   ): Observable<ConfiguracionSimulacion> {
     return this.api.put<ConfiguracionSimulacion>(
-      `/simulacion/registros/${id}/configuracion`,
+      `/simulacion/registros/${id}/configuracion?balanceo=${balanceo}`,
       peticion,
     );
   }
@@ -93,9 +96,10 @@ export class SimulacionApi {
     clusterId: number,
     fase: FaseBalanceo,
     cuerpo: BalanceoCuerpo | null = null,
+    balanceo: Balanceo = 'LXV',
   ): Observable<BalanceoSimulacion> {
     return this.api.post<BalanceoSimulacion>(
-      `/simulacion/registros/${id}/clusters/${clusterId}/balancear?fase=${fase}`,
+      `/simulacion/registros/${id}/clusters/${clusterId}/balancear?fase=${fase}&balanceo=${balanceo}`,
       cuerpo,
     );
   }
@@ -111,17 +115,23 @@ export class SimulacionApi {
     desde: number | null,
     hasta: number | null,
     prioridad: string[],
+    balanceo: Balanceo = 'LXV',
   ): Observable<VistaBalanceo> {
     return this.api.get<VistaBalanceo>(
       `/simulacion/registros/${id}/clusters/${clusterId}/balanceo/vista`,
-      { desde, hasta, ...(prioridad.length > 0 ? { prioridad } : {}) },
+      { desde, hasta, balanceo, ...(prioridad.length > 0 ? { prioridad } : {}) },
     );
   }
 
   /** Mueve una ruta a otro chute de su mismo cluster (movimiento manual). */
-  moverRuta(id: number, rutaId: number, chuteId: number): Observable<ConfiguracionSimulacion> {
+  moverRuta(
+    id: number,
+    rutaId: number,
+    chuteId: number,
+    balanceo: Balanceo = 'LXV',
+  ): Observable<ConfiguracionSimulacion> {
     return this.api.put<ConfiguracionSimulacion>(
-      `/simulacion/registros/${id}/rutas/${rutaId}/mover`,
+      `/simulacion/registros/${id}/rutas/${rutaId}/mover?balanceo=${balanceo}`,
       { chuteId },
     );
   }
@@ -135,9 +145,10 @@ export class SimulacionApi {
     rutaId: number,
     clusterId: number,
     chuteId: number | null = null,
+    balanceo: Balanceo = 'LXV',
   ): Observable<ConfiguracionSimulacion> {
     return this.api.put<ConfiguracionSimulacion>(
-      `/simulacion/registros/${id}/rutas/${rutaId}/cluster`,
+      `/simulacion/registros/${id}/rutas/${rutaId}/cluster?balanceo=${balanceo}`,
       chuteId === null ? { clusterId } : { clusterId, chuteId },
     );
   }
@@ -146,32 +157,46 @@ export class SimulacionApi {
    * El cluster en curso vuelve a como estaba antes de trabajarlo: se deshace su
    * balanceo y lo cambiado a mano mientras estuvo en curso; los cerrados no cambian.
    */
-  restablecerCluster(id: number, clusterId: number): Observable<ConfiguracionSimulacion> {
+  restablecerCluster(
+    id: number,
+    clusterId: number,
+    balanceo: Balanceo = 'LXV',
+  ): Observable<ConfiguracionSimulacion> {
     return this.api.post<ConfiguracionSimulacion>(
-      `/simulacion/registros/${id}/clusters/${clusterId}/restablecer`,
+      `/simulacion/registros/${id}/clusters/${clusterId}/restablecer?balanceo=${balanceo}`,
     );
   }
 
-  restablecer(id: number): Observable<void> {
-    return this.api.post<void>(`/simulacion/registros/${id}/restablecer`);
+  restablecer(id: number, balanceo: Balanceo = 'LXV'): Observable<void> {
+    return this.api.post<void>(`/simulacion/registros/${id}/restablecer?balanceo=${balanceo}`);
   }
 
   /** Cierra el cluster en curso: el equipo pasa al siguiente con esta dotación. */
-  cerrar(id: number, clusterId: number): Observable<ConfiguracionSimulacion> {
+  cerrar(
+    id: number,
+    clusterId: number,
+    balanceo: Balanceo = 'LXV',
+  ): Observable<ConfiguracionSimulacion> {
     return this.api.post<ConfiguracionSimulacion>(
-      `/simulacion/registros/${id}/clusters/${clusterId}/cerrar`,
+      `/simulacion/registros/${id}/clusters/${clusterId}/cerrar?balanceo=${balanceo}`,
     );
   }
 
   /** Reabre un cluster cerrado; los siguientes vuelven a la proyección. */
-  reabrir(id: number, clusterId: number): Observable<ConfiguracionSimulacion> {
+  reabrir(
+    id: number,
+    clusterId: number,
+    balanceo: Balanceo = 'LXV',
+  ): Observable<ConfiguracionSimulacion> {
     return this.api.post<ConfiguracionSimulacion>(
-      `/simulacion/registros/${id}/clusters/${clusterId}/reabrir`,
+      `/simulacion/registros/${id}/clusters/${clusterId}/reabrir?balanceo=${balanceo}`,
     );
   }
 
-  historial(id: number): Observable<HistorialRegistroSimulacion> {
-    return this.api.get<HistorialRegistroSimulacion>(`/simulacion/registros/${id}/historial`);
+  historial(id: number, balanceo: Balanceo = 'LXV'): Observable<HistorialRegistroSimulacion> {
+    return this.api.get<HistorialRegistroSimulacion>(`/simulacion/registros/${id}/historial`, {
+      balanceo,
+    });
   }
 
   /** Cambios de un lanzamiento (null: los que no tienen), del más reciente al más antiguo. */
@@ -180,18 +205,23 @@ export class SimulacionApi {
     lanzamientoId: number | null,
     pagina: number,
     tamano: number,
+    balanceo: Balanceo = 'LXV',
   ): Observable<Pagina<HistorialSimulacion>> {
     return this.api.get<Pagina<HistorialSimulacion>>(
       `/simulacion/registros/${id}/historial/cambios`,
-      { lanzamientoId, pagina, tamano },
+      { lanzamientoId, pagina, tamano, balanceo },
     );
   }
 
   /** Sin clusterId, el resumen del registro; con él, la vista de ese cluster. */
-  dashboard(id: number, clusterId: number | null = null): Observable<DashboardSimulacion> {
+  dashboard(
+    id: number,
+    clusterId: number | null = null,
+    balanceo: Balanceo = 'LXV',
+  ): Observable<DashboardSimulacion> {
     return this.api.get<DashboardSimulacion>(
       `/simulacion/registros/${id}/dashboard`,
-      clusterId === null ? {} : { clusterId },
+      clusterId === null ? { balanceo } : { clusterId, balanceo },
     );
   }
 
@@ -199,12 +229,16 @@ export class SimulacionApi {
    * Excel completo de la simulación (un solo archivo): resumen, comparativos con
    * gráficos, cuadrículas de Configuración y el detalle de chutes, rutas e historial.
    */
-  exportarExcel(id: number): Observable<Blob> {
-    return this.api.getArchivo(`/simulacion/registros/${id}/exportar`);
+  exportarExcel(id: number, balanceo: Balanceo = 'LXV'): Observable<Blob> {
+    return this.api.getArchivo(`/simulacion/registros/${id}/exportar?balanceo=${balanceo}`);
   }
 
   /** Rutas de un lado del chute (antes o después), paginadas y con totales del filtro. */
-  rutasDashboard(id: number, filtros: RutasDashboardFiltros): Observable<RutasDashboardSimulacion> {
+  rutasDashboard(
+    id: number,
+    filtros: RutasDashboardFiltros,
+    balanceo: Balanceo = 'LXV',
+  ): Observable<RutasDashboardSimulacion> {
     return this.api.get<RutasDashboardSimulacion>(`/simulacion/registros/${id}/dashboard/rutas`, {
       pagina: filtros.pagina,
       tamano: filtros.tamano,
@@ -214,6 +248,7 @@ export class SimulacionApi {
       lado: filtros.lado,
       clusterId: filtros.clusterId,
       soloCambios: filtros.soloCambios,
+      balanceo,
     });
   }
 }

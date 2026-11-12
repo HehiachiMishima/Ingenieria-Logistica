@@ -29,6 +29,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import javax.xml.parsers.ParserConfigurationException;
 import oracle.common.exception.ConflictoException;
+import oracle.simulacion.model.Balanceo;
 import oracle.simulacion.model.TipoRuta;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.openxml4j.exceptions.OpenXML4JException;
@@ -104,7 +105,7 @@ public final class SimulacionExcel {
    */
   private static final long MAX_ENTRADA_ZIP = 128L * 1024 * 1024;
 
-  private static final String[] COLUMNAS_OBLIGATORIAS = {"RUTA", "CLUSTER", "CHUTE", "GRUPO", "TIPO", "BULTOS"};
+  private static final String[] COLUMNAS_OBLIGATORIAS = {"RUTA", "CLUSTER", "CHUTE", "GRUPO", "FRECUENCIA", "TIPO", "BULTOS"};
   private static final Pattern MARCAS = Pattern.compile("\\p{M}+");
   private static final Pattern ESPACIOS = Pattern.compile("[\\s\\u00A0\\u2007\\u202F\\uFEFF]+");
   private static final Charset WINDOWS_1252 = Charset.forName("windows-1252");
@@ -132,6 +133,8 @@ public final class SimulacionExcel {
       String chute,
       /** Grupo de rutas dentro de su cluster: el balanceo automático no lo mezcla con otro. */
       String grupo,
+      /** DIARIA, LXV o MJS (ver {@link Balanceo}). */
+      String frecuencia,
       TipoRuta tipo,
       BigDecimal bultos,
       BigDecimal unidades,
@@ -700,6 +703,7 @@ public final class SimulacionExcel {
     private int iCluster = -1;
     private int iChute = -1;
     private int iGrupo = -1;
+    private int iFrecuencia = -1;
     private int iTipo = -1;
     private int iBultos = -1;
     private int iUnidades = -1;
@@ -762,6 +766,7 @@ public final class SimulacionExcel {
       iCluster = columnas.get("CLUSTER");
       iChute = columnas.get("CHUTE");
       iGrupo = columnas.get("GRUPO");
+      iFrecuencia = columnas.get("FRECUENCIA");
       iTipo = columnas.get("TIPO");
       iBultos = columnas.get("BULTOS");
       iUnidades = columnas.getOrDefault("UNIDADES", -1);
@@ -817,6 +822,7 @@ public final class SimulacionExcel {
       exigirLongitud(cluster, "CLUSTER", numero);
       exigirLongitud(chute, "CHUTE", numero);
       exigirLongitud(grupoLeido, "GRUPO", numero);
+      String frecuencia = frecuencia(texto(fila, iFrecuencia), numero);
       // «a», «A» y « A » son el mismo grupo: se guarda con el primer nombre que apareció.
       String grupo = grupos.computeIfAbsent(clave(grupoLeido), (k) -> grupoLeido);
       String cod = texto(fila, iCod);
@@ -824,10 +830,10 @@ public final class SimulacionExcel {
       String claveRuta = clave(ruta) + '\u0000' + tipo.name();
       Acumulado acumulado = porRuta.get(claveRuta);
       if (acumulado == null) {
-        acumulado = new Acumulado(ruta, cluster, chute, grupo, tipo);
+        acumulado = new Acumulado(ruta, cluster, chute, grupo, frecuencia, tipo);
         porRuta.put(claveRuta, acumulado);
       } else {
-        acumulado.exigirMismo(cluster, chute, grupo, numero);
+        acumulado.exigirMismo(cluster, chute, grupo, frecuencia, numero);
       }
       acumulado.sumar(bultos, unidades, lineas, cod, numero);
       totalBultos += bultos;
@@ -877,6 +883,8 @@ public final class SimulacionExcel {
     private final String chute;
     /** Ya canónico: el mismo grupo llega siempre con el mismo nombre. */
     private final String grupo;
+    /** DIARIA, LXV o MJS. */
+    private final String frecuencia;
     private final TipoRuta tipo;
     private final String claveCluster;
     private final String claveChute;
@@ -888,17 +896,20 @@ public final class SimulacionExcel {
     private Set<String> cods;
     private int filas;
 
-    Acumulado(String ruta, String cluster, String chute, String grupo, TipoRuta tipo) {
+    Acumulado(
+        String ruta, String cluster, String chute, String grupo, String frecuencia, TipoRuta tipo) {
       this.ruta = ruta;
       this.cluster = cluster;
       this.chute = chute;
       this.grupo = grupo;
+      this.frecuencia = frecuencia;
       this.tipo = tipo;
       this.claveCluster = clave(cluster);
       this.claveChute = clave(chute);
     }
 
-    void exigirMismo(String otroCluster, String otroChute, String otroGrupo, int numero) {
+    void exigirMismo(
+        String otroCluster, String otroChute, String otroGrupo, String otraFrecuencia, int numero) {
       if (!cluster.equals(otroCluster) && !claveCluster.equals(clave(otroCluster))) {
         throw distinto("CLUSTER", cluster, otroCluster, numero);
       }
@@ -907,6 +918,9 @@ public final class SimulacionExcel {
       }
       if (!grupo.equals(otroGrupo)) {
         throw distinto("GRUPO", grupo, otroGrupo, numero);
+      }
+      if (!frecuencia.equals(otraFrecuencia)) {
+        throw distinto("FRECUENCIA", textoFrecuencia(frecuencia), textoFrecuencia(otraFrecuencia), numero);
       }
     }
 
@@ -943,6 +957,7 @@ public final class SimulacionExcel {
           cluster,
           chute,
           grupo,
+          frecuencia,
           tipo,
           BigDecimal.valueOf(bultos, 2),
           BigDecimal.valueOf(unidades, 2),
@@ -1185,6 +1200,56 @@ public final class SimulacionExcel {
     }
   }
 
+  private static final Set<String> DIAS_DIARIA = Set.of("L", "M", "X", "J", "V", "S");
+  private static final Set<String> DIAS_LXV = Set.of("L", "X", "V");
+  private static final Set<String> DIAS_MJS = Set.of("M", "J", "S");
+
+  /**
+   * FRECUENCIA de la fila: «L-M-X-J-V-S» (o «DIARIA») es diaria, «L-X-V» y «M-J-S» son los dos
+   * balanceos. Acepta cualquier separador (guion, coma, barra o espacios) o ninguno («LXV»),
+   * sin distinguir mayúsculas ni el orden de los días.
+   */
+  static String frecuencia(String texto, int numero) {
+    String limpio = clave(texto);
+    if (limpio.isEmpty()) {
+      throw ArchivoInvalidoException.contenido("La fila " + numero + " no tiene FRECUENCIA.");
+    }
+    if (limpio.equals("DIARIA") || limpio.equals("DIARIO")) {
+      return Balanceo.DIARIA;
+    }
+    String[] partes = limpio.split("[^A-Z]+");
+    Set<String> dias = new HashSet<>();
+    for (String parte : partes) {
+      if (parte.isEmpty()) {
+        continue;
+      }
+      // «LXV» sin separadores: cada letra es un día.
+      for (char dia : parte.toCharArray()) {
+        dias.add(String.valueOf(dia));
+      }
+    }
+    if (dias.equals(DIAS_DIARIA)) {
+      return Balanceo.DIARIA;
+    }
+    if (dias.equals(DIAS_LXV)) {
+      return Balanceo.LXV.name();
+    }
+    if (dias.equals(DIAS_MJS)) {
+      return Balanceo.MJS.name();
+    }
+    throw ArchivoInvalidoException.contenido(
+        "La fila "
+            + numero
+            + " tiene FRECUENCIA '"
+            + texto
+            + "'; solo se admite L-M-X-J-V-S (diaria), L-X-V o M-J-S.");
+  }
+
+  /** «L-M-X-J-V-S», «L-X-V» o «M-J-S» para los mensajes. */
+  static String textoFrecuencia(String frecuencia) {
+    return Balanceo.diaria(frecuencia) ? "L-M-X-J-V-S" : Balanceo.de(frecuencia).etiqueta();
+  }
+
   private static Map<String, Integer> mapearColumnas(List<String> cabecera) {
     Map<String, Integer> columnas = new HashMap<>();
     for (int i = 0; i < cabecera.size(); i++) {
@@ -1194,6 +1259,7 @@ public final class SimulacionExcel {
         case "CLUSTER" -> columnas.putIfAbsent("CLUSTER", i);
         case "CHUTE" -> columnas.putIfAbsent("CHUTE", i);
         case "GRUPO", "GRUPOS" -> columnas.putIfAbsent("GRUPO", i);
+        case "FRECUENCIA", "FRECUENCIAS", "DIAS" -> columnas.putIfAbsent("FRECUENCIA", i);
         case "TIPO" -> columnas.putIfAbsent("TIPO", i);
         case "BULTOS", "BULTOS PROMEDIO" -> columnas.putIfAbsent("BULTOS", i);
         case "UNIDADES", "UNIDADES PROMEDIO" -> columnas.putIfAbsent("UNIDADES", i);

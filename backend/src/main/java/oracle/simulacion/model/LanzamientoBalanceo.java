@@ -21,6 +21,10 @@ public class LanzamientoBalanceo {
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
+  /** LXV o MJS: el balanceo en que se hizo el cambio. */
+  @Column(name = "balanceo", length = 3, nullable = false)
+  private String balanceo = "LXV";
+
   @Column(name = "archivo_id", nullable = false)
   private Long archivoId;
 
