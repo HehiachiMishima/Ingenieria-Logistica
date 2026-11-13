@@ -1,0 +1,504 @@
+@use 'breakpoints' as bp;
+
+/* Panel de cada cluster (columna izquierda de la matriz). Archivo aparte: el componente
+   pasaba el presupuesto de estilos por archivo. */
+/*
+ * ---------- Panel del cluster: cinco filas ----------
+ * 1 nombre + iconos (Detalle, Totales) · 2 avance · 3 paso que toca (▸ todos los pasos)
+ * · 4 filtros de vista · 5 cierre establecido → conseguido. Alto ≈ 198 px: cabe en
+ * --mz-alto (212 px con 4 filas) y la tabla no se estira.
+ */
+.mz-panel__cabeza {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+
+  .mz-panel__nombre {
+    flex: 1 1 auto;
+  }
+}
+
+.mz-panel__color {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--cluster-color, var(--accent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cluster-color, var(--accent)) 18%, transparent);
+}
+
+.mz-panel__nombre--cerrado {
+  color: var(--text-2);
+}
+
+.mz-panel__iconos {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+}
+
+.mz-icono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+
+  &:hover {
+    color: var(--text);
+    background: var(--surface);
+    border-color: var(--border);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  &--activo {
+    color: #fff;
+    background: color-mix(in srgb, var(--cluster-color, var(--accent)) 85%, #000);
+  }
+}
+
+/* Avance: cinco puntos unidos por una línea; el que toca, con el color del cluster. */
+.mz-avance {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mz-avance__paso {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+
+  /* Tramo de línea hacia el punto anterior. */
+  &:not(:first-child)::before {
+    content: '';
+    position: absolute;
+    top: 8px;
+    right: calc(50% + 9px);
+    left: calc(-50% + 9px);
+    height: 2px;
+    border-radius: 2px;
+    background: var(--border);
+  }
+
+  &[data-estado='hecho']:not(:first-child)::before {
+    background: color-mix(in srgb, var(--success) 70%, var(--border));
+  }
+}
+
+.mz-avance__punto {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--text-3);
+  background: var(--surface);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 50%;
+
+  [data-estado='hecho'] > & {
+    color: #fff;
+    background: var(--success);
+    border-color: var(--success);
+  }
+
+  [data-estado='siguiente'] > & {
+    color: #fff;
+    background: var(--cluster-color, var(--accent));
+    border-color: var(--cluster-color, var(--accent));
+    animation: mz-pulso 1.8s ease-out infinite;
+  }
+
+  [data-estado='omitido'] > & {
+    color: var(--text-3);
+    background: var(--surface-2);
+    border-style: dashed;
+    opacity: 0.7;
+  }
+}
+
+@keyframes mz-pulso {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--cluster-color, var(--accent)) 45%, transparent);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+.mz-avance__texto {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 0.6rem;
+  line-height: 1.2;
+  font-weight: 700;
+  color: var(--text-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  [data-estado='siguiente'] > & {
+    color: var(--text);
+  }
+
+  [data-estado='omitido'] > & {
+    text-decoration: line-through;
+  }
+}
+
+/* Botón dividido: el paso que toca y, a su derecha, todos los pasos. */
+.mz-paso {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  min-width: 0;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+}
+
+.mz-paso__principal,
+.mz-paso__menu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 100%;
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  color: #fff;
+  background: color-mix(in srgb, var(--cluster-color, var(--accent)) 88%, #000);
+  border: 0;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+
+  &:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+.mz-paso__principal {
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+
+  ui-icon,
+  .mz-panel__spinner {
+    flex: none;
+  }
+
+  &:disabled {
+    color: var(--text-2);
+    background: var(--surface);
+    box-shadow: inset 0 0 0 1px var(--border);
+    cursor: default;
+  }
+}
+
+.mz-paso__texto {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mz-paso__menu {
+  padding: 0;
+  border-left: 1px solid color-mix(in srgb, #fff 30%, transparent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+
+  ui-icon {
+    transform: rotate(90deg);
+    transition: transform var(--transition-fast);
+  }
+
+  .mz-paso--abierto & ui-icon {
+    transform: rotate(-90deg);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+/* Filtros: un control segmentado, discreto, con «Ver» delante (no son acciones). */
+.mz-filtros {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.mz-filtros__ver {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.mz-filtros__grupo {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: 1fr 1fr 0.6fr;
+  min-width: 0;
+  padding: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.mz-filtro {
+  min-width: 0;
+  height: 24px;
+  padding: 0 2px;
+  overflow: hidden;
+  font: inherit;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 2px);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+
+  &:hover:not(:disabled):not(.mz-filtro--activo) {
+    color: var(--text);
+    background: var(--surface-2);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+    text-decoration: line-through;
+  }
+
+  &--activo {
+    color: var(--text);
+    background: color-mix(in srgb, var(--cluster-color, var(--accent)) 16%, var(--surface));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cluster-color, var(--accent)) 45%, transparent);
+  }
+}
+
+/* Cierre: «Cierre [8] h → 7h 40m ✓», la conseguida se recorta con «…» antes que empujar. */
+.mz-cierre {
+  display: grid;
+  grid-template-columns: auto 64px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.mz-cierre__label {
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.mz-cierre__campo {
+  position: relative;
+  display: block;
+}
+
+.mz-cierre__input {
+  width: 100%;
+  height: 30px;
+  min-height: 30px;
+  padding: 0 16px 0 6px;
+  text-align: center;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.mz-cierre__unidad {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--text-3);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.mz-cierre__logrado {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  justify-self: end;
+  max-width: 100%;
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  color: var(--text-2);
+  white-space: nowrap;
+
+  ui-icon {
+    flex: none;
+  }
+
+  &--ok {
+    color: var(--success);
+  }
+
+  &--fuera {
+    color: var(--danger);
+  }
+
+  &--vacio {
+    font-weight: 600;
+    color: var(--text-3);
+  }
+}
+
+.mz-cierre__hora {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Riel minimizado (64 px): nombre, puntos sin texto, ▶ · ▸ y las iniciales de los filtros. */
+.mz-bloque--min {
+  .mz-panel__cabeza {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .mz-panel__iconos {
+    width: 100%;
+
+    .mz-icono {
+      flex: 1 1 0;
+      width: auto;
+      height: 26px;
+    }
+  }
+
+  .mz-panel__color {
+    display: none;
+  }
+
+  .mz-avance {
+    width: 100%;
+    gap: 1px;
+  }
+
+  .mz-avance__paso:not(:first-child)::before {
+    display: none;
+  }
+
+  .mz-avance__punto {
+    width: 9px;
+    height: 9px;
+    font-size: 0;
+    border-width: 1px;
+
+    ui-icon {
+      display: none;
+    }
+  }
+
+  .mz-paso {
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr) 20px;
+    height: 28px;
+  }
+
+  .mz-paso__principal {
+    padding: 0;
+  }
+
+  .mz-filtros {
+    width: 100%;
+  }
+
+  .mz-filtros__grupo {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding: 1px;
+  }
+
+  .mz-filtro {
+    height: 22px;
+    padding: 0;
+    font-size: 0.62rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mz-avance__punto {
+    animation: none !important;
+  }
+}
+
+@include bp.down(sm) {
+  /* Encima de la tabla: cada fila del panel a todo el ancho. */
+  .mz-panel > * {
+    flex: 1 1 100%;
+  }
+
+  /* Minimizado en celular: una barra con nombre, avance, paso y filtros en línea. */
+  .mz-bloque--min {
+    .mz-panel > * {
+      flex: 0 1 auto;
+    }
+
+    .mz-panel__cabeza {
+      flex-direction: row;
+      width: auto;
+    }
+
+    .mz-avance {
+      width: 64px;
+    }
+
+    .mz-paso,
+    .mz-filtros {
+      width: 120px;
+    }
+  }
+}

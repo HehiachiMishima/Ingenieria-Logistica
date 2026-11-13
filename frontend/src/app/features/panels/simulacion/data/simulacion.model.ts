@@ -24,25 +24,40 @@ export interface ArchivoSimulacion {
 export type EstadoSimulacion = 'PROYECCION' | 'EN_PROCESO' | 'FINALIZADO' | string;
 
 /**
- * Avance de un cluster. Se trabajan de a uno en el orden de las olas: rutas
- * balanceadas (RUTAS), operarios asignados (LISTO) y cerrado (CERRADO).
+ * Los dos días de trabajo: L-X-V (lunes, miércoles y viernes) y M-J-S (martes,
+ * jueves y sábado). Tienen operarios, dashboard y exportación.
  */
+export type DiaBalanceo = 'LXV' | 'MJS';
+
 /**
- * Los dos balanceos del registro: L-X-V (lunes, miércoles y viernes) y M-J-S
- * (martes, jueves y sábado). Son independientes; comparten las rutas diarias.
+ * Los balanceos de cada cluster, en orden: DIA (las rutas diarias; aquí se elige
+ * el rango de chutes y los tramos de los grupos) y luego L-X-V y M-J-S, que solo
+ * mueven sus rutas dentro de ese rango con las diarias como carga fija.
  */
-export type Balanceo = 'LXV' | 'MJS';
+export type Balanceo = DiaBalanceo | 'DIA';
 
-/** Frecuencia de una ruta (columna FRECUENCIA del Excel): DIARIA aparece en los dos balanceos. */
-export type FrecuenciaRuta = 'DIARIA' | Balanceo;
+export const DIAS_BALANCEO: readonly DiaBalanceo[] = ['LXV', 'MJS'];
 
-export const ETIQUETA_BALANCEO: Record<Balanceo, string> = { LXV: 'L-X-V', MJS: 'M-J-S' };
+/** Frecuencia de una ruta (columna FRECUENCIA del Excel): DIARIA aparece en los dos días. */
+export type FrecuenciaRuta = 'DIARIA' | DiaBalanceo;
 
-/** La ruta de esa frecuencia aparece en el balanceo (las diarias, en los dos). */
+export const ETIQUETA_BALANCEO: Record<Balanceo, string> = {
+  LXV: 'L-X-V',
+  MJS: 'M-J-S',
+  DIA: 'Diarias',
+};
+
+/** La ruta de esa frecuencia se ve en el balanceo: las diarias, en los tres; las de un día, en ese. */
 export function rutaEnBalanceo(frecuencia: string | null | undefined, balanceo: Balanceo): boolean {
-  return !frecuencia || frecuencia === 'DIARIA' || frecuencia === balanceo;
+  const diaria = !frecuencia || frecuencia === 'DIARIA';
+  return balanceo === 'DIA' ? diaria : diaria || frecuencia === balanceo;
 }
 
+/**
+ * Avance de un cluster en un balanceo. Se trabajan de a uno en el orden de las
+ * olas: rutas balanceadas (RUTAS), operarios asignados (LISTO, solo los días) y
+ * cerrado (CERRADO, los tres a la vez).
+ */
 export type EstadoCluster = 'PENDIENTE' | 'RUTAS' | 'LISTO' | 'CERRADO' | string;
 
 export interface ClusterParametroSimulacion {
@@ -57,16 +72,28 @@ export interface ClusterParametroSimulacion {
   chuteHastaId: number | null;
   /** Operarios con que se calculó su ola la última vez; null si nunca se eligió. */
   operariosOla: number | null;
-  /** Grupos de rutas del cluster en orden de prioridad (la guardada y luego por nombre). */
+  /** Grupos del cluster en orden natural, con su carga en este balanceo. */
   grupos: GrupoCluster[];
   /** Balanceo de esta fila. */
   balanceo?: Balanceo;
-  /** Avance del mismo cluster en el otro balanceo. */
-  estadoOtro?: EstadoCluster;
-  /** Sus rutas diarias ya están fijas: el automático no las mueve (a mano sí). */
+  /** Avance del cluster en los tres balanceos (viene en cualquier configuración). */
+  avance?: AvanceCluster;
+  /** Sus diarias ya están balanceadas: el automático de los días no las mueve (a mano sí). */
   diariasFijas?: boolean;
-  /** Rango y tramos de grupo definidos por el otro balanceo: aquí se reutilizan. */
-  rangoDelOtro?: boolean;
+}
+
+/** Avance de un cluster en Diarias, L-X-V y M-J-S. */
+export interface AvanceCluster {
+  diarias: EstadoCluster;
+  lxv: EstadoCluster;
+  mjs: EstadoCluster;
+  /**
+   * Rutas del cluster por frecuencia (las suyas, sin contar las diarias en los días). Un día sin
+   * rutas propias no se balancea; uno sin rutas propias ni diarias no participa.
+   */
+  rutasDiarias: number;
+  rutasLxv: number;
+  rutasMjs: number;
 }
 
 /**
@@ -75,18 +102,18 @@ export interface ClusterParametroSimulacion {
  */
 export interface GrupoCluster {
   nombre: string;
-  /** Prioridad elegida en el último balanceo; null si nunca se eligió. */
+  /** Posición del grupo en orden natural (1, 2, 3…). */
   prioridad: number | null;
   rutas: number;
   bultos: number;
-  /** Tramo que le dio el último balanceo; null sin balancear o tras restablecer. */
+  /** Tramo que le dieron las diarias; null sin balancear o tras restablecer. */
   chuteDesdeId: number | null;
   chuteDesde: string | null;
   chuteHastaId: number | null;
   chuteHasta: string | null;
 }
 
-/** Tramo que recibiría un grupo con el rango y la prioridad elegidos (vista previa). */
+/** Tramo que recibiría un grupo con el rango elegido (vista previa). */
 export interface TramoGrupo {
   grupo: string;
   prioridad: number;
@@ -102,7 +129,7 @@ export interface TramoGrupo {
   rutasFuera: number;
 }
 
-/** Vista previa del paso 1 de un cluster: no cambia nada. */
+/** Vista previa del paso de rutas de un cluster: no cambia nada. */
 export interface VistaBalanceo {
   clusterId: number;
   cluster: string;
@@ -113,8 +140,8 @@ export interface VistaBalanceo {
   /** Por qué así no se podría balancear; null si se puede. */
   aviso: string | null;
   grupos: TramoGrupo[];
-  /** Balanceo que ya definió el rango y los tramos («L-X-V» o «M-J-S»); null si se eligen aquí. */
-  heredadoDe?: string | null;
+  /** 'DIA' en un día: el rango y los tramos son los de las diarias; null si se eligen aquí. */
+  heredadoDe?: 'DIA' | null;
 }
 
 /**
@@ -170,7 +197,7 @@ export interface RutaSimulacion {
   grupo: string;
   /** DIARIA, LXV o MJS. */
   frecuencia?: FrecuenciaRuta;
-  /** Ruta diaria ya acomodada por un balanceo automático: el automático no la vuelve a mover. */
+  /** Ruta diaria ya balanceada (paso Diarias): el automático de los días no la vuelve a mover. */
   diariaFija?: boolean;
   /** Días tal como vienen en el Excel («L-X», «V», «L-X-V»); null en rutas antiguas. */
   dias?: string | null;

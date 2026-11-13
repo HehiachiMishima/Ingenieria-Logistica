@@ -3,6 +3,7 @@ import { Observable } from 'rxjs';
 import {
   ArchivoSimulacion,
   Balanceo,
+  DiaBalanceo,
   BalanceoCuerpo,
   BalanceoSimulacion,
   ConfiguracionSimulacion,
@@ -58,7 +59,7 @@ export class SimulacionApi {
     return this.api.delete<void>(`/simulacion/registros/${id}`);
   }
 
-  /** Configuración de un balanceo (L-X-V o M-J-S): sus clusters, su carga y los chutes. */
+  /** Configuración de un balanceo (Diarias, L-X-V o M-J-S): sus clusters, su carga y los chutes. */
   configuracion(id: number, balanceo: Balanceo = 'LXV'): Observable<ConfiguracionSimulacion> {
     return this.api.get<ConfiguracionSimulacion>(`/simulacion/registros/${id}/configuracion`, { balanceo });
   }
@@ -75,7 +76,7 @@ export class SimulacionApi {
     });
   }
 
-  /** Velocidad, máximo por chute y límites de horas de los clusters. */
+  /** Velocidad, máximo por chute, buff y límites de horas (valen para los tres balanceos). */
   guardarConfiguracion(
     id: number,
     peticion: ConfiguracionSimulacionRequest,
@@ -88,8 +89,9 @@ export class SimulacionApi {
   }
 
   /**
-   * Trabaja el cluster en curso: paso 1 (RUTAS) o paso 2 (OPERARIOS) de su ola.
-   * El cuerpo lleva el rango de chutes (paso 1) o la cantidad de operarios (paso 2).
+   * Trabaja el cluster en curso. RUTAS en DIA reparte las diarias con el rango del
+   * cuerpo; RUTAS en un día usa el rango de las diarias; OPERARIOS asigna los dos
+   * días con la cantidad del cuerpo.
    */
   balancear(
     id: number,
@@ -105,21 +107,20 @@ export class SimulacionApi {
   }
 
   /**
-   * Vista previa del paso 1 (no cambia nada): los grupos del cluster en orden de
-   * prioridad y el tramo de chutes de cada uno con ese rango. La prioridad viaja
-   * como un parámetro por grupo, así un nombre con coma no se parte.
+   * Vista previa del paso de rutas (no cambia nada): los grupos del cluster en
+   * orden natural y el tramo de chutes de cada uno. En DIA con ese rango; en un
+   * día, el rango y los tramos de las diarias.
    */
   vistaBalanceo(
     id: number,
     clusterId: number,
     desde: number | null,
     hasta: number | null,
-    prioridad: string[],
-    balanceo: Balanceo = 'LXV',
+    balanceo: Balanceo,
   ): Observable<VistaBalanceo> {
     return this.api.get<VistaBalanceo>(
       `/simulacion/registros/${id}/clusters/${clusterId}/balanceo/vista`,
-      { desde, hasta, balanceo, ...(prioridad.length > 0 ? { prioridad } : {}) },
+      { desde, hasta, balanceo },
     );
   }
 
@@ -167,11 +168,12 @@ export class SimulacionApi {
     );
   }
 
-  restablecer(id: number, balanceo: Balanceo = 'LXV'): Observable<void> {
-    return this.api.post<void>(`/simulacion/registros/${id}/restablecer?balanceo=${balanceo}`);
+  /** Todo el registro vuelve a la proyección (los tres balanceos, en una sola operación). */
+  restablecer(id: number): Observable<void> {
+    return this.api.post<void>(`/simulacion/registros/${id}/restablecer`);
   }
 
-  /** Cierra el cluster en curso: el equipo pasa al siguiente con esta dotación. */
+  /** Cierra el cluster en curso en los tres balanceos: el equipo pasa al siguiente. */
   cerrar(
     id: number,
     clusterId: number,
@@ -217,7 +219,7 @@ export class SimulacionApi {
   dashboard(
     id: number,
     clusterId: number | null = null,
-    balanceo: Balanceo = 'LXV',
+    balanceo: DiaBalanceo = 'LXV',
   ): Observable<DashboardSimulacion> {
     return this.api.get<DashboardSimulacion>(
       `/simulacion/registros/${id}/dashboard`,
@@ -226,18 +228,18 @@ export class SimulacionApi {
   }
 
   /**
-   * Excel completo de la simulación (un solo archivo): resumen, comparativos con
-   * gráficos, cuadrículas de Configuración y el detalle de chutes, rutas e historial.
+   * Excel de la simulación: un solo archivo con los dos días (lo mismo que el PDF) y un selector
+   * de frecuencia dentro del libro.
    */
-  exportarExcel(id: number, balanceo: Balanceo = 'LXV'): Observable<Blob> {
-    return this.api.getArchivo(`/simulacion/registros/${id}/exportar?balanceo=${balanceo}`);
+  exportarExcel(id: number): Observable<Blob> {
+    return this.api.getArchivo(`/simulacion/registros/${id}/exportar`);
   }
 
   /** Rutas de un lado del chute (antes o después), paginadas y con totales del filtro. */
   rutasDashboard(
     id: number,
     filtros: RutasDashboardFiltros,
-    balanceo: Balanceo = 'LXV',
+    balanceo: DiaBalanceo = 'LXV',
   ): Observable<RutasDashboardSimulacion> {
     return this.api.get<RutasDashboardSimulacion>(`/simulacion/registros/${id}/dashboard/rutas`, {
       pagina: filtros.pagina,

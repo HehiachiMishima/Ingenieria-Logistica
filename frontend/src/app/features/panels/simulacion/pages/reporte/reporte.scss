@@ -53,6 +53,9 @@
   }
 
   @include bp.down(sm) {
+    /* En el celular la barra (texto, filtro y acciones) ocupa más de un tercio: no se queda fija. */
+    position: static;
+
     &__acciones {
       flex: 1 1 100%;
 
@@ -80,7 +83,176 @@
     color: var(--danger);
     background: var(--danger-soft);
   }
+
+  &--ok {
+    color: var(--success);
+    background: var(--success-soft);
+  }
 }
+
+/* ---------- Filtro de frecuencia (solo pantalla) ---------- */
+/*
+ * Cada bloque dice en qué vistas aparece (data-vistas="LXV AMBOS"). Sin data-vista en la raíz
+ * (cargando) se ve todo; el HTML descargado guarda la suya, así sin JavaScript también filtra.
+ */
+.rep[data-vista='LXV'] [data-vistas]:not([data-vistas~='LXV']),
+.rep[data-vista='MJS'] [data-vistas]:not([data-vistas~='MJS']),
+.rep[data-vista='AMBOS'] [data-vistas]:not([data-vistas~='AMBOS']) {
+  display: none !important;
+}
+
+.rep-filtros {
+  display: inline-grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
+  padding: 2px;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.rep-filtro {
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  overflow: hidden;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+
+  &:hover:not(:disabled):not([aria-pressed='true']) {
+    color: var(--text);
+    background: var(--surface-2);
+  }
+
+  &[aria-pressed='true'] {
+    color: #fff;
+    background: var(--accent);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+}
+
+/* ---------- Índice (enlaces internos, también en el PDF) ---------- */
+.rep-indice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+
+  &__item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    padding: 4px var(--space-3) 4px 4px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface-2);
+    color: var(--text);
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    text-decoration: none;
+
+    &:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+  }
+
+  &__numero {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 800;
+  }
+}
+
+/* Día de un bloque (L-X-V, M-J-S): chip junto al título. */
+.rep-dia {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* Dos días en una hoja: un día termina y empieza el otro con aire. */
+.rep-vista + .rep-vista {
+  margin-top: var(--space-5);
+}
+
+/* ---------- Ambos: los dos días lado a lado ---------- */
+.rep-ambos {
+  &__indicador {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 700;
+
+    ui-icon {
+      flex: none;
+      color: var(--k, var(--accent));
+    }
+  }
+
+  &__valor {
+    display: block;
+    font-size: var(--fs-base);
+  }
+
+  &__detalle,
+  &__de {
+    display: block;
+    font-size: var(--fs-xs);
+    font-weight: 500;
+    color: var(--text-3);
+  }
+
+  &__conclusiones {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+    gap: var(--space-4);
+
+    .rep-conclusiones {
+      margin-top: var(--space-2);
+    }
+  }
+}
+
 
 /* ---------- Hoja ---------- */
 .rep-hoja {
@@ -182,6 +354,7 @@
 
 .rep-titulo {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
   margin: var(--space-5) 0 var(--space-3);
@@ -377,6 +550,218 @@
   border-radius: 4px;
 }
 
+/* «Cómo leer cada ruta»: una muestra de cada marca, en una banda. */
+.rep-leyenda--rutas {
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.rep-leyenda__titulo {
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.rep-leyenda__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rep-franja-muestra {
+  width: 28px;
+  height: 8px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #7c3aed 0 50%, #0891b2 50% 100%);
+}
+
+/* Grupos del cluster en su cabecera: color, nombre, tramo y rutas. */
+.rep-grupos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rep-grupo {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: var(--fs-xs);
+  border: 1px solid color-mix(in srgb, var(--g) 45%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--g) 10%, var(--surface));
+
+  &__nombre {
+    flex: none;
+    padding: 1px 8px;
+    font-weight: 800;
+    color: #fff;
+    background: color-mix(in srgb, var(--g) 82%, #000);
+  }
+
+  &__texto {
+    min-width: 0;
+    padding: 1px 8px;
+    overflow: hidden;
+    font-weight: 600;
+    color: var(--text-2);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/*
+ * Ruta en la cuadrícula, en dos líneas (la columna mide ~73 px en un A4 apaisado):
+ * arriba la pestaña del grupo y el código; abajo la caja con los bultos y la D si es diaria.
+ */
+.rep-ruta {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1px 3px;
+  min-width: 0;
+
+  .rep-ruta__grupo {
+    grid-area: 1 / 1;
+  }
+
+  .rep-ruta__codigo {
+    grid-area: 1 / 2 / 2 / -1;
+  }
+
+  /* Sin grupo, el código usa toda la línea. */
+  &:not(.rep-ruta--grupo) .rep-ruta__codigo {
+    grid-column: 1 / -1;
+  }
+
+  /* Segunda línea: los bultos a la izquierda y la D al final, con todo el ancho. */
+  .rep-ruta__pie {
+    display: flex;
+    grid-area: 2 / 1 / 3 / -1;
+    align-items: center;
+    justify-content: space-between;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  &__grupo {
+    flex: none;
+    min-width: 12px;
+    max-width: 4ch;
+    padding: 1px 3px;
+    overflow: hidden;
+    border-radius: 3px;
+    font-size: 0.6rem;
+    font-weight: 800;
+    line-height: 1.2;
+    text-align: center;
+    text-overflow: ellipsis;
+    color: #fff;
+    background: color-mix(in srgb, var(--g, var(--accent)) 82%, #000);
+  }
+
+  &__codigo {
+    flex: 0 1 auto;
+    min-width: 2ch;
+    overflow: hidden;
+    font-weight: 700;
+    text-overflow: ellipsis;
+  }
+
+  /* Los bultos se leen siempre: lo que se recorta, si falta sitio, es el código. */
+  &__bultos {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+    font-size: 0.64rem;
+    font-weight: 700;
+    color: var(--text-2);
+
+    /* Red de seguridad: si no cupieran las cifras, se recortan con «…» antes de pisar la marca. */
+    > span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  /* Marca de frecuencia: D (diaria) y, en «Ambos», L (L-X-V) o M (M-J-S) con los colores de la planilla. */
+  &__frec {
+    flex: none;
+    padding: 0 3px;
+    border-radius: 3px;
+    font-size: 0.56rem;
+    font-weight: 800;
+    line-height: 1.4;
+    letter-spacing: -0.02em;
+    color: #fff;
+    background: #475569;
+
+    &--lxv {
+      background: #1d4ed8;
+    }
+
+    &--mjs {
+      background: #c2410c;
+    }
+  }
+
+  /* Muestra de la leyenda: como una celda, con borde. */
+  &--muestra {
+    display: inline-grid;
+    width: 73px;
+    padding: 2px 4px 2px 3px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+  }
+}
+
+.rep-caja {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  overflow: visible;
+
+  path {
+    stroke: #6b4220;
+    stroke-width: 0.8;
+    stroke-linejoin: round;
+  }
+
+  &__tapa {
+    fill: #e8b97a;
+  }
+
+  &__frente {
+    fill: #c8894a;
+  }
+
+  &__lado {
+    fill: #a9692f;
+  }
+
+  path.rep-caja__cinta {
+    fill: none;
+    stroke: #f6e2b3;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+  }
+}
+
 .rep-bloque {
   margin-bottom: var(--space-5);
   overflow-x: auto;
@@ -413,7 +798,9 @@
 
 .rep-grid {
   width: 100%;
-  min-width: 720px;
+  /* 76 px por chute (lo que mide impreso, con 12 en un A4 apaisado): en pantalla angosta la tabla
+     se desplaza dentro de su bloque en vez de recortar los bultos. */
+  min-width: max(720px, calc(128px + var(--chutes, 9) * 76px));
   table-layout: fixed;
   border-collapse: collapse;
   font-size: 0.72rem;
@@ -456,8 +843,30 @@
     background: var(--table-head-bg, #0f1e3d);
   }
 
+  /* Dos líneas por ruta (ver .rep-ruta). */
   &__ruta {
+    height: 34px;
+    padding: 2px 4px 2px 3px;
     font-weight: 700;
+  }
+
+  /* Franja de grupos: el tramo de chutes de cada uno, de su color. */
+  &__franja td {
+    height: 16px;
+    padding: 0 6px;
+    font-size: 0.6rem;
+    font-weight: 800;
+    color: #fff;
+    background: color-mix(in srgb, var(--g, var(--accent)) 82%, #000);
+  }
+
+  &__franja &__franja--libre {
+    background: var(--surface-2);
+  }
+
+  &__franja .rep-grid__concepto {
+    height: 16px;
+    font-size: 0.66rem;
   }
 
   &__ruta--movida {
@@ -472,6 +881,14 @@
 }
 
 /* Semáforo por línea (mismos tonos que la planilla): amarillo, verde y rojo. */
+/*
+ * Celda de ruta: su relleno corto (3–4 px) gana al de «.rep-grid td» (6 px, más específico). Con
+ * los 6 px, 5 cifras de bultos y la marca no cabían en los 76 px de la celda impresa.
+ */
+.rep-grid .rep-grid__ruta {
+  padding: 2px 4px 2px 3px;
+}
+
 .rep-sem {
   &--bajo,
   &--medio,

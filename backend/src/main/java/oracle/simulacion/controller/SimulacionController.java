@@ -38,7 +38,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -165,7 +164,7 @@ public class SimulacionController {
   public ApiResponse<ConfiguracionSimulacionResponse> moverRuta(
       @PathVariable Long id,
       @PathVariable Long rutaId,
-      @RequestParam(required = false) String balanceo,
+      @RequestParam String balanceo,
       @Valid @RequestBody MoverRutaRequest req) {
     return configuracionService.mover(id, Balanceo.de(balanceo), rutaId, req);
   }
@@ -176,14 +175,15 @@ public class SimulacionController {
   public ApiResponse<ConfiguracionSimulacionResponse> cambiarClusterRuta(
       @PathVariable Long id,
       @PathVariable Long rutaId,
-      @RequestParam(required = false) String balanceo,
+      @RequestParam String balanceo,
       @Valid @RequestBody CambiarClusterRequest req) {
     return configuracionService.cambiarCluster(id, Balanceo.de(balanceo), rutaId, req);
   }
 
   /**
-   * Lanza un cluster: paso 1 (RUTAS) o paso 2 (OPERARIOS) de su ola. En el paso
-   * 1, el cuerpo opcional dice entre qué chutes repartir sus rutas.
+   * Lanza un paso del cluster: RUTAS en DIA (diarias, define el rango; el cuerpo opcional dice
+   * entre qué chutes), RUTAS en LXV o MJS (dentro del rango de las diarias) u OPERARIOS (los dos
+   * días con la misma cantidad).
    */
   @PostMapping("/{id}/clusters/{clusterId}/balancear")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
@@ -191,16 +191,15 @@ public class SimulacionController {
       @PathVariable Long id,
       @PathVariable Long clusterId,
       @RequestParam FaseBalanceo fase,
-      @RequestParam(required = false) String balanceo,
+      @RequestParam String balanceo,
       @Valid @RequestBody(required = false) BalanceoRequest rango) {
     return configuracionService.balancear(id, Balanceo.de(balanceo), clusterId, fase, rango);
   }
 
   /**
-   * Vista previa del paso 1 (no cambia nada): los grupos del cluster en orden de
-   * prioridad y el tramo de chutes que recibiría cada uno. Parámetros opcionales:
-   * desde y hasta (rango; sin ellos, el último) y prioridad, repetido una vez
-   * por grupo en orden (los nombres se leen tal cual, sin partir por comas).
+   * Vista previa del paso de rutas (no cambia nada): los grupos del cluster en orden natural y el
+   * tramo de chutes que recibiría cada uno. En DIA, con desde y hasta (sin ellos, el último rango);
+   * en un día, el rango y los tramos de las diarias.
    */
   @GetMapping("/{id}/clusters/{clusterId}/balanceo/vista")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
@@ -209,16 +208,9 @@ public class SimulacionController {
       @PathVariable Long clusterId,
       @RequestParam(required = false) @Positive Long desde,
       @RequestParam(required = false) @Positive Long hasta,
-      @RequestParam(required = false) String balanceo,
-      @RequestParam MultiValueMap<String, String> parametros) {
-    List<String> prioridad = parametros.get("prioridad");
-    if (prioridad != null
-        && (prioridad.size() > BalanceoRequest.MAX_GRUPOS
-            || prioridad.stream().anyMatch((g) -> g == null || g.isBlank() || g.length() > 50))) {
-      throw new SolicitudInvalidaException("La prioridad de los grupos no es válida.");
-    }
+      @RequestParam(required = false) String balanceo) {
     return configuracionService.vistaBalanceo(
-        id, Balanceo.de(balanceo), clusterId, new BalanceoRequest(desde, hasta, null, prioridad));
+        id, Balanceo.de(balanceo), clusterId, new BalanceoRequest(desde, hasta));
   }
 
   @PostMapping("/{id}/clusters/{clusterId}/restablecer")
@@ -226,24 +218,24 @@ public class SimulacionController {
   public ApiResponse<ConfiguracionSimulacionResponse> restablecerCluster(
       @PathVariable Long id,
       @PathVariable Long clusterId,
-      @RequestParam(required = false) String balanceo) {
+      @RequestParam String balanceo) {
     return configuracionService.restablecerCluster(id, Balanceo.de(balanceo), clusterId);
   }
 
+  /** Todo el registro vuelve a la proyección, en los tres balanceos y en una sola transacción. */
   @PostMapping("/{id}/restablecer")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
-  public ApiResponse<Void> restablecer(
-      @PathVariable Long id, @RequestParam(required = false) String balanceo) {
-    return configuracionService.restablecer(id, Balanceo.de(balanceo));
+  public ApiResponse<Void> restablecer(@PathVariable Long id) {
+    return configuracionService.restablecer(id);
   }
 
-  /** Cierra el cluster en curso: el equipo pasa al siguiente con esta dotación. */
+  /** Cierra el cluster en curso en los tres balanceos: el equipo pasa al siguiente con esta dotación. */
   @PostMapping("/{id}/clusters/{clusterId}/cerrar")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
   public ApiResponse<ConfiguracionSimulacionResponse> cerrar(
       @PathVariable Long id,
       @PathVariable Long clusterId,
-      @RequestParam(required = false) String balanceo) {
+      @RequestParam String balanceo) {
     return configuracionService.cerrar(id, Balanceo.de(balanceo), clusterId);
   }
 
@@ -253,7 +245,7 @@ public class SimulacionController {
   public ApiResponse<ConfiguracionSimulacionResponse> reabrir(
       @PathVariable Long id,
       @PathVariable Long clusterId,
-      @RequestParam(required = false) String balanceo) {
+      @RequestParam String balanceo) {
     return configuracionService.reabrir(id, Balanceo.de(balanceo), clusterId);
   }
 
@@ -284,7 +276,7 @@ public class SimulacionController {
       @PathVariable Long id,
       @RequestParam(required = false) Long clusterId,
       @RequestParam(required = false) String balanceo) {
-    return configuracionService.dashboard(id, Balanceo.de(balanceo), clusterId);
+    return configuracionService.dashboard(id, Balanceo.dia(balanceo), clusterId);
   }
 
   @GetMapping("/{id}/dashboard/rutas")
@@ -306,26 +298,25 @@ public class SimulacionController {
       throw new SolicitudInvalidaException("El tipo de ruta debe ser B2C o B2B.");
     }
     return configuracionService.rutasDashboard(
-        id, Balanceo.de(balanceo), pagina, tamano, texto, tipoRuta, chuteIds, lado, clusterId, soloCambios);
+        id, Balanceo.dia(balanceo), pagina, tamano, texto, tipoRuta, chuteIds, lado, clusterId, soloCambios);
   }
 
   /**
-   * Excel completo de la simulación (un solo archivo): resumen, comparativos con
-   * gráficos, cuadrículas de Configuración y el detalle de chutes, rutas,
-   * operarios e historial. Solo lee.
+   * Excel de la simulación (un solo archivo con los dos días): lo mismo que el PDF ejecutivo
+   * (resumen, tiempos y comparativos, configuración) con un selector de frecuencia dentro del
+   * libro. {@code balanceo} se acepta por compatibilidad y se ignora. Solo lee.
    */
   @GetMapping("/{id}/exportar")
   @PreAuthorize("hasAuthority('VER_DASHBOARD_SIMULACION')")
   public ResponseEntity<byte[]> exportar(
       @PathVariable Long id, @RequestParam(required = false) String balanceo) {
-    Balanceo cual = Balanceo.de(balanceo);
-    byte[] contenido = reporte.excel(id, cual);
+    byte[] contenido = reporte.excel(id);
     return ResponseEntity.ok()
         .contentType(XLSX)
         .header(
             HttpHeaders.CONTENT_DISPOSITION,
             ContentDisposition.attachment()
-                .filename(reporte.nombreArchivo(id, cual), StandardCharsets.UTF_8)
+                .filename(reporte.nombreArchivo(id), StandardCharsets.UTF_8)
                 .build()
                 .toString())
         .body(contenido);

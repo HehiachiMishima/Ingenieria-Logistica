@@ -94,6 +94,28 @@ export function compararNombre(a: string, b: string): number {
   return a.localeCompare(b, 'es', { numeric: true, sensitivity: 'base' });
 }
 
+/**
+ * Colores de los grupos de un cluster (pestaña de la ruta en la planilla y en el reporte):
+ * distintos del semáforo (rojo, amarillo y verde) y del acento, legibles en claro y oscuro.
+ */
+export const PALETA_GRUPOS = [
+  '#7c3aed',
+  '#0891b2',
+  '#db2777',
+  '#4f46e5',
+  '#0d9488',
+  '#c2410c',
+  '#9333ea',
+  '#0369a1',
+] as const;
+
+/** Color de cada grupo de un cluster, en orden natural: el mismo en pantalla y en el PDF. */
+export function coloresGrupos(nombres: readonly string[]): Map<string, string> {
+  return new Map(
+    [...nombres].sort(compararNombre).map((nombre, i) => [nombre, PALETA_GRUPOS[i % PALETA_GRUPOS.length]]),
+  );
+}
+
 /** Texto del registro en los selectores: «Nombre · etiqueta» (la etiqueta es opcional). */
 export function etiquetaRegistro(registro: ArchivoSimulacion): string {
   return registro.etiqueta

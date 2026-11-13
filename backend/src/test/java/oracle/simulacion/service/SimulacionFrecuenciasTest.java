@@ -7,7 +7,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -24,10 +23,12 @@ import java.util.function.Supplier;
 import oracle.common.config.CacheRespuestas;
 import oracle.common.config.Transacciones;
 import oracle.common.exception.ConflictoException;
+import oracle.common.exception.RecursoNoEncontradoException;
 import oracle.simulacion.model.ArchivoExcel;
 import oracle.simulacion.model.Balanceo;
 import oracle.simulacion.model.Chute;
 import oracle.simulacion.model.Cluster;
+import oracle.simulacion.model.HistorialBalanceo;
 import oracle.simulacion.model.LanzamientoBalanceo;
 import oracle.simulacion.model.OperarioOla;
 import oracle.simulacion.model.OperarioOlaId;
@@ -38,6 +39,10 @@ import oracle.simulacion.model.ParametroClusterId;
 import oracle.simulacion.model.RutaProyeccion;
 import oracle.simulacion.model.SimulacionConfig;
 import oracle.simulacion.repository.ArchivoExcelRepository;
+import oracle.simulacion.repository.CambioParaDeshacer;
+import oracle.simulacion.repository.CargaGrupo;
+import oracle.simulacion.repository.CargaRutas;
+import oracle.simulacion.repository.GrupoGuardado;
 import oracle.simulacion.repository.ChuteRepository;
 import oracle.simulacion.repository.ClusterRepository;
 import oracle.simulacion.repository.HistorialBalanceoRepository;
@@ -64,9 +69,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * Dos balanceos (L-X-V y M-J-S) con rutas diarias compartidas: el primer balanceo automático
- * acomoda las diarias y desde ahí ningún automático las mueve; a mano sí. Chutes con buff: reciben
- * primero la ruta más pesada.
+ * Tres balanceos por cluster: Diarias primero (reparte las diarias y define el rango y los tramos),
+ * luego L-X-V y M-J-S (cada uno mueve solo sus rutas dentro de ese rango, con las diarias como carga
+ * fija). Operarios con la misma cantidad en los dos días; cerrar, restablecer y el límite valen para
+ * los tres. A mano todo se mueve. Chutes con buff: reciben primero la ruta más pesada de cada paso.
  */
 @ExtendWith(MockitoExtension.class)
 class SimulacionFrecuenciasTest {
@@ -123,82 +129,184 @@ class SimulacionFrecuenciasTest {
             });
   }
 
-  // ---------------- Rutas diarias ----------------
+  // ---------------- Diarias primero ----------------
 
   @Test
-  void elSegundoBalanceoNoMueveLasDiariasYSoloVeSusRutas() {
-    // L-X-V ya balanceó CL1: sus diarias quedaron fijas. En M-J-S solo se mueven las M-J-S.
-    ParametroCluster lxv = parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_RUTAS);
+  void lasDiariasSeBalanceanPrimeroYDefinenElRango() {
+    ParametroCluster dia = parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_PENDIENTE);
+    ParametroCluster lxv = parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE);
     ParametroCluster mjs = parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE);
-    preparar(List.of(lxv, mjs), List.of(base(1L, false), base(2L, false)), List.of());
+    preparar(List.of(dia, lxv, mjs), List.of(base(1L, false), base(2L, false)), List.of());
+    RutaProyeccion d1 = ruta(1L, 1L, "500", Balanceo.DIARIA);
+    RutaProyeccion d2 = ruta(2L, 1L, "500", Balanceo.DIARIA);
+    RutaProyeccion soloLxv = ruta(3L, 1L, "900", "LXV");
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL1)).thenReturn(List.of(d1, d2, soloLxv));
+
+    servicio.balancear(10L, Balanceo.DIA, CL1, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 2L));
+
+    assertTrue(
+        d1.getChuteId().equals(2L) || d2.getChuteId().equals(2L),
+        "una de las diarias pasa al chute vacío del rango");
+    assertEquals(1L, soloLxv.getChuteId(), "Diarias no mueve las rutas de un día");
+    assertEquals(ParametroCluster.ESTADO_RUTAS, dia.getEstado());
+    assertEquals(1L, dia.getChuteDesdeId());
+    assertEquals(2L, dia.getChuteHastaId());
+    assertEquals(ParametroCluster.ESTADO_PENDIENTE, lxv.getEstado());
+    // El rango y los tramos se guardan aquí: los días los reutilizan.
+    verify(lotes).guardarGrupos(anyLong(), anyLong(), anyList());
+  }
+
+  @Test
+  void unDiaEsperaQueSeBalanceenLasDiarias() {
+    preparar(
+        List.of(
+            parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE)),
+        List.of(base(1L, false)),
+        List.of());
+
+    ConflictoException error =
+        assertThrows(
+            ConflictoException.class,
+            () -> servicio.balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.RUTAS, null));
+
+    assertTrue(error.getMessage().contains("diarias"), error.getMessage());
+  }
+
+  @Test
+  void lasDiariasNoSeRebalanceanSiUnDiaYaLasUsa() {
+    preparar(
+        List.of(
+            parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_RUTAS),
+            parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_RUTAS),
+            parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE)),
+        List.of(base(1L, false)),
+        List.of());
+
+    ConflictoException error =
+        assertThrows(
+            ConflictoException.class,
+            () -> servicio.balancear(10L, Balanceo.DIA, CL1, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 2L)));
+
+    assertTrue(error.getMessage().contains("restablece"), error.getMessage());
+  }
+
+  @Test
+  void unDiaSoloMueveSusRutasDentroDelRangoDeLasDiarias() {
+    ParametroCluster dia = parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_RUTAS);
+    dia.setChuteDesdeId(1L);
+    dia.setChuteHastaId(2L);
+    ParametroCluster mjs = parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE);
+    preparar(
+        List.of(dia, parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE), mjs),
+        List.of(base(1L, false), base(2L, false), base(3L, false)),
+        List.of());
     RutaProyeccion diaria = ruta(1L, 1L, "500", Balanceo.DIARIA);
     RutaProyeccion m1 = ruta(2L, 1L, "300", "MJS");
-    RutaProyeccion m2 = ruta(3L, 2L, "100", "MJS");
+    RutaProyeccion m2 = ruta(3L, 3L, "100", "MJS");
     RutaProyeccion soloLxv = ruta(4L, 2L, "900", "LXV");
     when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL1))
         .thenReturn(List.of(diaria, m1, m2, soloLxv));
 
     BalanceoResponse resultado =
-        servicio.balancear(10L, Balanceo.MJS, CL1, FaseBalanceo.RUTAS, null).datos();
+        servicio.balancear(10L, Balanceo.MJS, CL1, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 3L)).datos();
 
-    assertEquals(1L, diaria.getChuteId(), "la diaria fija no se mueve");
+    assertEquals(1L, diaria.getChuteId(), "la diaria ya balanceada no se mueve");
     assertEquals(2L, m1.getChuteId(), "la ruta M-J-S se reparte alrededor de la diaria");
+    assertEquals(2L, m2.getChuteId(), "la que estaba fuera del rango de las diarias entra");
     assertEquals(2L, soloLxv.getChuteId(), "una ruta L-X-V no aparece en M-J-S");
-    verify(lotes).moverRutas(Map.of(2L, 2L));
     assertTrue(resultado.mensaje().contains("diaria"), resultado.mensaje());
-    assertTrue(resultado.mensaje().contains("L-X-V"), resultado.mensaje());
     assertEquals(ParametroCluster.ESTADO_RUTAS, mjs.getEstado());
-    // Rango y tramos son del cluster: los definió L-X-V y no se reescriben.
+    // El rango pedido no cuenta: manda el de las diarias. Los tramos no se reescriben.
+    assertEquals(2L, mjs.getChuteHastaId());
     verify(lotes, never()).guardarGrupos(anyLong(), anyLong(), anyList());
   }
 
   @Test
-  void elPrimerBalanceoSiAcomodaLasDiarias() {
-    ParametroCluster lxv = parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE);
-    ParametroCluster mjs = parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE);
-    preparar(List.of(lxv, mjs), List.of(base(1L, false), base(2L, false)), List.of());
-    RutaProyeccion d1 = ruta(1L, 1L, "500", Balanceo.DIARIA);
-    RutaProyeccion d2 = ruta(2L, 1L, "500", Balanceo.DIARIA);
-    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL1)).thenReturn(List.of(d1, d2));
+  void unGrupoSinTramoNoSeBalanceaEnUnDia() {
+    ParametroCluster dia = parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_RUTAS);
+    dia.setChuteDesdeId(1L);
+    dia.setChuteHastaId(3L);
+    preparar(
+        List.of(
+            dia,
+            parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE)),
+        List.of(base(1L, false), base(2L, false), base(3L, false)),
+        List.of());
+    RutaProyeccion a = ruta(1L, 1L, "100", "LXV");
+    RutaProyeccion b = ruta(2L, 3L, "100", "LXV");
+    b.setGrupo("B");
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL1)).thenReturn(List.of(a, b));
+    // Solo A tiene tramo: B llegó después de balancear las diarias.
+    when(lotes.grupos(10L)).thenReturn(List.of(new GrupoGuardado(CL1, "A", 1, 1L, 2L)));
 
-    servicio.balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 2L));
+    ConflictoException error =
+        assertThrows(
+            ConflictoException.class,
+            () -> servicio.balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.RUTAS, null));
 
-    assertTrue(
-        d1.getChuteId().equals(2L) || d2.getChuteId().equals(2L),
-        "una de las diarias pasa al chute vacío del rango");
-    assertEquals(ParametroCluster.ESTADO_RUTAS, lxv.getEstado());
-    assertEquals(ParametroCluster.ESTADO_PENDIENTE, mjs.getEstado());
+    assertTrue(error.getMessage().contains("B"), error.getMessage());
+    assertTrue(error.getMessage().contains("Restablece"), error.getMessage());
+    verify(lotes, never()).moverRutas(any());
   }
 
   @Test
-  void laConfiguracionDiceSiLasDiariasEstanFijasYQuienDefinioElRango() {
+  void laConfiguracionTraeElAvanceDeLosTresBalanceos() {
+    ParametroCluster dia = parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_RUTAS);
     ParametroCluster lxv = parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_RUTAS);
     ParametroCluster mjs = parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE);
     when(archivoRepo.findById(10L)).thenReturn(Optional.of(archivo()));
     when(configRepo.findById(10L)).thenReturn(Optional.of(configuracion()));
-    prepararParametros(List.of(lxv, mjs), List.of(base(1L, true)), List.of());
+    prepararParametros(List.of(dia, lxv, mjs), List.of(base(1L, true)), List.of());
 
     ConfiguracionSimulacionResponse cfg = servicio.obtener(10L, Balanceo.MJS).datos();
 
     ClusterParametroResponse cl1 = cfg.clusters().get(0);
     assertEquals("MJS", cfg.balanceo());
     assertEquals(ParametroCluster.ESTADO_PENDIENTE, cl1.estado());
-    assertEquals(ParametroCluster.ESTADO_RUTAS, cl1.estadoOtro());
+    assertEquals(ParametroCluster.ESTADO_RUTAS, cl1.avance().diarias());
+    assertEquals(ParametroCluster.ESTADO_RUTAS, cl1.avance().lxv());
+    assertEquals(ParametroCluster.ESTADO_PENDIENTE, cl1.avance().mjs());
     assertTrue(cl1.diariasFijas());
-    assertTrue(cl1.rangoDelOtro());
     assertTrue(cfg.buffBloqueado());
     assertTrue(cfg.chutes().get(0).buff());
+  }
+
+  @Test
+  void elTramoDeUnGrupoSeDimensionaConLasRutasDelDiaConMasRutas() {
+    ParametroCluster dia = parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_PENDIENTE);
+    when(archivoRepo.findById(10L)).thenReturn(Optional.of(archivo()));
+    when(configRepo.findById(10L)).thenReturn(Optional.of(configuracion()));
+    prepararParametros(
+        List.of(dia, parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE)),
+        List.of(base(1L, false), base(2L, false), base(3L, false)),
+        List.of());
+    // Grupo A: L-X-V 2 rutas pesadas, M-J-S 10 rutas livianas, 1 diaria.
+    when(rutaRepo.cargaPorGrupo(10L))
+        .thenReturn(
+            List.of(
+                cargaGrupo("LXV", "A", 1L, 2, "1000"),
+                cargaGrupo("MJS", "A", 1L, 10, "900"),
+                cargaGrupo(Balanceo.DIARIA, "A", 1L, 1, "50")));
+
+    var vista = servicio.vistaBalanceo(10L, Balanceo.DIA, CL1, new BalanceoRequest(1L, 3L)).datos();
+
+    assertEquals(11, vista.grupos().get(0).rutas(), "diarias + el día con más rutas (M-J-S)");
+    assertEquals(0, new BigDecimal("1050").compareTo(vista.grupos().get(0).bultos()), "diarias + el día con más bultos");
   }
 
   // ---------------- A mano ----------------
 
   @Test
-  void moverUnaDiariaAManoTambienInvalidaLosOperariosDelOtroBalanceo() {
+  void moverUnaDiariaAManoInvalidaLosOperariosDeLosDosDiasYQuedaEnElHistorialDeDiarias() {
+    ParametroCluster dia = parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_RUTAS);
     ParametroCluster lxv = parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_LISTO);
     ParametroCluster mjs = parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_LISTO);
     OperarioOla olaLxv = ola(Balanceo.LXV, CL1, 1L);
     OperarioOla olaMjs = ola(Balanceo.MJS, CL1, 1L);
-    preparar(List.of(lxv, mjs), List.of(base(1L, false), base(2L, false)), List.of(olaLxv, olaMjs));
+    preparar(List.of(dia, lxv, mjs), List.of(base(1L, false), base(2L, false)), List.of(olaLxv, olaMjs));
     RutaProyeccion diaria = ruta(5L, 1L, "100", Balanceo.DIARIA);
     when(rutaRepo.findByIdAndArchivoId(5L, 10L)).thenReturn(Optional.of(diaria));
 
@@ -213,22 +321,29 @@ class SimulacionFrecuenciasTest {
     List<OperarioOla> todas = new ArrayList<>();
     borradas.getAllValues().forEach(todas::addAll);
     assertTrue(todas.contains(olaLxv) && todas.contains(olaMjs));
+    ArgumentCaptor<HistorialBalanceo> registro = ArgumentCaptor.forClass(HistorialBalanceo.class);
+    verify(historialRepo).save(registro.capture());
+    assertEquals("DIA", registro.getValue().getBalanceo(), "el cambio de una diaria es de Diarias");
   }
 
   @Test
-  void unaDiariaNoSeMueveSiElOtroBalanceoCerroSuCluster() {
-    ParametroCluster lxv = parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_RUTAS);
-    ParametroCluster mjs = parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_CERRADO);
-    preparar(List.of(lxv, mjs), List.of(base(1L, false), base(2L, false)), List.of());
+  void unaDiariaNoSeMueveSiSuClusterEstaCerrado() {
+    preparar(
+        List.of(
+            parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_CERRADO),
+            parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_CERRADO),
+            parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_CERRADO)),
+        List.of(base(1L, false), base(2L, false)),
+        List.of());
     RutaProyeccion diaria = ruta(5L, 1L, "100", Balanceo.DIARIA);
     when(rutaRepo.findByIdAndArchivoId(5L, 10L)).thenReturn(Optional.of(diaria));
 
     ConflictoException error =
         assertThrows(
             ConflictoException.class,
-            () -> servicio.mover(10L, Balanceo.LXV, 5L, new MoverRutaRequest(2L)));
+            () -> servicio.mover(10L, Balanceo.DIA, 5L, new MoverRutaRequest(2L)));
 
-    assertTrue(error.getMessage().contains("M-J-S"), error.getMessage());
+    assertTrue(error.getMessage().contains("cerrado"), error.getMessage());
     assertEquals(1L, diaria.getChuteId());
   }
 
@@ -236,45 +351,78 @@ class SimulacionFrecuenciasTest {
   void unaRutaDeOtraFrecuenciaNoSeMueveDesdeEsteBalanceo() {
     preparar(
         List.of(
+            parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_PENDIENTE),
             parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE),
             parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE)),
         List.of(base(1L, false), base(2L, false)),
         List.of());
-    when(rutaRepo.findByIdAndArchivoId(5L, 10L)).thenReturn(Optional.of(ruta(5L, 1L, "100", "MJS")));
+    RutaProyeccion parcial = ruta(5L, 1L, "100", "MJS");
+    parcial.setDias("M-J");
+    when(rutaRepo.findByIdAndArchivoId(5L, 10L)).thenReturn(Optional.of(parcial));
 
-    assertThrows(
-        ConflictoException.class,
-        () -> servicio.mover(10L, Balanceo.LXV, 5L, new MoverRutaRequest(2L)));
+    ConflictoException error =
+        assertThrows(
+            ConflictoException.class,
+            () -> servicio.mover(10L, Balanceo.DIA, 5L, new MoverRutaRequest(2L)));
+
+    assertTrue(error.getMessage().contains("M-J"), "dice sus días reales: " + error.getMessage());
   }
 
   // ---------------- Restablecer ----------------
 
   @Test
-  void restablecerNoDevuelveLasDiariasConLasQueCuentaElOtroBalanceo() {
-    preparar(
-        List.of(
-            parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_RUTAS),
-            parametro(Balanceo.LXV, CL2, ParametroCluster.ESTADO_RUTAS),
-            parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_RUTAS),
-            parametro(Balanceo.MJS, CL2, ParametroCluster.ESTADO_PENDIENTE)),
-        List.of(base(1L, false)),
-        List.of());
+  void restablecerTodoDevuelveLosTresBalanceosEnUnaSolaOperacion() {
+    ParametroCluster dia = parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_CERRADO);
+    ParametroCluster lxv = parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_CERRADO);
+    ParametroCluster mjs = parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_CERRADO);
+    lxv.setOperariosOla(4);
+    preparar(List.of(dia, lxv, mjs), List.of(base(1L, false)), List.of());
+    ArchivoExcel archivo = archivo();
+    when(archivoRepo.bloquear(10L)).thenReturn(Optional.of(archivo));
 
-    servicio.restablecer(10L, Balanceo.LXV);
+    servicio.restablecer(10L);
 
-    // CL1 ya lo trabajó M-J-S: sus diarias se quedan; las de CL2 sí vuelven.
-    verify(rutaRepo).restaurarRutas(10L, "LXV", List.of(CL2));
-    verify(lotes).borrarGrupos(10L, List.of(CL2));
-    verify(historialRepo).borrarPorArchivo(10L, "LXV");
-    verify(lanzamientoRepo).borrarPorArchivo(10L, "LXV");
+    verify(rutaRepo).restaurarTodas(10L);
+    verify(lanzamientoRepo).borrarTodoPorArchivo(10L);
+    verify(historialRepo).borrarTodoPorArchivo(10L);
+    verify(lotes).borrarGrupos(10L, Set.of(CL1));
+    for (ParametroCluster p : List.of(dia, lxv, mjs)) {
+      assertEquals(ParametroCluster.ESTADO_PENDIENTE, p.getEstado());
+    }
+    assertEquals(null, lxv.getOperariosOla());
+    assertEquals(ArchivoExcel.ESTADO_PROYECCION, archivo.getEstado());
+  }
+
+  @Test
+  void restablecerElClusterLoDevuelveEnLosTresBalanceos() {
+    ParametroCluster dia = parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_RUTAS);
+    ParametroCluster lxv = parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_RUTAS);
+    ParametroCluster mjs = parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_RUTAS);
+    preparar(List.of(dia, lxv, mjs), List.of(base(1L, false)), List.of());
+    when(historialRepo.trabajoParaDeshacerAmbos(10L, List.of(CL1)))
+        .thenReturn(List.of(deshacer(9L, 1L)));
+
+    servicio.restablecerCluster(10L, Balanceo.MJS, CL1);
+
+    for (ParametroCluster p : List.of(dia, lxv, mjs)) {
+      assertEquals(ParametroCluster.ESTADO_PENDIENTE, p.getEstado());
+    }
+    verify(lotes).moverRutas(Map.of(9L, 1L));
+    verify(historialRepo).borrarManualesDeTrabajoAmbos(10L, List.of(CL1));
+    verify(lanzamientoRepo).borrarPorClusters(10L, List.of(CL1));
+    verify(lotes).quitarTramos(10L, List.of(CL1));
   }
 
   // ---------------- Buff ----------------
 
   @Test
-  void elChuteConBuffRecibeLaRutaMasPesada() {
+  void elChuteConBuffRecibeLaRutaMasPesadaDeCadaPaso() {
+    ParametroCluster dia = parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_RUTAS);
+    dia.setChuteDesdeId(1L);
+    dia.setChuteHastaId(3L);
     preparar(
         List.of(
+            dia,
             parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE),
             parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE)),
         List.of(base(1L, false), base(2L, false), base(3L, true)),
@@ -286,19 +434,18 @@ class SimulacionFrecuenciasTest {
     when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL1)).thenReturn(List.of(pesada, b, c, d));
 
     BalanceoResponse resultado =
-        servicio
-            .balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 3L))
-            .datos();
+        servicio.balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.RUTAS, null).datos();
 
     assertEquals(3L, pesada.getChuteId(), "la ruta más pesada va al chute con buff");
     assertTrue(resultado.mensaje().contains("buff"), resultado.mensaje());
   }
 
   @Test
-  void elBuffSoloSeDefineAntesDeBalancear() {
+  void elBuffSoloSeDefineAntesDeBalancearLasDiarias() {
     preparar(
         List.of(
-            parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_RUTAS),
+            parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_RUTAS),
+            parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE),
             parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE)),
         List.of(base(1L, false)),
         List.of());
@@ -324,6 +471,7 @@ class SimulacionFrecuenciasTest {
   void elBuffSeGuardaAntesDelPrimerBalanceo() {
     preparar(
         List.of(
+            parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_PENDIENTE),
             parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE),
             parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE)),
         List.of(base(1L, false)),
@@ -346,27 +494,49 @@ class SimulacionFrecuenciasTest {
     verify(parametroChuteRepo).save(any(ParametroChute.class));
   }
 
-  // ---------------- Pasos compartidos por las dos frecuencias ----------------
+  // ---------------- Pasos compartidos ----------------
 
   @Test
-  void losOperariosSeAsignanEnLasDosFrecuenciasConLaMismaCantidad() {
+  void losOperariosSeRepartenEnCadaDiaSegunSuCargaConLaMismaCantidad() {
+    ParametroCluster dia = parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_RUTAS);
     ParametroCluster lxv = parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_RUTAS);
     ParametroCluster mjs = parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_RUTAS);
-    preparar(List.of(lxv, mjs), List.of(base(1L, false)), List.of());
+    preparar(List.of(dia, lxv, mjs), List.of(base(1L, false), base(2L, false)), List.of());
+    // L-X-V carga solo el chute 1; M-J-S, solo el chute 2 (las diarias van en los dos días).
+    when(rutaRepo.cargaPorArchivo(10L))
+        .thenReturn(List.of(carga("LXV", CL1, 1L, "400"), carga("MJS", CL1, 2L, "400")));
 
-    servicio.balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.OPERARIOS, BalanceoRequest.conOperarios(4));
+    BalanceoResponse resultado =
+        servicio
+            .balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.OPERARIOS, BalanceoRequest.conOperarios(4))
+            .datos();
 
     assertEquals(ParametroCluster.ESTADO_LISTO, lxv.getEstado());
     assertEquals(ParametroCluster.ESTADO_LISTO, mjs.getEstado());
     assertEquals(4, lxv.getOperariosOla());
     assertEquals(4, mjs.getOperariosOla());
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<List<OperarioOla>> guardadas = ArgumentCaptor.forClass(List.class);
+    verify(operarioOlaRepo, times(2)).saveAll(guardadas.capture());
+    OperarioOla delLxv = guardadas.getAllValues().get(0).getFirst();
+    OperarioOla delMjs = guardadas.getAllValues().get(1).getFirst();
+    assertEquals("LXV", delLxv.getId().getBalanceo());
+    assertEquals(1L, delLxv.getId().getChuteId(), "L-X-V pone su gente donde está su carga");
+    assertEquals("MJS", delMjs.getId().getBalanceo());
+    assertEquals(2L, delMjs.getId().getChuteId(), "M-J-S, en el suyo");
+    assertTrue(resultado.mensaje().contains("L-X-V") && resultado.mensaje().contains("M-J-S"));
   }
 
   @Test
-  void losOperariosEsperanLosChutesDeLasDosFrecuencias() {
+  void losOperariosEsperanLosChutesDeLosDosDias() {
     ParametroCluster lxv = parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_RUTAS);
-    ParametroCluster mjs = parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE);
-    preparar(List.of(lxv, mjs), List.of(base(1L, false)), List.of());
+    preparar(
+        List.of(
+            parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_RUTAS),
+            lxv,
+            parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE)),
+        List.of(base(1L, false)),
+        List.of());
 
     ConflictoException error =
         assertThrows(
@@ -380,30 +550,131 @@ class SimulacionFrecuenciasTest {
   }
 
   @Test
-  void cerrarCierraLasDosFrecuenciasYSoloConLasDosListas() {
+  void unErrorDeOperariosDiceDeQueDiaViene() {
+    ParametroCluster lxv = parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_RUTAS);
+    ParametroCluster mjs = parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_RUTAS);
+    mjs.setLimiteHoras(BigDecimal.ZERO);
+    preparar(
+        List.of(parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_RUTAS), lxv, mjs),
+        List.of(base(1L, false)),
+        List.of());
+
+    ConflictoException error =
+        assertThrows(
+            ConflictoException.class,
+            () ->
+                servicio.balancear(
+                    10L, Balanceo.LXV, CL1, FaseBalanceo.OPERARIOS, BalanceoRequest.conOperarios(4)));
+
+    assertTrue(error.getMessage().startsWith("M-J-S: "), error.getMessage());
+  }
+
+  @Test
+  void cerrarCierraLosTresYSoloConTodoListo() {
+    ParametroCluster dia = parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_RUTAS);
     ParametroCluster lxv = parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_LISTO);
     ParametroCluster mjs = parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_RUTAS);
-    preparar(List.of(lxv, mjs), List.of(base(1L, false)), List.of());
+    preparar(List.of(dia, lxv, mjs), List.of(base(1L, false)), List.of());
 
     assertThrows(ConflictoException.class, () -> servicio.cerrar(10L, Balanceo.LXV, CL1));
     assertEquals(ParametroCluster.ESTADO_LISTO, lxv.getEstado());
 
     mjs.setEstado(ParametroCluster.ESTADO_LISTO);
-    servicio.cerrar(10L, Balanceo.LXV, CL1);
+    servicio.cerrar(10L, Balanceo.DIA, CL1);
 
-    assertEquals(ParametroCluster.ESTADO_CERRADO, lxv.getEstado());
-    assertEquals(ParametroCluster.ESTADO_CERRADO, mjs.getEstado());
+    for (ParametroCluster p : List.of(dia, lxv, mjs)) {
+      assertEquals(ParametroCluster.ESTADO_CERRADO, p.getEstado());
+    }
+  }
+
+  // ---------------- Días sin rutas propias ----------------
+
+  @Test
+  void unDiaSinRutasPropiasNoSeBalancea() {
+    preparar(
+        List.of(
+            parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_RUTAS),
+            parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE)),
+        List.of(base(1L, false)),
+        List.of());
+    when(rutaRepo.cargaPorArchivo(10L))
+        .thenReturn(List.of(carga("DIARIA", CL1, 1L, "100"), carga("LXV", CL1, 1L, "300")));
+
+    ConflictoException error =
+        assertThrows(
+            ConflictoException.class,
+            () -> servicio.balancear(10L, Balanceo.MJS, CL1, FaseBalanceo.RUTAS, null));
+
+    assertTrue(error.getMessage().contains("no tiene rutas M-J-S"), error.getMessage());
   }
 
   @Test
-  void elLimiteDeHorasEsElMismoParaLasDosFrecuencias() {
+  void losOperariosNoEsperanAlDiaSinRutasPropias() {
+    ParametroCluster lxv = parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_RUTAS);
+    ParametroCluster mjs = parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE);
+    preparar(
+        List.of(parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_RUTAS), lxv, mjs),
+        List.of(base(1L, false)),
+        List.of());
+    // M-J-S no tiene rutas propias, pero sí las diarias: lleva operarios igual.
+    when(rutaRepo.cargaPorArchivo(10L))
+        .thenReturn(List.of(carga("DIARIA", CL1, 1L, "100"), carga("LXV", CL1, 1L, "300")));
+
+    servicio.balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.OPERARIOS, BalanceoRequest.conOperarios(2));
+
+    assertEquals(ParametroCluster.ESTADO_LISTO, lxv.getEstado());
+    assertEquals(ParametroCluster.ESTADO_LISTO, mjs.getEstado());
+  }
+
+  @Test
+  void cerrarNoEsperaAlDiaSinCarga() {
+    ParametroCluster dia = parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_RUTAS);
+    ParametroCluster lxv = parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_LISTO);
+    ParametroCluster mjs = parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE);
+    preparar(List.of(dia, lxv, mjs), List.of(base(1L, false)), List.of());
+    // Solo rutas L-X-V: M-J-S no tiene carga, ni operarios ni cierre.
+    when(rutaRepo.cargaPorArchivo(10L)).thenReturn(List.of(carga("LXV", CL1, 1L, "300")));
+
+    servicio.cerrar(10L, Balanceo.LXV, CL1);
+
+    for (ParametroCluster p : List.of(dia, lxv, mjs)) {
+      assertEquals(ParametroCluster.ESTADO_CERRADO, p.getEstado());
+    }
+  }
+
+  @Test
+  void reabrirVuelveAlPasoAnteriorACerrarEnLosTres() {
+    ParametroCluster dia = parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_CERRADO);
+    ParametroCluster lxv = parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_CERRADO);
+    ParametroCluster mjs = parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_CERRADO);
+    ParametroCluster siguiente = parametro(Balanceo.DIA, CL2, ParametroCluster.ESTADO_RUTAS);
+    preparar(
+        List.of(
+            dia, lxv, mjs, siguiente,
+            parametro(Balanceo.LXV, CL2, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.MJS, CL2, ParametroCluster.ESTADO_PENDIENTE)),
+        List.of(base(1L, false)),
+        List.of());
+
+    servicio.reabrir(10L, Balanceo.MJS, CL1);
+
+    assertEquals(ParametroCluster.ESTADO_RUTAS, dia.getEstado());
+    assertEquals(ParametroCluster.ESTADO_LISTO, lxv.getEstado());
+    assertEquals(ParametroCluster.ESTADO_LISTO, mjs.getEstado());
+    assertEquals(ParametroCluster.ESTADO_PENDIENTE, siguiente.getEstado(), "CL2 solo había hecho sus diarias");
+  }
+
+  @Test
+  void elLimiteDeHorasEsElMismoParaLosTres() {
+    ParametroCluster dia = parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_PENDIENTE);
     ParametroCluster lxv = parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE);
     ParametroCluster mjs = parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE);
-    preparar(List.of(lxv, mjs), List.of(base(1L, false)), List.of());
+    preparar(List.of(dia, lxv, mjs), List.of(base(1L, false)), List.of());
 
     servicio.guardar(
         10L,
-        Balanceo.LXV,
+        Balanceo.MJS,
         new ConfiguracionActualizarRequest(
             new BigDecimal("100"),
             null,
@@ -411,23 +682,48 @@ class SimulacionFrecuenciasTest {
             List.of(new oracle.simulacion.request.ClusterLimiteRequest(CL1, new BigDecimal("4"))),
             null));
 
-    assertEquals(0, new BigDecimal("4").compareTo(lxv.getLimiteHoras()));
-    assertEquals(0, new BigDecimal("4").compareTo(mjs.getLimiteHoras()));
+    for (ParametroCluster p : List.of(dia, lxv, mjs)) {
+      assertEquals(0, new BigDecimal("4").compareTo(p.getLimiteHoras()));
+    }
+  }
+
+  // ---------------- Historial ----------------
+
+  @Test
+  void unDiaVeTambienElHistorialDeLasDiarias() {
+    when(archivoRepo.findById(10L)).thenReturn(Optional.of(archivo()));
+    when(configRepo.findById(10L)).thenReturn(Optional.of(configuracion()));
+    prepararParametros(
+        List.of(parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_RUTAS)), List.of(base(1L, false)), List.of());
+    LanzamientoBalanceo diarias = new LanzamientoBalanceo();
+    diarias.setId(5L);
+    diarias.setBalanceo("DIA");
+    diarias.setClusterId(CL1);
+    diarias.setMensaje("CL1: 2 ruta(s) movida(s).");
+    when(lanzamientoRepo.findTop200ByArchivoIdAndBalanceoInOrderByIdDesc(10L, List.of("LXV", "DIA")))
+        .thenReturn(List.of(diarias));
+
+    var historial = servicio.historial(10L, Balanceo.LXV).datos();
+
+    assertEquals("Diarias · CL1: 2 ruta(s) movida(s).", historial.lanzamientos().getFirst().mensaje());
+    verify(historialRepo).countByArchivoIdAndBalanceoInAndLanzamientoIdIsNull(10L, List.of("LXV", "DIA"));
   }
 
   @Test
-  void restablecerElClusterLoDevuelveEnLasDosFrecuencias() {
-    ParametroCluster lxv = parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_RUTAS);
-    ParametroCluster mjs = parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_RUTAS);
-    preparar(List.of(lxv, mjs), List.of(base(1L, false)), List.of());
+  void losCambiosDeUnLanzamientoDeOtroDiaNoSeVen() {
+    when(archivoRepo.findById(10L)).thenReturn(Optional.of(archivo()));
+    when(configRepo.findById(10L)).thenReturn(Optional.of(configuracion()));
+    prepararParametros(
+        List.of(parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_RUTAS)), List.of(base(1L, false)), List.of());
+    LanzamientoBalanceo deLxv = new LanzamientoBalanceo();
+    deLxv.setId(5L);
+    deLxv.setArchivoId(10L);
+    deLxv.setBalanceo("LXV");
+    when(lanzamientoRepo.findById(5L)).thenReturn(Optional.of(deLxv));
 
-    servicio.restablecerCluster(10L, Balanceo.MJS, CL1);
-
-    assertEquals(ParametroCluster.ESTADO_PENDIENTE, lxv.getEstado());
-    assertEquals(ParametroCluster.ESTADO_PENDIENTE, mjs.getEstado());
-    // Se deshacen los dos historiales juntos: también vuelven las diarias.
-    verify(historialRepo).trabajoParaDeshacerAmbos(10L, List.of(CL1));
-    verify(lanzamientoRepo).borrarPorClusters(10L, List.of(CL1));
+    assertThrows(
+        RecursoNoEncontradoException.class,
+        () -> servicio.historialCambios(10L, Balanceo.MJS, 5L, 1, 25));
   }
 
   // ---------------- Ayudas ----------------
@@ -488,6 +784,99 @@ class SimulacionFrecuenciasTest {
     ola.setId(new OperarioOlaId(10L, balanceo.name(), clusterId, chuteId));
     ola.setOperarios(2);
     return ola;
+  }
+
+  private static CargaGrupo cargaGrupo(
+      String frecuencia, String grupo, Long chuteId, long rutas, String bultos) {
+    return new CargaGrupo() {
+      public String getFrecuencia() {
+        return frecuencia;
+      }
+
+      public Long getClusterId() {
+        return CL1;
+      }
+
+      public String getGrupo() {
+        return grupo;
+      }
+
+      public Long getChuteId() {
+        return chuteId;
+      }
+
+      public Long getRutas() {
+        return rutas;
+      }
+
+      public BigDecimal getBultos() {
+        return new BigDecimal(bultos);
+      }
+    };
+  }
+
+  private static CargaRutas carga(String frecuencia, Long clusterId, Long chuteId, String bultos) {
+    return new CargaRutas() {
+      public String getFrecuencia() {
+        return frecuencia;
+      }
+
+      public Long getClusterId() {
+        return clusterId;
+      }
+
+      public Long getChuteId() {
+        return chuteId;
+      }
+
+      public Long getRutas() {
+        return 1L;
+      }
+
+      public BigDecimal getBultos() {
+        return new BigDecimal(bultos);
+      }
+
+      public BigDecimal getUnidades() {
+        return new BigDecimal(bultos);
+      }
+
+      public BigDecimal getLineas() {
+        return BigDecimal.ONE;
+      }
+
+      public BigDecimal getCod() {
+        return BigDecimal.ONE;
+      }
+    };
+  }
+
+  private static CambioParaDeshacer deshacer(Long rutaId, Long chuteOrigen) {
+    return new CambioParaDeshacer() {
+      public Long getRutaId() {
+        return rutaId;
+      }
+
+      public String getTipoAccion() {
+        return HistorialBalanceo.ACCION_MOVER_RUTA;
+      }
+
+      public Long getChuteOrigenId() {
+        return chuteOrigen;
+      }
+
+      public Long getClusterOrigenId() {
+        return null;
+      }
+
+      public String getFrecuencia() {
+        return Balanceo.DIARIA;
+      }
+
+      public Long getClusterId() {
+        return CL1;
+      }
+    };
   }
 
   private static Cluster cluster(Long id, String nombre) {

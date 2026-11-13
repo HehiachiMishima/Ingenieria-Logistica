@@ -138,10 +138,8 @@ public interface RutaProyeccionRepository
   List<RutasMovidasCluster> rutasMovidasPorCluster(@Param("archivoId") Long archivoId);
 
   /**
-   * Un balanceo vuelve a la proyección sin recorrer las rutas una a una: sus rutas propias (de su
-   * frecuencia) vuelven a su chute y cluster originales, y las diarias solo en los clusters donde
-   * el otro balanceo no cuenta con ellas ({@code clustersLibres}; nunca vacío: sin ninguno, pasar
-   * un id que no exista).
+   * Todo el registro vuelve a la proyección sin recorrer las rutas una a una: cada ruta movida o
+   * cambiada de cluster vuelve a su chute y cluster originales (los tres balanceos a la vez).
    */
   @Modifying
   @Query("""
@@ -150,13 +148,8 @@ public interface RutaProyeccionRepository
              r.clusterId = r.clusterOriginalId
        WHERE r.archivoId = :archivoId
          AND (r.movida = true OR r.clusterCambiado = true)
-         AND (r.frecuencia = :frecuencia
-              OR (r.frecuencia = 'DIARIA' AND r.clusterId IN :clustersLibres))
       """)
-  int restaurarRutas(
-      @Param("archivoId") Long archivoId,
-      @Param("frecuencia") String frecuencia,
-      @Param("clustersLibres") Collection<Long> clustersLibres);
+  int restaurarTodas(@Param("archivoId") Long archivoId);
 
   /**
    * Totales del detalle de rutas; cada lado añade su filtro de chute (ver abajo).

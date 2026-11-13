@@ -10,22 +10,14 @@ import org.springframework.data.repository.query.Param;
 
 public interface LanzamientoBalanceoRepository extends JpaRepository<LanzamientoBalanceo, Long> {
 
-  /** Lanzamientos de un balanceo del registro, del más reciente al más antiguo. */
-  List<LanzamientoBalanceo> findTop200ByArchivoIdAndBalanceoOrderByIdDesc(
-      Long archivoId, String balanceo);
+  /**
+   * Lanzamientos de esos balanceos del registro (un día ve también los de Diarias), del más
+   * reciente al más antiguo.
+   */
+  List<LanzamientoBalanceo> findTop200ByArchivoIdAndBalanceoInOrderByIdDesc(
+      Long archivoId, Collection<String> balanceos);
 
-  /** El historial de cada lanzamiento se borra con él (ON DELETE CASCADE). */
-  @Modifying
-  @Query(
-      "DELETE FROM LanzamientoBalanceo l"
-          + " WHERE l.archivoId = :archivoId AND l.balanceo = :balanceo"
-          + " AND l.clusterId = :clusterId")
-  void borrarPorCluster(
-      @Param("archivoId") Long archivoId,
-      @Param("balanceo") String balanceo,
-      @Param("clusterId") Long clusterId);
-
-  /** Lanzamientos del cluster en los dos balanceos (restablecer o reabrir el cluster completo). */
+  /** Lanzamientos del cluster en los tres balanceos (restablecer o reabrir el cluster completo). */
   @Modifying
   @Query(
       "DELETE FROM LanzamientoBalanceo l"
@@ -33,7 +25,8 @@ public interface LanzamientoBalanceoRepository extends JpaRepository<Lanzamiento
   void borrarPorClusters(
       @Param("archivoId") Long archivoId, @Param("clusterIds") Collection<Long> clusterIds);
 
+  /** Todos los lanzamientos del registro (su historial se borra con ellos, ON DELETE CASCADE). */
   @Modifying
-  @Query("DELETE FROM LanzamientoBalanceo l WHERE l.archivoId = :archivoId AND l.balanceo = :balanceo")
-  void borrarPorArchivo(@Param("archivoId") Long archivoId, @Param("balanceo") String balanceo);
+  @Query("DELETE FROM LanzamientoBalanceo l WHERE l.archivoId = :archivoId")
+  void borrarTodoPorArchivo(@Param("archivoId") Long archivoId);
 }

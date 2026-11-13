@@ -18,7 +18,7 @@ import { Icon } from '../../../../../../shared/ui/icon/icon';
 import { Paginador } from '../../../../../../shared/ui/paginador/paginador';
 import { SelectBuscable } from '../../../../../../shared/ui/select-buscable/select-buscable';
 import {
-  Balanceo,
+  DiaBalanceo,
   ChuteComparativoSimulacion,
   ClusterComparativoSimulacion,
   LadoChute,
@@ -82,7 +82,7 @@ export class SimulacionDetalleChute {
   /** Vista del lanzamiento de un cluster: solo sus rutas, sin elegir otro cluster. */
   readonly clusterFijo = input<number | null>(null);
   /** Balanceo del dashboard: solo sus rutas (las suyas y las diarias). */
-  readonly balanceo = input<Balanceo>('LXV');
+  readonly balanceo = input<DiaBalanceo>('LXV');
 
   /** Datos sin decimales, redondeados hacia arriba (199,1 → 200); el 2.º argumento se ignora. */
   readonly formatearNumero = (valor: number | null | undefined, _decimales?: number): string =>

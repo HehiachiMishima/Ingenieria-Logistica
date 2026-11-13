@@ -2,7 +2,7 @@
   [abierto]="abierto()"
   ancho="lg"
   titulo="¿Cómo balancea?"
-  subtitulo="Un cluster a la vez, en tres pasos."
+  subtitulo="Un cluster a la vez: rutas (Diarias, luego cada día), operarios y cierre."
   (cerrar)="cerrar.emit()"
 >
   <div class="guia">
@@ -37,7 +37,7 @@
             }
           </div>
         </div>
-        <p class="paso__texto">Mueve rutas para que sus chutes tengan los mismos bultos.</p>
+        <p class="paso__texto">Diarias primero (eliges el rango); luego L-X-V y M-J-S, cada uno dentro de ese rango, igualando los bultos de sus chutes.</p>
         <span class="paso__dato">Meta: diferencia ≤ 10 %</span>
       </li>
 
@@ -56,7 +56,7 @@
             </div>
           }
         </div>
-        <p class="paso__texto">Eliges cuántos operarios tiene la ola: cada uno va al chute que más tarda.</p>
+        <p class="paso__texto">Eliges cuántos operarios tiene la ola (la misma cantidad para los dos días): cada uno va al chute que más tarda.</p>
         <span class="paso__dato">tiempo = bultos ÷ (velocidad × operarios)</span>
       </li>
 
@@ -70,7 +70,7 @@
           <ui-icon class="viz__flecha" name="flecha" [size]="16" />
           <span class="viz__ola" [style.--cluster-color]="olas[1].color">CL2</span>
         </div>
-        <p class="paso__texto">El equipo pasa al siguiente cluster tal como quedó.</p>
+        <p class="paso__texto">Cierra los tres balanceos y el equipo pasa al siguiente cluster tal como quedó.</p>
         <span class="paso__dato">Al cerrar el último: resumen en el dashboard</span>
       </li>
     </ol>

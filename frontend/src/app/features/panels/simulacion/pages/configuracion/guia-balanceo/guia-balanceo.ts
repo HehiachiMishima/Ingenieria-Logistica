@@ -21,13 +21,66 @@ const OPERARIOS = [
 /** Respuestas cortas a las dudas de la pantalla, agrupadas por tema. */
 const DETALLES: readonly GrupoDetalle[] = [
   {
+    titulo: 'Frecuencias y balanceos',
+    items: [
+      {
+        icono: 'reloj',
+        termino: '1 · Diarias',
+        texto:
+          'Primero, en cada cluster: eliges el rango de chutes y cada grupo recibe su tramo en orden natural (1, 2, 3…). Desde ahí las diarias quedan fijas para el automático.',
+      },
+      {
+        icono: 'layers',
+        termino: '2 · L-X-V y M-J-S',
+        texto:
+          'En cualquier orden. Cada día reparte solo sus rutas, dentro del rango de las diarias y con ellas como carga fija.',
+      },
+      {
+        icono: 'usuarios',
+        termino: '3 · Operarios · 4 · Cerrar',
+        texto:
+          'Una sola cantidad de operarios, la misma para los dos días. Cerrar cierra Diarias, L-X-V y M-J-S a la vez.',
+      },
+      {
+        icono: 'refresh',
+        termino: 'Rehacer las diarias',
+        texto:
+          'Si ya balanceaste un día, primero restablece el cluster: deshace sus tres balanceos. «Restablecer todo» devuelve el registro entero a la proyección.',
+      },
+      {
+        icono: 'flecha',
+        termino: 'A mano',
+        texto:
+          'Todo se mueve, también las diarias. Mover una diaria la cambia en los dos días.',
+      },
+      {
+        icono: 'ver',
+        termino: 'Filtros del panel',
+        texto:
+          'L-X-V, M-J-S (los dos juntos = Ambos, apilados) y Diarias (sola). Los totales siguen el filtro: en Ambos las diarias cuentan una vez y los operarios son el máximo de los dos días.',
+      },
+      {
+        icono: 'paquete',
+        termino: 'Buff',
+        texto:
+          'Global: se elige antes del primer balanceo. En cada paso, la ruta más pesada va a un chute con buff (etiqueta BUFF en su cabecera).',
+      },
+      {
+        icono: 'info',
+        termino: 'Columna FRECUENCIA',
+        texto:
+          'Días L, M, X, J, V, S separados por guion (L-X-V, M-J-S, L-X, V…) o DIARIA. Días mezclados (p. ej. L-M) cuentan como diaria.',
+      },
+    ],
+  },
+  {
     titulo: 'Parámetros',
     items: [
       {
         icono: 'usuarios',
         termino: 'Operarios de la ola',
         texto:
-          'Cada cluster ingresa su cantidad en el paso 2 (mínimo uno por chute con carga); la próxima vez se propone la última que usó. La gente de la ola anterior se queda en su chute si el cierre no empeora.',
+          'Cada cluster ingresa una cantidad (mínimo uno por chute con carga), la misma para L-X-V y M-J-S; la próxima vez se propone la última que usó. La gente de la ola anterior se queda en su chute si el cierre no empeora.',
       },
       {
         icono: 'tendencia',
@@ -54,35 +107,6 @@ const DETALLES: readonly GrupoDetalle[] = [
     ],
   },
   {
-    titulo: 'Frecuencias y balanceos',
-    items: [
-      {
-        icono: 'reloj',
-        termino: 'Dos balanceos',
-        texto:
-          'Columna FRECUENCIA del Excel: L-X-V, M-J-S o L-M-X-J-V-S (diaria). Cada cluster se balancea por separado en L-X-V y en M-J-S, con sus propios pasos; los botones del cluster eligen cuál ver.',
-      },
-      {
-        icono: 'lock',
-        termino: 'Rutas diarias',
-        texto:
-          'Aparecen en los dos balanceos. El primer balanceo automático del cluster las acomoda y desde ahí ningún automático las mueve; a mano sí, y cambian en los dos. Se liberan al restablecer el cluster en L-X-V y en M-J-S.',
-      },
-      {
-        icono: 'ver',
-        termino: 'Ambos',
-        texto:
-          'Con las rutas balanceadas en los dos, «Ambos» apila las de L-X-V y M-J-S en sus chutes, solo para mirar y sin totales (son días distintos).',
-      },
-      {
-        icono: 'paquete',
-        termino: 'Buff',
-        texto:
-          'Chutes con más capacidad, elegidos al inicio junto a la velocidad: al balancear reciben primero las rutas más pesadas. Llevan la etiqueta BUFF en su cabecera.',
-      },
-    ],
-  },
-  {
     titulo: 'Grupos',
     items: [
       {
@@ -93,9 +117,9 @@ const DETALLES: readonly GrupoDetalle[] = [
       },
       {
         icono: 'layers',
-        termino: 'Prioridad y tramos',
+        termino: 'Tramos',
         texto:
-          'Al balancear eliges el rango y ordenas los grupos. El primero ocupa los primeros chutes del rango; cada grupo recibe chutes seguidos según sus bultos (al menos uno, nunca más que sus rutas).',
+          'Al balancear las diarias eliges el rango y los grupos lo ocupan en orden natural: cada uno, chutes seguidos según sus bultos (al menos uno, nunca más que sus rutas). Los días usan esos mismos tramos.',
       },
       {
         icono: 'control',
@@ -145,13 +169,13 @@ const DETALLES: readonly GrupoDetalle[] = [
         icono: 'lock',
         termino: 'Cluster cerrado',
         texto:
-          'No cambia. Al reabrirlo, los clusters que se trabajaron después vuelven a la proyección.',
+          'Se cierra en los tres balanceos a la vez y ya no cambia. Al reabrirlo, los clusters que se trabajaron después vuelven a la proyección.',
       },
       {
         icono: 'refresh',
         termino: 'Restablecer',
         texto:
-          'Deshace lo hecho mientras el cluster estuvo en curso: su balanceo y lo que moviste o cambiaste de cluster a mano. Quita los operarios de su ola.',
+          'El cluster: deshace sus tres balanceos (Diarias, L-X-V y M-J-S), lo que moviste a mano mientras estuvo en curso y los operarios de su ola. «Restablecer todo»: el registro entero.',
       },
       {
         icono: 'dashboard',

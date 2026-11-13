@@ -24,9 +24,9 @@ public record RutaSimulacionResponse(
     Integer conteoCod,
     /** Grupo de la ruta dentro de su cluster (columna GRUPO del Excel). */
     String grupo,
-    /** DIARIA, LXV o MJS: en qué balanceo aparece (las diarias, en los dos). */
+    /** DIARIA, LXV o MJS: en qué balanceo aparece (las diarias, en los tres). */
     String frecuencia,
-    /** Ruta diaria ya acomodada por un balanceo automático: ningún automático la vuelve a mover. */
+    /** Ruta diaria ya balanceada (paso Diarias): el automático de los días no la vuelve a mover. */
     boolean diariaFija,
     /** Días tal como vienen en el Excel («L-X», «V»); null en rutas anteriores a las frecuencias. */
     String dias) {

@@ -1,0 +1,825 @@
+/*
+ * Fichas flotantes de la matriz: la de una ruta y la de un cluster. Archivo aparte del
+ * componente (el principal pasaba el presupuesto de estilos). Iconos a color iguales a los de
+ * la tabla de totales; todo con los tokens del tema (claro y oscuro).
+ */
+
+.detalle-pop {
+  position: fixed;
+  z-index: var(--z-modal);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(320px, calc(100vw - 24px));
+  padding: var(--space-4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--pop-color, var(--accent)) 7%, var(--surface)) 0,
+      var(--surface) 96px
+    );
+  border: 1px solid color-mix(in srgb, var(--pop-color, var(--accent)) 30%, var(--border));
+  border-radius: var(--radius-lg, 12px);
+  box-shadow:
+    var(--shadow-lg),
+    0 0 0 4px color-mix(in srgb, var(--pop-color, var(--accent)) 9%, transparent);
+  animation: detalle-pop-entra 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+
+  /* Celular o pantalla baja: hoja inferior a todo el ancho. */
+  &--hoja {
+    left: 12px !important;
+    right: 12px;
+    bottom: 12px !important;
+    top: auto !important;
+    width: auto;
+    max-height: min(75dvh, calc(100dvh - 24px)) !important;
+  }
+}
+
+@keyframes detalle-pop-entra {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+}
+
+/* ---------- Cabecera: avatar · título · estado · cerrar ---------- */
+
+.ficha-cabeza {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+
+  &__titulo {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.15;
+
+    strong {
+      overflow: hidden;
+      font-size: var(--fs-lg, 1.125rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+}
+
+.ficha-avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  font-size: 0.8rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: #fff;
+  background:
+    linear-gradient(
+      135deg,
+      var(--pop-color, var(--accent)),
+      color-mix(in srgb, var(--pop-color, var(--accent)) 70%, #000)
+    );
+  border-radius: 12px;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--pop-color, var(--accent)) 35%, transparent);
+
+  /* Ruta: la caja de bultos grande sobre un fondo suave del cluster. */
+  &--caja {
+    background: color-mix(in srgb, var(--pop-color, var(--accent)) 16%, var(--surface));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pop-color, var(--accent)) 35%, transparent);
+
+    svg {
+      width: 26px;
+      height: 26px;
+    }
+  }
+}
+
+.ficha-kicker {
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--pop-color, var(--accent));
+}
+
+.ficha-estado {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+
+  &--curso {
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+    border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+
+  &--cerrado {
+    color: var(--success);
+    background: color-mix(in srgb, var(--success) 10%, var(--surface));
+    border-color: color-mix(in srgb, var(--success) 30%, transparent);
+  }
+}
+
+/* Cerrar: un círculo solo al pasar el mouse. */
+.ficha-cerrar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: var(--text-3);
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+
+  &:hover {
+    color: var(--text);
+    background: var(--surface-2);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+/* ---------- Ruta: frecuencia y ubicación ---------- */
+
+.ficha-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+
+  &__flecha {
+    color: var(--text-3);
+  }
+}
+
+.ficha-chip,
+.ficha-frecuencia {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 3px 8px;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  line-height: 1.2;
+  border-radius: 999px;
+  overflow-wrap: anywhere;
+}
+
+.ficha-chip {
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+
+  ui-icon {
+    flex: none;
+    color: var(--text-3);
+  }
+
+  &__color {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    background: var(--pop-color, var(--accent));
+  }
+
+  /* Grupo: su número en la pestaña de su color (como en la cuadrícula y el PDF). */
+  &--grupo {
+    padding-left: 3px;
+    border-color: color-mix(in srgb, var(--g, var(--accent)) 40%, var(--border));
+  }
+
+  &__grupo {
+    min-width: 18px;
+    padding: 1px 5px;
+    font-size: 0.66rem;
+    font-weight: 900;
+    text-align: center;
+    color: #fff;
+    background: color-mix(in srgb, var(--g, var(--accent)) 85%, #000);
+    border-radius: 999px;
+  }
+}
+
+/* Frecuencia: los colores de la pestaña de la matriz (L-X-V azul, M-J-S naranja, diaria gris). */
+.ficha-frecuencia {
+  color: #fff;
+  background: #475569;
+
+  &[data-frecuencia='LXV'] {
+    background: #1d4ed8;
+  }
+
+  &[data-frecuencia='MJS'] {
+    background: #c2410c;
+  }
+}
+
+/* ---------- Datos con su icono a color ---------- */
+
+.ficha-datos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.ficha-dato {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    'icono etiqueta'
+    'icono valor';
+  align-items: center;
+  column-gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+
+  dt {
+    grid-area: etiqueta;
+    overflow: hidden;
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  dd {
+    grid-area: valor;
+    margin: 0;
+    overflow: hidden;
+    font-size: var(--fs-base);
+    font-weight: 800;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &--destacado {
+    background: color-mix(in srgb, var(--pop-color, var(--accent)) 8%, var(--surface));
+    border-color: color-mix(in srgb, var(--pop-color, var(--accent)) 28%, var(--border));
+
+    dd {
+      font-size: var(--fs-lg, 1.125rem);
+    }
+  }
+
+  &__icono {
+    display: inline-flex;
+    grid-area: icono;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    background: var(--surface-2);
+    border-radius: 9px;
+
+    svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    &--mono {
+      color: var(--pop-color, var(--accent));
+      background: color-mix(in srgb, var(--pop-color, var(--accent)) 14%, var(--surface));
+    }
+  }
+}
+
+/* Cluster: fila compacta de métricas secundarias con su icono. */
+.ficha-mini {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
+  gap: 2px;
+  margin: 0;
+  padding: var(--space-1);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+
+  > div {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    min-width: 0;
+    padding: 4px 2px;
+    text-align: center;
+
+    svg {
+      width: 16px;
+      height: 16px;
+    }
+  }
+
+  dt {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 0.58rem;
+    font-weight: 700;
+    color: var(--text-3);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  dd {
+    max-width: 100%;
+    margin: 0;
+    overflow: hidden;
+    font-size: var(--fs-xs);
+    font-weight: 800;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__mono {
+    color: #0d9488;
+  }
+}
+
+/* ---------- Barras ---------- */
+
+.ficha-barra {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+
+  &__texto {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+    font-size: var(--fs-xs);
+    color: var(--text-2);
+
+    strong {
+      font-size: var(--fs-base);
+      font-weight: 900;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+  }
+
+  &__pista {
+    display: block;
+    height: 7px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--surface-3, var(--surface-2));
+
+    > span {
+      display: block;
+      max-width: 100%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--pop-color, var(--accent)) 55%, var(--surface)),
+        var(--pop-color, var(--accent))
+      );
+      transition: width var(--transition-slow);
+    }
+  }
+}
+
+/* ---------- Notas, recorrido y pie ---------- */
+
+.ficha-nota {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+
+  strong {
+    color: var(--text);
+  }
+
+  &--operarios {
+    background: color-mix(in srgb, #f97316 9%, var(--surface));
+  }
+
+  &__icono {
+    display: inline-flex;
+    flex: none;
+
+    svg {
+      width: 20px;
+      height: 20px;
+    }
+  }
+}
+
+/* Ruta movida: de dónde venía (Excel) a dónde está (hoy), en el azul de «movida». */
+.ficha-recorrido {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border: 1px dashed color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: var(--radius-sm);
+
+  &__punto {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+
+    small {
+      font-size: 0.6rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-3);
+    }
+
+    strong {
+      overflow: hidden;
+      font-size: var(--fs-xs);
+      font-weight: 800;
+      color: var(--text-2);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    &--hoy strong {
+      color: var(--accent);
+    }
+  }
+}
+
+.ficha-pie {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+
+  ui-icon {
+    flex: none;
+    margin-top: 1px;
+  }
+
+  &--cerrado {
+    color: var(--text-2);
+    background: color-mix(in srgb, var(--warning, #d97706) 10%, var(--surface));
+  }
+}
+
+/* ---------- Cluster: avance de 5 pasos ---------- */
+
+.ficha-pasos {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  &__paso {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    min-width: 0;
+
+    &:not(:first-child)::before {
+      content: '';
+      position: absolute;
+      top: 11px;
+      right: calc(50% + 12px);
+      left: calc(-50% + 12px);
+      height: 2px;
+      border-radius: 2px;
+      background: var(--border);
+    }
+
+    &[data-estado='hecho']:not(:first-child)::before {
+      background: var(--success);
+    }
+  }
+
+  &__punto {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    font-size: 0.68rem;
+    font-weight: 900;
+    color: var(--text-3);
+    background: var(--surface);
+    border: 2px solid var(--border-strong);
+    border-radius: 50%;
+
+    [data-estado='hecho'] > & {
+      color: #fff;
+      background: var(--success);
+      border-color: var(--success);
+    }
+
+    [data-estado='siguiente'] > & {
+      color: #fff;
+      background: var(--pop-color, var(--accent));
+      border-color: var(--pop-color, var(--accent));
+      animation: ficha-pulso 1.8s ease-out infinite;
+    }
+
+    [data-estado='omitido'] > & {
+      background: var(--surface-2);
+      border-style: dashed;
+      opacity: 0.75;
+    }
+  }
+
+  &__texto {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 0.62rem;
+    font-weight: 700;
+    color: var(--text-3);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    [data-estado='siguiente'] > & {
+      font-weight: 800;
+      color: var(--text);
+    }
+
+    [data-estado='omitido'] > & {
+      text-decoration: line-through;
+    }
+  }
+}
+
+@keyframes ficha-pulso {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--pop-color, var(--accent)) 45%, transparent);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 7px transparent;
+  }
+}
+
+.ficha-vista {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border-radius: 999px;
+}
+
+.ficha-indicador {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2);
+  font-size: var(--fs-xs);
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 9%, var(--surface));
+  border-radius: var(--radius-sm);
+
+  span {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--text-2);
+  }
+
+  strong {
+    flex: none;
+    font-weight: 900;
+  }
+
+  &--mal {
+    color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 9%, var(--surface));
+  }
+}
+
+/* ---------- Secciones con título e icono ---------- */
+
+.ficha-seccion {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+
+  &__titulo {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    font-size: 0.66rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-2);
+
+    ui-icon {
+      color: var(--pop-color, var(--accent));
+    }
+  }
+}
+
+.ficha-cierre {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+
+  &__fila {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px var(--space-2);
+  }
+
+  &__dia {
+    font-size: var(--fs-xs);
+    font-weight: 900;
+    color: var(--text);
+  }
+
+  &__horas {
+    font-size: var(--fs-sm);
+    font-weight: 800;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+
+    small {
+      font-weight: 600;
+      color: var(--text-3);
+    }
+  }
+
+  &__veredicto {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: auto;
+    font-size: var(--fs-xs);
+    font-weight: 800;
+  }
+
+  &--ok {
+    .ficha-cierre__veredicto {
+      color: var(--success);
+    }
+
+    .ficha-barra__pista > span {
+      background: var(--success);
+    }
+  }
+
+  &--fuera {
+    border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
+
+    .ficha-cierre__veredicto {
+      color: var(--danger);
+    }
+
+    .ficha-barra__pista > span {
+      background: var(--danger);
+    }
+  }
+}
+
+/* Grupos: chip de color, tramo, rutas y una mini franja del rango que ocupa. */
+.ficha-grupos {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ficha-grupo {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px var(--space-2);
+  padding: 6px var(--space-2);
+  font-size: var(--fs-xs);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--g, var(--accent));
+  border-radius: var(--radius-sm);
+
+  &__nombre {
+    max-width: 9ch;
+    overflow: hidden;
+    padding: 1px 7px;
+    font-weight: 900;
+    color: #fff;
+    background: color-mix(in srgb, var(--g, var(--accent)) 85%, #000);
+    border-radius: 999px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__tramo {
+    min-width: 0;
+    overflow: hidden;
+    font-weight: 700;
+    color: var(--text-2);
+    font-variant-numeric: tabular-nums;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__alerta {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: var(--warning, #d97706);
+  }
+
+  &__rutas {
+    color: var(--text-3);
+    white-space: nowrap;
+  }
+
+  &__franja {
+    position: relative;
+    grid-column: 1 / -1;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--surface-2);
+
+    > span {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      min-width: 4px;
+      border-radius: inherit;
+      background: var(--g, var(--accent));
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .detalle-pop,
+  .ficha-pasos__punto {
+    animation: none !important;
+  }
+}

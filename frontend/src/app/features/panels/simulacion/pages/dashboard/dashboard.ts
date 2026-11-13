@@ -14,9 +14,10 @@ import { PERMISOS } from '../../../../../core/config/permisos';
 import { mensajeDeError } from '../../../../../core/errors/error.util';
 import {
   ArchivoSimulacion,
-  Balanceo,
   ChuteComparativoSimulacion,
+  DIAS_BALANCEO,
   DashboardSimulacion,
+  DiaBalanceo,
   ETIQUETA_BALANCEO,
 } from '../../data/simulacion.model';
 import { SimulacionApi } from '../../data/simulacion.api';
@@ -54,6 +55,12 @@ function olaPorDefecto(dashboard: DashboardSimulacion): number | null {
   const trabajadas = dashboard.olas.filter((ola) => ola.estado !== 'PENDIENTE');
   const enCurso = trabajadas.find((ola) => ola.estado !== 'CERRADO');
   return (enCurso ?? trabajadas[trabajadas.length - 1])?.clusterId ?? null;
+}
+
+/** Día pedido en la URL («LXV», «mjs», «M-J-S»…); L-X-V si no es uno de los dos. */
+function leerDia(valor: string | null): DiaBalanceo {
+  const dia = (valor ?? '').toUpperCase().replace(/-/g, '');
+  return dia === 'MJS' ? 'MJS' : 'LXV';
 }
 
 /**
@@ -176,9 +183,12 @@ export class SimulacionDashboard {
   readonly metrica = signal<Metrica>('rutas');
   /** Cluster que se ve; null = resumen de todas las olas. */
   readonly vista = signal<number | null>(null);
-  /** Balanceo que se mira: cada uno tiene su avance, su carga y su resumen. */
-  readonly balanceo = signal<Balanceo>('LXV');
-  readonly balanceos: Balanceo[] = ['LXV', 'MJS'];
+  /**
+   * Día que se mira (L-X-V o M-J-S): cada uno tiene su avance, su carga y su
+   * resumen. Viaja en la URL (?balanceo=) y se conserva al cambiar de registro.
+   */
+  readonly balanceo = signal<DiaBalanceo>(leerDia(this.route.snapshot.queryParamMap.get('balanceo')));
+  readonly balanceos = DIAS_BALANCEO;
   readonly etiquetaBalanceo = ETIQUETA_BALANCEO;
 
   // ---------------- Filtros del panel (múltiples) ----------------
@@ -311,6 +321,15 @@ export class SimulacionDashboard {
     return estado === 'EN_PROCESO' || estado === 'FINALIZADO';
   });
   readonly finalizado = computed(() => this.registroSeleccionado()?.estado === 'FINALIZADO');
+
+  /**
+   * En el día que se mira ningún cluster está trabajado (ninguna ola salió de
+   * PENDIENTE): no hay nada que comparar todavía en ese día.
+   */
+  readonly diaSinTrabajar = computed(() => {
+    const datos = this.dashboard();
+    return datos !== null && datos.olas.every((ola) => ola.estado === 'PENDIENTE');
+  });
 
   readonly olas = computed(() => this.dashboard()?.olas ?? []);
   readonly olaActual = computed(
@@ -667,12 +686,8 @@ export class SimulacionDashboard {
     this.seleccionado.set(id);
     this.dashboard.set(null);
     this.error.set(null);
-    void this.router.navigate([], {
-      relativeTo: this.route,
-      queryParams: { registro: id },
-      queryParamsHandling: 'merge',
-      replaceUrl: true,
-    });
+    // El día elegido se conserva: el nuevo registro se abre en el mismo día.
+    this.sincronizarUrl();
     this.cargar();
   }
 
@@ -733,22 +748,35 @@ export class SimulacionDashboard {
       : `${relativa > 0 ? '+' : ''}${porcentaje(relativa)}`;
   }
 
-  /**
-   * Cambia entre la vista de un cluster y el resumen sin vaciar la pantalla:
-   * los datos anteriores quedan atenuados hasta que llegan los nuevos. El
-   * filtro de cluster no aplica dentro de la vista de un cluster.
-   */
-  /** Cambia de balanceo: vuelve a la ola por defecto de ese balanceo. */
-  elegirBalanceo(balanceo: Balanceo): void {
+  /** Cambia de día: vuelve a la ola por defecto de ese día y lo deja en la URL. */
+  elegirBalanceo(balanceo: DiaBalanceo): void {
     if (balanceo === this.balanceo()) {
       return;
     }
     this.balanceo.set(balanceo);
     this.vista.set(null);
     this.filtroClusters.set([]);
+    this.dashboard.set(null);
+    this.error.set(null);
+    this.sincronizarUrl();
     this.cargar();
   }
 
+  /** Registro y día en la URL (sin pisar otros parámetros) para compartir o recargar la vista. */
+  private sincronizarUrl(): void {
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { registro: this.seleccionado(), balanceo: this.balanceo() },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
+  }
+
+  /**
+   * Cambia entre la vista de un cluster y el resumen sin vaciar la pantalla:
+   * los datos anteriores quedan atenuados hasta que llegan los nuevos. El
+   * filtro de cluster no aplica dentro de la vista de un cluster.
+   */
   elegirVista(clusterId: number | null): void {
     if (clusterId === this.vista()) {
       return;
@@ -780,7 +808,7 @@ export class SimulacionDashboard {
   irAConfiguracion(): void {
     const id = this.seleccionado();
     void this.router.navigate(['/simulacion/configuracion'], {
-      queryParams: id ? { registro: id } : {},
+      queryParams: id ? { registro: id, balanceo: this.balanceo() } : { balanceo: this.balanceo() },
     });
   }
 

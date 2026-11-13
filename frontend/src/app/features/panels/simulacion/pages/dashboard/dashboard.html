@@ -21,6 +21,7 @@
         [registroId]="seleccionado()"
         [registroNombre]="registroSeleccionado()?.nombreRegistro ?? ''"
         [listo]="finalizado()"
+        [balanceoInicial]="balanceo()"
       />
     </div>
   }
@@ -38,6 +39,26 @@
       (valorCambia)="seleccionar($event)"
     />
   </div>
+  @if (seleccionado()) {
+    <div class="selector-panel__dia">
+      <span class="ui-label" id="dashboard-dia">Día</span>
+      <!-- Fuera del contenido: si un día falla o está vacío, siempre se puede volver al otro. -->
+      <div class="segmento" role="group" aria-labelledby="dashboard-dia">
+        @for (b of balanceos; track b) {
+          <button
+            type="button"
+            class="segmento__opcion"
+            [class.segmento__opcion--activa]="balanceo() === b"
+            [attr.aria-pressed]="balanceo() === b"
+            [title]="'Ver el balanceo de ' + etiquetaBalanceo[b]"
+            (click)="elegirBalanceo(b)"
+          >
+            {{ etiquetaBalanceo[b] }}
+          </button>
+        }
+      </div>
+    </div>
+  }
   @if (vista() !== null) {
     <button
       type="button"
@@ -167,17 +188,25 @@
       </button>
     </ui-empty>
   </div>
+} @else if (diaSinTrabajar()) {
+  <div class="table-card">
+    <ui-empty
+      icono="dashboard"
+      [titulo]="etiquetaBalanceo[balanceo()] + ' aún sin balancear'"
+      [mensaje]="'Ningún cluster tiene rutas balanceadas en ' + etiquetaBalanceo[balanceo()] + '. En Configuración, balancea primero las diarias de un cluster y luego sus rutas de ' + etiquetaBalanceo[balanceo()] + '.'"
+    >
+      <button
+        *hasPermiso="permisos.VER_CONFIGURACION_SIMULACION"
+        type="button"
+        class="ui-btn ui-btn--primary ui-btn--sm"
+        (click)="irAConfiguracion()"
+      >
+        Ir a Configuración
+      </button>
+    </ui-empty>
+  </div>
 } @else if (dashboard(); as datos) {
   <nav class="dash-vistas" aria-label="Vista del dashboard">
-    <div class="segmento" role="tablist" aria-label="Balanceo">
-      @for (b of balanceos; track b) {
-        <button type="button" role="tab" class="segmento__opcion"
-          [class.segmento__opcion--activa]="balanceo() === b" [attr.aria-selected]="balanceo() === b"
-          [title]="'Balanceo ' + etiquetaBalanceo[b]" (click)="elegirBalanceo(b)">
-          {{ etiquetaBalanceo[b] }}
-        </button>
-      }
-    </div>
     <div class="segmento" role="tablist" aria-label="Lanzamiento">
       @for (ola of datos.olas; track ola.clusterId) {
         <button

@@ -5,16 +5,35 @@
   subtitulo="Cada lanzamiento de un cluster, del más reciente al más antiguo. Ábrelo para ver sus cambios."
   (cerrar)="cerrar.emit()"
 >
-  <div class="hc-balanceo" role="tablist" aria-label="Balanceo">
+  <div class="hc-balanceo" role="tablist" aria-label="Balanceo" [attr.aria-busy]="cargando()">
     @for (b of balanceos; track b) {
-      <button type="button" role="tab" class="hc-balanceo__opcion" [class.hc-balanceo__opcion--activa]="balanceo() === b"
-        [attr.aria-selected]="balanceo() === b" (click)="elegirBalanceo(b)">{{ etiquetaBalanceo[b] }}</button>
+      <button
+        type="button"
+        role="tab"
+        class="hc-balanceo__opcion"
+        [class.hc-balanceo__opcion--activa]="balanceo() === b"
+        [attr.aria-selected]="balanceo() === b"
+        (click)="elegirBalanceo(b)"
+      >
+        {{ etiquetaBalanceo[b] }}
+      </button>
     }
   </div>
+  @if (balanceo() !== 'DIA') {
+    <p class="hc-nota">
+      <ui-icon name="info" [size]="14" />
+      Incluye también los lanzamientos y cambios de Diarias (marcados «Diarias · »): valen para los
+      dos días.
+    </p>
+  }
   @if (cargando()) {
     <div class="loading"><span class="ui-spinner"></span> Cargando historial…</div>
   } @else if (error()) {
-    <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="error()!" />
+    <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="error()!">
+      <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="reintentar()">
+        <ui-icon name="refresh" [size]="16" /> Reintentar
+      </button>
+    </ui-empty>
   } @else if (grupos().length === 0) {
     <ui-empty
       icono="info"

@@ -6,9 +6,11 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -195,6 +197,20 @@ public class SimulacionConfiguracionService {
 
   public ApiResponse<ConfiguracionSimulacionResponse> obtener(Long archivoId) {
     return obtener(archivoId, Balanceo.LXV);
+  }
+
+  /** Nombre del registro (para el archivo exportado), sin calcular nada más. */
+  public String nombreRegistro(Long archivoId) {
+    return transacciones.consultar(
+        () ->
+            archivoRepo
+                .findById(archivoId)
+                .orElseThrow(
+                    () ->
+                        new RecursoNoEncontradoException(
+                            "No existe el registro con id " + archivoId + "."))
+                .getNombreRegistro(),
+        TOPE_TRANSACCION_LECTURA_S);
   }
 
   /** Configuración de un balanceo: sus clusters, su carga y los chutes (con su buff). */
@@ -386,19 +402,14 @@ public class SimulacionConfiguracionService {
     return ruta.getFrecuencia() == null ? Balanceo.DIARIA : ruta.getFrecuencia();
   }
 
-  /** Parámetros de los clusters en ese balanceo (el del contexto o el otro). */
-  private static Map<Long, ParametroCluster> parametrosDe(Contexto ctx, Balanceo balanceo) {
-    return balanceo == ctx.balanceo() ? ctx.parametrosCluster() : ctx.parametrosOtro();
-  }
-
   /**
-   * La ruta puede cambiar de cluster en cada balanceo donde aparece (las diarias, en los dos): su
+   * La ruta puede cambiar de cluster en cada balanceo donde aparece (las diarias, en los tres): su
    * cluster y al menos otro siguen sin cerrar.
    */
   private static boolean rutaEditable(Contexto ctx, RutaProyeccion ruta) {
     for (Balanceo b : Balanceo.values()) {
       if (b.incluye(ruta.getFrecuencia())
-          && !clusterEditable(parametrosDe(ctx, b), ruta.getClusterId())) {
+          && !clusterEditable(ctx.parametrosDe(b), ruta.getClusterId())) {
         return false;
       }
     }
@@ -416,8 +427,8 @@ public class SimulacionConfiguracionService {
   }
 
   /**
-   * Velocidad, máximo por chute y buff valen para los dos balanceos; los límites de los clusters
-   * son del balanceo indicado.
+   * Velocidad, máximo por chute, buff y el límite de cada cluster valen para los tres balanceos
+   * (un solo límite por cluster).
    */
   public ApiResponse<ConfiguracionSimulacionResponse> guardar(
       Long archivoId, Balanceo balanceo, ConfiguracionActualizarRequest req) {
@@ -441,16 +452,17 @@ public class SimulacionConfiguracionService {
                   || config.getVelocidadBase().compareTo(req.velocidadBase()) != 0
                   // 0 y nulo son "sin tope".
                   || !Objects.equals(sinTope(config.getOperariosPorChute()), sinTope(req.operariosPorChute()));
-          // Velocidad y máximo por chute son de los dos balanceos: un cluster cerrado en
-          // cualquiera de ellos ya los usó.
-          Set<Long> cerradosAmbos = new LinkedHashSet<>(cerrados(ctx));
-          ctx.parametrosOtro()
-              .forEach(
-                  (id, p) -> {
-                    if (ParametroCluster.ESTADO_CERRADO.equals(p.getEstado())) {
-                      cerradosAmbos.add(id);
-                    }
-                  });
+          // Velocidad y máximo por chute valen para todos los balanceos: un cluster cerrado
+          // en cualquiera de ellos ya los usó.
+          Set<Long> cerradosAmbos = new LinkedHashSet<>();
+          for (Long id : orden(ctx)) {
+            for (Balanceo b : Balanceo.values()) {
+              ParametroCluster p = ctx.parametro(b, id);
+              if (p != null && ParametroCluster.ESTADO_CERRADO.equals(p.getEstado())) {
+                cerradosAmbos.add(id);
+              }
+            }
+          }
           String cerrados = cambiaRitmo ? nombres(ctx, cerradosAmbos) : "";
           if (!cerrados.isEmpty()) {
             throw new ConflictoException(
@@ -464,36 +476,27 @@ public class SimulacionConfiguracionService {
           configRepo.save(config);
 
           Set<Long> limiteCambiado = new HashSet<>();
-          Set<Long> limiteOtroCambiado = new HashSet<>();
           if (req.clusters() != null) {
             for (ClusterLimiteRequest limite : req.clusters()) {
-              ParametroCluster parametro = ctx.parametrosCluster().get(limite.clusterId());
-              if (parametro == null) {
+              if (!ctx.parametrosCluster().containsKey(limite.clusterId())) {
                 throw new SolicitudInvalidaException(
                     "El cluster " + limite.clusterId() + " no pertenece al registro.");
               }
-              if (parametro.getLimiteHoras() == null
-                  || parametro.getLimiteHoras().compareTo(limite.limiteHoras()) != 0) {
+              // Un solo límite por cluster: vale para los tres balanceos.
+              for (Balanceo b : Balanceo.values()) {
+                ParametroCluster parametro = ctx.parametro(b, limite.clusterId());
+                if (parametro == null
+                    || (parametro.getLimiteHoras() != null
+                        && parametro.getLimiteHoras().compareTo(limite.limiteHoras()) == 0)) {
+                  continue;
+                }
                 if (ParametroCluster.ESTADO_CERRADO.equals(parametro.getEstado())) {
                   throw new ConflictoException(
                       ctx.nombreCluster(limite.clusterId())
                           + " está cerrado: reábrelo para cambiar su límite.");
                 }
+                parametro.setLimiteHoras(limite.limiteHoras());
                 limiteCambiado.add(limite.clusterId());
-              }
-              parametro.setLimiteHoras(limite.limiteHoras());
-              // Un solo límite por cluster: vale para L-X-V y M-J-S.
-              ParametroCluster otro = ctx.parametrosOtro().get(limite.clusterId());
-              if (otro != null
-                  && (otro.getLimiteHoras() == null
-                      || otro.getLimiteHoras().compareTo(limite.limiteHoras()) != 0)) {
-                if (ParametroCluster.ESTADO_CERRADO.equals(otro.getEstado())) {
-                  throw new ConflictoException(
-                      ctx.nombreCluster(limite.clusterId())
-                          + " está cerrado: reábrelo para cambiar su límite.");
-                }
-                otro.setLimiteHoras(limite.limiteHoras());
-                limiteOtroCambiado.add(limite.clusterId());
               }
             }
           }
@@ -512,7 +515,7 @@ public class SimulacionConfiguracionService {
                 if (buffBloqueado(ctx)) {
                   throw new ConflictoException(
                       "El buff de los chutes se define antes de balancear: restablece los"
-                          + " clusters ya balanceados (en L-X-V y M-J-S) para cambiarlo.");
+                          + " clusters ya balanceados para cambiarlo.");
                 }
                 if (bloqueado(ctx, operarios.chuteId())) {
                   throw new SolicitudInvalidaException(
@@ -534,10 +537,8 @@ public class SimulacionConfiguracionService {
           Set<Long> invalidar = new HashSet<>(limiteCambiado);
           if (cambiaRitmo) {
             invalidar.addAll(ctx.parametrosCluster().keySet());
-            invalidarOperariosOtro(ctx, ctx.parametrosOtro().keySet());
           }
-          invalidarOperariosOtro(ctx, limiteOtroCambiado);
-          invalidarOperarios(ctx, invalidar);
+          invalidarOperariosEn(ctx, Balanceo.DIAS, invalidar);
           tocar(ctx.archivo(), actor);
           return aConfiguracion(ctx);
         },
@@ -575,8 +576,10 @@ public class SimulacionConfiguracionService {
   }
 
   /**
-   * Mueve a mano una ruta del balanceo. A mano todo se puede mover, también las diarias fijas;
-   * como una diaria tiene un solo chute, moverla también la cambia en el otro balanceo.
+   * Mueve a mano una ruta que se ve en el balanceo. A mano todo se puede mover, también las
+   * diarias fijas; como una diaria tiene un solo chute, moverla la cambia en los dos días. El
+   * cambio queda en el historial de su dueño (Diarias, para una diaria) y los días donde aparece
+   * vuelven al paso de operarios.
    */
   public ApiResponse<ConfiguracionSimulacionResponse> mover(
       Long archivoId, Balanceo balanceo, Long rutaId, MoverRutaRequest req) {
@@ -586,20 +589,13 @@ public class SimulacionConfiguracionService {
         () -> {
           Contexto ctx = contexto(archivoId, balanceo, true);
           RutaProyeccion ruta = rutaDelBalanceo(ctx, rutaId);
-          boolean diaria = Balanceo.diaria(ruta.getFrecuencia());
-          if (diaria) {
-            exigirOtroAbierto(ctx, ruta.getClusterId());
-          }
+          List<Balanceo> afectados = balanceosDe(ruta);
           if (!ctx.parametrosChute().containsKey(req.chuteId())) {
             throw new SolicitudInvalidaException(
                 "El chute " + req.chuteId() + " no pertenece al registro.");
           }
           exigirNoBloqueado(ctx, req.chuteId());
-          if (cerrado(ctx, ruta.getClusterId())) {
-            throw new ConflictoException(
-                ctx.nombreCluster(ruta.getClusterId())
-                    + " está cerrado: reábrelo para mover sus rutas.");
-          }
+          exigirAbiertoEn(ctx, afectados, ruta.getClusterId(), "mover sus rutas");
           if (ruta.getChuteId().equals(req.chuteId())) {
             throw new ConflictoException(
                 "La ruta ya pertenece al chute " + ctx.nombreChute(req.chuteId()) + ".");
@@ -614,17 +610,13 @@ public class SimulacionConfiguracionService {
                   HistorialBalanceo.MOTIVO_MANUAL,
                   actor,
                   Instant.now());
-          manual.setBalanceo(ctx.balanceo().name());
+          manual.setBalanceo(Balanceo.deRuta(ruta.getFrecuencia()).name());
           // Trabajo del cluster en curso: restablecerlo (o reabrir uno anterior) lo deshace.
           manual.setClusterTrabajoId(enCurso(ctx));
           historialRepo.save(manual);
-          // Mover una ruta cambia la carga sobre la que se asignaron los
-          // operarios de su ola: solo ese cluster vuelve al paso 2 (si es diaria,
-          // también en el otro balanceo).
-          invalidarOperarios(ctx, List.of(ruta.getClusterId()));
-          if (diaria) {
-            invalidarOperariosOtro(ctx, List.of(ruta.getClusterId()));
-          }
+          // Mover una ruta cambia la carga sobre la que se asignaron los operarios de su ola:
+          // ese cluster vuelve al paso de operarios en cada día donde aparece la ruta.
+          invalidarOperariosEn(ctx, afectados, List.of(ruta.getClusterId()));
           tocar(ctx.archivo(), actor);
           return aConfiguracion(ctx);
         },
@@ -638,18 +630,21 @@ public class SimulacionConfiguracionService {
             .findByIdAndArchivoId(rutaId, ctx.archivo().getId())
             .orElseThrow(() -> new RecursoNoEncontradoException("No existe la ruta " + rutaId + "."));
     if (!visible(ctx, ruta.getFrecuencia())) {
+      String dias =
+          ruta.getDias() != null && !ruta.getDias().isBlank()
+              ? ruta.getDias()
+              : SimulacionExcel.textoFrecuencia(ruta.getFrecuencia());
       throw new ConflictoException(
           "La ruta "
               + ruta.getCodigoRuta()
               + " es de "
-              + SimulacionExcel.textoFrecuencia(ruta.getFrecuencia())
-              + ": no aparece en el balanceo "
+              + dias
+              + ": no aparece en "
               + ctx.balanceo().etiqueta()
               + ".");
     }
     return ruta;
   }
-
 
   /**
    * Pasa una ruta a otro cluster, sobrescribiendo el suyo (el original queda
@@ -662,7 +657,7 @@ public class SimulacionConfiguracionService {
     return cambiarCluster(archivoId, Balanceo.LXV, rutaId, req);
   }
 
-  /** Igual, en un balanceo: una ruta diaria cambia de cluster también en el otro. */
+  /** Igual, desde un balanceo: una ruta diaria cambia de cluster en los dos días. */
   public ApiResponse<ConfiguracionSimulacionResponse> cambiarCluster(
       Long archivoId, Balanceo balanceo, Long rutaId, CambiarClusterRequest req) {
     Long actor = ActorActual.id();
@@ -671,11 +666,7 @@ public class SimulacionConfiguracionService {
         () -> {
           Contexto ctx = contexto(archivoId, balanceo, true);
           RutaProyeccion ruta = rutaDelBalanceo(ctx, rutaId);
-          boolean diaria = Balanceo.diaria(ruta.getFrecuencia());
-          if (diaria) {
-            exigirOtroAbierto(ctx, ruta.getClusterId());
-            exigirOtroAbierto(ctx, req.clusterId());
-          }
+          List<Balanceo> afectados = balanceosDe(ruta);
           Long origen = ruta.getClusterId();
           Long destino = req.clusterId();
           if (!ctx.parametrosCluster().containsKey(destino)) {
@@ -686,8 +677,8 @@ public class SimulacionConfiguracionService {
             throw new ConflictoException(
                 "La ruta " + ruta.getCodigoRuta() + " ya pertenece a " + ctx.nombreCluster(origen) + ".");
           }
-          exigirAbierto(ctx, origen);
-          exigirAbierto(ctx, destino);
+          exigirAbiertoEn(ctx, afectados, origen, "cambiar rutas de cluster");
+          exigirAbiertoEn(ctx, afectados, destino, "cambiar rutas de cluster");
           if (!rutaRepo.existsByArchivoIdAndClusterIdAndIdNot(archivoId, origen, rutaId)) {
             throw new ConflictoException(
                 "La ruta "
@@ -709,6 +700,7 @@ public class SimulacionConfiguracionService {
             // llevarla a un chute bloqueado, no.
             exigirNoBloqueado(ctx, chuteFinal);
           }
+          String dueno = Balanceo.deRuta(ruta.getFrecuencia()).name();
           ruta.setClusterId(destino);
           HistorialBalanceo log =
               nuevoLog(
@@ -722,7 +714,7 @@ public class SimulacionConfiguracionService {
           log.setChuteDestinoId(ruta.getChuteId());
           log.setClusterOrigenId(origen);
           log.setClusterDestinoId(destino);
-          log.setBalanceo(ctx.balanceo().name());
+          log.setBalanceo(dueno);
           log.setClusterTrabajoId(enCurso(ctx));
           historialRepo.save(log);
           if (!chuteFinal.equals(chuteAntes)) {
@@ -737,15 +729,12 @@ public class SimulacionConfiguracionService {
                     HistorialBalanceo.MOTIVO_MANUAL,
                     actor,
                     Instant.now());
-            movimiento.setBalanceo(ctx.balanceo().name());
+            movimiento.setBalanceo(dueno);
             movimiento.setClusterTrabajoId(enCurso(ctx));
             historialRepo.save(movimiento);
           }
           // Cambia la carga de los dos clusters: si ya tenían operarios, vuelven al paso 2.
-          invalidarOperarios(ctx, List.of(origen, destino));
-          if (diaria) {
-            invalidarOperariosOtro(ctx, List.of(origen, destino));
-          }
+          invalidarOperariosEn(ctx, afectados, List.of(origen, destino));
           tocar(ctx.archivo(), actor);
           return aConfiguracion(ctx);
         },
@@ -764,18 +753,19 @@ public class SimulacionConfiguracionService {
 
   /**
    * Igual que {@link #balancear(Long, Long, FaseBalanceo)} con los parámetros
-   * del paso. Paso 1: el rango dice entre qué chutes quedan las rutas del
-   * cluster; sin rango, el último elegido o, si nunca se eligió, los chutes que
-   * ya usa. Paso 2: la cantidad de operarios con que se calcula la ola; sin
-   * cantidad, la última usada en ese cluster o, si nunca se eligió, el equipo
-   * del registro.
+   * del paso, en L-X-V.
    */
   public ApiResponse<BalanceoResponse> balancear(
       Long archivoId, Long clusterId, FaseBalanceo fase, BalanceoRequest pedido) {
     return balancear(archivoId, Balanceo.LXV, clusterId, fase, pedido);
   }
 
-  /** Un paso de un cluster en un balanceo (L-X-V o M-J-S). */
+  /**
+   * Un paso de un cluster. RUTAS en Diarias: reparte las diarias y define el rango y los tramos
+   * de los grupos (sin rango, el último elegido o, si nunca se eligió, los chutes que ya usa). RUTAS
+   * en un día: reparte las rutas de ese día dentro del rango y los tramos de las diarias.
+   * OPERARIOS: la misma cantidad para los dos días (sin cantidad, la última usada).
+   */
   public ApiResponse<BalanceoResponse> balancear(
       Long archivoId,
       Balanceo balanceo,
@@ -809,77 +799,102 @@ public class SimulacionConfiguracionService {
   }
 
   /**
-   * Paso de operarios: la misma cantidad para el cluster en L-X-V y en M-J-S. Cada frecuencia la
-   * reparte según su propia carga (son días distintos). Exige los chutes balanceados en las dos.
+   * Paso de operarios: la misma cantidad para el cluster en L-X-V y en M-J-S, en una sola
+   * transacción (si un día falla, no queda ninguno a medias). Cada día la reparte según su propia
+   * carga. Exige los chutes balanceados en los dos días. La configuración de la respuesta se arma
+   * una sola vez, al final.
    */
   private BalanceoResponse operariosAmbos(
       Long archivoId, Balanceo balanceo, Long clusterId, Integer pedidos, Long actor) {
     Contexto ctx = contexto(archivoId, balanceo, true);
-    ParametroCluster otro = ctx.parametrosOtro().get(clusterId);
-    if (otro != null && pendiente(otro)) {
+    String nombre = ctx.nombreCluster(clusterId);
+    parametroCluster(ctx, clusterId);
+    if (pendiente(ctx.parametro(Balanceo.DIA, clusterId))) {
       throw new ConflictoException(
-          "Primero balancea los chutes de "
-              + ctx.nombreCluster(clusterId)
-              + " en "
-              + balanceo.otro().etiqueta()
-              + ".");
+          "Primero balancea las diarias de " + nombre + ": ahí se elige el rango de chutes.");
     }
-    // Sin cantidad pedida, la última usada en cualquiera de las dos.
+    // Participa cada día con fila y con carga (rutas propias o diarias). Un día sin rutas propias
+    // no se balancea: queda listo para operarios tal como lo dejaron las diarias.
+    Map<Balanceo, Long> propias = rutasPropias(archivoId, clusterId);
+    List<Balanceo> dias =
+        Balanceo.DIAS.stream()
+            .filter((dia) -> ctx.parametro(dia, clusterId) != null)
+            .filter((dia) -> participa(propias, dia))
+            .toList();
+    for (Balanceo dia : dias) {
+      ParametroCluster parametro = ctx.parametro(dia, clusterId);
+      if (!pendiente(parametro)) {
+        continue;
+      }
+      if (propias.get(dia) > 0) {
+        throw new ConflictoException(
+            "Primero balancea los chutes de " + nombre + " en " + dia.etiqueta() + ".");
+      }
+      parametro.setEstado(ParametroCluster.ESTADO_RUTAS);
+    }
+    // Sin cantidad pedida, la última usada en cualquiera de los dos días.
     Integer cantidad = pedidos;
     if (cantidad == null) {
-      ParametroCluster propio = ctx.parametrosCluster().get(clusterId);
-      cantidad = propio != null && propio.getOperariosOla() != null
-          ? propio.getOperariosOla()
-          : otro == null ? null : otro.getOperariosOla();
+      cantidad =
+          dias.stream()
+              .map((dia) -> ctx.parametro(dia, clusterId).getOperariosOla())
+              .filter(Objects::nonNull)
+              .findFirst()
+              .orElse(null);
     }
-    BalanceoResponse este = asignarOperarios(archivoId, balanceo, clusterId, cantidad, actor);
-    if (otro == null) {
-      return este;
+    List<String> mensajes = new ArrayList<>();
+    int asignados = 0;
+    for (Balanceo dia : dias) {
+      Asignados hecho;
+      try {
+        hecho = asignarOperarios(ctx.en(dia), clusterId, cantidad, actor);
+      } catch (ConflictoException error) {
+        throw new ConflictoException(dia.etiqueta() + ": " + error.getMessage());
+      } catch (SolicitudInvalidaException error) {
+        throw new SolicitudInvalidaException(dia.etiqueta() + ": " + error.getMessage());
+      }
+      mensajes.add(dia.etiqueta() + " · " + hecho.mensaje());
+      // El total que se informa: el del día pedido o, si no participa (o son las diarias), el primero.
+      if (dias.contains(balanceo) ? dia == balanceo : dia == dias.getFirst()) {
+        asignados = hecho.total();
+      }
     }
-    BalanceoResponse delOtro =
-        asignarOperarios(archivoId, balanceo.otro(), clusterId, cantidad, actor);
-    // La respuesta trae la configuración del balanceo pedido, ya con los dos pasos hechos.
-    Contexto despues = contexto(archivoId, balanceo, true);
+    actualizarEstado(ctx);
+    tocar(ctx.archivo(), actor);
     return new BalanceoResponse(
         clusterId,
-        este.cluster(),
+        nombre,
         FaseBalanceo.OPERARIOS.name(),
-        despues.parametrosCluster().get(clusterId).getEstado(),
+        ctx.parametro(balanceo, clusterId).getEstado(),
         0,
-        este.operariosAsignados(),
-        balanceo.etiqueta() + " · " + este.mensaje() + " " + balanceo.otro().etiqueta() + " · " + delOtro.mensaje(),
-        aConfiguracion(despues));
-  }
-
-  /** Todo el registro vuelve a la proyección: rutas, operarios, lanzamientos e historial. */
-  public ApiResponse<Void> restablecer(Long archivoId) {
-    return restablecer(archivoId, Balanceo.LXV);
+        asignados,
+        String.join(" ", mensajes),
+        aConfiguracion(ctx));
   }
 
   /**
-   * Un balanceo vuelve a la proyección: sus rutas, operarios, lanzamientos e historial. Las rutas
-   * diarias solo vuelven atrás en los clusters que el otro balanceo aún no trabajó (si no, él ya
-   * cuenta con ellas y siguen fijas).
+   * Todo el registro vuelve a la proyección en los tres balanceos y en una sola transacción:
+   * rutas, operarios, lanzamientos, historial y tramos.
    */
-  public ApiResponse<Void> restablecer(Long archivoId, Balanceo balanceo) {
+  public ApiResponse<Void> restablecer(Long archivoId) {
     Long actor = ActorActual.id();
     Trazas.medir(
         log,
-        "SimulacionConfiguracionService.restablecer id=" + archivoId + " balanceo=" + balanceo,
+        "SimulacionConfiguracionService.restablecer id=" + archivoId,
         () ->
             transacciones.<Void>ejecutar(
                 () -> {
-                  deshacerHistorial(contexto(archivoId, balanceo, true), actor);
+                  restablecerTodo(contexto(archivoId, Balanceo.LXV, true), actor);
                   return null;
                 }));
     return ApiResponse.ok("Datos restablecidos.", null);
   }
 
   /**
-   * El cluster en curso vuelve a como estaba antes de trabajarlo: se deshace su
-   * balanceo y lo que se cambió a mano mientras estuvo en curso (movimientos y
-   * rutas que entraron o salieron de él), sin operarios de ola. Los clusters
-   * cerrados no cambian.
+   * El cluster en curso vuelve a como estaba antes de trabajarlo, en los tres balanceos: se
+   * deshacen sus balanceos y lo que se cambió a mano mientras estuvo en curso (movimientos y
+   * rutas que entraron o salieron de él), sin operarios de ola. Las diarias vuelven a su chute y
+   * quedan libres. Los clusters cerrados no cambian.
    */
   public ApiResponse<ConfiguracionSimulacionResponse> restablecerCluster(
       Long archivoId, Long clusterId) {
@@ -894,10 +909,7 @@ public class SimulacionConfiguracionService {
         () -> {
           Contexto ctx = contexto(archivoId, balanceo, true);
           exigirEnCurso(ctx, clusterId);
-          // Deshace todo lo hecho mientras estuvo en curso, en L-X-V y en M-J-S: sus
-          // balanceos y los cambios a mano (incluidas rutas que entraron o salieron de
-          // él). Las diarias vuelven a su chute: ningún balanceo las usa ya.
-          reiniciarAmbos(ctx, List.of(clusterId));
+          reiniciarTodos(ctx, List.of(clusterId));
           actualizarEstado(ctx);
           tocar(ctx.archivo(), actor);
           return aConfiguracion(ctx);
@@ -906,9 +918,9 @@ public class SimulacionConfiguracionService {
   }
 
   /**
-   * Cierra el cluster en curso con sus operarios asignados. El equipo pasa al
-   * siguiente cluster con esta dotación; al cerrar el último, la simulación
-   * termina.
+   * Cierra el cluster en curso en los tres balanceos (diarias balanceadas y operarios asignados en
+   * los dos días). El equipo pasa al siguiente cluster con esta dotación; al cerrar el último, la
+   * simulación termina.
    */
   public ApiResponse<ConfiguracionSimulacionResponse> cerrar(
       Long archivoId, Long clusterId) {
@@ -922,25 +934,36 @@ public class SimulacionConfiguracionService {
         "cerrar id=" + archivoId + " balanceo=" + balanceo + " cluster=" + clusterId,
         () -> {
           Contexto ctx = contexto(archivoId, balanceo, true);
-          ParametroCluster parametro = exigirEnCurso(ctx, clusterId);
+          exigirEnCurso(ctx, clusterId);
           String nombre = ctx.nombreCluster(clusterId);
-          // Límite y operarios son del cluster: se cierra en las dos frecuencias a la vez.
-          ParametroCluster otro = ctx.parametrosOtro().get(clusterId);
-          boolean otroListo =
-              otro == null || ParametroCluster.ESTADO_LISTO.equals(otro.getEstado());
-          if (!ParametroCluster.ESTADO_LISTO.equals(parametro.getEstado()) || !otroListo) {
+          // Los balanceos con fila para el cluster (todos, salvo registros incompletos).
+          List<Balanceo> suyos =
+              Arrays.stream(Balanceo.values())
+                  .filter((b) -> ctx.parametro(b, clusterId) != null)
+                  .toList();
+          // Un día sin carga (ni rutas propias ni diarias) no tiene operarios ni cierre: no frena.
+          Map<Balanceo, Long> propias = rutasPropias(archivoId, clusterId);
+          boolean listo =
+              suyos.stream()
+                  .allMatch(
+                      (b) ->
+                          b.esDia()
+                              ? !participa(propias, b)
+                                  || ParametroCluster.ESTADO_LISTO.equals(ctx.parametro(b, clusterId).getEstado())
+                              : !pendiente(ctx.parametro(b, clusterId)));
+          if (!listo) {
             throw new ConflictoException(
-                "Balancea los chutes de L-X-V y M-J-S y asigna los operarios de "
+                "Balancea las diarias, L-X-V y M-J-S y asigna los operarios de "
                     + nombre
                     + " antes de cerrarlo.");
           }
-          if (otro != null && !clusterId.equals(enCursoOtro(ctx))) {
-            throw new ConflictoException(
-                nombre + " no está en curso en " + ctx.balanceo().otro().etiqueta() + ".");
+          for (Balanceo b : suyos) {
+            if (!clusterId.equals(enCursoEn(ctx, b))) {
+              throw new ConflictoException(nombre + " no está en curso en " + b.etiqueta() + ".");
+            }
           }
-          parametro.setEstado(ParametroCluster.ESTADO_CERRADO);
-          if (otro != null) {
-            otro.setEstado(ParametroCluster.ESTADO_CERRADO);
+          for (Balanceo b : suyos) {
+            ctx.parametro(b, clusterId).setEstado(ParametroCluster.ESTADO_CERRADO);
           }
           actualizarEstado(ctx);
           tocar(ctx.archivo(), actor);
@@ -950,9 +973,9 @@ public class SimulacionConfiguracionService {
   }
 
   /**
-   * Reabre un cluster cerrado para cambiarlo. Los clusters siguientes partían
-   * de su dotación, así que vuelven a la proyección (rutas, operarios y
-   * lanzamientos); el reabierto conserva sus rutas y operarios.
+   * Reabre un cluster cerrado para cambiarlo (en los tres balanceos). Los clusters siguientes
+   * partían de su dotación, así que vuelven a la proyección (rutas, operarios y lanzamientos); el
+   * reabierto conserva sus rutas y operarios.
    */
   public ApiResponse<ConfiguracionSimulacionResponse> reabrir(
       Long archivoId, Long clusterId) {
@@ -971,19 +994,21 @@ public class SimulacionConfiguracionService {
             throw new ConflictoException(ctx.nombreCluster(clusterId) + " no está cerrado.");
           }
           List<Long> orden = orden(ctx);
-          // Los siguientes partían de su dotación (en las dos frecuencias): vuelven a la proyección.
+          // Los siguientes partían de su dotación (en cualquier balanceo): vuelven a la proyección.
           List<Long> siguientes =
               orden.subList(orden.indexOf(clusterId) + 1, orden.size()).stream()
                   .filter(
                       (id) ->
-                          !pendiente(ctx.parametrosCluster().get(id))
-                              || !pendiente(ctx.parametrosOtro().get(id)))
+                          Arrays.stream(Balanceo.values())
+                              .anyMatch((b) -> !pendiente(ctx.parametro(b, id))))
                   .toList();
-          reiniciarAmbos(ctx, siguientes);
-          parametro.setEstado(ParametroCluster.ESTADO_LISTO);
-          ParametroCluster otro = ctx.parametrosOtro().get(clusterId);
-          if (otro != null && ParametroCluster.ESTADO_CERRADO.equals(otro.getEstado())) {
-            otro.setEstado(ParametroCluster.ESTADO_LISTO);
+          reiniciarTodos(ctx, siguientes);
+          // Vuelve al paso anterior a cerrar: diarias balanceadas y los días con operarios.
+          for (Balanceo b : Balanceo.values()) {
+            ParametroCluster p = ctx.parametro(b, clusterId);
+            if (p != null && ParametroCluster.ESTADO_CERRADO.equals(p.getEstado())) {
+              p.setEstado(b.esDia() ? ParametroCluster.ESTADO_LISTO : ParametroCluster.ESTADO_RUTAS);
+            }
           }
           actualizarEstado(ctx);
           tocar(ctx.archivo(), actor);
@@ -996,7 +1021,17 @@ public class SimulacionConfiguracionService {
     return historial(archivoId, Balanceo.LXV);
   }
 
-  /** Lanzamientos de un balanceo (y cuántos cambios a mano tiene). */
+  /**
+   * Balanceos cuyo historial se ve desde uno: un día ve el suyo y el de Diarias (sus diarias
+   * cambian también ahí); Diarias, solo el suyo.
+   */
+  private static List<String> historialDe(Balanceo balanceo) {
+    return balanceo == Balanceo.DIA
+        ? List.of(Balanceo.DIA.name())
+        : List.of(balanceo.name(), Balanceo.DIA.name());
+  }
+
+  /** Lanzamientos que se ven desde un balanceo (y cuántos cambios a mano tiene). */
   public ApiResponse<HistorialRegistroResponse> historial(Long archivoId, Balanceo balanceo) {
     return leer(
         "historial id=" + archivoId + " balanceo=" + balanceo,
@@ -1004,7 +1039,7 @@ public class SimulacionConfiguracionService {
           Contexto ctx = contexto(archivoId, balanceo, false);
           List<LanzamientoSimulacionResponse> lanzamientos =
               lanzamientoRepo
-                  .findTop200ByArchivoIdAndBalanceoOrderByIdDesc(archivoId, balanceo.name())
+                  .findTop200ByArchivoIdAndBalanceoInOrderByIdDesc(archivoId, historialDe(balanceo))
                   .stream()
                   .map(
                       (lanzamiento) ->
@@ -1013,7 +1048,7 @@ public class SimulacionConfiguracionService {
                               lanzamiento.getClusterId(),
                               ctx.nombreCluster(lanzamiento.getClusterId()),
                               lanzamiento.getFase(),
-                              lanzamiento.getMensaje(),
+                              etiquetaLanzamiento(lanzamiento, balanceo),
                               lanzamiento.getCreadoEn(),
                               lanzamiento.getCreadoPor(),
                               lanzamiento.getRutas(),
@@ -1021,10 +1056,17 @@ public class SimulacionConfiguracionService {
                   .toList();
           return new HistorialRegistroResponse(
               lanzamientos,
-              historialRepo.countByArchivoIdAndBalanceoAndLanzamientoIdIsNull(
-                  archivoId, balanceo.name()));
+              historialRepo.countByArchivoIdAndBalanceoInAndLanzamientoIdIsNull(
+                  archivoId, historialDe(balanceo)));
         },
         "Historial de balanceo.");
+  }
+
+  /** Mensaje del lanzamiento; uno de Diarias visto desde un día lo dice delante. */
+  private static String etiquetaLanzamiento(LanzamientoBalanceo lanzamiento, Balanceo vista) {
+    return vista != Balanceo.DIA && Balanceo.DIA.name().equals(lanzamiento.getBalanceo())
+        ? Balanceo.DIA.etiqueta() + " · " + lanzamiento.getMensaje()
+        : lanzamiento.getMensaje();
   }
 
   /**
@@ -1045,13 +1087,30 @@ public class SimulacionConfiguracionService {
             Math.min(Math.max(tamano, 1), MAX_TAMANO_PAGINA),
             Sort.by("id").descending());
     return leer(
-        "historial cambios id=" + archivoId + " lanzamiento=" + lanzamientoId,
+        "historial cambios id=" + archivoId + " balanceo=" + balanceo + " lanzamiento=" + lanzamientoId,
         () -> {
           Contexto ctx = contexto(archivoId, false);
+          if (lanzamientoId != null) {
+            // El lanzamiento tiene que ser del registro y verse desde este balanceo.
+            lanzamientoRepo
+                .findById(lanzamientoId)
+                .filter(
+                    (l) ->
+                        archivoId.equals(l.getArchivoId())
+                            && historialDe(balanceo).contains(l.getBalanceo()))
+                .orElseThrow(
+                    () ->
+                        new RecursoNoEncontradoException(
+                            "No existe el lanzamiento "
+                                + lanzamientoId
+                                + " en "
+                                + balanceo.etiqueta()
+                                + "."));
+          }
           Page<HistorialBalanceo> page =
               lanzamientoId == null
-                  ? historialRepo.findByArchivoIdAndBalanceoAndLanzamientoIdIsNull(
-                      archivoId, balanceo.name(), pageable)
+                  ? historialRepo.findByArchivoIdAndBalanceoInAndLanzamientoIdIsNull(
+                      archivoId, historialDe(balanceo), pageable)
                   : historialRepo.findByArchivoIdAndLanzamientoId(archivoId, lanzamientoId, pageable);
           Set<Long> rutaIds = new HashSet<>();
           page.forEach(
@@ -1139,32 +1198,49 @@ public class SimulacionConfiguracionService {
    * con menos carga) y después se iguala la carga entre sus chutes. Con un solo
    * grupo es el balanceo de siempre: con rango, todo el rango; sin rango, los
    * chutes que ya usa. No toca operarios.
+   *
+   * <p>Diarias va primero: reparte las diarias y define el rango y los tramos (solo mientras los
+   * dos días sigan pendientes; si no, hay que restablecer el cluster). Cada día después mueve solo
+   * sus rutas dentro de ese rango y esos tramos, con las diarias como carga fija.
    */
   private BalanceoResponse balancearRutas(
       Long archivoId, Balanceo balanceo, Long clusterId, BalanceoRequest pedido, Long actor) {
     Contexto ctx = contexto(archivoId, balanceo, true);
     ParametroCluster parametro = exigirEnCurso(ctx, clusterId);
     String nombre = ctx.nombreCluster(clusterId);
-    // Si el otro balanceo ya trabajó este cluster, su rango y los tramos de sus
-    // grupos valen también aquí: así una ruta diaria fija queda en el tramo de su grupo.
-    boolean heredado = rangoDelOtro(ctx, clusterId);
+    ParametroCluster diarias = ctx.parametro(Balanceo.DIA, clusterId);
+    if (balanceo == Balanceo.DIA) {
+      for (Balanceo dia : Balanceo.DIAS) {
+        if (!pendiente(ctx.parametro(dia, clusterId))) {
+          throw new ConflictoException(
+              nombre
+                  + " ya tiene balanceado "
+                  + dia.etiqueta()
+                  + " sobre estas diarias: restablece el cluster para volver a balancearlas.");
+        }
+      }
+    } else if (pendiente(diarias)) {
+      throw new ConflictoException(
+          "Primero balancea las diarias de " + nombre + ": ahí se elige el rango de chutes.");
+    } else if (rutasPropias(archivoId, clusterId).get(balanceo) == 0) {
+      // Sin rutas propias no hay nada que mover: el día no se balancea (no frena los operarios).
+      throw new ConflictoException(
+          nombre + " no tiene rutas " + balanceo.etiqueta() + ": no hay nada que balancear.");
+    }
+    // Un día usa el rango y los tramos que definieron las diarias.
+    boolean heredado = balanceo.esDia();
     List<Long> rango =
-        heredado
-            ? rangoGuardado(ctx, ctx.parametrosOtro().get(clusterId))
-            : rangoDeBalanceo(ctx, parametro, pedido);
-    // Las diarias se acomodan solo en el primer balanceo automático del cluster.
-    boolean fijas = diariasFijas(ctx, clusterId);
+        heredado ? rangoGuardado(ctx, diarias) : rangoDeBalanceo(ctx, parametro, pedido);
     List<RutaProyeccion> todasCluster =
         rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(archivoId, clusterId);
     List<RutaProyeccion> rutasCluster =
         todasCluster.stream().filter((r) -> visible(ctx, r.getFrecuencia())).toList();
+    // En un día las diarias ya están en su sitio: cuentan como carga pero no se mueven.
     Set<Long> inmoviles =
-        fijas
-            ? rutasCluster.stream()
-                .filter((r) -> Balanceo.diaria(r.getFrecuencia()))
-                .map(RutaProyeccion::getId)
-                .collect(Collectors.toSet())
-            : Set.of();
+        rutasCluster.stream()
+            .filter((r) -> !balanceo.mueve(r.getFrecuencia()))
+            .map(RutaProyeccion::getId)
+            .collect(Collectors.toSet());
     Map<String, List<RutaProyeccion>> porGrupo = new LinkedHashMap<>();
     rutasCluster.forEach(
         (ruta) -> porGrupo.computeIfAbsent(grupo(ruta), (g) -> new ArrayList<>()).add(ruta));
@@ -1178,6 +1254,19 @@ public class SimulacionConfiguracionService {
     int sinUsar = 0;
     if (heredado) {
       tramos = tramosGuardados(ctx, rango, porGrupoTodas, guardados);
+      // Un grupo que llegó después (p. ej. una ruta cambiada de cluster) no tiene tramo: sin él
+      // se mezclaría con otros grupos.
+      List<String> sinTramo =
+          tramos.stream().filter((t) -> t.chutes() == null).map(TramosGrupos.Tramo::grupo).toList();
+      if (porGrupoTodas.size() > 1 && !sinTramo.isEmpty()) {
+        throw new ConflictoException(
+            nombre
+                + ": "
+                + (sinTramo.size() == 1 ? "el grupo " : "los grupos ")
+                + String.join(", ", sinTramo)
+                + " no tiene(n) tramo de chutes (llegaron después de balancear las diarias)."
+                + " Restablece el cluster para repartir de nuevo sus grupos.");
+      }
     } else {
       // Sin prioridad: los grupos van en orden natural (1, 2, 3…), cada uno en su tramo.
       List<String> orden = ordenNatural(porGrupoTodas.keySet());
@@ -1280,15 +1369,16 @@ public class SimulacionConfiguracionService {
       mensaje.append(" ").append(ancladas).append(" ruta(s) pesada(s) a chutes con buff.");
     }
     if (heredado) {
-      mensaje
-          .append(" Rango y grupos definidos en ")
-          .append(ctx.balanceo().otro().etiqueta())
-          .append(".");
+      mensaje.append(" Rango y tramos: los de las diarias.");
     }
     if (tramos.size() > 1) {
       mensaje.append(" Tramos de grupos: ");
       for (int i = 0; i < tramos.size(); i++) {
         TramosGrupos.Tramo tramo = tramos.get(i);
+        if (tramo.chutes() == null || tramo.chutes().isEmpty()) {
+          mensaje.append(i == 0 ? "" : "; ").append(tramo.grupo()).append(" sin tramo");
+          continue;
+        }
         mensaje
             .append(i == 0 ? "" : "; ")
             .append(tramo.grupo())
@@ -1377,10 +1467,11 @@ public class SimulacionConfiguracionService {
   }
 
   /**
-   * Vista previa del paso 1: los grupos del cluster en el orden de prioridad
-   * (la pedida o, si no, la guardada y luego por nombre) y el tramo que recibiría
-   * cada uno con el rango (el pedido o, si no, el último). No cambia nada; si
-   * así no se podría balancear, lo dice en {@code aviso}.
+   * Vista previa del paso de rutas: los grupos del cluster en orden natural y el tramo que
+   * recibiría cada uno. En Diarias, con el rango pedido (o el último); en un día, el rango y los
+   * tramos que ya definieron las diarias. «Fuera» cuenta solo las rutas que este balanceo movería
+   * (en un día, las diarias ya están fijas). No cambia nada; si así no se podría balancear, lo dice
+   * en {@code aviso}.
    */
   public ApiResponse<VistaBalanceoResponse> vistaBalanceo(
       Long archivoId, Long clusterId, BalanceoRequest pedido) {
@@ -1395,17 +1486,16 @@ public class SimulacionConfiguracionService {
           Contexto ctx = contexto(archivoId, balanceo, false);
           ParametroCluster parametro = parametroCluster(ctx, clusterId);
           String nombre = ctx.nombreCluster(clusterId);
-          // Carga de cada grupo por chute: totales y cuántas rutas quedan fuera de su tramo.
+          // Rutas que este balanceo movería, por grupo y chute (para contar las que quedan fuera).
           Map<String, Map<Long, Long>> rutasPorChute = new LinkedHashMap<>();
-          // Carga de cada grupo en su día más pesado (diarias + la mayor entre L-X-V y M-J-S).
+          // Carga de cada grupo en su día más exigente (diarias + el mayor de L-X-V y M-J-S).
           Map<String, CargaDia> porDia = new LinkedHashMap<>();
           for (CargaGrupo fila : rutaRepo.cargaPorGrupo(archivoId)) {
             if (!clusterId.equals(fila.getClusterId()) || fila.getRutas() == null || fila.getRutas() == 0) {
               continue;
             }
             String g = fila.getGrupo() == null ? "" : fila.getGrupo();
-            // Cuántas rutas de cada grupo están hoy en cada chute: las de este balanceo.
-            if (visible(ctx, fila.getFrecuencia())) {
+            if (balanceo.mueve(fila.getFrecuencia())) {
               rutasPorChute
                   .computeIfAbsent(g, (k) -> new HashMap<>())
                   .merge(fila.getChuteId(), fila.getRutas(), Long::sum);
@@ -1416,72 +1506,62 @@ public class SimulacionConfiguracionService {
           }
           Map<String, TramosGrupos.Grupo> grupos = new LinkedHashMap<>();
           porDia.forEach((g, carga) -> grupos.put(g, carga.grupo(g)));
-          List<String> orden = ordenNatural(grupos.keySet());
-          List<TramosGrupos.Grupo> enOrden = orden.stream().map(grupos::get).toList();
+          List<TramosGrupos.Grupo> enOrden = ordenNatural(grupos.keySet()).stream().map(grupos::get).toList();
           String aviso = null;
           List<Long> rango = null;
-          if (rangoDelOtro(ctx, clusterId)) {
-            // El otro balanceo ya definió el rango y los tramos del cluster: se muestran tal cual.
-            List<Long> heredado = rangoGuardado(ctx, ctx.parametrosOtro().get(clusterId));
+          List<TramosGrupos.Tramo> tramos = new ArrayList<>();
+          int sinUsar = 0;
+          boolean heredado = balanceo.esDia();
+          if (heredado) {
+            ParametroCluster diarias = ctx.parametro(Balanceo.DIA, clusterId);
+            if (pendiente(diarias)) {
+              aviso = "Primero balancea las diarias de " + nombre + ": ahí se elige el rango de chutes.";
+            } else {
+              rango = rangoGuardado(ctx, diarias);
+            }
             Map<String, GrupoGuardado> porClave = new HashMap<>();
             gruposGuardados(archivoId, clusterId)
                 .forEach((g) -> porClave.putIfAbsent(SimulacionExcel.clave(g.grupo()), g));
-            List<TramoGrupoResponse> respuesta = new ArrayList<>();
-            for (int i = 0; i < enOrden.size(); i++) {
-              TramosGrupos.Grupo g = enOrden.get(i);
+            for (TramosGrupos.Grupo g : enOrden) {
               GrupoGuardado guardado = porClave.get(SimulacionExcel.clave(g.nombre()));
               List<Long> chutes =
-                  grupos.size() == 1
-                      ? heredado
-                      : guardado == null
-                          ? null
-                          : chutesEntre(ctx, guardado.chuteDesdeId(), guardado.chuteHastaId());
-              respuesta.add(
-                  new TramoGrupoResponse(
-                      g.nombre(),
-                      guardado == null ? i + 1 : guardado.prioridad(),
-                      g.rutas(),
-                      g.bultos(),
-                      chutes == null ? 0 : chutes.size(),
-                      chutes == null ? null : chutes.getFirst(),
-                      chutes == null ? null : ctx.nombreChute(chutes.getFirst()),
-                      chutes == null ? null : chutes.getLast(),
-                      chutes == null ? null : ctx.nombreChute(chutes.getLast()),
-                      0));
+                  aviso != null
+                      ? null
+                      : grupos.size() == 1
+                          ? rango
+                          : guardado == null
+                              ? null
+                              : chutesEntre(ctx, guardado.chuteDesdeId(), guardado.chuteHastaId());
+              if (aviso == null && chutes == null && grupos.size() > 1) {
+                aviso =
+                    "El grupo "
+                        + g.nombre()
+                        + " no tiene tramo de chutes (llegó después de balancear las diarias):"
+                        + " restablece el cluster para repartir de nuevo sus grupos.";
+              }
+              tramos.add(new TramosGrupos.Tramo(g.nombre(), tramos.size() + 1, g.rutas(), g.bultos(), chutes));
             }
-            return new VistaBalanceoResponse(
-                clusterId,
-                nombre,
-                heredado == null ? null : heredado.size(),
-                0,
-                null,
-                respuesta,
-                ctx.balanceo().otro().etiqueta());
-          }
-          try {
-            rango = rangoDeBalanceo(ctx, parametro, pedido);
-            if (rango == null && grupos.size() > 1) {
-              aviso = "Elige el chute inicial y el final del rango para repartir sus " + grupos.size() + " grupos.";
-            } else if (rango != null && grupos.size() > 1) {
-              exigirChutesParaGrupos(nombre, rango.size(), grupos.size());
-            }
-          } catch (SolicitudInvalidaException error) {
-            aviso = error.getMessage();
-          }
-          List<TramosGrupos.Tramo> tramos;
-          int sinUsar = 0;
-          if (aviso == null && rango != null && grupos.size() > 1) {
-            TramosGrupos.Reparto reparto = TramosGrupos.repartir(rango, enOrden);
-            tramos = reparto.tramos();
-            sinUsar = reparto.sinUsar();
           } else {
-            List<Long> todo = aviso == null && grupos.size() == 1 ? rango : null;
-            List<TramosGrupos.Tramo> lista = new ArrayList<>();
-            for (int i = 0; i < enOrden.size(); i++) {
-              TramosGrupos.Grupo g = enOrden.get(i);
-              lista.add(new TramosGrupos.Tramo(g.nombre(), i + 1, g.rutas(), g.bultos(), todo));
+            try {
+              rango = rangoDeBalanceo(ctx, parametro, pedido);
+              if (rango == null && grupos.size() > 1) {
+                aviso = "Elige el chute inicial y el final del rango para repartir sus " + grupos.size() + " grupos.";
+              } else if (rango != null && grupos.size() > 1) {
+                exigirChutesParaGrupos(nombre, rango.size(), grupos.size());
+              }
+            } catch (SolicitudInvalidaException error) {
+              aviso = error.getMessage();
             }
-            tramos = lista;
+            if (aviso == null && rango != null && grupos.size() > 1) {
+              TramosGrupos.Reparto reparto = TramosGrupos.repartir(rango, enOrden);
+              tramos = reparto.tramos();
+              sinUsar = reparto.sinUsar();
+            } else {
+              List<Long> todo = aviso == null && grupos.size() == 1 ? rango : null;
+              for (TramosGrupos.Grupo g : enOrden) {
+                tramos.add(new TramosGrupos.Tramo(g.nombre(), tramos.size() + 1, g.rutas(), g.bultos(), todo));
+              }
+            }
           }
           List<TramoGrupoResponse> respuesta =
               tramos.stream()
@@ -1517,7 +1597,8 @@ public class SimulacionConfiguracionService {
               rango == null ? null : rango.size(),
               sinUsar,
               aviso,
-              respuesta);
+              respuesta,
+              heredado ? Balanceo.DIA.name() : null);
         },
         "Vista previa del balanceo.");
   }
@@ -1591,13 +1672,16 @@ public class SimulacionConfiguracionService {
       }
     }
 
-    /** Las diarias más el día (L-X-V o M-J-S) con más bultos. */
+    /**
+     * Las diarias más el día más exigente, por separado para rutas y bultos: el tramo necesita
+     * chutes para las rutas del día con más rutas y capacidad para los bultos del día con más
+     * bultos (pueden ser días distintos).
+     */
     TramosGrupos.Grupo grupo(String nombre) {
-      boolean lxvPesa = bultosLxv.compareTo(bultosMjs) >= 0;
       return new TramosGrupos.Grupo(
           nombre,
-          Math.max(1, rutasDiarias + (lxvPesa ? rutasLxv : rutasMjs)),
-          bultosDiarias.add(lxvPesa ? bultosLxv : bultosMjs));
+          Math.max(1, rutasDiarias + Math.max(rutasLxv, rutasMjs)),
+          bultosDiarias.add(bultosLxv.max(bultosMjs)));
     }
   }
 
@@ -1707,9 +1791,8 @@ public class SimulacionConfiguracionService {
               : guardado == null
                   ? null
                   : chutesEntre(ctx, guardado.chuteDesdeId(), guardado.chuteHastaId());
-      tramos.add(
-          new TramosGrupos.Tramo(
-              g.nombre(), guardado == null ? tramos.size() + 1 : guardado.prioridad(), g.rutas(), g.bultos(), chutes));
+      // Orden natural: la posición es el número del tramo (ya no hay prioridad elegida).
+      tramos.add(new TramosGrupos.Tramo(g.nombre(), tramos.size() + 1, g.rutas(), g.bultos(), chutes));
     }
     return tramos;
   }
@@ -1996,9 +2079,9 @@ public class SimulacionConfiguracionService {
    * chute donde terminó la ola anterior. Solo sobra gente si cada chute con
    * carga llega al máximo por chute. Puede repetirse para recalcular.
    */
-  private BalanceoResponse asignarOperarios(
-      Long archivoId, Balanceo balanceo, Long clusterId, Integer pedidos, Long actor) {
-    Contexto ctx = contexto(archivoId, balanceo, true);
+  private Asignados asignarOperarios(
+      Contexto ctx, Long clusterId, Integer pedidos, Long actor) {
+    Long archivoId = ctx.archivo().getId();
     ParametroCluster parametro = exigirEnCurso(ctx, clusterId);
     String nombre = ctx.nombreCluster(clusterId);
     if (ParametroCluster.ESTADO_PENDIENTE.equals(parametro.getEstado())) {
@@ -2138,18 +2221,11 @@ public class SimulacionConfiguracionService {
     lotes.insertarHistorial(logs);
     parametro.setOperariosOla(equipo);
     parametro.setEstado(ParametroCluster.ESTADO_LISTO);
-    actualizarEstado(ctx);
-    tocar(ctx.archivo(), actor);
-    return new BalanceoResponse(
-        clusterId,
-        nombre,
-        FaseBalanceo.OPERARIOS.name(),
-        parametro.getEstado(),
-        0,
-        total,
-        mensaje.toString(),
-        aConfiguracion(ctx));
+    return new Asignados(mensaje.toString(), total);
   }
+
+  /** Resultado del paso de operarios en un día: su mensaje y cuántos operarios quedaron. */
+  private record Asignados(String mensaje, int total) {}
 
   /** Operarios de cada chute en la ola de un cluster (vacío si la ola no los tiene). */
   private static Map<Long, Integer> operariosDeOla(Contexto ctx, Long clusterId) {
@@ -2306,97 +2382,53 @@ public class SimulacionConfiguracionService {
   }
 
   /**
-   * Devuelve las rutas a su chute original, quita los operarios de todas las
-   * olas y borra lanzamientos e historial: todo el registro vuelve a la
-   * proyección y la simulación empieza de nuevo por el primer cluster.
+   * Todo el registro vuelve a la proyección en una sola transacción y en los tres balanceos:
+   * rutas a su chute y cluster originales, sin operarios, lanzamientos, historial ni tramos. La
+   * simulación empieza de nuevo por el primer cluster.
    */
-  private void deshacerHistorial(Contexto ctx, Long actor) {
+  private void restablecerTodo(Contexto ctx, Long actor) {
     Long archivoId = ctx.archivo().getId();
     // El chute y el cluster originales quedaron congelados al cargar el Excel, así
     // que basta un UPDATE masivo (sin reconstruir el historial movimiento a movimiento).
-    // Las diarias solo vuelven atrás donde el otro balanceo aún no trabajó el cluster: si
-    // no, él ya cuenta con ellas y siguen fijas.
-    List<Long> libres =
-        ctx.parametrosCluster().keySet().stream()
-            .filter((id) -> pendiente(ctx.parametrosOtro().get(id)))
-            .toList();
-    rutaRepo.restaurarRutas(
-        archivoId, ctx.balanceo().name(), libres.isEmpty() ? List.of(-1L) : libres);
-    borrarOlas(ctx, ctx.parametrosCluster().keySet());
-    historialRepo.borrarPorArchivo(archivoId, ctx.balanceo().name());
-    lanzamientoRepo.borrarPorArchivo(archivoId, ctx.balanceo().name());
-    // Prioridad y tramos son del cluster: se borran solo donde el otro balanceo no los usa.
-    lotes.borrarGrupos(archivoId, libres);
-    // Todo vuelve a la proyección: también el rango de chutes y la cantidad de
-    // operarios que cada ola había elegido (si no, los modales los propondrían).
-    ctx.parametrosCluster()
+    rutaRepo.restaurarTodas(archivoId);
+    for (Balanceo b : Balanceo.DIAS) {
+      borrarOlas(ctx.en(b), ctx.parametrosDe(b).keySet());
+    }
+    // El historial de cada lanzamiento se borra con él (ON DELETE CASCADE); después, los manuales.
+    lanzamientoRepo.borrarTodoPorArchivo(archivoId);
+    historialRepo.borrarTodoPorArchivo(archivoId);
+    Set<Long> clusterIds = new LinkedHashSet<>();
+    ctx.parametros().values().forEach((porCluster) -> clusterIds.addAll(porCluster.keySet()));
+    lotes.borrarGrupos(archivoId, clusterIds);
+    // También el rango de chutes y la cantidad de operarios que cada ola había elegido
+    // (si no, los modales los propondrían).
+    ctx.parametros()
         .values()
         .forEach(
-            (p) -> {
-              p.setEstado(ParametroCluster.ESTADO_PENDIENTE);
-              p.setChuteDesdeId(null);
-              p.setChuteHastaId(null);
-              p.setOperariosOla(null);
-            });
+            (porCluster) ->
+                porCluster
+                    .values()
+                    .forEach(
+                        (p) -> {
+                          p.setEstado(ParametroCluster.ESTADO_PENDIENTE);
+                          p.setChuteDesdeId(null);
+                          p.setChuteHastaId(null);
+                          p.setOperariosOla(null);
+                        }));
     actualizarEstado(ctx);
     tocar(ctx.archivo(), actor);
   }
 
   /**
-   * Deshace el trabajo hecho mientras esos clusters estaban en curso: los
-   * movimientos de sus lanzamientos y los cambios a mano (mover o cambiar de
-   * cluster) con ese cluster de trabajo. Como el trabajo de cada cluster es un
-   * tramo seguido del historial, deshacerlo devuelve cada ruta exactamente al
-   * chute y cluster que tenía antes; ninguna ruta de un cluster cerrado se toca
-   * (mientras un cluster está en curso, los anteriores están cerrados y no se
-   * pueden cambiar). Los clusters quedan PENDIENTE y sin operarios de ola.
+   * Deshace el trabajo hecho mientras esos clusters estaban en curso, en los tres balanceos a la
+   * vez: los movimientos de sus lanzamientos y los cambios a mano (mover o cambiar de cluster) con
+   * ese cluster de trabajo, del último al primero (los ids del historial son una sola secuencia,
+   * así que el orden es el real). Cada ruta vuelve exactamente al chute y cluster que tenía antes,
+   * también las diarias. Ninguna ruta de un cluster cerrado se toca (mientras un cluster está en
+   * curso, los anteriores están cerrados). Los clusters quedan PENDIENTE, sin operarios de ola y
+   * sin tramos; conservan su rango para proponerlo la próxima vez.
    */
-  private void reiniciarClusters(Contexto ctx, Collection<Long> clusterIds) {
-    if (clusterIds.isEmpty()) {
-      return;
-    }
-    Long archivoId = ctx.archivo().getId();
-    // Del último cambio al primero: el origen del más antiguo de cada ruta es
-    // donde estaba antes de ese trabajo (para el chute y para el cluster).
-    Map<Long, Long> chutes = new LinkedHashMap<>();
-    Map<Long, Long> clusters = new LinkedHashMap<>();
-    for (CambioParaDeshacer cambio :
-        historialRepo.trabajoParaDeshacer(archivoId, ctx.balanceo().name(), clusterIds)) {
-      // Una diaria con la que el otro balanceo ya cuenta se queda donde está.
-      if (Balanceo.diaria(cambio.getFrecuencia())
-          && cambio.getClusterId() != null
-          && !pendiente(ctx.parametrosOtro().get(cambio.getClusterId()))) {
-        continue;
-      }
-      if (HistorialBalanceo.ACCION_CAMBIAR_CLUSTER.equals(cambio.getTipoAccion())) {
-        if (cambio.getClusterOrigenId() != null) {
-          clusters.put(cambio.getRutaId(), cambio.getClusterOrigenId());
-        }
-      } else if (cambio.getChuteOrigenId() != null) {
-        chutes.put(cambio.getRutaId(), cambio.getChuteOrigenId());
-      }
-    }
-    historialRepo.borrarManualesDeTrabajo(archivoId, ctx.balanceo().name(), clusterIds);
-    for (Long clusterId : clusterIds) {
-      lanzamientoRepo.borrarPorCluster(archivoId, ctx.balanceo().name(), clusterId);
-      ctx.parametrosCluster().get(clusterId).setEstado(ParametroCluster.ESTADO_PENDIENTE);
-    }
-    lotes.moverRutas(chutes);
-    lotes.cambiarClusters(clusters);
-    borrarOlas(ctx, clusterIds);
-    // Sus grupos conservan la prioridad (el modal la propone) pero ya no tienen tramo,
-    // salvo donde el otro balanceo los sigue usando (los tramos son del cluster).
-    lotes.quitarTramos(
-        archivoId,
-        clusterIds.stream().filter((id) -> pendiente(ctx.parametrosOtro().get(id))).toList());
-  }
-
-  /**
-   * Como {@link #reiniciarClusters} pero en los dos balanceos a la vez: el cluster completo vuelve
-   * a la proyección (también sus rutas diarias, que ya ningún balanceo usa). Se deshacen los
-   * cambios de los dos historiales juntos, del último al primero.
-   */
-  private void reiniciarAmbos(Contexto ctx, Collection<Long> clusterIds) {
+  private void reiniciarTodos(Contexto ctx, Collection<Long> clusterIds) {
     if (clusterIds.isEmpty()) {
       return;
     }
@@ -2415,47 +2447,19 @@ public class SimulacionConfiguracionService {
     historialRepo.borrarManualesDeTrabajoAmbos(archivoId, clusterIds);
     lanzamientoRepo.borrarPorClusters(archivoId, clusterIds);
     for (Long clusterId : clusterIds) {
-      ctx.parametrosCluster().get(clusterId).setEstado(ParametroCluster.ESTADO_PENDIENTE);
-      ParametroCluster otro = ctx.parametrosOtro().get(clusterId);
-      if (otro != null) {
-        otro.setEstado(ParametroCluster.ESTADO_PENDIENTE);
+      for (Balanceo b : Balanceo.values()) {
+        ParametroCluster parametro = ctx.parametro(b, clusterId);
+        if (parametro != null) {
+          parametro.setEstado(ParametroCluster.ESTADO_PENDIENTE);
+        }
       }
     }
     lotes.moverRutas(chutes);
     lotes.cambiarClusters(clusters);
-    borrarOlas(ctx, clusterIds);
-    borrarOlasOtro(ctx, clusterIds);
-    lotes.quitarTramos(archivoId, clusterIds);
-  }
-
-  /** Quita los operarios de esas olas en el otro balanceo. */
-  private void borrarOlasOtro(Contexto ctx, Collection<Long> clusterIds) {
-    List<OperarioOla> borrar = new ArrayList<>();
-    ctx.operariosOlaOtro()
-        .entrySet()
-        .removeIf(
-            (entrada) -> {
-              if (clusterIds.contains(entrada.getKey().clusterId())) {
-                borrar.add(entrada.getValue());
-                return true;
-              }
-              return false;
-            });
-    if (!borrar.isEmpty()) {
-      operarioOlaRepo.deleteAll(borrar);
+    for (Balanceo b : Balanceo.DIAS) {
+      borrarOlas(ctx.en(b), clusterIds);
     }
-  }
-
-  /** Primer cluster sin cerrar en el otro balanceo (los dos avanzan juntos al cerrar). */
-  private static Long enCursoOtro(Contexto ctx) {
-    return orden(ctx).stream()
-        .filter(
-            (id) -> {
-              ParametroCluster otro = ctx.parametrosOtro().get(id);
-              return otro == null || !ParametroCluster.ESTADO_CERRADO.equals(otro.getEstado());
-            })
-        .findFirst()
-        .orElse(null);
+    lotes.quitarTramos(archivoId, clusterIds);
   }
 
   /**
@@ -2544,7 +2548,9 @@ public class SimulacionConfiguracionService {
               }
               return false;
             });
-    operarioOlaRepo.deleteAll(borrar);
+    if (!borrar.isEmpty()) {
+      operarioOlaRepo.deleteAll(borrar);
+    }
   }
 
   /**
@@ -2552,9 +2558,9 @@ public class SimulacionConfiguracionService {
    * EN_PROCESO.
    */
   private static void actualizarEstado(Contexto ctx) {
-    // El registro termina cuando los dos balanceos cerraron todos sus clusters.
-    List<ParametroCluster> clusters = new ArrayList<>(ctx.parametrosCluster().values());
-    clusters.addAll(ctx.parametrosOtro().values());
+    // El registro termina cuando los tres balanceos cerraron todos sus clusters.
+    List<ParametroCluster> clusters = new ArrayList<>();
+    ctx.parametros().values().forEach((porCluster) -> clusters.addAll(porCluster.values()));
     if (!clusters.isEmpty()
         && clusters.stream().allMatch((p) -> ParametroCluster.ESTADO_CERRADO.equals(p.getEstado()))) {
       ctx.archivo().setEstado(ArchivoExcel.ESTADO_FINALIZADO);
@@ -2624,17 +2630,6 @@ public class SimulacionConfiguracionService {
     }
   }
 
-  /**
-   * Cambiar rutas de cluster exige que el cluster no esté cerrado (antes o
-   * después de balancear; si ya tenía operarios, vuelve al paso 2).
-   */
-  private static void exigirAbierto(Contexto ctx, Long clusterId) {
-    if (ParametroCluster.ESTADO_CERRADO.equals(parametroCluster(ctx, clusterId).getEstado())) {
-      throw new ConflictoException(
-          ctx.nombreCluster(clusterId) + " está cerrado: reábrelo para cambiar rutas de cluster.");
-    }
-  }
-
   /** La ruta puede cambiar de cluster: el suyo y al menos otro siguen sin cerrar. */
   private static boolean clusterEditable(Map<Long, ParametroCluster> parametros, Long clusterId) {
     ParametroCluster propio = parametros.get(clusterId);
@@ -2651,10 +2646,6 @@ public class SimulacionConfiguracionService {
   private static boolean cerrado(Contexto ctx, Long clusterId) {
     ParametroCluster parametro = ctx.parametrosCluster().get(clusterId);
     return parametro != null && ParametroCluster.ESTADO_CERRADO.equals(parametro.getEstado());
-  }
-
-  private static List<Long> cerrados(Contexto ctx) {
-    return orden(ctx).stream().filter((id) -> cerrado(ctx, id)).toList();
   }
 
   private static String nombres(Contexto ctx, Collection<Long> clusterIds) {
@@ -2674,11 +2665,6 @@ public class SimulacionConfiguracionService {
   // Balanceos L-X-V / M-J-S y rutas diarias
   // ------------------------------------------------------------------
 
-  /** La fila (de parámetros u operarios) es de ese balanceo; sin dato, de L-X-V. */
-  private static boolean deBalanceo(String guardado, Balanceo balanceo) {
-    return (guardado == null ? Balanceo.LXV.name() : guardado).equals(balanceo.name());
-  }
-
   /** La ruta (o el agregado) de esa frecuencia aparece en el balanceo del contexto. */
   private static boolean visible(Contexto ctx, String frecuencia) {
     return ctx.balanceo().incluye(frecuencia);
@@ -2689,74 +2675,93 @@ public class SimulacionConfiguracionService {
   }
 
   /**
-   * Las rutas diarias del cluster ya están fijas: algún balanceo automático (de este o del otro
-   * balanceo) las acomodó y desde ahí ningún automático las vuelve a mover. A mano sí se mueven.
-   * Se liberan al restablecer el cluster en los dos balanceos.
+   * Las rutas diarias del cluster ya están fijas: su balanceo (Diarias) ya las acomodó y desde ahí
+   * el automático de L-X-V y M-J-S no las mueve. A mano sí se mueven. Se liberan al restablecer el
+   * cluster.
    */
   private static boolean diariasFijas(Contexto ctx, Long clusterId) {
-    return !pendiente(ctx.parametrosCluster().get(clusterId))
-        || !pendiente(ctx.parametrosOtro().get(clusterId));
+    return !pendiente(ctx.parametro(Balanceo.DIA, clusterId));
   }
 
-  /**
-   * El otro balanceo ya trabajó el cluster: su rango y los tramos de sus grupos valen también para
-   * éste (así una ruta diaria fija queda siempre en el tramo de su grupo).
-   */
-  private static boolean rangoDelOtro(Contexto ctx, Long clusterId) {
-    return !pendiente(ctx.parametrosOtro().get(clusterId));
-  }
-
-  /** Algún cluster ya se balanceó en alguno de los dos balanceos: el buff ya no se puede cambiar. */
+  /** Algún cluster ya se balanceó (en cualquier balanceo): el buff ya no se puede cambiar. */
   private static boolean buffBloqueado(Contexto ctx) {
-    return ctx.parametrosCluster().values().stream().anyMatch((p) -> !pendiente(p))
-        || ctx.parametrosOtro().values().stream().anyMatch((p) -> !pendiente(p));
+    return ctx.parametros().values().stream()
+        .flatMap((porCluster) -> porCluster.values().stream())
+        .anyMatch((p) -> !pendiente(p));
+  }
+
+  /** Balanceos donde aparece la ruta: una diaria, en los tres; las de un día, solo en ese. */
+  private static List<Balanceo> balanceosDe(RutaProyeccion ruta) {
+    return Arrays.stream(Balanceo.values()).filter((b) -> b.incluye(ruta.getFrecuencia())).toList();
   }
 
   /**
-   * Una ruta diaria cambió a mano (de chute o de cluster): también cambia la carga del otro
-   * balanceo. Si allí ese cluster está cerrado no se permite; si ya tenía operarios, vuelve al
-   * paso 2.
+   * Cambiar a mano una ruta exige su cluster abierto en cada balanceo donde aparece (una diaria
+   * cambia también en los dos días).
    */
-  private void exigirOtroAbierto(Contexto ctx, Long clusterId) {
-    ParametroCluster otro = ctx.parametrosOtro().get(clusterId);
-    if (otro != null && ParametroCluster.ESTADO_CERRADO.equals(otro.getEstado())) {
-      throw new ConflictoException(
-          ctx.nombreCluster(clusterId)
-              + " está cerrado en el balanceo "
-              + ctx.balanceo().otro().etiqueta()
-              + " y la ruta es diaria (también cambia allí): reábrelo en "
-              + ctx.balanceo().otro().etiqueta()
-              + " para cambiarla.");
+  private static void exigirAbiertoEn(Contexto ctx, List<Balanceo> balanceos, Long clusterId, String accion) {
+    for (Balanceo b : balanceos) {
+      ParametroCluster parametro = ctx.parametro(b, clusterId);
+      if (parametro != null && ParametroCluster.ESTADO_CERRADO.equals(parametro.getEstado())) {
+        throw new ConflictoException(
+            ctx.nombreCluster(clusterId) + " está cerrado: reábrelo para " + accion + ".");
+      }
     }
   }
 
-  /** Igual que {@link #invalidarOperarios} pero en las olas del otro balanceo. */
-  private void invalidarOperariosOtro(Contexto ctx, Collection<Long> clusterIds) {
-    List<Long> listos =
-        clusterIds.stream()
-            .filter(
-                (id) -> {
-                  ParametroCluster parametro = ctx.parametrosOtro().get(id);
-                  return parametro != null
-                      && ParametroCluster.ESTADO_LISTO.equals(parametro.getEstado());
-                })
-            .toList();
-    if (listos.isEmpty()) {
-      return;
+  /** Invalida los operarios de esos clusters en los días de la lista (Diarias no tiene). */
+  private void invalidarOperariosEn(
+      Contexto ctx, Collection<Balanceo> balanceos, Collection<Long> clusterIds) {
+    for (Balanceo b : balanceos) {
+      if (b.esDia()) {
+        invalidarOperarios(ctx.en(b), clusterIds);
+      }
     }
-    listos.forEach((id) -> ctx.parametrosOtro().get(id).setEstado(ParametroCluster.ESTADO_RUTAS));
-    List<OperarioOla> borrar = new ArrayList<>();
-    ctx.operariosOlaOtro()
-        .entrySet()
-        .removeIf(
-            (entrada) -> {
-              if (listos.contains(entrada.getKey().clusterId())) {
-                borrar.add(entrada.getValue());
-                return true;
-              }
-              return false;
-            });
-    operarioOlaRepo.deleteAll(borrar);
+  }
+
+  /** Estado del cluster en ese balanceo; PENDIENTE si no tiene fila. */
+  private static String estadoEn(Contexto ctx, Balanceo balanceo, Long clusterId) {
+    ParametroCluster parametro = ctx.parametro(balanceo, clusterId);
+    return parametro == null ? ParametroCluster.ESTADO_PENDIENTE : parametro.getEstado();
+  }
+
+  /** Primer cluster sin cerrar en ese balanceo (los tres avanzan juntos al cerrar). */
+  private static Long enCursoEn(Contexto ctx, Balanceo balanceo) {
+    return enCurso(ctx.en(balanceo));
+  }
+
+  /**
+   * Rutas propias de cada cluster por frecuencia: [diarias, L-X-V, M-J-S]. Sale de la carga cruda
+   * (una fila por cluster, chute y frecuencia), sin otra consulta.
+   */
+  private static Map<Long, long[]> rutasPorFrecuencia(List<CargaRutas> cruda) {
+    Map<Long, long[]> resultado = new HashMap<>();
+    for (CargaRutas fila : cruda) {
+      if (fila.getRutas() == null || fila.getRutas() == 0) {
+        continue;
+      }
+      Balanceo dueno = Balanceo.deRuta(fila.getFrecuencia());
+      int i = dueno == Balanceo.DIA ? 0 : dueno == Balanceo.LXV ? 1 : 2;
+      resultado.computeIfAbsent(fila.getClusterId(), (id) -> new long[3])[i] += fila.getRutas();
+    }
+    return resultado;
+  }
+
+  /** El día tiene carga: rutas propias o diarias (que salen los dos días). */
+  private static boolean participa(Map<Balanceo, Long> propias, Balanceo dia) {
+    return propias.get(dia) > 0 || propias.get(Balanceo.DIA) > 0;
+  }
+
+  /** Rutas propias del cluster en cada balanceo (las diarias son de {@link Balanceo#DIA}). */
+  private Map<Balanceo, Long> rutasPropias(Long archivoId, Long clusterId) {
+    long[] n =
+        rutasPorFrecuencia(rutaRepo.cargaPorArchivo(archivoId))
+            .getOrDefault(clusterId, new long[3]);
+    if (n[0] + n[1] + n[2] == 0) {
+      // Un cluster nunca queda sin rutas: sin datos de carga no se omite nada (se exige todo).
+      return Map.of(Balanceo.DIA, 1L, Balanceo.LXV, 1L, Balanceo.MJS, 1L);
+    }
+    return Map.of(Balanceo.DIA, n[0], Balanceo.LXV, n[1], Balanceo.MJS, n[2]);
   }
 
   /** Carga por (cluster, chute) de las rutas del balanceo (las suyas y las diarias). */
@@ -3531,21 +3536,46 @@ public class SimulacionConfiguracionService {
    */
   private record Contexto(
       ArchivoExcel archivo,
-      /** Balanceo en que se trabaja (L-X-V o M-J-S). */
+      /** Balanceo en que se trabaja (L-X-V, M-J-S o Diarias). */
       Balanceo balanceo,
       SimulacionConfig config,
-      /** Parámetros de cada cluster en este balanceo. */
-      Map<Long, ParametroCluster> parametrosCluster,
-      /** Parámetros de cada cluster en el otro balanceo (para las rutas diarias). */
-      Map<Long, ParametroCluster> parametrosOtro,
+      /** Parámetros de cada cluster en cada balanceo (las mismas entidades en toda vista). */
+      Map<Balanceo, Map<Long, ParametroCluster>> parametros,
       Map<Long, ParametroChute> parametrosChute,
-      Map<Par, OperarioOla> operariosOla,
-      /** Operarios de las olas del otro balanceo (se invalidan si cambia una ruta diaria). */
-      Map<Par, OperarioOla> operariosOlaOtro,
+      /** Operarios de las olas de cada día (Diarias no tiene). */
+      Map<Balanceo, Map<Par, OperarioOla>> olas,
       Map<Long, String> clusters,
       Map<Long, String> chutes,
       /** Chutes del plano agregados en memoria (sin fila en parametros_chutes). */
       Set<Long> chutesAgregados) {
+
+    /** El mismo registro visto desde otro balanceo (sin volver a leer nada). */
+    Contexto en(Balanceo otro) {
+      return otro == balanceo
+          ? this
+          : new Contexto(
+              archivo, otro, config, parametros, parametrosChute, olas, clusters, chutes,
+              chutesAgregados);
+    }
+
+    /** Parámetros de los clusters en este balanceo. */
+    Map<Long, ParametroCluster> parametrosCluster() {
+      return parametros.get(balanceo);
+    }
+
+    Map<Long, ParametroCluster> parametrosDe(Balanceo b) {
+      return parametros.get(b);
+    }
+
+    /** Fila del cluster en ese balanceo; null si no existe (se trata como pendiente). */
+    ParametroCluster parametro(Balanceo b, Long clusterId) {
+      return parametros.get(b).get(clusterId);
+    }
+
+    /** Operarios de las olas de este balanceo. */
+    Map<Par, OperarioOla> operariosOla() {
+      return olas.get(balanceo);
+    }
 
     String nombreCluster(Long id) {
       return clusters.getOrDefault(id, "Cluster " + id);
@@ -3581,11 +3611,14 @@ public class SimulacionConfiguracionService {
                   inicial.setVelocidadBase(SimulacionConfig.VELOCIDAD_INICIAL);
                   return inicial;
                 });
-    // Las filas de los dos balanceos: las de éste y las del otro, por cluster.
-    Map<Long, ParametroCluster> parametrosCluster = new LinkedHashMap<>();
-    Map<Long, ParametroCluster> parametrosOtro = new LinkedHashMap<>();
+    // Las filas de los tres balanceos, por cluster.
+    Map<Balanceo, Map<Long, ParametroCluster>> parametros = new EnumMap<>(Balanceo.class);
+    for (Balanceo b : Balanceo.values()) {
+      parametros.put(b, new LinkedHashMap<>());
+    }
     for (ParametroCluster p : parametroClusterRepo.findByIdArchivoId(archivoId)) {
-      (deBalanceo(p.getId().getBalanceo(), balanceo) ? parametrosCluster : parametrosOtro)
+      parametros
+          .get(balanceoGuardado(p.getId().getBalanceo()))
           .putIfAbsent(p.getId().getClusterId(), p);
     }
     Map<Long, ParametroChute> parametrosChute =
@@ -3622,35 +3655,36 @@ public class SimulacionConfiguracionService {
               chutes.put(chuteId, plano.nombreCatalogo(numero));
               agregados.add(chuteId);
             });
-    Map<Par, OperarioOla> operariosOla = new HashMap<>();
-    Map<Par, OperarioOla> operariosOlaOtro = new HashMap<>();
+    Map<Balanceo, Map<Par, OperarioOla>> olas = new EnumMap<>(Balanceo.class);
+    for (Balanceo b : Balanceo.values()) {
+      olas.put(b, new HashMap<>());
+    }
     operarioOlaRepo
         .findByIdArchivoId(archivoId)
         .forEach(
             (ola) ->
-                (deBalanceo(ola.getId().getBalanceo(), balanceo) ? operariosOla : operariosOlaOtro)
+                olas.get(balanceoGuardado(ola.getId().getBalanceo()))
                     .put(new Par(ola.getId().getClusterId(), ola.getId().getChuteId()), ola));
+    Set<Long> clusterIds = new LinkedHashSet<>();
+    parametros.values().forEach((porCluster) -> clusterIds.addAll(porCluster.keySet()));
     Map<Long, String> clusters =
-        clusterRepo.findAllById(parametrosCluster.keySet()).stream()
+        clusterRepo.findAllById(clusterIds).stream()
             .collect(Collectors.toMap(Cluster::getId, Cluster::getNombre));
     return new Contexto(
-        archivo,
-        balanceo,
-        config,
-        parametrosCluster,
-        parametrosOtro,
-        parametrosChute,
-        operariosOla,
-        operariosOlaOtro,
-        clusters,
-        chutes,
+        archivo, balanceo, config, parametros, parametrosChute, olas, clusters, chutes,
         Set.copyOf(agregados));
   }
 
+  /** Balanceo de una fila guardada; sin dato (filas anteriores a las frecuencias), L-X-V. */
+  private static Balanceo balanceoGuardado(String guardado) {
+    return guardado == null ? Balanceo.LXV : Balanceo.de(guardado);
+  }
+
   /**
-   * Grupos de cada cluster con su carga de hoy, en orden de prioridad (la
-   * guardada; los que no tienen, después y por nombre) y el tramo de su último
-   * balanceo.
+   * Grupos de cada cluster en orden natural, con su carga en este balanceo (las rutas que se ven
+   * en él: así cuadran con la hoja de rutas y los totales) y el tramo de chutes que les dieron las
+   * diarias. Un grupo sin rutas en este balanceo sigue en la lista (su tramo es del cluster), con
+   * cero.
    */
   private Map<Long, List<GrupoClusterResponse>> gruposPorCluster(Contexto ctx) {
     Long archivoId = ctx.archivo().getId();
@@ -3661,12 +3695,16 @@ public class SimulacionConfiguracionService {
         continue;
       }
       String g = fila.getGrupo() == null ? "" : fila.getGrupo();
+      boolean suma = visible(ctx, fila.getFrecuencia());
       rutas
           .computeIfAbsent(fila.getClusterId(), (id) -> new HashMap<>())
-          .computeIfAbsent(g, (k) -> new long[1])[0] += fila.getRutas();
+          .computeIfAbsent(g, (k) -> new long[1])[0] += suma ? fila.getRutas() : 0;
       bultos
           .computeIfAbsent(fila.getClusterId(), (id) -> new HashMap<>())
-          .merge(g, fila.getBultos() == null ? BigDecimal.ZERO : fila.getBultos(), BigDecimal::add);
+          .merge(
+              g,
+              !suma || fila.getBultos() == null ? BigDecimal.ZERO : fila.getBultos(),
+              BigDecimal::add);
     }
     Map<Long, Map<String, GrupoGuardado>> guardados = new HashMap<>();
     lotes
@@ -3680,36 +3718,34 @@ public class SimulacionConfiguracionService {
     rutas.forEach(
         (clusterId, porGrupo) -> {
           Map<String, GrupoGuardado> suyos = guardados.getOrDefault(clusterId, Map.of());
-          List<GrupoClusterResponse> lista =
-              porGrupo.keySet().stream()
-                  .map(
-                      (g) -> {
-                        GrupoGuardado guardado = suyos.get(SimulacionExcel.clave(g));
-                        Long desde = guardado == null ? null : guardado.chuteDesdeId();
-                        Long hasta = guardado == null ? null : guardado.chuteHastaId();
-                        return new GrupoClusterResponse(
-                            g,
-                            guardado == null ? null : guardado.prioridad(),
-                            porGrupo.get(g)[0],
-                            bultos.get(clusterId).get(g),
-                            desde,
-                            ctx.nombreChute(desde),
-                            hasta,
-                            ctx.nombreChute(hasta));
-                      })
-                  .sorted(
-                      Comparator.comparing(
-                              GrupoClusterResponse::prioridad,
-                              Comparator.nullsLast(Comparator.<Integer>naturalOrder()))
-                          .thenComparing(GrupoClusterResponse::nombre, ORDEN_NATURAL))
-                  .toList();
+          List<String> orden = ordenNatural(porGrupo.keySet());
+          List<GrupoClusterResponse> lista = new ArrayList<>();
+          for (int i = 0; i < orden.size(); i++) {
+            String g = orden.get(i);
+            GrupoGuardado guardado = suyos.get(SimulacionExcel.clave(g));
+            Long desde = guardado == null ? null : guardado.chuteDesdeId();
+            Long hasta = guardado == null ? null : guardado.chuteHastaId();
+            lista.add(
+                new GrupoClusterResponse(
+                    g,
+                    i + 1,
+                    porGrupo.get(g)[0],
+                    bultos.get(clusterId).get(g),
+                    desde,
+                    ctx.nombreChute(desde),
+                    hasta,
+                    ctx.nombreChute(hasta)));
+          }
           resultado.put(clusterId, lista);
         });
     return resultado;
   }
 
   private ConfiguracionSimulacionResponse aConfiguracion(Contexto ctx) {
-    List<CargaRutas> carga = cargaVisible(ctx);
+    // Una sola lectura de la carga: la del balanceo y las rutas por frecuencia salen de ahí.
+    List<CargaRutas> cruda = rutaRepo.cargaPorArchivo(ctx.archivo().getId());
+    List<CargaRutas> carga = sumarCarga(ctx, cruda);
+    Map<Long, long[]> porFrecuencia = rutasPorFrecuencia(cruda);
     Map<Long, BigDecimal> limites = limites(ctx);
     Map<Long, Integer> operarios = operariosBase(ctx);
     Map<Long, Integer> diferenciasOriginales =
@@ -3730,11 +3766,14 @@ public class SimulacionConfiguracionService {
                         ctx.parametrosCluster().get(id).getOperariosOla(),
                         grupos.getOrDefault(id, List.of()),
                         ctx.balanceo().name(),
-                        ctx.parametrosOtro().get(id) == null
-                            ? ParametroCluster.ESTADO_PENDIENTE
-                            : ctx.parametrosOtro().get(id).getEstado(),
-                        diariasFijas(ctx, id),
-                        rangoDelOtro(ctx, id)))
+                        new ClusterParametroResponse.AvanceClusterResponse(
+                            estadoEn(ctx, Balanceo.DIA, id),
+                            estadoEn(ctx, Balanceo.LXV, id),
+                            estadoEn(ctx, Balanceo.MJS, id),
+                            porFrecuencia.getOrDefault(id, new long[3])[0],
+                            porFrecuencia.getOrDefault(id, new long[3])[1],
+                            porFrecuencia.getOrDefault(id, new long[3])[2]),
+                        diariasFijas(ctx, id)))
             .sorted(Comparator.comparing(ClusterParametroResponse::nombre, ORDEN_NATURAL))
             .toList();
     Map<Long, List<Long>> clustersEnChute = new HashMap<>();

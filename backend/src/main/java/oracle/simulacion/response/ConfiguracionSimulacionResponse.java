@@ -22,7 +22,7 @@ public record ConfiguracionSimulacionResponse(
     List<CargaSimulacionResponse> carga,
     /** Nombres de los chutes bloqueados («19», «20», «21»): no se muestran ni se usan. */
     List<String> chutesBloqueados,
-    /** Balanceo de esta configuración: LXV o MJS. */
+    /** Balanceo de esta configuración: LXV, MJS o DIA. */
     String balanceo,
     /** Algún cluster ya se balanceó (en cualquier balanceo): el buff de los chutes ya no cambia. */
     boolean buffBloqueado) {

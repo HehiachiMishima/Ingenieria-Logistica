@@ -28,6 +28,7 @@ import oracle.common.exception.ConflictoException;
 import oracle.common.exception.SolicitudInvalidaException;
 import oracle.common.response.PaginaResponse;
 import oracle.simulacion.model.ArchivoExcel;
+import oracle.simulacion.model.Balanceo;
 import oracle.simulacion.model.Chute;
 import oracle.simulacion.model.Cluster;
 import oracle.simulacion.model.HistorialBalanceo;
@@ -119,6 +120,9 @@ class SimulacionBalanceoTest {
   @Captor private ArgumentCaptor<LanzamientoBalanceo> lanzamiento;
 
   private SimulacionConfiguracionService servicio;
+
+  /** Fila de Diarias de cada cluster (ya balanceada): de ahí sale el rango que hereda L-X-V. */
+  private final Map<Long, ParametroCluster> diariasPorCluster = new HashMap<>();
 
   @BeforeEach
   void preparar() {
@@ -429,12 +433,12 @@ class SimulacionBalanceoTest {
 
     assertThrows(
         SolicitudInvalidaException.class,
-        () -> lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, null)));
-    BalanceoResponse resultado = lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(null, null));
+        () -> lanzarDiarias(CL3, new BalanceoRequest(1L, null)));
+    BalanceoResponse resultado = lanzarDiarias(CL3, new BalanceoRequest(null, null));
 
     assertEquals(0, resultado.rutasMovidas());
     assertTrue(resultado.mensaje().startsWith("CL3: "), resultado.mensaje());
-    assertNull(cl3.getChuteDesdeId());
+    assertNull(diariasPorCluster.get(CL3).getChuteDesdeId());
   }
 
   @Test
@@ -555,7 +559,7 @@ class SimulacionBalanceoTest {
 
     assertThrows(
         SolicitudInvalidaException.class,
-        () -> lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 99L)));
+        () -> lanzarDiarias(CL3, new BalanceoRequest(1L, 99L)));
     verify(lotes, never()).moverRutas(any());
   }
 
@@ -647,7 +651,7 @@ class SimulacionBalanceoTest {
 
     ConflictoException error =
         assertThrows(ConflictoException.class, () -> lanzar(CL1, FaseBalanceo.OPERARIOS));
-    assertTrue(error.getMessage().contains("rutas de CL1 (paso 1)"), error.getMessage());
+    assertTrue(error.getMessage().contains("Primero balancea los chutes de CL1"), error.getMessage());
   }
 
   @Test
@@ -1016,9 +1020,9 @@ class SimulacionBalanceoTest {
 
     servicio.restablecer(10L);
 
-    verify(rutaRepo).restaurarRutas(eq(10L), eq("LXV"), any());
-    verify(historialRepo).borrarPorArchivo(10L, "LXV");
-    verify(lanzamientoRepo).borrarPorArchivo(10L, "LXV");
+    verify(rutaRepo).restaurarTodas(10L);
+    verify(historialRepo).borrarTodoPorArchivo(10L);
+    verify(lanzamientoRepo).borrarTodoPorArchivo(10L);
     verify(operarioOlaRepo).deleteAll(olasBorradas.capture());
     assertEquals(List.of(olaCl1), olasBorradas.getValue());
     assertEquals(ParametroCluster.ESTADO_PENDIENTE, cl1.getEstado());
@@ -1049,7 +1053,7 @@ class SimulacionBalanceoTest {
     servicio.restablecerCluster(10L, CL3);
 
     verify(lotes).moverRutas(Map.of(5L, 2L));
-    verify(rutaRepo, never()).restaurarRutas(any(), any(), any());
+    verify(rutaRepo, never()).restaurarTodas(any());
     verify(lanzamientoRepo).borrarPorClusters(10L, List.of(CL3));
     verify(historialRepo).borrarManualesDeTrabajoAmbos(10L, List.of(CL3));
     verify(lotes).cambiarClusters(Map.of());
@@ -1345,7 +1349,7 @@ class SimulacionBalanceoTest {
     SolicitudInvalidaException error =
         assertThrows(
             SolicitudInvalidaException.class,
-            () -> lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(19L, 22L)));
+            () -> lanzarDiarias(CL3, new BalanceoRequest(19L, 22L)));
 
     assertTrue(error.getMessage().contains("CHUTE 19 está bloqueado"), error.getMessage());
     assertEquals(ParametroCluster.ESTADO_PENDIENTE, cl3.getEstado());
@@ -1604,12 +1608,17 @@ class SimulacionBalanceoTest {
         List.of(chute(1L, "CHUTE 1"), chute(2L, "CHUTE 2")));
     LanzamientoBalanceo lanzado = new LanzamientoBalanceo();
     lanzado.setId(77L);
+    lanzado.setArchivoId(10L);
+    lanzado.setBalanceo("LXV");
     lanzado.setClusterId(CL1);
     lanzado.setFase("RUTAS");
     lanzado.setMensaje("CL1: 1200 ruta(s) movida(s).");
     lanzado.setRutas(1200);
-    when(lanzamientoRepo.findTop200ByArchivoIdAndBalanceoOrderByIdDesc(10L, "LXV")).thenReturn(List.of(lanzado));
-    when(historialRepo.countByArchivoIdAndBalanceoAndLanzamientoIdIsNull(10L, "LXV")).thenReturn(3L);
+    when(lanzamientoRepo.findTop200ByArchivoIdAndBalanceoInOrderByIdDesc(10L, List.of("LXV", "DIA")))
+        .thenReturn(List.of(lanzado));
+    when(historialRepo.countByArchivoIdAndBalanceoInAndLanzamientoIdIsNull(10L, List.of("LXV", "DIA")))
+        .thenReturn(3L);
+    when(lanzamientoRepo.findById(77L)).thenReturn(Optional.of(lanzado));
     HistorialBalanceo log = new HistorialBalanceo();
     log.setId(900L);
     log.setLanzamientoId(77L);
@@ -1878,18 +1887,19 @@ class SimulacionBalanceoTest {
         List.of(cluster(CL3, "CL3")),
         chutes);
     when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL3)).thenReturn(rutas);
-    return cl3;
+    // Los grupos se reparten en el paso de Diarias: su fila guarda rango y estado.
+    return diariasPorCluster.get(CL3);
   }
 
   /** A: 4 rutas de 100 (400); B: 2 rutas de 100 (200). Todas empiezan en CHUTE 1. */
   private static List<RutaProyeccion> rutasDeDosGrupos() {
     return List.of(
-        rutaDe(1L, CL3, 1L, "A1", "100", "A"),
-        rutaDe(2L, CL3, 1L, "A2", "100", "A"),
-        rutaDe(3L, CL3, 1L, "A3", "100", "A"),
-        rutaDe(4L, CL3, 1L, "A4", "100", "A"),
-        rutaDe(5L, CL3, 1L, "B1", "100", "B"),
-        rutaDe(6L, CL3, 1L, "B2", "100", "B"));
+        diaria(rutaDe(1L, CL3, 1L, "A1", "100", "A")),
+        diaria(rutaDe(2L, CL3, 1L, "A2", "100", "A")),
+        diaria(rutaDe(3L, CL3, 1L, "A3", "100", "A")),
+        diaria(rutaDe(4L, CL3, 1L, "A4", "100", "A")),
+        diaria(rutaDe(5L, CL3, 1L, "B1", "100", "B")),
+        diaria(rutaDe(6L, CL3, 1L, "B2", "100", "B")));
   }
 
   @Test
@@ -1899,7 +1909,7 @@ class SimulacionBalanceoTest {
 
     // Ya no hay prioridad: aunque se pida B primero, los grupos van en orden natural.
     BalanceoResponse resultado =
-        lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 6L, null, List.of("B", "A")));
+        lanzarDiarias(CL3, new BalanceoRequest(1L, 6L));
 
     // 6 chutes: A (400 de 600 bultos) va primero y recibe 4; B (200) recibe 2.
     Map<String, Set<Long>> chutesPorGrupo = new HashMap<>();
@@ -1932,15 +1942,15 @@ class SimulacionBalanceoTest {
     // Tramos en orden natural: A en 1–4, B en 5–6. A mano, A4 quedó en CHUTE 6 (de B).
     List<RutaProyeccion> rutas =
         List.of(
-            rutaDe(1L, CL3, 1L, "A1", "100", "A"),
-            rutaDe(2L, CL3, 2L, "A2", "100", "A"),
-            rutaDe(3L, CL3, 3L, "A3", "100", "A"),
-            rutaDe(4L, CL3, 6L, "A4", "100", "A"),
-            rutaDe(5L, CL3, 5L, "B1", "100", "B"),
-            rutaDe(6L, CL3, 5L, "B2", "100", "B"));
+            diaria(rutaDe(1L, CL3, 1L, "A1", "100", "A")),
+            diaria(rutaDe(2L, CL3, 2L, "A2", "100", "A")),
+            diaria(rutaDe(3L, CL3, 3L, "A3", "100", "A")),
+            diaria(rutaDe(4L, CL3, 6L, "A4", "100", "A")),
+            diaria(rutaDe(5L, CL3, 5L, "B1", "100", "B")),
+            diaria(rutaDe(6L, CL3, 5L, "B2", "100", "B")));
     prepararGrupos(rutas);
 
-    lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 6L));
+    lanzarDiarias(CL3, new BalanceoRequest(1L, 6L));
 
     assertEquals(4L, rutas.get(3).getChuteId());
     assertTrue(rutas.stream().filter((r) -> r.getGrupo().equals("B")).allMatch((r) -> r.getChuteId() >= 5L));
@@ -1953,7 +1963,7 @@ class SimulacionBalanceoTest {
     SolicitudInvalidaException error =
         assertThrows(
             SolicitudInvalidaException.class,
-            () -> lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(null, null, null, List.of("A", "B"))));
+            () -> lanzarDiarias(CL3, new BalanceoRequest(null, null)));
 
     assertTrue(error.getMessage().contains("2 grupos"), error.getMessage());
     verify(lotes, never()).moverRutas(anyMap());
@@ -1976,7 +1986,7 @@ class SimulacionBalanceoTest {
     rutas.add(conFrecuencia(rutaDe(10L, CL3, 1L, "B4", "100", "B"), "LXV"));
     prepararGrupos(rutas);
 
-    BalanceoResponse resultado = lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 6L));
+    BalanceoResponse resultado = lanzarDiarias(CL3, new BalanceoRequest(1L, 6L));
 
     // 400 y 400: 3 chutes cada uno.
     assertTrue(resultado.mensaje().contains("A CHUTE 1 → CHUTE 3 (3 chute(s)); B CHUTE 4 → CHUTE 6 (3 chute(s))"), resultado.mensaje());
@@ -1994,7 +2004,7 @@ class SimulacionBalanceoTest {
     SolicitudInvalidaException error =
         assertThrows(
             SolicitudInvalidaException.class,
-            () -> lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(2L, 2L, null, List.of("A", "B"))));
+            () -> lanzarDiarias(CL3, new BalanceoRequest(2L, 2L)));
 
     assertTrue(error.getMessage().contains("cada grupo necesita al menos un chute"), error.getMessage());
     verify(lotes, never()).moverRutas(anyMap());
@@ -2018,7 +2028,7 @@ class SimulacionBalanceoTest {
                 cargaGrupo(CL1, "A", 1L, 9, "900")));
 
     VistaBalanceoResponse vista =
-        servicio.vistaBalanceo(10L, CL3, new BalanceoRequest(1L, 6L, null, List.of("B", "A"))).datos();
+        servicio.vistaBalanceo(10L, Balanceo.DIA, CL3, new BalanceoRequest(1L, 6L)).datos();
 
     assertNull(vista.aviso());
     assertEquals(6, vista.chutesRango());
@@ -2051,7 +2061,7 @@ class SimulacionBalanceoTest {
         .thenReturn(List.of(cargaGrupo(CL3, "A", 1L, 4, "400"), cargaGrupo(CL3, "B", 1L, 2, "200")));
 
     VistaBalanceoResponse vista =
-        servicio.vistaBalanceo(10L, CL3, new BalanceoRequest(1L, 1L, null, null)).datos();
+        servicio.vistaBalanceo(10L, Balanceo.DIA, CL3, new BalanceoRequest(1L, 1L)).datos();
 
     assertTrue(vista.aviso().contains("cada grupo necesita al menos un chute"), vista.aviso());
     // Sin prioridad guardada: por nombre.
@@ -2063,11 +2073,11 @@ class SimulacionBalanceoTest {
   void unSoloGrupoBalanceaComoSiempreYGuardaSuTramo() {
     List<RutaProyeccion> rutas =
         List.of(
-            rutaDe(1L, CL3, 1L, "A1", "100", "A"),
-            rutaDe(2L, CL3, 1L, "A2", "100", "A"));
+            diaria(rutaDe(1L, CL3, 1L, "A1", "100", "A")),
+            diaria(rutaDe(2L, CL3, 1L, "A2", "100", "A")));
     prepararGrupos(rutas);
 
-    lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 3L));
+    lanzarDiarias(CL3, new BalanceoRequest(1L, 3L));
 
     Map<Long, Long> porChute = new HashMap<>();
     rutas.forEach((r) -> porChute.merge(r.getChuteId(), 1L, Long::sum));
@@ -2131,7 +2141,23 @@ class SimulacionBalanceoTest {
   }
 
   private BalanceoResponse lanzar(Long clusterId, FaseBalanceo fase, BalanceoRequest pedido) {
+    // El rango lo eligen las diarias (paso anterior): L-X-V lo hereda.
+    ParametroCluster diarias = diariasPorCluster.get(clusterId);
+    if (fase == FaseBalanceo.RUTAS && pedido != null && diarias != null) {
+      diarias.setChuteDesdeId(pedido.chuteDesdeId());
+      diarias.setChuteHastaId(pedido.chuteHastaId());
+    }
     return servicio.balancear(10L, clusterId, fase, pedido).datos();
+  }
+
+  /** Paso de Diarias: aquí se elige el rango y se reparten los tramos de los grupos. */
+  private BalanceoResponse lanzarDiarias(Long clusterId, BalanceoRequest pedido) {
+    return servicio.balancear(10L, Balanceo.DIA, clusterId, FaseBalanceo.RUTAS, pedido).datos();
+  }
+
+  private static RutaProyeccion diaria(RutaProyeccion ruta) {
+    ruta.setFrecuencia(Balanceo.DIARIA);
+    return ruta;
   }
 
   /** Operarios que el paso 2 guardó en la ola, por chute. */
@@ -2326,7 +2352,24 @@ class SimulacionBalanceoTest {
       List<OperarioOla> olas,
       List<Cluster> clusters,
       List<Chute> chutes) {
-    when(parametroClusterRepo.findByIdArchivoId(10L)).thenReturn(limites);
+    // El motor se prueba en L-X-V: cada cluster trae su fila de Diarias ya balanceada
+    // (cerrada si el cluster lo está), así L-X-V puede repartir sus rutas.
+    List<ParametroCluster> conDiarias = new ArrayList<>(limites);
+    diariasPorCluster.clear();
+    for (ParametroCluster lxv : limites) {
+      ParametroCluster diarias = new ParametroCluster();
+      diariasPorCluster.put(lxv.getId().getClusterId(), diarias);
+      diarias.setId(new ParametroClusterId(10L, "DIA", lxv.getId().getClusterId()));
+      diarias.setLimiteHoras(lxv.getLimiteHoras());
+      diarias.setChuteDesdeId(lxv.getChuteDesdeId());
+      diarias.setChuteHastaId(lxv.getChuteHastaId());
+      diarias.setEstado(
+          ParametroCluster.ESTADO_CERRADO.equals(lxv.getEstado())
+              ? ParametroCluster.ESTADO_CERRADO
+              : ParametroCluster.ESTADO_RUTAS);
+      conDiarias.add(diarias);
+    }
+    when(parametroClusterRepo.findByIdArchivoId(10L)).thenReturn(conDiarias);
     when(parametroChuteRepo.findByIdArchivoId(10L)).thenReturn(operarios);
     when(operarioOlaRepo.findByIdArchivoId(10L)).thenReturn(olas);
     when(clusterRepo.findAllById(any())).thenReturn(clusters);
@@ -2398,6 +2441,8 @@ class SimulacionBalanceoTest {
     ruta.setChuteId(chuteId);
     ruta.setChuteOriginalId(chuteId);
     ruta.setCodigoRuta(codigo);
+    // Rutas de L-X-V: el día que mueve este motor (las diarias ya están en su sitio).
+    ruta.setFrecuencia("LXV");
     ruta.setTotalBultos(new BigDecimal(bultos));
     ruta.setTotalUnidades(new BigDecimal(bultos));
     ruta.setTotalLineas(new BigDecimal("1"));

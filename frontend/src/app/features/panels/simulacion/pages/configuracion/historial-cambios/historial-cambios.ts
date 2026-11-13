@@ -60,8 +60,12 @@ export class SimulacionHistorialCambios {
 
   readonly registroId = input<number | null>(null);
   readonly abierto = input(false);
+  /**
+   * Pestaña con que se abre el modal (Diarias, L-X-V o M-J-S): la que mira
+   * Configuración. Se toma cada vez que el modal se abre.
+   */
+  readonly balanceoInicial = input<Balanceo>('LXV');
   readonly cerrar = output<void>();
-
 
   private readonly historial = signal<HistorialRegistroSimulacion | null>(null);
   readonly cargando = signal(false);
@@ -72,13 +76,20 @@ export class SimulacionHistorialCambios {
   readonly cambios = signal<Pagina<HistorialSimulacion> | null>(null);
   readonly cargandoCambios = signal(false);
   readonly pagina = signal(1);
-  /** Cada balanceo tiene su propio historial. */
+  /**
+   * Historial que se mira: Diarias solo lo suyo; cada día, lo suyo y además los
+   * lanzamientos y cambios de Diarias (el backend antepone «Diarias · »).
+   */
   readonly balanceo = signal<Balanceo>('LXV');
-  readonly balanceos: Balanceo[] = ['LXV', 'MJS'];
+  readonly balanceos: readonly Balanceo[] = ['DIA', 'LXV', 'MJS'];
   readonly etiquetaBalanceo = ETIQUETA_BALANCEO;
   readonly porPagina = signal(25);
   /** Descarta respuestas viejas si se cambia de grupo o de página rápido. */
   private solicitud = 0;
+  /** Descarta historiales viejos si se cambia de pestaña (o de registro) rápido. */
+  private solicitudHistorial = 0;
+  /** El modal ya estaba abierto en la corrida anterior del efecto. */
+  private estabaAbierto = false;
 
   readonly grupos = computed<GrupoHistorial[]>(() => {
     const historial = this.historial();
@@ -114,15 +125,34 @@ export class SimulacionHistorialCambios {
 
   constructor() {
     // Al abrir el modal (o cambiar de registro con él abierto) se recarga la lista.
+    // Al abrirlo, además, parte de la pestaña que mira Configuración.
     effect(() => {
       const id = this.registroId();
-      if (this.abierto() && id !== null) {
-        untracked(() => this.cargar(id));
+      const abierto = this.abierto();
+      const recienAbierto = abierto && !this.estabaAbierto;
+      this.estabaAbierto = abierto;
+      if (!abierto) {
+        // Cerrado: cualquier respuesta en vuelo ya no se pinta.
+        this.solicitudHistorial++;
+        this.solicitud++;
+        return;
+      }
+      if (id !== null) {
+        untracked(() => {
+          if (recienAbierto) {
+            this.balanceo.set(this.balanceoInicial());
+          }
+          this.cargar(id);
+        });
       }
     });
   }
 
   private cargar(id: number): void {
+    const solicitud = ++this.solicitudHistorial;
+    // Los cambios abiertos eran de otra pestaña: su respuesta en vuelo se descarta.
+    this.solicitud++;
+    this.cargandoCambios.set(false);
     this.historial.set(null);
     this.abiertoGrupo.set(null);
     this.cambios.set(null);
@@ -131,12 +161,25 @@ export class SimulacionHistorialCambios {
     this.api
       .historial(id, this.balanceo())
       .pipe(
-        finalize(() => this.cargando.set(false)),
+        // Solo la última solicitud apaga el spinner: una vieja que termina antes no lo corta.
+        finalize(() => {
+          if (solicitud === this.solicitudHistorial) {
+            this.cargando.set(false);
+          }
+        }),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
-        next: (historial) => this.historial.set(historial),
-        error: (err: unknown) => this.error.set(mensajeDeError(err)),
+        next: (historial) => {
+          if (solicitud === this.solicitudHistorial) {
+            this.historial.set(historial);
+          }
+        },
+        error: (err: unknown) => {
+          if (solicitud === this.solicitudHistorial) {
+            this.error.set(mensajeDeError(err));
+          }
+        },
       });
   }
 
@@ -147,6 +190,14 @@ export class SimulacionHistorialCambios {
     }
     this.balanceo.set(balanceo);
     this.cargar(id);
+  }
+
+  /** Vuelve a pedir el historial de la pestaña actual. */
+  reintentar(): void {
+    const id = this.registroId();
+    if (id !== null) {
+      this.cargar(id);
+    }
   }
 
   alternar(grupo: GrupoHistorial): void {

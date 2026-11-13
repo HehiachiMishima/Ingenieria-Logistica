@@ -411,135 +411,8 @@
       white-space: nowrap;
     }
   }
-
-  &__totales[aria-expanded='true'] .mz-panel__flecha {
-    transform: rotate(90deg);
-  }
-
-  &__flecha {
-    margin-left: auto;
-    transition: transform var(--transition-fast);
-  }
 }
 
-/* Fila superior: nombre a la izquierda y botones redondos a la derecha. */
-.mz-panel__cabecera {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  width: 100%;
-  min-width: 0;
-}
-
-/* Botones redondos de la cabecera del panel: ▶ paso actual, recalcular y restablecer. */
-.mz-panel__botones {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.mz-panel__btn-restablecer:hover:not(:disabled) {
-  color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
-  background: var(--danger-soft);
-}
-
-/* Botón ▶ redondo y pequeño: ejecuta el paso del cluster en curso. */
-.mz-panel__btn-play {
-  width: 30px;
-  height: 30px;
-  min-height: 0;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  flex: none;
-  box-shadow: var(--shadow-sm);
-  transition: transform var(--transition-fast);
-
-  &:active:not(:disabled) {
-    transform: scale(0.92);
-  }
-}
-
-/* Estado + rutas y bultos del cluster. */
-.mz-panel__resumen {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-1);
-  min-width: 0;
-}
-
-.mz-panel__dato {
-  font-size: var(--fs-xs);
-  color: var(--text-3);
-
-  strong {
-    font-weight: 800;
-    color: var(--text);
-    font-variant-numeric: tabular-nums;
-  }
-}
-
-.mz-panel__fuera {
-  color: var(--danger) !important;
-}
-
-.mz-panel__limite {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  min-width: 0;
-}
-
-.mz-panel__limite-label {
-  font-size: 0.64rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  white-space: nowrap;
-}
-
-.mz-panel__limite-input {
-  width: 76px;
-  height: 32px;
-  padding: 0 var(--space-2);
-  text-align: center;
-  font-size: var(--fs-sm);
-  font-weight: 700;
-}
-
-.mz-panel__tiempo {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  margin-left: auto;
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  color: var(--text-2);
-  white-space: nowrap;
-}
-
-/* «Detalle» y «Totales» reparten el ancho del panel. */
-.mz-panel__acciones {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
-  gap: var(--space-2);
-  width: 100%;
-}
-
-.mz-panel__accion {
-  min-width: 0;
-  padding-inline: var(--space-2);
-  gap: var(--space-1);
-  justify-content: center;
-}
 
 /*
  * ---------- Cluster minimizado: riel delgado (como el menú de módulos) ----------
@@ -559,12 +432,6 @@
     padding: var(--space-3) var(--space-1);
   }
 
-  .mz-panel__cabecera {
-    flex-direction: column;
-    justify-content: flex-start;
-    gap: var(--space-2);
-  }
-
   .mz-panel__nombre {
     flex-direction: column;
     gap: 3px;
@@ -576,19 +443,6 @@
     > span {
       max-width: 100%;
     }
-  }
-
-  .mz-panel__acciones {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    width: auto;
-    margin-top: auto;
-  }
-
-  .mz-panel__accion {
-    width: 34px;
-    padding: 0;
   }
 }
 
@@ -640,316 +494,10 @@
       padding: var(--space-2) var(--space-3);
     }
 
-    .mz-panel__cabecera {
-      flex: 1 1 auto;
-      flex-direction: row;
-      justify-content: space-between;
-    }
-
     .mz-panel__nombre {
       flex-direction: row;
       font-size: var(--fs-base);
     }
-
-    .mz-panel__acciones {
-      flex: none;
-      flex-direction: row;
-      margin-top: 0;
-    }
-  }
-}
-
-/* ---------- Ficha flotante de detalle (ruta o cluster) ---------- */
-.detalle-pop {
-  position: fixed;
-  z-index: var(--z-modal);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  width: min(320px, calc(100vw - 24px));
-  padding: var(--space-4);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  background: var(--surface);
-  border: 1px solid color-mix(in srgb, var(--pop-color, var(--accent)) 35%, var(--border));
-  border-top: 4px solid var(--pop-color, var(--accent));
-  border-radius: var(--radius-lg, 12px);
-  box-shadow:
-    var(--shadow-lg),
-    0 0 0 4px color-mix(in srgb, var(--pop-color, var(--accent)) 10%, transparent);
-  animation: detalle-pop-entra 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
-
-  /* Celular o pantalla baja: hoja inferior a todo el ancho. */
-  &--hoja {
-    left: 12px !important;
-    right: 12px;
-    bottom: 12px !important;
-    top: auto !important;
-    width: auto;
-    max-height: min(75dvh, calc(100dvh - 24px)) !important;
-  }
-
-  &__cabecera {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-width: 0;
-  }
-
-  &__titulo {
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
-    min-width: 0;
-    line-height: 1.15;
-
-    strong {
-      overflow: hidden;
-      font-size: var(--fs-lg, 1.125rem);
-      font-weight: 800;
-      letter-spacing: -0.02em;
-      color: var(--text);
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-  }
-
-  &__kicker {
-    font-size: 0.64rem;
-    font-weight: 800;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--pop-color, var(--accent));
-  }
-
-  &__cerrar {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    padding: 0;
-    border: 1px solid var(--border);
-    border-radius: 50%;
-    background: var(--surface-2);
-    color: var(--text-2);
-    cursor: pointer;
-
-    &:hover {
-      color: var(--text);
-      border-color: var(--border-strong);
-    }
-
-    &:focus-visible {
-      outline: 2px solid var(--accent);
-      outline-offset: 2px;
-    }
-  }
-
-  &__grupos {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-
-    ol {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      margin: 0;
-      padding: 0;
-      list-style: none;
-      counter-reset: grupo;
-    }
-
-    li {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto auto;
-      align-items: baseline;
-      gap: var(--space-2);
-      padding: 4px var(--space-2);
-      font-size: var(--fs-xs);
-      color: var(--text-3);
-      background: var(--surface-2);
-      border-radius: var(--radius-xs);
-      counter-increment: grupo;
-
-      strong {
-        overflow: hidden;
-        color: var(--text);
-        text-overflow: ellipsis;
-        white-space: nowrap;
-
-        &::before {
-          content: counter(grupo) ". ";
-          color: var(--accent);
-        }
-      }
-    }
-  }
-
-  /* Franja del grupo: el mismo color que marca sus rutas en la cuadrícula. */
-  &__franja {
-    display: inline-block;
-    width: 3px;
-    height: 0.9em;
-    margin-right: 5px;
-    vertical-align: -1px;
-    border-radius: 2px;
-    background: var(--grupo-color, var(--accent));
-  }
-
-  &__tramo {
-    font-weight: 600;
-    color: var(--text-2);
-    font-variant-numeric: tabular-nums;
-  }
-
-  &__ubicacion {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-1);
-    margin: calc(var(--space-1) * -1) 0 0;
-    color: var(--text-3);
-  }
-
-  &__chip {
-    padding: 2px var(--space-2);
-    border-radius: 999px;
-    font-size: var(--fs-xs);
-    font-weight: 700;
-    color: var(--text);
-    background: color-mix(in srgb, var(--pop-color, var(--accent)) 12%, var(--surface-2));
-    max-width: 100%;
-    overflow-wrap: anywhere;
-
-    &--grupo {
-      font-weight: 600;
-      color: var(--accent);
-      background: var(--accent-soft);
-    }
-  }
-
-  &__datos {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-2);
-    margin: 0;
-
-    > div {
-      min-width: 0;
-      padding: var(--space-2) var(--space-3);
-      background: var(--surface-2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-    }
-
-    dt {
-      font-size: 0.64rem;
-      font-weight: 800;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--text-3);
-    }
-
-    dd {
-      margin: 0;
-      overflow: hidden;
-      font-size: var(--fs-base);
-      font-weight: 800;
-      color: var(--text);
-      font-variant-numeric: tabular-nums;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-  }
-
-  &__dato--destacado {
-    background: color-mix(in srgb, var(--pop-color, var(--accent)) 10%, var(--surface)) !important;
-    border-color: color-mix(in srgb, var(--pop-color, var(--accent)) 30%, var(--border)) !important;
-  }
-
-  &__barra {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-
-    &--fuera .detalle-pop__pista > span {
-      background: var(--danger);
-    }
-  }
-
-  &__barra-texto {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--space-2);
-    font-size: var(--fs-xs);
-    color: var(--text-2);
-
-    strong {
-      font-weight: 800;
-      color: var(--text);
-      font-variant-numeric: tabular-nums;
-    }
-  }
-
-  &__pista {
-    display: block;
-    height: 6px;
-    overflow: hidden;
-    border-radius: 999px;
-    background: var(--surface-3, var(--surface-2));
-
-    > span {
-      display: block;
-      height: 100%;
-      border-radius: inherit;
-      background: var(--pop-color, var(--accent));
-      transition: width var(--transition-slow);
-    }
-  }
-
-  &__nota {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-2);
-    margin: 0;
-    font-size: var(--fs-xs);
-    color: var(--text-2);
-
-    &--movida {
-      padding: var(--space-2);
-      color: var(--accent);
-      background: var(--accent-soft, var(--surface-2));
-      border-radius: var(--radius-sm);
-    }
-  }
-
-  &__fuera {
-    color: var(--danger) !important;
-  }
-
-  &__pie {
-    margin: 0;
-    padding-top: var(--space-2);
-    border-top: 1px dashed var(--border);
-    font-size: var(--fs-xs);
-    color: var(--text-3);
-  }
-}
-
-@keyframes detalle-pop-entra {
-  from {
-    opacity: 0;
-    transform: translateY(6px) scale(0.97);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .detalle-pop {
-    animation: none;
   }
 }
 
@@ -1405,14 +953,6 @@
     border-bottom: 1px solid var(--border);
   }
 
-  .mz-panel__cabecera {
-    flex: 1 1 100%;
-  }
-
-  .mz-panel__acciones {
-    flex: 1 1 100%;
-  }
-
   /* Con el ancho de un celular, la columna fija a la derecha tapaba las del
      medio (140 de ~340 px): aquí todas se desplazan igual. */
   .mz-tabla .mz-der {
@@ -1493,12 +1033,6 @@
 }
 
 /* Modal «Chutes para balancear»: rango desde-hasta y vista previa del paso 1. */
-.rango__intro {
-  margin: 0 0 var(--space-4);
-  font-size: var(--fs-sm);
-  color: var(--text-2);
-}
-
 .rango__campos {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1516,39 +1050,6 @@
   min-width: 0;
 }
 
-.rango__resumen {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
-  margin: var(--space-4) 0 0;
-
-  > div {
-    padding: var(--space-2) var(--space-3);
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-  }
-
-  dt {
-    font-size: var(--fs-xs);
-    color: var(--text-3);
-  }
-
-  dd {
-    margin: 0;
-    font-weight: 700;
-    color: var(--text);
-    font-variant-numeric: tabular-nums;
-
-    span {
-      margin-left: var(--space-1);
-      font-weight: 400;
-      font-size: var(--fs-xs);
-      color: var(--text-3);
-    }
-  }
-}
-
 .rango__aviso {
   display: flex;
   align-items: flex-start;
@@ -1562,165 +1063,6 @@
     color: var(--danger);
     background: var(--danger-soft);
     border-radius: var(--radius-sm);
-  }
-}
-
-/* Prioridad de grupos del modal de balanceo: cada fila es un grupo con su carga,
-   el tramo que recibiría y las flechas para subirlo o bajarlo. */
-.grupos {
-  margin-top: var(--space-4);
-}
-
-.grupos__cabecera {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-1) var(--space-3);
-  margin-bottom: var(--space-2);
-}
-
-.grupos__titulo {
-  margin: 0;
-  font-size: var(--fs-sm);
-  font-weight: 700;
-  color: var(--text);
-}
-
-.grupos__ayuda {
-  font-size: var(--fs-xs);
-  color: var(--text-3);
-}
-
-.grupos__lista {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  max-height: min(40vh, 320px);
-  margin: 0;
-  padding: 0;
-  overflow-y: auto;
-  list-style: none;
-}
-
-.grupos__fila {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) minmax(0, auto) auto;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-
-  /* En celular el tramo baja a su propia línea: nombre y flechas no se aplastan. */
-  @include bp.down(sm) {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-
-    .grupos__tramo {
-      grid-column: 2 / 4;
-      grid-row: 2;
-      align-items: flex-start;
-    }
-  }
-}
-
-.grupos__orden {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  color: var(--accent);
-  background: var(--accent-soft, var(--surface));
-  border-radius: 50%;
-}
-
-.grupos__datos,
-.grupos__tramo {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  line-height: 1.3;
-}
-
-.grupos__nombre {
-  overflow: hidden;
-  font-size: var(--fs-sm);
-  color: var(--text);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.grupos__carga,
-.grupos__tramo span {
-  font-size: var(--fs-xs);
-  color: var(--text-3);
-  font-variant-numeric: tabular-nums;
-}
-
-.grupos__tramo {
-  align-items: flex-end;
-  text-align: right;
-
-  strong {
-    font-size: var(--fs-sm);
-    color: var(--text);
-    overflow-wrap: anywhere;
-  }
-
-  &--vacio span {
-    font-style: italic;
-  }
-}
-
-.grupos__mover {
-  display: flex;
-  gap: var(--space-1);
-}
-
-.grupos__boton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  color: var(--text-2);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-
-  &:hover:not(:disabled) {
-    color: var(--accent);
-    border-color: var(--accent);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
-  }
-
-  &:disabled {
-    opacity: 0.35;
-    cursor: default;
-  }
-
-  &--subir ui-icon {
-    transform: rotate(-90deg);
-  }
-
-  &--bajar ui-icon {
-    transform: rotate(90deg);
-  }
-
-  /* Táctil: área de 44 px. */
-  @media (pointer: coarse) {
-    width: 44px;
-    height: 44px;
   }
 }
 
@@ -1748,21 +1090,6 @@
 
 /* ---------- Balanceos L-X-V / M-J-S / Ambos ---------- */
 
-.mz-panel__ambos,
-.mz-panel__fijas {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  color: var(--text-2);
-}
-
-.mz-panel__fijas {
-  color: color-mix(in srgb, var(--warning) 70%, var(--text));
-}
-
 /* Etiqueta del chute con buff en su cabecera: roja con letra blanca. */
 .mz-buff {
   display: inline-flex;
@@ -1780,155 +1107,16 @@
 }
 
 
-/* Modal de balancear: qué entra y si el rango viene del otro balanceo. */
-.rango__entra {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-4);
-  margin: 0 0 var(--space-3);
-  padding: 0;
-  list-style: none;
-  font-size: var(--fs-sm);
-  color: var(--text-2);
-
-  li {
-    display: inline-flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-  }
-
-  strong {
-    color: var(--text);
-  }
-}
-
-.rango__fijas {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: color-mix(in srgb, var(--warning) 70%, var(--text));
-}
-
-.rango__heredado {
-  display: flex;
-  gap: var(--space-2);
-  margin: 0 0 var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--fs-sm);
-  color: var(--text-2);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-}
-
-/* ---------- Panel del cluster: cuatro filas de dos ---------- */
-
-.mz-panel__fila {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-}
-
-.mz-panel__nombre--cerrado {
-  color: var(--text-2);
-}
-
-/* Filtros de frecuencia: se pulsan uno, otro o los dos. */
-.mz-filtro {
-  min-width: 0;
-  min-height: 32px;
-  padding: 0 4px;
-  overflow: hidden;
-  font: inherit;
-  font-size: var(--fs-xs);
-  font-weight: 800;
-  letter-spacing: 0.03em;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--text-2);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease,
-    border-color 0.15s ease;
-
-  &:hover:not(:disabled):not(.mz-filtro--activo) {
-    color: var(--text);
-    border-color: var(--border-strong);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
-  }
-
-  &:disabled {
-    cursor: not-allowed;
-    opacity: 0.55;
-  }
-
-  &--activo {
-    color: #fff;
-    background: color-mix(in srgb, var(--cluster-color, var(--accent)) 85%, #000);
-    border-color: transparent;
-  }
-}
-
-/* El límite ocupa las dos columnas: etiqueta a la izquierda, campo a la derecha. */
-.mz-panel__fila.mz-panel__limite {
-  grid-template-columns: auto minmax(0, 1fr);
-}
-
-/*
- * Minimizado (riel de 64 px): los mismos controles, más chicos y apilados. El
- * panel debe caber en el alto de las filas visibles (--mz-alto): si fuera más
- * alto, estiraría las filas de la tabla y la cuadrícula cambiaría de tamaño al
- * minimizar. Por eso «Detalle» y «Totales» van lado a lado (solo sus iconos).
- */
-.mz-bloque--min .mz-panel {
-  gap: var(--space-2);
-}
-
-.mz-bloque--min .mz-panel__fila {
-  grid-template-columns: minmax(0, 1fr);
-  justify-items: stretch;
-  gap: var(--space-1);
-}
-
-.mz-bloque--min .mz-panel__fila:last-child {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 2px;
-}
-
-.mz-bloque--min .mz-panel__accion {
-  width: 100%;
-  min-height: 28px;
-  height: 28px;
-  padding: 0;
-}
-
-.mz-bloque--min .mz-filtro {
-  width: 100%;
-  min-height: 24px;
-  font-size: 0.65rem;
-}
-
-/* Menú «Acciones»: fijo bajo su botón, siempre dentro de la pantalla. */
+/* Menú «Acciones»: fijo bajo su botón (o encima, si abajo no cabe) y dentro de la
+   pantalla; si aun así no entra, se desplaza. Los pasos van en orden con su marca. */
 .mz-menu {
   position: fixed;
   z-index: var(--z-modal);
   display: flex;
   flex-direction: column;
   gap: 2px;
-  width: min(280px, calc(100vw - 32px));
-  max-height: calc(100vh - 32px);
+  width: min(300px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
   overflow-y: auto;
   padding: var(--space-2);
   background: var(--surface);
@@ -1989,19 +1177,60 @@
     }
   }
 
+  &__pasos {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  /* Restablecer va aparte, bajo una línea. */
+  &__separado {
+    margin-top: var(--space-1);
+    padding-top: var(--space-1);
+    border-top: 1px solid var(--border);
+  }
+
   &__marca {
     display: inline-grid;
     flex: none;
     place-items: center;
     width: 26px;
     height: 26px;
+    color: var(--text-3);
+    background: var(--surface-2);
+    border-radius: 50%;
+  }
+
+  /* hecho = ✓ verde; siguiente = el paso que toca, resaltado con el acento. */
+  &__item[data-marca='hecho'] &__marca {
+    color: var(--success);
+    background: color-mix(in srgb, var(--success) 14%, var(--surface));
+  }
+
+  &__item[data-marca='siguiente'] {
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+    box-shadow: inset 3px 0 0 var(--accent);
+
+    .mz-menu__marca {
+      color: #fff;
+      background: var(--accent);
+    }
+  }
+
+  &__item[data-marca='libre'] &__marca {
     color: var(--accent);
     background: color-mix(in srgb, var(--accent) 12%, var(--surface));
-    border-radius: 50%;
+  }
 
-    &--hecha {
-      color: var(--success);
-      background: color-mix(in srgb, var(--success) 14%, var(--surface));
+  &__item--peligro {
+    color: var(--danger);
+
+    .mz-menu__marca {
+      color: var(--danger);
+      background: var(--danger-soft);
     }
   }
 
@@ -2020,18 +1249,6 @@
       color: var(--text-2);
     }
   }
-}
-
-/* Tres filtros (L-X-V, M-J-S y Diarias) en una fila, también en el riel minimizado
-   (allí con su inicial: L, M, D), así el panel no crece y no estira la cuadrícula. */
-.mz-panel__fila.mz-filtros,
-.mz-bloque--min .mz-panel__fila.mz-filtros {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 2px;
-}
-
-.mz-bloque--min .mz-panel__fila.mz-filtros .mz-filtro {
-  padding: 0;
 }
 
 /*
@@ -2079,5 +1296,236 @@
   width: min-content;
   margin-inline: auto;
   text-align: center;
+  /* La ruta es nowrap: sin esto «LXV» queda en una línea de 20 px y la pestaña lo corta. */
+  white-space: normal;
   word-break: break-all;
+}
+
+/* ---------- Modales ejecutivos: rango de diarias y operarios ---------- */
+
+.eje__lead {
+  margin: 0 0 var(--space-3);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+/* Tres cifras grandes para decidir de un vistazo. */
+.eje__kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: var(--space-4) 0 0;
+
+  > div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    padding: var(--space-2) var(--space-3);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+
+  dt {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+  }
+
+  dd {
+    margin: 0;
+    font-size: var(--fs-xl, 1.25rem);
+    font-weight: 800;
+    line-height: 1.1;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  span {
+    overflow: hidden;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 380px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Barra de tramos: un segmento por grupo, del ancho de sus chutes. */
+.eje__tramos {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+}
+
+.eje__rotulo {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+.eje__barra {
+  display: flex;
+  gap: 2px;
+  min-height: 32px;
+}
+
+.eje__segmento {
+  display: inline-flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 4px;
+  overflow: hidden;
+  font-size: var(--fs-xs);
+  color: #fff;
+  white-space: nowrap;
+  background: var(--grupo-color, var(--accent));
+  border-radius: var(--radius-xs, 4px);
+
+  strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  small {
+    opacity: 0.85;
+  }
+
+  &--libre {
+    color: var(--text-3);
+    background: repeating-linear-gradient(
+      45deg,
+      var(--surface-2) 0 4px,
+      var(--surface) 4px 8px
+    );
+    border: 1px dashed var(--border);
+  }
+}
+
+.eje__nota {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+
+  .mz-buff {
+    margin-left: 0;
+  }
+}
+
+/* Operarios: un número grande con − / +. */
+.eje__cantidad {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.eje__stepper {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-1);
+}
+
+.eje__paso {
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.eje__numero {
+  width: 7.5rem;
+  min-height: 44px;
+  font-size: 1.375rem;
+  font-weight: 800;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.eje__sugerido {
+  padding: 2px 0;
+  font: inherit;
+  font-size: var(--fs-xs);
+  color: var(--accent);
+  background: none;
+  border: 0;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+}
+
+/* Por día: chutes con carga y cuántos cumplen el límite. */
+.eje__dias {
+  width: 100%;
+  margin-top: var(--space-3);
+  font-size: var(--fs-sm);
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+
+  th,
+  td {
+    padding: 6px var(--space-2);
+    text-align: right;
+    border-bottom: 1px solid var(--border);
+  }
+
+  th:first-child {
+    text-align: left;
+  }
+
+  thead th {
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    color: var(--text-3);
+  }
+
+  tbody th {
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  td {
+    font-weight: 700;
+    color: var(--text);
+  }
+}
+
+.eje__estado {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+
+  &--ok {
+    color: var(--success);
+    background: color-mix(in srgb, var(--success) 12%, var(--surface));
+  }
+
+  &--alerta {
+    color: var(--danger);
+    background: var(--danger-soft);
+  }
 }
