@@ -127,6 +127,30 @@
   <article class="dash-card dash-card--6" [class.dash-card--cargando]="cargando()">
     <header class="dash-card__head">
       <div class="dash-card__titulos">
+        <h2 class="dash-card__titulo"><ui-icon name="analisis" [size]="18" /> ¿Dónde se van las horas y qué casos las explican?</h2>
+        <p class="dash-card__sub">Cuadro ejecutivo por sistema: la celda remarcada es el pico de cada columna. Haz clic en un
+          sistema para ver sus casos más largos.</p>
+      </div>
+    </header>
+    <div class="dash-card__body">
+      <app-cuadro-ejecutivo [datos]="ejecutivo()" [filtros]="filtrosCargados()" [mttrGeneral]="mttrGeneral()" />
+    </div>
+  </article>
+
+  <article class="dash-card dash-card--6" [class.dash-card--cargando]="cargando()">
+    <header class="dash-card__head">
+      <div class="dash-card__titulos">
+        <h2 class="dash-card__titulo"><ui-icon name="sincronizacion" [size]="18" /> ¿Lo resolvimos o volvió?</h2>
+        <p class="dash-card__sub">Casos cuyo mismo tipo ya había ocurrido en el mismo centro en los días previos.</p>
+      </div>
+    </header>
+    <div class="dash-card__body">
+      <app-reincidencias [datos]="reincidencia()" />
+    </div>
+  </article>
+  <article class="dash-card dash-card--6" [class.dash-card--cargando]="cargando()">
+    <header class="dash-card__head">
+      <div class="dash-card__titulos">
         <h2 class="dash-card__titulo"><ui-icon name="incidencias" [size]="18" /> ¿Qué incidencias se repiten más?</h2>
         <p class="dash-card__sub">Tipos más frecuentes con su sistema y tiempo medio de solución.</p>
       </div>

@@ -1,0 +1,582 @@
+@use 'breakpoints' as bp;
+
+/*
+ * Hoja 4 (Configuración) y hoja 5 (Resumen total) del reporte: el mismo diseño que el tablero de
+ * Configuración (panel del cluster, cabecera oscura con la línea de marca, rutas con su pestaña
+ * de grupo, pastilla de bultos y pestaña de frecuencia, totales con íconos y semáforo).
+ * ViewEncapsulation.None: todo va bajo rep-*.
+ */
+
+.rep-leyenda__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rep-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.rep-ico {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  overflow: visible;
+}
+
+.rep-titulo--grande .rep-ico,
+.rep-titulo--grande .rep-caja {
+  width: 20px;
+  height: 20px;
+}
+
+/* ---------- Cluster: una tarjeta; cada día, su panel a la izquierda y sus chutes a la derecha ---------- */
+.rep-cf {
+  margin-bottom: var(--space-4);
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+
+  &__dia + &__dia {
+    border-top: 2px solid var(--border-strong, var(--border));
+  }
+
+  /* En pantalla angosta la tabla se desplaza dentro de la tarjeta (no recorta las rutas). */
+  &__scroll {
+    overflow-x: auto;
+  }
+
+  &__scroll + &__scroll {
+    border-top: 1px solid var(--border);
+  }
+
+  &__tabla {
+    width: 100%;
+    min-width: calc(150px + var(--chutes, 9) * 96px);
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.72rem;
+
+    th,
+    td {
+      padding: 0;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+
+    th:last-child,
+    td:last-child {
+      border-right: 0;
+    }
+
+    thead th {
+      height: 30px;
+      padding: 0 8px;
+      overflow: hidden;
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-align: center;
+      text-overflow: ellipsis;
+      text-transform: uppercase;
+      white-space: nowrap;
+      color: var(--table-head-fg, #fff);
+      background: var(--table-head-bg, #0f1e3d);
+      border-bottom: 2px solid var(--brand, var(--accent));
+    }
+  }
+
+  &__esquina {
+    width: 150px;
+  }
+
+  &__panel {
+    vertical-align: top;
+    background: var(--surface-2);
+  }
+
+  &__celda {
+    height: 36px;
+    background: var(--surface);
+  }
+
+  /* Totales por chute: etiqueta con su ícono y cifra con el semáforo de la fila. */
+  &__total {
+    th {
+      height: 28px;
+      padding: 0 10px;
+      overflow: hidden;
+      font-size: 0.6rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-align: left;
+      text-overflow: ellipsis;
+      text-transform: uppercase;
+      white-space: nowrap;
+      color: var(--text-2);
+      background: var(--surface-2);
+
+      /* El ícono va en la línea del texto (los svg son bloque por defecto en la app). */
+      .rep-ico,
+      .rep-caja {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        margin-right: 6px;
+        vertical-align: -3px;
+      }
+    }
+
+    td {
+      padding: 0 8px;
+      overflow: hidden;
+      font-family: var(--font-display);
+      font-size: 0.8rem;
+      font-weight: 800;
+      text-align: right;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--text);
+      background: var(--surface-2);
+    }
+
+    td[class*='rep-sem--'] {
+      color: color-mix(in srgb, var(--sem) 78%, var(--text));
+      background: color-mix(in srgb, var(--sem) 20%, var(--surface));
+      box-shadow: inset 3px 0 0 color-mix(in srgb, var(--sem) 70%, transparent);
+    }
+
+    &:last-child th,
+    &:last-child td {
+      border-bottom: 0;
+    }
+  }
+}
+
+/* Panel: nombre con su color, día, rutas y bultos, y el cierre (límite → conseguido). */
+.rep-cf-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 10px;
+
+  .rep-cluster {
+    align-items: flex-start;
+    font-size: var(--fs-sm);
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+
+    &::before {
+      flex: none;
+      margin-top: 2px;
+    }
+  }
+
+  &__dia {
+    align-self: flex-start;
+    padding: 1px 7px;
+    border-radius: 4px;
+    font-size: 0.6rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: #fff;
+    background: #475569;
+
+    &[data-dia='LXV'] {
+      background: #1d4ed8;
+    }
+
+    &[data-dia='MJS'] {
+      background: #c2410c;
+    }
+  }
+
+  &__dato {
+    font-size: 0.66rem;
+    line-height: 1.35;
+    color: var(--text-2);
+
+    strong {
+      color: var(--text);
+    }
+  }
+
+  &__ok,
+  &__mal {
+    font-weight: 800;
+  }
+
+  &__ok {
+    color: var(--success);
+  }
+
+  &__mal {
+    color: var(--danger);
+  }
+}
+
+/* Ruta: pestaña del grupo, código arriba y bultos abajo, pestaña de frecuencia en el borde. */
+.rep-cf-ruta {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 3px;
+  height: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 15px 0 6px;
+
+  &--movida {
+    background: repeating-linear-gradient(
+      -45deg,
+      transparent 0 6px,
+      color-mix(in srgb, var(--accent) 7%, transparent) 6px 12px
+    );
+  }
+
+  /* Bloque de 28 px de alto: un nombre largo se acorta con «…» desde el inicio, sin cortarse al centro. */
+  &__pestana {
+    display: block;
+    flex: none;
+    min-width: 12px;
+    max-width: 4ch;
+    height: 28px;
+    margin: 4px 0 4px -6px;
+    padding: 0 2px;
+    overflow: hidden;
+    border-radius: 0 4px 4px 0;
+    font-size: 0.62rem;
+    font-weight: 800;
+    line-height: 28px;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #fff;
+    background: color-mix(in srgb, var(--g, var(--accent)) 82%, #000);
+  }
+
+  &__cuerpo {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  &__codigo {
+    overflow: hidden;
+    font-weight: 700;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+  }
+
+  /* Pastilla kraft con la caja: los bultos se leen siempre; si no caben, se acortan con «…». */
+  &__bultos {
+    --kraft: #c8894a;
+    display: inline-flex;
+    align-self: flex-start;
+    align-items: center;
+    gap: 2px;
+    max-width: 100%;
+    padding: 0 5px 0 2px;
+    border-radius: 999px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 1.35;
+    color: var(--text);
+    background: color-mix(in srgb, var(--kraft) 16%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--kraft) 45%, var(--border));
+
+    > span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .rep-caja {
+      width: 10px;
+      height: 10px;
+    }
+  }
+
+  /* Una letra por línea: «LXV» entra en 12 px de ancho. */
+  &__frec {
+    position: absolute;
+    top: 4px;
+    right: 0;
+    bottom: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 12px;
+    padding: 0 3px;
+    overflow: hidden;
+    border-radius: 4px 0 0 4px;
+    font-size: 0.5rem;
+    font-weight: 800;
+    line-height: 1.05;
+    text-align: center;
+    word-break: break-all;
+    color: #fff;
+    background: #475569;
+
+    &[data-marca='LXV'] {
+      background: #1d4ed8;
+    }
+
+    &[data-marca='MJS'] {
+      background: #c2410c;
+    }
+  }
+
+  &--muestra {
+    display: inline-flex;
+    width: 92px;
+    height: 36px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+}
+
+.rep-cf-movida {
+  display: inline-block;
+  width: 22px;
+  height: 14px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 4px,
+    color-mix(in srgb, var(--accent) 22%, transparent) 4px 8px
+  );
+}
+
+/* ---------- Resumen total ---------- */
+.rep-tt-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+
+  @include bp.down(md) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Como las tarjetas KPI: franja de color arriba, ícono en su recuadro, etiqueta y cifra. */
+.rep-tt-kpi {
+  --k: #c8894a;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+
+  &[data-concepto='lineas'] {
+    --k: #16a34a;
+  }
+
+  &[data-concepto='unidades'] {
+    --k: #d97706;
+  }
+
+  &[data-concepto='cod'] {
+    --k: #0891b2;
+  }
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 3px;
+    background: var(--k);
+  }
+
+  &__cabeza {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  &__icono {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--k) 13%, transparent);
+
+    .rep-ico,
+    .rep-caja {
+      width: 20px;
+      height: 20px;
+    }
+  }
+
+  &__etiqueta {
+    min-width: 0;
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    overflow-wrap: anywhere;
+    color: var(--text-3);
+  }
+
+  &__valor {
+    font-family: var(--font-display);
+    font-size: clamp(1.3rem, 1rem + 1vw, 1.8rem);
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+  }
+}
+
+.rep-cf__tabla.rep-tt-chutes {
+  min-width: calc(262px + var(--chutes, 10) * 80px);
+
+  /* Columnas de ~80 px: «CHUTE 101» y siete cifras entran sin «…». */
+  thead th {
+    padding: 0 4px;
+    letter-spacing: 0.03em;
+  }
+
+  td {
+    padding: 0 6px;
+  }
+
+  /* El total suma toda la fila: lleva más ancho. */
+  th.rep-tt-total {
+    width: 112px;
+  }
+}
+
+.rep-tt-total {
+  border-left: 1px solid var(--border-strong, var(--border));
+}
+
+.rep-cf__total td.rep-tt-total {
+  background: var(--surface);
+}
+
+.rep-tt-clusters tfoot td {
+  font-weight: 800;
+  text-align: right;
+  color: var(--text);
+  background: var(--surface-2);
+  border-top: 2px solid var(--border-strong, var(--border));
+
+  &.rep-izq {
+    text-align: left;
+  }
+}
+
+/* El nombre del cluster puede ir en dos líneas: la tabla cabe en el ancho de la hoja. */
+.rep-tt-clusters td.rep-izq {
+  min-width: 140px;
+  white-space: normal;
+
+  .rep-cluster {
+    align-items: flex-start;
+    overflow-wrap: anywhere;
+
+    &::before {
+      flex: none;
+      margin-top: 3px;
+    }
+  }
+}
+
+/* Cifra del cluster y, debajo, su barra de participación con el porcentaje. */
+.rep-tt-valor {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+
+  strong {
+    font-weight: 700;
+    color: var(--text);
+  }
+}
+
+.rep-tt-peso {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  small {
+    min-width: 3.4em;
+    font-size: var(--fs-xs);
+    text-align: right;
+    color: var(--text-3);
+  }
+}
+
+.rep-tt-barra {
+  display: inline-block;
+  width: 44px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--surface-2);
+
+  i {
+    display: block;
+    height: 100%;
+    border-radius: 3px;
+  }
+}
+
+/* ---------- Impresión: A4 apaisado, las tablas al ancho útil ---------- */
+@media print {
+  .rep-cf {
+    break-inside: auto;
+  }
+
+  .rep-cf__scroll {
+    overflow: visible;
+  }
+
+  .rep-cf__tabla,
+  .rep-cf__tabla.rep-tt-chutes {
+    min-width: 0;
+  }
+
+  .rep-cf__scroll,
+  .rep-tt-kpis,
+  .rep-tt-clusters tr {
+    break-inside: avoid;
+  }
+
+  .rep-tt-kpis {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  /* Cuatro tarjetas en el ancho útil: hasta 13 cifras sin partir el número. */
+  .rep-tt-kpi__valor {
+    font-size: 1.35rem;
+  }
+}

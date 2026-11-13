@@ -8,7 +8,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
  * Límite de uso del panel Bitácora por usuario y minuto (429 + Retry-After al
- * pasarse). La exportación recorre todo el filtro y la analítica lanza 6
+ * pasarse). La exportación recorre todo el filtro y la analítica lanza 7
  * agregaciones, por eso tienen cupos propios más bajos que los listados.
  */
 @Configuration

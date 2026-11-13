@@ -40,15 +40,15 @@ class SimulacionReporteTest {
   private static final BigDecimal CIEN = new BigDecimal("100");
 
   @Test
-  void tresHojasComoElPdfYDatosOculta() throws Exception {
+  void hojasComoElPdfYDatosOculta() throws Exception {
     try (Workbook libro = abrir()) {
       List<String> hojas = new ArrayList<>();
       for (int i = 0; i < libro.getNumberOfSheets(); i++) {
         hojas.add(libro.getSheetName(i));
       }
-      assertEquals(List.of("Resumen", "Tiempos y comparativos", "Configuración", "Datos"), hojas);
-      assertFalse(libro.isSheetHidden(0) || libro.isSheetHidden(1) || libro.isSheetHidden(2));
-      assertTrue(libro.isSheetHidden(3), "los datos de los dos días van ocultos");
+      assertEquals(List.of("Resumen", "Tiempos y comparativos", "Configuración", "Resumen total", "Datos"), hojas);
+      assertFalse(libro.isSheetHidden(0) || libro.isSheetHidden(1) || libro.isSheetHidden(2) || libro.isSheetHidden(3));
+      assertTrue(libro.isSheetHidden(4), "los datos de los dos días van ocultos");
     }
   }
 
@@ -133,10 +133,10 @@ class SimulacionReporteTest {
       libro.getCreationHelper().createFormulaEvaluator().evaluateAll();
       List<String> resumen = textos(libro.getSheet("Resumen"));
       assertTrue(resumen.contains("7"), "M-J-S: 7 rutas movidas: " + resumen);
+      // Configuración no depende del selector: muestra los dos días, uno debajo del otro.
       List<String> grilla = textos(libro.getSheet("Configuración"));
-      // La ruta de L-X-V no sale el M-J-S; las diarias sí.
-      assertFalse(grilla.stream().anyMatch((t) -> t.contains("3001")), grilla.toString());
-      assertTrue(grilla.contains("2028 · 100 · D"), grilla.toString());
+      assertTrue(grilla.contains("L-X-V") && grilla.contains("M-J-S"), grilla.toString());
+      assertTrue(grilla.contains("3001 · 20"), grilla.toString());
     }
   }
 
@@ -157,7 +157,7 @@ class SimulacionReporteTest {
   }
 
   @Test
-  void conGruposLaRutaLlevaSuGrupoYLaFranjaSuTramo() throws Exception {
+  void conGruposLaRutaLlevaSuGrupo() throws Exception {
     ConfiguracionSimulacionResponse base = configuracion();
     List<GrupoClusterResponse> grupos =
         List.of(new GrupoClusterResponse("A", 1, 3, new BigDecimal("349.10"), 1L, "1", 2L, "2"));
@@ -173,8 +173,6 @@ class SimulacionReporteTest {
     try (Workbook libro = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
       List<String> textos = textos(libro.getSheet("Configuración"));
       assertTrue(textos.contains("[A] 2028 · 100 · D"), textos.toString());
-      assertTrue(textos.contains("Grupo A"), textos.toString());
-      assertTrue(textos.contains("CHUTE 1 → CHUTE 2 · 3 rutas"), textos.toString());
     }
   }
 
@@ -205,8 +203,53 @@ class SimulacionReporteTest {
     byte[] bytes =
         new SimulacionReporte.Libro(List.of(new SimulacionReporte.Dia(Balanceo.LXV, cfg, dash, List.of()))).escribir();
     try (Workbook libro = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
-      // 100 + 50.5 = 150.5 → 151 en el total general.
-      assertTrue(numeros(libro.getSheet("Configuración")).contains(151.0));
+      // 100 + 50.5 = 150.5 → 151 en el resumen total; cada cluster, en su cuadrícula.
+      assertTrue(numeros(libro.getSheet("Resumen total")).contains(151.0));
+      assertTrue(numeros(libro.getSheet("Configuración")).contains(51.0));
+    }
+  }
+
+  @Test
+  void unDiaSinRutasDelClusterNoSeMuestra() throws Exception {
+    ConfiguracionSimulacionResponse base = configuracion();
+    List<ClusterParametroResponse> tres = List.of(
+        new ClusterParametroResponse(1L, "CL1", new BigDecimal("2"), "CERRADO", 40, 1L, 2L, 4, List.of(), "LXV", avance(), false),
+        new ClusterParametroResponse(2L, "CL2", new BigDecimal("2"), "CERRADO", 40, 1L, 2L, 4, List.of(), "LXV", avance(), false),
+        new ClusterParametroResponse(3L, "CL3", new BigDecimal("2"), "CERRADO", 40, 1L, 2L, 4, List.of(), "LXV", avance(), false));
+    // L-X-V: CL1 y CL2; M-J-S: solo CL2; CL3 no tiene rutas.
+    CargaSimulacionResponse cl1 = new CargaSimulacionResponse(1L, 1L, 1, new BigDecimal("20"), CIEN, BigDecimal.TEN, 1, 1);
+    CargaSimulacionResponse cl2 = new CargaSimulacionResponse(2L, 2L, 1, new BigDecimal("30"), CIEN, BigDecimal.TEN, 1, 1);
+    ConfiguracionSimulacionResponse lxv = new ConfiguracionSimulacionResponse(base.archivo(), base.velocidadBase(),
+        base.operariosMaximos(), base.operariosPorChute(), base.topePorChute(), tres, base.chutes(), List.of(cl1, cl2));
+    ConfiguracionSimulacionResponse mjs = new ConfiguracionSimulacionResponse(base.archivo(), base.velocidadBase(),
+        base.operariosMaximos(), base.operariosPorChute(), base.topePorChute(), tres, base.chutes(), List.of(cl2));
+    byte[] bytes =
+        new SimulacionReporte.Libro(
+                List.of(
+                    new SimulacionReporte.Dia(Balanceo.LXV, lxv, dashboard(1),
+                        List.of(rutaDe(1L, "3001", 1L, "LXV"), rutaDe(2L, "4001", 2L, "LXV"))),
+                    new SimulacionReporte.Dia(Balanceo.MJS, mjs, dashboard(1), List.of(rutaDe(3L, "5001", 2L, "MJS")))))
+            .escribir();
+    try (Workbook libro = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
+      List<String> grilla = textos(libro.getSheet("Configuración"));
+      // CL1 solo en L-X-V; CL2 en los dos días; CL3 no aparece; ningún «Sin rutas».
+      assertEquals(2, grilla.stream().filter("L-X-V"::equals).count(), grilla.toString());
+      assertEquals(1, grilla.stream().filter("M-J-S"::equals).count(), grilla.toString());
+      assertFalse(grilla.contains("CL3") || grilla.stream().anyMatch((t) -> t.startsWith("Sin rutas")), grilla.toString());
+      assertFalse(textos(libro.getSheet("Resumen total")).contains("CL3"));
+    }
+  }
+
+  @Test
+  void resumenTotalSumaLosDosDiasPorChuteYPorCluster() throws Exception {
+    try (Workbook libro = abrir()) {
+      Sheet hoja = libro.getSheet("Resumen total");
+      assertTrue(textos(hoja).contains("Resumen total · L-X-V + M-J-S"), textos(hoja).toString());
+      List<Double> numeros = numeros(hoja);
+      // CHUTE 1: 199.10 cada día → 398.2 → 399; CHUTE 2: 150 + 150; total 698.2 → 699.
+      assertTrue(numeros.contains(399.0) && numeros.contains(300.0) && numeros.contains(699.0), numeros.toString());
+      // El único cluster pesa el 100 %.
+      assertTrue(numeros.contains(1.0), numeros.toString());
     }
   }
 
@@ -302,6 +345,13 @@ class SimulacionReporteTest {
     // Movida: venía de CHUTE 1 y quedó en CHUTE 2.
     rutas.add(ruta(3L, "2005", 2L, 1L, new BigDecimal("150"), "DIARIA"));
     return rutas;
+  }
+
+  /** Ruta de un cluster en el chute del mismo número, sin grupo. */
+  private static RutaSimulacionResponse rutaDe(Long id, String codigo, Long cluster, String frecuencia) {
+    return new RutaSimulacionResponse(id, cluster, String.valueOf(cluster), cluster, String.valueOf(cluster), cluster,
+        "CL" + cluster, cluster, "CL" + cluster, false, codigo, "B2C", new BigDecimal("10"), CIEN, BigDecimal.TEN, 1,
+        null, frecuencia, false);
   }
 
   private static RutaSimulacionResponse ruta(

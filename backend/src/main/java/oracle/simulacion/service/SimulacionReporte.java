@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -28,7 +29,6 @@ import oracle.simulacion.response.ClusterComparativoResponse;
 import oracle.simulacion.response.ClusterParametroResponse;
 import oracle.simulacion.response.ConfiguracionSimulacionResponse;
 import oracle.simulacion.response.DashboardSimulacionResponse;
-import oracle.simulacion.response.GrupoClusterResponse;
 import oracle.simulacion.response.OlaSimulacionResponse;
 import oracle.simulacion.response.PaginaRutasResponse;
 import oracle.simulacion.response.RutaSimulacionResponse;
@@ -36,6 +36,8 @@ import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.ConditionalFormattingRule;
+import org.apache.poi.ss.usermodel.ConditionalFormattingThreshold;
+import org.apache.poi.ss.usermodel.DataBarFormatting;
 import org.apache.poi.ss.usermodel.DataValidation;
 import org.apache.poi.ss.usermodel.DataValidationConstraint;
 import org.apache.poi.ss.usermodel.FillPatternType;
@@ -70,10 +72,12 @@ import org.apache.poi.xssf.usermodel.XSSFCellStyle;
 import org.apache.poi.xssf.usermodel.XSSFChart;
 import org.apache.poi.xssf.usermodel.XSSFClientAnchor;
 import org.apache.poi.xssf.usermodel.XSSFColor;
+import org.apache.poi.xssf.usermodel.XSSFConditionalFormattingRule;
 import org.apache.poi.xssf.usermodel.XSSFDataValidationHelper;
 import org.apache.poi.xssf.usermodel.XSSFDrawing;
 import org.apache.poi.xssf.usermodel.XSSFFont;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
+import org.apache.poi.xssf.usermodel.XSSFSheetConditionalFormatting;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.openxmlformats.schemas.drawingml.x2006.chart.CTBarChart;
 import org.openxmlformats.schemas.drawingml.x2006.chart.CTDLbls;
@@ -234,11 +238,13 @@ public class SimulacionReporte {
         Sheet resumen = libro.createSheet("Resumen");
         Sheet tiempos = libro.createSheet("Tiempos y comparativos");
         Sheet configuracion = libro.createSheet("Configuración");
+        Sheet total = libro.createSheet("Resumen total");
         datos = libro.createSheet("Datos");
         prepararDatos();
         hojaResumen(resumen);
         hojaTiempos(tiempos);
         hojaConfiguracion(configuracion);
+        hojaResumenTotal(total);
         libro.setSheetHidden(libro.getSheetIndex(datos), true);
         libro.setActiveSheet(0);
         // Calculado con el día por defecto: la vista previa (que no recalcula) no sale vacía.
@@ -785,192 +791,148 @@ public class SimulacionReporte {
       return total;
     }
 
-    // ---------------- Hoja 3: Configuración ----------------
+    // ---------------- Hoja 3: Configuración (cada cluster con sus días, uno debajo del otro) ----------------
 
     private void hojaConfiguracion(Sheet hoja) {
       apaisada(hoja);
-      List<Long> todas = columnasDe(null);
-      int ancho = Math.max(8, todas.size() + 1);
-      hoja.setColumnWidth(0, 22 * 256);
+      int ancho = 1;
+      for (ClusterParametroResponse c : clusters) {
+        for (Dia d : disponibles) {
+          ancho = Math.max(ancho, 1 + columnasDia(d, c.id()).size());
+        }
+      }
+      ancho = Math.max(8, ancho);
+      hoja.setColumnWidth(0, 24 * 256);
       for (int i = 1; i < ancho; i++) {
-        hoja.setColumnWidth(i, 18 * 256);
+        hoja.setColumnWidth(i, 17 * 256);
       }
       int f = titulo(hoja, 0, "Configuración: rutas por cluster y chute", ancho);
-      f = avisoFrecuencia(hoja, f, ancho);
+      Row leyenda = hoja.createRow(f++);
+      celda(leyenda, 0, "[grupo] código · bultos · D = diaria · ↻ = movida", e.leyenda);
+      celda(leyenda, ancho - 3, "Alto", e.semAlto);
+      celda(leyenda, ancho - 2, "Medio", e.semMedio);
+      celda(leyenda, ancho - 1, "Bajo", e.semBajo);
       f++;
-
-      // Leyenda: cómo leer cada ruta y el semáforo.
-      f = texto(hoja, f, "Cómo leer cada ruta:  [grupo] CÓDIGO · bultos · D   —   fondo de color = grupo · "
-          + "D = diaria (sale todos los días) · ↻ = movida respecto del Excel · franja «Grupo» = tramo de chutes de "
-          + "cada grupo. Solo se ven las rutas que salen el día elegido.", e.leyenda);
-      Row semaforo = hoja.createRow(f++);
-      celda(semaforo, 0, "Totales con semáforo por línea:", e.leyenda);
-      celda(semaforo, 1, "más alto", e.semAlto);
-      celda(semaforo, 2, "intermedio", e.semMedio);
-      celda(semaforo, 3, "más bajo", e.semBajo);
-      f++;
-
+      // Solo los días con rutas de cada cluster; un cluster sin rutas en ningún día no se lista.
       for (ClusterParametroResponse c : clusters) {
-        f = bloqueCluster(hoja, f, c, ancho);
+        List<Dia> suyos = disponibles.stream().filter((d) -> !columnasDia(d, c.id()).isEmpty()).toList();
+        if (suyos.isEmpty()) {
+          continue;
+        }
+        f = seccion(hoja, f, c.nombre(), ancho);
+        Map<String, String> colores = coloresGrupos(c);
+        for (Dia d : suyos) {
+          f = diaCluster(hoja, f, d, c, colores);
+        }
         f++;
       }
-
-      // Total general: suma de los clusters; operarios = el máximo de sus olas.
-      f = seccion(hoja, f, "Total general · todos los clusters · operarios = máximo de sus olas", ancho);
-      f = cabeceraChutes(hoja, f, "Concepto", todas);
-      totales(hoja, f, todas, (d, chute) -> {
-        CargaSimulacionResponse unida = null;
-        for (CargaSimulacionResponse fila : d.cfg().carga()) {
-          if (fila.chuteId().equals(chute) && fila.rutas() > 0) {
-            unida = unida == null ? fila : sumar(unida, fila);
-          }
-        }
-        return unida;
-      }, true);
-      hoja.createFreezePane(1, 2);
+      hoja.createFreezePane(1, 1);
     }
 
-    /** Chutes con rutas en algún día, en orden natural; con cluster, solo los suyos. */
-    private List<Long> columnasDe(Long clusterId) {
-      TreeSet<Long> conCarga =
-          new TreeSet<>(Comparator.comparing((Long id) -> nombre(id), PlanoChutes.ORDEN).thenComparing((id) -> id));
-      for (Dia d : dias) {
-        for (CargaSimulacionResponse fila : d.cfg().carga()) {
-          if (fila.rutas() > 0 && (clusterId == null || fila.clusterId().equals(clusterId))) {
-            conCarga.add(fila.chuteId());
-          }
-        }
-        for (RutaSimulacionResponse ruta : d.rutas()) {
-          if (clusterId == null || ruta.clusterId().equals(clusterId)) {
-            conCarga.add(ruta.chuteId());
-          }
-        }
+    /** Colores de los grupos del cluster (los de la planilla y el PDF), en orden natural. */
+    private static Map<String, String> coloresGrupos(ClusterParametroResponse c) {
+      List<String> nombres = new ArrayList<>();
+      if (c.grupos() != null) {
+        c.grupos().forEach((g) -> nombres.add(g.nombre()));
       }
-      return List.copyOf(conCarga);
-    }
-
-    /** Cuadrícula de un cluster: cabecera con grupos, franja de tramos, rutas del día y totales. */
-    private int bloqueCluster(Sheet hoja, int f, ClusterParametroResponse c, int ancho) {
-      Long id = c.id();
-      List<Long> columnas = columnasDe(id);
-      // Cabecera: estado, rutas, bultos, operarios y límite del día elegido.
-      Row cab = hoja.createRow(f);
-      cab.setHeightInPoints(22);
-      porDia(cab, 0, (d) -> {
-        ClusterParametroResponse suyo = cluster(d, id);
-        Map<Long, CargaSimulacionResponse> carga = cargaCluster(d, id);
-        long rutas = carga.values().stream().mapToLong(CargaSimulacionResponse::rutas).sum();
-        BigDecimal bultos = carga.values().stream().map(CargaSimulacionResponse::bultos)
-            .filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
-        return c.nombre() + " · " + estadoCluster(suyo == null ? c.estado() : suyo.estado()) + " · "
-            + String.format(Locale.US, "%,d", rutas) + " rutas · " + formatoEntero(bultos) + " bultos"
-            + (suyo == null || suyo.operariosOla() == null ? "" : " · " + suyo.operariosOla() + " operarios")
-            + (suyo != null && valor(suyo.limiteHoras()).signum() > 0 ? " · límite " + horas(suyo.limiteHoras()) : "");
-      }, e.seccion);
-      for (int i = 1; i < ancho; i++) {
-        celda(cab, i, "", e.seccion);
-      }
-      hoja.addMergedRegion(new CellRangeAddress(f, f, 0, ancho - 1));
-      f++;
-
-      // Grupos: su color (el de la planilla y el PDF), su tramo y sus rutas del día.
-      List<GrupoClusterResponse> grupos = new ArrayList<>(c.grupos() == null ? List.of() : c.grupos());
-      grupos.sort(Comparator.comparing(GrupoClusterResponse::nombre, NATURAL));
+      nombres.sort(NATURAL);
       Map<String, String> colores = new LinkedHashMap<>();
-      for (int i = 0; i < grupos.size(); i++) {
-        colores.put(grupos.get(i).nombre(), PALETA_GRUPOS[i % PALETA_GRUPOS.length]);
+      for (int i = 0; i < nombres.size(); i++) {
+        colores.put(nombres.get(i), PALETA_GRUPOS[i % PALETA_GRUPOS.length]);
       }
-      for (GrupoClusterResponse g : grupos) {
-        Row fila = hoja.createRow(f);
-        celda(fila, 0, "Grupo " + g.nombre(), estiloGrupo(colores.get(g.nombre())));
-        porDia(fila, 1, (d) -> {
-          GrupoClusterResponse suyo = grupoDe(d, id, g.nombre());
-          long rutas = suyo == null ? 0 : suyo.rutas();
-          String tramo = tramo(suyo == null ? g : suyo);
-          return (tramo == null ? "Sin tramo" : tramo) + " · " + String.format(Locale.US, "%,d", rutas)
-              + (rutas == 1 ? " ruta" : " rutas");
-        }, e.texto);
-        int hasta = Math.max(2, Math.min(ancho - 1, 4));
-        for (int i = 2; i <= hasta; i++) {
-          celda(fila, i, "", e.texto);
+      return colores;
+    }
+
+    /** Rutas del cluster en ese día (las suyas y las diarias), por chute y ordenadas por código. */
+    private static Map<Long, List<RutaSimulacionResponse>> rutasCluster(Dia d, Long clusterId) {
+      Map<Long, List<RutaSimulacionResponse>> porChute = new HashMap<>();
+      for (RutaSimulacionResponse ruta : d.rutas()) {
+        if (ruta.clusterId().equals(clusterId)) {
+          porChute.computeIfAbsent(ruta.chuteId(), (k) -> new ArrayList<>()).add(ruta);
         }
-        hoja.addMergedRegion(new CellRangeAddress(f, f, 1, hasta));
-        f++;
       }
-      if (columnas.isEmpty()) {
-        return texto(hoja, f, "Sin rutas en este cluster.", e.subtitulo);
+      porChute.values().forEach((lista) -> lista.sort(
+          Comparator.comparing(RutaSimulacionResponse::codigoRuta, NATURAL).thenComparing(RutaSimulacionResponse::id)));
+      return porChute;
+    }
+
+    /** Chutes del cluster en ese día (con carga o rutas), en orden natural. */
+    private List<Long> columnasDia(Dia d, Long clusterId) {
+      TreeSet<Long> chutes = ordenChutes();
+      chutes.addAll(cargaCluster(d, clusterId).keySet());
+      chutes.addAll(rutasCluster(d, clusterId).keySet());
+      return List.copyOf(chutes);
+    }
+
+    /** Chutes con rutas en algún día (de todos los clusters), en orden natural. */
+    private List<Long> todosLosChutes() {
+      TreeSet<Long> chutes = ordenChutes();
+      for (Dia d : disponibles) {
+        for (CargaSimulacionResponse fila : d.cfg().carga()) {
+          if (fila.rutas() > 0) {
+            chutes.add(fila.chuteId());
+          }
+        }
       }
+      return List.copyOf(chutes);
+    }
+
+    private TreeSet<Long> ordenChutes() {
+      return new TreeSet<>(Comparator.comparing((Long id) -> nombre(id), PlanoChutes.ORDEN).thenComparing((id) -> id));
+    }
+
+    /**
+     * Un día (con rutas) de un cluster: su banda (día, rutas, bultos y cierre), los chutes con sus
+     * rutas y los totales por chute con su semáforo.
+     */
+    private int diaCluster(Sheet hoja, int f, Dia d, ClusterParametroResponse c, Map<String, String> colores) {
+      Long id = c.id();
+      Map<Long, CargaSimulacionResponse> carga = cargaCluster(d, id);
+      Map<Long, List<RutaSimulacionResponse>> porChute = rutasCluster(d, id);
+      List<Long> columnas = columnasDia(d, id);
+      Row banda = hoja.createRow(f++);
+      banda.setHeightInPoints(20);
+      celda(banda, 0, d.balanceo().etiqueta(), d.balanceo() == Balanceo.MJS ? e.diaMjs : e.diaLxv);
+      long rutas = carga.values().stream().mapToLong(CargaSimulacionResponse::rutas).sum();
+      BigDecimal bultos = carga.values().stream().map(CargaSimulacionResponse::bultos)
+          .filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+      ClusterComparativoResponse comp = comparativo(d, id);
+      String cierre = comp != null && conLimite(comp)
+          ? " · cierre " + horas(comp.limiteHoras()) + " → " + horas(comp.tiempoBalanceado()) + (comp.excede() ? " ✗" : " ✓")
+          : "";
+      celda(banda, 1, String.format(Locale.US, "%,d", rutas) + " rutas · " + formatoEntero(bultos) + " bultos" + cierre,
+          e.subtitulo);
+
       f = cabeceraChutes(hoja, f, "Concepto", columnas);
-
-      // Franja: los chutes seguidos del mismo grupo se unen en una celda de su color.
-      if (grupos.stream().anyMatch((g) -> g.chuteDesde() != null)) {
-        Row franja = hoja.createRow(f);
-        franja.setHeightInPoints(16);
-        celda(franja, 0, "Grupo", e.etiqueta);
-        int col = 0;
-        while (col < columnas.size()) {
-          GrupoClusterResponse g = grupoDelChute(columnas.get(col), grupos);
-          int fin = col;
-          while (fin + 1 < columnas.size() && Objects.equals(grupoDelChute(columnas.get(fin + 1), grupos), g)) {
-            fin++;
-          }
-          CellStyle estilo = g == null ? e.franjaLibre : estiloGrupo(colores.get(g.nombre()));
-          for (int i = col; i <= fin; i++) {
-            celda(franja, i + 1, i == col && g != null ? "Grupo " + g.nombre() : "", estilo);
-          }
-          if (fin > col) {
-            hoja.addMergedRegion(new CellRangeAddress(f, f, col + 1, fin + 1));
-          }
-          col = fin + 1;
-        }
-        f++;
-      }
-
-      // Rutas: en cada chute, las del día elegido (las suyas y las diarias), una por fila.
-      Map<Balanceo, Map<Long, List<RutaSimulacionResponse>>> rutasPorDia = new HashMap<>();
       int alto = 1;
-      for (Dia d : dias) {
-        Map<Long, List<RutaSimulacionResponse>> porChute = new HashMap<>();
-        for (RutaSimulacionResponse ruta : d.rutas()) {
-          if (ruta.clusterId().equals(id)) {
-            porChute.computeIfAbsent(ruta.chuteId(), (k) -> new ArrayList<>()).add(ruta);
-          }
-        }
-        porChute.values().forEach((lista) -> {
-          lista.sort(Comparator.comparing(RutaSimulacionResponse::codigoRuta, NATURAL)
-              .thenComparing(RutaSimulacionResponse::id));
-        });
-        for (List<RutaSimulacionResponse> lista : porChute.values()) {
-          alto = Math.max(alto, lista.size());
-        }
-        rutasPorDia.put(d.balanceo(), porChute);
+      for (Long chute : columnas) {
+        alto = Math.max(alto, porChute.getOrDefault(chute, List.of()).size());
       }
-      boolean conGrupos = !grupos.isEmpty();
-      int inicioRutas = f;
+      boolean conGrupos = !colores.isEmpty();
       for (int r = 0; r < alto; r++) {
-        int n = r;
         Row fila = hoja.createRow(f++);
         fila.setHeightInPoints(18);
         celda(fila, 0, r == 0 ? "Rutas" : "", e.etiqueta);
         for (int col = 0; col < columnas.size(); col++) {
-          Long chute = columnas.get(col);
-          porDia(fila, col + 1, (d) -> {
-            List<RutaSimulacionResponse> lista = rutasPorDia.get(d.balanceo()).getOrDefault(chute, List.of());
-            return n < lista.size() ? textoRuta(lista.get(n), conGrupos) : "";
-          }, e.ruta);
+          List<RutaSimulacionResponse> lista = porChute.getOrDefault(columnas.get(col), List.of());
+          if (r < lista.size()) {
+            RutaSimulacionResponse ruta = lista.get(r);
+            String color = conGrupos && ruta.grupo() != null ? colores.get(ruta.grupo()) : null;
+            celda(fila, col + 1, textoRuta(ruta, conGrupos), color == null ? e.ruta : estiloRuta(color));
+          } else {
+            celda(fila, col + 1, "", e.ruta);
+          }
         }
       }
-      // Fondo del grupo (por el prefijo «[grupo]») y la movida en azul: siguen al día elegido.
-      CellRangeAddress[] zona = {new CellRangeAddress(inicioRutas, f - 1, 1, columnas.size())};
-      String celda = "B" + (inicioRutas + 1);
-      regla(hoja, zona, "RIGHT(" + celda + ",1)=\"↻\"", null, "3730A3", true);
-      for (Map.Entry<String, String> g : colores.entrySet()) {
-        String prefijo = "[" + g.getKey() + "]";
-        regla(hoja, zona, "LEFT(" + celda + "," + prefijo.length() + ")=\"" + prefijo.replace("\"", "\"\"") + "\"",
-            mezcla(g.getValue(), 0.18), null, false);
+      for (int k = 0; k < CONCEPTOS.length; k++) {
+        long[] valores = new long[columnas.size()];
+        for (int col = 0; col < columnas.size(); col++) {
+          CargaSimulacionResponse dato = carga.get(columnas.get(col));
+          valores[col] = dato == null ? 0 : valorConcepto(dato, k);
+        }
+        f = filaTotal(hoja, f, CONCEPTOS[k], valores, null);
       }
-
-      return totales(hoja, f, columnas, (d, chute) -> cargaCluster(d, id).get(chute), false);
+      return f;
     }
 
     /** «[1] 9011 · 45 · D ↻»: grupo (si el cluster tiene), código, bultos, diaria y movida. */
@@ -983,43 +945,6 @@ public class SimulacionReporte {
           + (diaria ? " · D" : "") + (movida ? " ↻" : "");
     }
 
-    private static GrupoClusterResponse grupoDe(Dia d, Long clusterId, String nombre) {
-      ClusterParametroResponse suyo = cluster(d, clusterId);
-      if (suyo == null || suyo.grupos() == null) {
-        return null;
-      }
-      return suyo.grupos().stream().filter((g) -> nombre.equals(g.nombre())).findFirst().orElse(null);
-    }
-
-    /** «CHUTE 15 → CHUTE 17», «CHUTE 15» o null si las diarias aún no le dieron tramo. */
-    private static String tramo(GrupoClusterResponse g) {
-      if (g.chuteDesde() == null) {
-        return null;
-      }
-      return !Objects.equals(g.chuteHastaId(), g.chuteDesdeId()) && g.chuteHasta() != null
-          ? etiquetaChute(g.chuteDesde()) + " → " + etiquetaChute(g.chuteHasta())
-          : etiquetaChute(g.chuteDesde());
-    }
-
-    /** Grupo cuyo tramo incluye el chute (los tramos son contiguos en orden natural), o null. */
-    private GrupoClusterResponse grupoDelChute(Long chute, List<GrupoClusterResponse> grupos) {
-      String nombre = nombre(chute);
-      for (GrupoClusterResponse g : grupos) {
-        if (g.chuteDesde() == null) {
-          continue;
-        }
-        if (chute.equals(g.chuteDesdeId()) || chute.equals(g.chuteHastaId())) {
-          return g;
-        }
-        String hasta = g.chuteHasta() == null ? g.chuteDesde() : g.chuteHasta();
-        if (PlanoChutes.ORDEN.compare(nombre, etiquetaChute(g.chuteDesde())) > 0
-            && PlanoChutes.ORDEN.compare(nombre, etiquetaChute(hasta)) < 0) {
-          return g;
-        }
-      }
-      return null;
-    }
-
     private int cabeceraChutes(Sheet hoja, int f, String primera, List<Long> columnas) {
       Row fila = hoja.createRow(f);
       fila.setHeightInPoints(20);
@@ -1030,50 +955,161 @@ public class SimulacionReporte {
       return f + 1;
     }
 
-    /**
-     * Filas de totales por chute del día elegido, con su semáforo. El tono de cada celda (el
-     * puesto en su fila, como la pantalla) se calcula por día y va en una fila oculta debajo; el
-     * formato condicional lo lee, así el color sigue al selector.
-     */
-    private int totales(
-        Sheet hoja, int f, List<Long> columnas,
-        java.util.function.BiFunction<Dia, Long, CargaSimulacionResponse> carga, boolean general) {
-      for (int concepto = 0; concepto < CONCEPTOS.length; concepto++) {
-        int k = concepto;
-        Map<Balanceo, long[]> valores = new HashMap<>();
-        Map<Balanceo, double[]> niveles = new HashMap<>();
-        for (Dia d : dias) {
-          long[] fila = new long[columnas.size()];
-          for (int c = 0; c < columnas.size(); c++) {
-            CargaSimulacionResponse dato = carga.apply(d, columnas.get(c));
-            fila[c] = dato == null ? 0 : valorConcepto(dato, k);
-          }
-          valores.put(d.balanceo(), fila);
-          niveles.put(d.balanceo(), niveles(fila));
-        }
-        Row r = hoja.createRow(f);
-        Row tonos = hoja.createRow(f + 1);
-        tonos.setZeroHeight(true);
-        String etiqueta = general && concepto == 0 ? "Máx. operarios por ola" : CONCEPTOS[concepto];
-        celda(r, 0, etiqueta, e.etiquetaTotal);
-        for (int c = 0; c < columnas.size(); c++) {
-          int col = c;
-          porDia(r, c + 1, (d) -> {
-            long v = valores.get(d.balanceo())[col];
-            return v > 0 ? (Object) (double) v : "";
-          }, e.totalNumero);
-          porDia(tonos, c + 1, (d) -> (double) tono(niveles.get(d.balanceo())[col]), e.vacia);
-        }
-        if (!columnas.isEmpty()) {
-          CellRangeAddress[] zona = {new CellRangeAddress(f, f, 1, columnas.size())};
-          String abajo = "B" + (f + 2);
-          regla(hoja, zona, abajo + "=3", "FEE2E2", "991B1B", true);
-          regla(hoja, zona, abajo + "=2", "D1FAE5", "065F46", true);
-          regla(hoja, zona, abajo + "=1", "FEF3C7", "92400E", true);
-        }
-        f += 2;
+    /** Fila de totales por chute con su semáforo (el puesto de cada valor en la fila) y, si va, su total. */
+    private int filaTotal(Sheet hoja, int f, String etiqueta, long[] valores, Long total) {
+      Row fila = hoja.createRow(f);
+      celda(fila, 0, etiqueta, e.etiquetaTotal);
+      double[] niveles = niveles(valores);
+      for (int c = 0; c < valores.length; c++) {
+        CellStyle estilo = switch (tono(niveles[c])) {
+          case 1 -> e.semBajoNumero;
+          case 2 -> e.semMedioNumero;
+          case 3 -> e.semAltoNumero;
+          default -> e.totalNumero;
+        };
+        celda(fila, c + 1, valores[c] > 0 ? (Object) valores[c] : "", estilo);
       }
-      return f;
+      if (total != null) {
+        celda(fila, valores.length + 1, total, e.despues);
+      }
+      return f + 1;
+    }
+
+    // ---------------- Hoja 4: Resumen total (los días sumados) ----------------
+
+    /**
+     * Totales de los días sumados, por chute y por cluster. Cada día suma sus rutas y las diarias,
+     * así que una diaria cuenta en cada día que sale (es el volumen que se trabaja).
+     */
+    private void hojaResumenTotal(Sheet hoja) {
+      apaisada(hoja);
+      List<Long> chutes = todosLosChutes();
+      int ancho = Math.max(9, chutes.size() + 2);
+      hoja.setColumnWidth(0, 24 * 256);
+      for (int i = 1; i < ancho; i++) {
+        hoja.setColumnWidth(i, 13 * 256);
+      }
+      String dias = String.join(" + ", disponibles.stream().map((d) -> d.balanceo().etiqueta()).toList());
+      int f = titulo(hoja, 0, "Resumen total · " + dias, ancho);
+      f++;
+
+      // Por chute: la carga de todos los clusters, sumando los días (sin decimales sueltos).
+      BigDecimal[][] porChute = new BigDecimal[4][chutes.size()];
+      for (int k = 0; k < 4; k++) {
+        for (int c = 0; c < chutes.size(); c++) {
+          porChute[k][c] = BigDecimal.ZERO;
+        }
+      }
+      for (Dia d : disponibles) {
+        for (CargaSimulacionResponse fila : d.cfg().carga()) {
+          int c = chutes.indexOf(fila.chuteId());
+          if (fila.rutas() > 0 && c >= 0) {
+            for (int k = 0; k < 4; k++) {
+              porChute[k][c] = porChute[k][c].add(crudo(fila, k + 1));
+            }
+          }
+        }
+      }
+      long[] totales = new long[4];
+      long[][] valores = new long[4][chutes.size()];
+      for (int k = 0; k < 4; k++) {
+        BigDecimal suma = BigDecimal.ZERO;
+        for (int c = 0; c < chutes.size(); c++) {
+          valores[k][c] = entero(porChute[k][c]);
+          suma = suma.add(porChute[k][c]);
+        }
+        totales[k] = entero(suma);
+      }
+
+      // Indicadores: los cuatro totales.
+      Row etiquetas = hoja.createRow(f++);
+      Row cifras = hoja.createRow(f++);
+      cifras.setHeightInPoints(26);
+      for (int k = 0; k < 4; k++) {
+        celda(etiquetas, k * 2, CONCEPTOS[k + 1], e.kpiEtiqueta);
+        celda(etiquetas, k * 2 + 1, "", e.kpiEtiqueta);
+        celda(cifras, k * 2, totales[k], e.kpiNumero);
+        celda(cifras, k * 2 + 1, "", e.kpiNumero);
+        hoja.addMergedRegion(new CellRangeAddress(etiquetas.getRowNum(), etiquetas.getRowNum(), k * 2, k * 2 + 1));
+        hoja.addMergedRegion(new CellRangeAddress(cifras.getRowNum(), cifras.getRowNum(), k * 2, k * 2 + 1));
+      }
+      f++;
+
+      f = seccion(hoja, f, "Totales por chute", ancho);
+      Row cab = hoja.createRow(f++);
+      cab.setHeightInPoints(20);
+      celda(cab, 0, "Concepto", e.cabecera);
+      for (int c = 0; c < chutes.size(); c++) {
+        celda(cab, c + 1, nombre(chutes.get(c)), e.cabecera);
+      }
+      celda(cab, chutes.size() + 1, "Total", e.cabecera);
+      for (int k = 0; k < 4; k++) {
+        f = filaTotal(hoja, f, CONCEPTOS[k + 1], valores[k], totales[k]);
+      }
+      f++;
+
+      // Por cluster: sus cifras y cuánto pesan en el total (con barra de datos).
+      f = seccion(hoja, f, "Totales por cluster", ancho);
+      f = cabecera(hoja, f, 0, new String[] {
+        "Cluster", "Bultos", "%", "Líneas", "%", "Unidades", "%", "Locales", "%"
+      });
+      int inicio = f;
+      for (ClusterParametroResponse c : clusters) {
+        long[] suyos = new long[4];
+        for (int k = 0; k < 4; k++) {
+          BigDecimal suma = BigDecimal.ZERO;
+          for (Dia d : disponibles) {
+            for (CargaSimulacionResponse dato : cargaCluster(d, c.id()).values()) {
+              suma = suma.add(crudo(dato, k + 1));
+            }
+          }
+          suyos[k] = entero(suma);
+        }
+        // Un cluster sin carga en ningún día no se lista.
+        if (Arrays.stream(suyos).allMatch((v) -> v == 0)) {
+          continue;
+        }
+        Row fila = hoja.createRow(f++);
+        celda(fila, 0, c.nombre(), e.fuerte);
+        for (int k = 0; k < 4; k++) {
+          celda(fila, 1 + k * 2, suyos[k], e.numero);
+          celda(fila, 2 + k * 2, totales[k] > 0 ? (double) suyos[k] / totales[k] : 0, e.porcentaje);
+        }
+      }
+      Row total = hoja.createRow(f++);
+      celda(total, 0, "Total", e.etiquetaTotal);
+      for (int k = 0; k < 4; k++) {
+        celda(total, 1 + k * 2, totales[k], e.totalNumero);
+        celda(total, 2 + k * 2, 1, e.porcentajeTotal);
+      }
+      if (f - 1 > inicio) {
+        for (int k = 0; k < 4; k++) {
+          barra(hoja, new CellRangeAddress(inicio, f - 2, 2 + k * 2, 2 + k * 2));
+        }
+      }
+      hoja.createFreezePane(1, 0);
+    }
+
+    /** Valor sin redondear de un concepto (1 = bultos, 2 = líneas, 3 = unidades, 4 = locales). */
+    private static BigDecimal crudo(CargaSimulacionResponse fila, int concepto) {
+      return switch (concepto) {
+        case 1 -> valor(fila.bultos());
+        case 2 -> valor(fila.lineas());
+        case 3 -> valor(fila.unidades());
+        default -> BigDecimal.valueOf(fila.cod());
+      };
+    }
+
+    /** Barra de datos (0 % a 100 %) en el color del acento: el peso de cada cluster. */
+    private static void barra(Sheet hoja, CellRangeAddress zona) {
+      XSSFSheetConditionalFormatting formatos = (XSSFSheetConditionalFormatting) hoja.getSheetConditionalFormatting();
+      XSSFConditionalFormattingRule regla = formatos.createConditionalFormattingRule(Estilos.color("93C5FD"));
+      DataBarFormatting barra = regla.getDataBarFormatting();
+      barra.getMinThreshold().setRangeType(ConditionalFormattingThreshold.RangeType.NUMBER);
+      barra.getMinThreshold().setValue(0d);
+      barra.getMaxThreshold().setRangeType(ConditionalFormattingThreshold.RangeType.NUMBER);
+      barra.getMaxThreshold().setValue(1d);
+      formatos.addConditionalFormatting(new CellRangeAddress[] {zona}, regla);
     }
 
     /** 0 = sin dato, 1 = lo más bajo (amarillo), 2 = intermedio (verde), 3 = lo más alto (rojo). */
@@ -1092,28 +1128,6 @@ public class SimulacionReporte {
         case 3 -> entero(fila.unidades());
         default -> fila.cod();
       };
-    }
-
-    /** Suma dos cargas del mismo chute; los operarios toman el máximo de sus olas. */
-    private static CargaSimulacionResponse sumar(CargaSimulacionResponse a, CargaSimulacionResponse b) {
-      // Sin ternario con Math.max: mezclar Integer e int desempaqueta un null (NPE).
-      Integer operarios;
-      if (a.operarios() == null) {
-        operarios = b.operarios();
-      } else if (b.operarios() == null) {
-        operarios = a.operarios();
-      } else {
-        operarios = Integer.valueOf(Math.max(a.operarios(), b.operarios()));
-      }
-      return new CargaSimulacionResponse(
-          null,
-          a.chuteId(),
-          a.rutas() + b.rutas(),
-          valor(a.bultos()).add(valor(b.bultos())),
-          valor(a.unidades()).add(valor(b.unidades())),
-          valor(a.lineas()).add(valor(b.lineas())),
-          a.cod() + b.cod(),
-          operarios);
     }
 
     /** Puesto de cada valor en su fila (0 = el menor … 1 = el mayor), igual que la pantalla. */
@@ -1167,11 +1181,11 @@ public class SimulacionReporte {
       return String.format("%02X%02X%02X", r, g, b);
     }
 
-    /** Celda de un grupo: su color pleno y el texto en blanco (franja y nombre del grupo). */
-    private CellStyle estiloGrupo(String hex) {
+    /** Ruta de un grupo: fondo suave de su color (el de la planilla y el PDF) y el texto oscuro. */
+    private CellStyle estiloRuta(String hex) {
       return estilosGrupo.computeIfAbsent(hex, (h) -> {
-        XSSFCellStyle estilo = Estilos.estilo(libro, h, Estilos.fuente(libro, 9, true, "FFFFFF"),
-            HorizontalAlignment.CENTER, true);
+        XSSFCellStyle estilo = Estilos.estilo(libro, mezcla(h, 0.18), Estilos.fuente(libro, 9, true, "0F172A"),
+            HorizontalAlignment.LEFT, true);
         return estilo;
       });
     }
@@ -1437,12 +1451,21 @@ public class SimulacionReporte {
     final CellStyle kpiDetalle;
     final CellStyle ruta;
     final CellStyle vacia;
-    final CellStyle franjaLibre;
     final CellStyle subeCentro;
     final CellStyle bajaCentro;
     final CellStyle semBajo;
     final CellStyle semMedio;
     final CellStyle semAlto;
+    /** Semáforo de los totales por chute: la cifra con miles, a la derecha. */
+    final CellStyle semBajoNumero;
+    final CellStyle semMedioNumero;
+    final CellStyle semAltoNumero;
+    /** Banda de cada día en Configuración: el color de su pestaña de frecuencia. */
+    final CellStyle diaLxv;
+    final CellStyle diaMjs;
+    final CellStyle kpiNumero;
+    final CellStyle porcentaje;
+    final CellStyle porcentajeTotal;
     /** Horas como hora de Excel: «2:31» (2 h 31 min); suma bien y se grafica. */
     final CellStyle hora;
     final CellStyle horaFuerte;
@@ -1494,12 +1517,26 @@ public class SimulacionReporte {
       kpiDetalle = estilo(libro, "F8FAFC", fuente(libro, 9, false, "64748B"), HorizontalAlignment.LEFT, false);
       ruta = estilo(libro, null, fuente(libro, 9, true, "0F172A"), HorizontalAlignment.LEFT, true);
       vacia = estilo(libro, null, fuente(libro, 9, false, "94A3B8"), HorizontalAlignment.CENTER, false);
-      franjaLibre = estilo(libro, "F1F5F9", fuente(libro, 9, false, "94A3B8"), HorizontalAlignment.CENTER, true);
       subeCentro = estilo(libro, null, fuente(libro, 10, true, "059669"), HorizontalAlignment.CENTER, true);
       bajaCentro = estilo(libro, null, fuente(libro, 10, true, "DC2626"), HorizontalAlignment.CENTER, true);
       semBajo = estilo(libro, "FEF3C7", fuente(libro, 10, true, "92400E"), HorizontalAlignment.CENTER, true);
       semMedio = estilo(libro, "D1FAE5", fuente(libro, 10, true, "065F46"), HorizontalAlignment.CENTER, true);
       semAlto = estilo(libro, "FEE2E2", fuente(libro, 10, true, "991B1B"), HorizontalAlignment.CENTER, true);
+      semBajoNumero = estilo(libro, "FEF3C7", fuente(libro, 10, true, "92400E"), HorizontalAlignment.RIGHT, true);
+      semBajoNumero.setDataFormat(miles);
+      semMedioNumero = estilo(libro, "D1FAE5", fuente(libro, 10, true, "065F46"), HorizontalAlignment.RIGHT, true);
+      semMedioNumero.setDataFormat(miles);
+      semAltoNumero = estilo(libro, "FEE2E2", fuente(libro, 10, true, "991B1B"), HorizontalAlignment.RIGHT, true);
+      semAltoNumero.setDataFormat(miles);
+      diaLxv = estilo(libro, "1D4ED8", fuente(libro, 10, true, "FFFFFF"), HorizontalAlignment.CENTER, true);
+      diaMjs = estilo(libro, "C2410C", fuente(libro, 10, true, "FFFFFF"), HorizontalAlignment.CENTER, true);
+      kpiNumero = estilo(libro, "F8FAFC", fuente(libro, 16, true, "0F1E3D"), HorizontalAlignment.LEFT, false);
+      kpiNumero.setDataFormat(miles);
+      short pct = libro.createDataFormat().getFormat("0%");
+      porcentaje = estilo(libro, null, fuente(libro, 9, false, "64748B"), HorizontalAlignment.RIGHT, true);
+      porcentaje.setDataFormat(pct);
+      porcentajeTotal = estilo(libro, "F8FAFC", fuente(libro, 9, true, "334155"), HorizontalAlignment.RIGHT, true);
+      porcentajeTotal.setDataFormat(pct);
     }
 
     static XSSFFont fuente(XSSFWorkbook libro, int puntos, boolean negrita, String color) {

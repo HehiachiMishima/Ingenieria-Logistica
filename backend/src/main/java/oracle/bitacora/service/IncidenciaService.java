@@ -3,9 +3,12 @@ package oracle.bitacora.service;
 import oracle.bitacora.repository.AnaliticaIncidenciaRepository;
 import oracle.bitacora.repository.ReferenciasIncidenciaRepository;
 import oracle.bitacora.response.AnaliticaBitacoraResponse;
+import oracle.bitacora.response.AnaliticaBitacoraResponse.FilaEjecutiva;
 import oracle.bitacora.response.AnaliticaBitacoraResponse.Grupo;
 import oracle.bitacora.response.AnaliticaBitacoraResponse.Kpis;
+import oracle.bitacora.response.AnaliticaBitacoraResponse.Reincidencia;
 import oracle.bitacora.response.AnaliticaBitacoraResponse.Tipo;
+import oracle.bitacora.response.CasoLargoResponse;
 import oracle.common.response.CeldaMatriz;
 import oracle.common.config.ZonaNegocio;
 import oracle.common.support.Filtros;
@@ -22,6 +25,7 @@ import jakarta.persistence.criteria.Predicate;
 import tools.jackson.databind.ObjectMapper;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Future;
@@ -65,6 +69,12 @@ public class IncidenciaService {
 
     /** Tope de filas por página que acepta el servidor. */
     private static final int MAX_TAMANO_PAGINA = 200;
+
+    /** Combinaciones centro + tipo que devuelve el bloque de reincidencias. */
+    private static final int MAX_REPETIDOS = 5;
+
+    /** Tope de casos por sistema en el detalle del cuadro ejecutivo. */
+    static final int MAX_CASOS_LARGOS = 10;
 
     private final IncidenciaRepository incidenciaRepository;
     private final ReferenciasIncidenciaRepository referenciasRepository;
@@ -142,7 +152,7 @@ public class IncidenciaService {
     }
 
     /**
-     * Analitica completa del dashboard: 6 agregaciones en paralelo sobre el
+     * Analitica completa del dashboard: 7 agregaciones en paralelo sobre el
      * ejecutor analitico, cacheadas por filtro (single-flight por clave).
      */
     public ApiResponse<AnaliticaBitacoraResponse> analitica(FiltroIncidencia filtro) {
@@ -155,15 +165,47 @@ public class IncidenciaService {
     private AnaliticaBitacoraResponse calcularAnalitica(FiltroIncidencia filtro) {
         try (EjecutorAnalitica.Lote lote = ejecutor.lote()) {
             Future<Kpis> kpis = lote.consulta(() -> analiticaRepository.kpis(filtro));
-            Future<List<Grupo>> sistemas = lote.consulta(() -> analiticaRepository.porSistema(filtro));
             Future<List<Grupo>> centros = lote.consulta(() -> analiticaRepository.porCentro(filtro));
             Future<List<Grupo>> areas = lote.consulta(() -> analiticaRepository.porArea(filtro));
             Future<List<Tipo>> tipos = lote.consulta(() -> analiticaRepository.porTipo(filtro));
             Future<List<CeldaMatriz>> centroSistema = lote.consulta(() -> analiticaRepository.centroPorSistema(filtro));
+            Future<List<FilaEjecutiva>> ejecutivo = lote.consulta(() -> analiticaRepository.ejecutivoPorSistema(filtro));
+            Future<Reincidencia> reincidencia = lote.consulta(
+                    () -> analiticaRepository.reincidencias(filtro, MAX_REPETIDOS));
+            List<FilaEjecutiva> filas = lote.esperar(ejecutivo);
             return new AnaliticaBitacoraResponse(
-                    lote.esperar(kpis), lote.esperar(sistemas), lote.esperar(centros),
-                    lote.esperar(areas), lote.esperar(tipos), lote.esperar(centroSistema));
+                    lote.esperar(kpis), gruposDeSistemas(filas), lote.esperar(centros),
+                    lote.esperar(areas), lote.esperar(tipos), lote.esperar(centroSistema),
+                    filas, lote.esperar(reincidencia));
         }
+    }
+
+    /**
+     * Agregado por sistema (volumen y MTTR) a partir del cuadro ejecutivo, que ya
+     * agrupa por sistema: evita repetir la misma agregacion. Orden de porSistema.
+     */
+    private static List<Grupo> gruposDeSistemas(List<FilaEjecutiva> filas) {
+        return filas.stream()
+                .sorted(Comparator.comparingLong(FilaEjecutiva::total).reversed()
+                        .thenComparing(FilaEjecutiva::etiqueta))
+                .map(f -> new Grupo(f.etiqueta(), f.total(), f.mttrSegundos()))
+                .toList();
+    }
+
+    /**
+     * Casos resueltos mas largos de un sistema dentro del filtro del dashboard
+     * (detalle del cuadro ejecutivo). El sistema de la fila manda sobre el del filtro.
+     */
+    public ApiResponse<List<CasoLargoResponse>> casosMasLargos(FiltroIncidencia filtro, long sistema, int limite) {
+        if (limite < 1 || limite > MAX_CASOS_LARGOS) {
+            throw new SolicitudInvalidaException("El limite debe estar entre 1 y " + MAX_CASOS_LARGOS + ".");
+        }
+        FiltroIncidencia delSistema = new FiltroIncidencia(filtro.centro(), sistema, filtro.area(),
+                filtro.responsable(), filtro.tipo(), filtro.desde(), filtro.hasta(), filtro.texto());
+        String clave = ESPACIO_CACHE + ":casos-largos:" + limite + ":" + delSistema;
+        List<CasoLargoResponse> casos = Trazas.medir(log, "IncidenciaService.casosMasLargos", () ->
+                cacheRespuestas.obtener(clave, () -> analiticaRepository.casosMasLargos(delSistema, limite)));
+        return ApiResponse.ok("Casos obtenidos.", casos);
     }
 
     public ApiResponse<IncidenciaResponse> crear(IncidenciaCrearRequest peticion) {

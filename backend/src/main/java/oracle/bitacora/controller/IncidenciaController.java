@@ -6,6 +6,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import java.io.IOException;
 import java.time.LocalDate;
+import java.util.List;
+import oracle.bitacora.response.CasoLargoResponse;
 import oracle.bitacora.request.FiltroIncidencia;
 import oracle.bitacora.request.IncidenciaActualizarRequest;
 import oracle.bitacora.request.IncidenciaCrearRequest;
@@ -96,6 +98,23 @@ public class IncidenciaController {
             @RequestParam(required = false) String texto) {
         return incidenciaService.analitica(
                 new FiltroIncidencia(centro, sistema, area, responsable, tipo, desde, hasta, texto));
+    }
+
+    /** Casos resueltos mas largos de un sistema, con los mismos filtros del dashboard. */
+    @GetMapping("/analitica/casos-largos")
+    @PreAuthorize("hasAuthority('VER_DASHBOARD')")
+    public ApiResponse<List<CasoLargoResponse>> casosMasLargos(
+            @RequestParam long sistema,
+            @RequestParam(required = false) Long centro,
+            @RequestParam(required = false) Long area,
+            @RequestParam(required = false) Long responsable,
+            @RequestParam(required = false) Long tipo,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
+            @RequestParam(required = false) String texto,
+            @RequestParam(defaultValue = "3") int limite) {
+        return incidenciaService.casosMasLargos(
+                new FiltroIncidencia(centro, sistema, area, responsable, tipo, desde, hasta, texto), sistema, limite);
     }
 
     @PostMapping

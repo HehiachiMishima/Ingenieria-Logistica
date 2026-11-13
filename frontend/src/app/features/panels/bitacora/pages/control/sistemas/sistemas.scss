@@ -2,3 +2,23 @@
 
 // Estilos específicos de la página de sistemas.
 // El diseño general se reutiliza desde el design system (_components.scss).
+
+// Pie de un campo de texto: mensaje de error a la izquierda y contador de caracteres a la derecha.
+.campo-pie {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+}
+
+.campo-contador {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+
+  &--excedido {
+    color: var(--danger);
+    font-weight: 700;
+  }
+}

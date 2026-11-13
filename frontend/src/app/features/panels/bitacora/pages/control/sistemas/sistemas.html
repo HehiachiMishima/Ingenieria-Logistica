@@ -116,7 +116,12 @@
         formControlName="sistema"
         placeholder="SAP, CORREO, IMPRESORAS…"
       />
-      @if (campoInvalido('sistema')) { <span class="ui-error">El nombre es obligatorio.</span> }
+      <div class="campo-pie">
+        @if (errorDe('sistema'); as error) { <span class="ui-error">{{ error }}</span> }
+        <span class="campo-contador" [class.campo-contador--excedido]="largoDe('sistema') > maxNombre">
+          {{ largoDe('sistema') }}/{{ maxNombre }}
+        </span>
+      </div>
     </div>
   </form>
 
@@ -176,7 +181,12 @@
           formControlName="incidencia"
           placeholder="SIN CONEXIÓN, LENTITUD…"
         />
-        @if (campoTipoInvalido()) { <span class="ui-error">El tipo es obligatorio.</span> }
+        <div class="campo-pie">
+          @if (errorDe('incidencia'); as error) { <span class="ui-error">{{ error }}</span> }
+          <span class="campo-contador" [class.campo-contador--excedido]="largoDe('incidencia') > maxNombre">
+            {{ largoDe('incidencia') }}/{{ maxNombre }}
+          </span>
+        </div>
       </div>
       <div class="child-actions">
         <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm" (click)="cerrarTipoForm()">Cancelar</button>

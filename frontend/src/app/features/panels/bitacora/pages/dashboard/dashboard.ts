@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { tap } from 'rxjs';
 import { valorNumero, valorTexto } from '../../../../../core/utils/evento.util';
 import { RecursoRemoto } from '../../../../../core/utils/listado-remoto';
 import { OpcionesDependientes } from '../../../../../core/utils/opciones-dependientes';
@@ -26,6 +27,8 @@ import { FiltrosActivos } from '../../../../../shared/ui/panel-filtros/filtros-a
 import { PanelFiltros } from '../../../../../shared/ui/panel-filtros/panel-filtros';
 import { RangoFechas, RangoRapido } from '../../../../../shared/ui/panel-filtros/rango-rapido';
 import { bulletMttr, gruposConMttr, rankingTipos, tarjetasBitacora } from './dashboard.logica';
+import { CuadroEjecutivo } from './cuadro-ejecutivo/cuadro-ejecutivo';
+import { Reincidencias } from './reincidencias/reincidencias';
 
 /**
  * Dashboard Bitácora: sistemas y tipos de incidencia.
@@ -39,6 +42,8 @@ import { bulletMttr, gruposConMttr, rankingTipos, tarjetasBitacora } from './das
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     BulletChart,
+    CuadroEjecutivo,
+    Reincidencias,
     EmptyState,
     Heatmap,
     Icon,
@@ -59,9 +64,14 @@ export class DashboardBitacora {
   private readonly catalogos = inject(BitacoraCatalogos);
   private readonly areasApi = inject(AreasApi);
 
-  private readonly recurso = new RecursoRemoto<AnaliticaBitacora>(() =>
-    this.incidenciasApi.analitica(this.filtros()),
-  );
+  /** Filtros con los que se pidió la analítica visible: el detalle del cuadro usa los mismos. */
+  readonly filtrosCargados = signal<IncidenciaFiltros>({});
+
+  private readonly recurso = new RecursoRemoto<AnaliticaBitacora>(() => {
+    const filtros = this.filtros();
+    // Se fija al llegar la respuesta: así nunca se combinan datos viejos con filtros nuevos.
+    return this.incidenciasApi.analitica(filtros).pipe(tap(() => this.filtrosCargados.set(filtros)));
+  });
   readonly cargando = this.recurso.cargando;
   readonly error = this.recurso.error;
   readonly datos = this.recurso.valor;
@@ -128,6 +138,10 @@ export class DashboardBitacora {
 
   /** ¿Dónde tardamos más? MTTR por sistema contra el MTTR general. */
   readonly bulletMttr = computed(() => bulletMttr(this.datos()?.sistemas ?? []));
+
+  /** Cuadro ejecutivo por sistema y reincidencias (mismo filtro que el resto). */
+  readonly ejecutivo = computed(() => this.datos()?.ejecutivo ?? []);
+  readonly reincidencia = computed(() => this.datos()?.reincidencia ?? null);
 
   readonly mttrGeneral = computed(() => this.kpis()?.mttrSegundos ?? 0);
   readonly mttrGeneralTexto = computed(() => duracion(this.mttrGeneral()));

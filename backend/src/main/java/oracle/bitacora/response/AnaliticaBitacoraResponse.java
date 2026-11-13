@@ -10,7 +10,9 @@ public record AnaliticaBitacoraResponse(
         List<Grupo> centros,
         List<Grupo> areas,
         List<Tipo> tipos,
-        List<CeldaMatriz> centroSistema) {
+        List<CeldaMatriz> centroSistema,
+        List<FilaEjecutiva> ejecutivo,
+        Reincidencia reincidencia) {
 
     /**
      * @param totalPeriodoAnterior total del periodo inmediatamente anterior de igual
@@ -32,5 +34,30 @@ public record AnaliticaBitacoraResponse(
 
     /** Tipo de incidencia con su sistema (el tipo pertenece a un sistema). */
     public record Tipo(String tipo, String sistema, long total, long mttrSegundos) {
+    }
+
+    /**
+     * Fila del cuadro ejecutivo (una por sistema).
+     *
+     * @param id id del sistema: el cliente lo usa para pedir sus casos mas largos.
+     */
+    public record FilaEjecutiva(
+            long id,
+            String etiqueta,
+            long total,
+            long segundos,
+            long mttrSegundos,
+            long maxSegundos) {
+    }
+
+    /**
+     * Reincidencias: un caso reincide si su mismo tipo ya ocurrio en el mismo
+     * centro dentro de los {@code ventanaDias} anteriores (dentro del filtro).
+     */
+    public record Reincidencia(int ventanaDias, long total, long reincidentes, List<Repetido> repetidos) {
+    }
+
+    /** Combinacion centro + tipo que mas reincide. */
+    public record Repetido(String centro, String tipo, String sistema, long casos, long reincidencias) {
     }
 }

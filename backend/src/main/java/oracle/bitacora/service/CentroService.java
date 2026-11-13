@@ -49,7 +49,7 @@ public class CentroService {
     public ApiResponse<CentroResponse> crear(CentroCrearRequest peticion) {
         Long actor = ActorActual.id();
         return Trazas.medir(log, "CentroService.crear centro=" + peticion.centro(), () -> transacciones.ejecutar(() -> {
-            if (dataCentroRepository.existsByCentro(peticion.centro())) {
+            if (dataCentroRepository.existsByCentro(peticion.centro().trim())) {
                 throw new ConflictoException("Ya existe un centro con el nombre '" + peticion.centro() + "'.");
             }
 

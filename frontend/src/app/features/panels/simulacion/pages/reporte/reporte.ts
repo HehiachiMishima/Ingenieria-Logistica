@@ -25,7 +25,6 @@ import {
   DashboardSimulacion,
   DiaBalanceo,
   ETIQUETA_BALANCEO,
-  GrupoCluster,
   RutaSimulacion,
   rutaEnBalanceo,
 } from '../../data/simulacion.model';
@@ -34,15 +33,16 @@ import {
   compararChute,
   compararNombre,
   etiquetaEstado,
-  etiquetaEstadoCluster,
   formatearEntero,
   formatearHoras,
 } from '../../simulacion-formato';
 import { nivelesDeFila, resumirClusters, tonoSemaforo } from '../configuracion/configuracion.logica';
 import { documentoHtml, nombreReporteHtml } from './reporte-html';
 
-/** Chutes por tabla: lo que cabe a lo ancho de un A4 apaisado sin achicar el texto. */
-const CHUTES_POR_TABLA = 12;
+/** Chutes por tabla de un cluster: lo que cabe junto al panel en un A4 apaisado (~96 px cada uno). */
+const CHUTES_POR_TABLA = 9;
+/** Chutes por tabla del resumen total: solo cifras (~80 px cada uno, más la columna Total). */
+const CHUTES_RESUMEN = 10;
 /** Tiempo «sin operarios» del servidor (1E+30): no es un valor real. */
 const SIN_OPERARIOS = 1e29;
 
@@ -89,58 +89,73 @@ interface ColumnaChute {
   etiqueta: string;
 }
 
-/** Marca de frecuencia de la ruta: D (diaria) y, en «Ambos», también L-X-V o M-J-S. */
+/** Frecuencia de la ruta en su pestaña: D (diaria), LXV o MJS. */
 type MarcaFrecuencia = 'D' | 'LXV' | 'MJS';
 
-/** Ruta en la cuadrícula: código, bultos, su grupo (pestaña de color), su frecuencia y si se movió. */
+/** Ruta en la cuadrícula (como en Configuración): pestaña del grupo, código, bultos y frecuencia. */
 interface CeldaRutaReporte {
   codigo: string;
   bultos: string;
   grupo: string | null;
   color: string | null;
-  marca: MarcaFrecuencia | null;
-  /** Letra de la marca (D, L o M): cabe junto a 5 cifras de bultos en la celda de 73 px. */
-  letra: string | null;
+  marca: MarcaFrecuencia;
   movida: boolean;
   titulo: string;
 }
 
-/** Franja de grupos sobre los chutes: un segmento por tramo (colspan), o hueco sin grupo. */
-interface SegmentoGrupo {
-  grupo: string | null;
-  color: string | null;
-  span: number;
-}
-
-/** Grupo del cluster en la cabecera de su cuadrícula. */
-interface GrupoReporte {
-  nombre: string;
-  color: string;
-  tramo: string | null;
-  rutas: number;
-}
+/** Concepto de los totales por chute (con su ícono a color, como en Configuración). */
+type ClaveConcepto = 'operarios' | 'bultos' | 'lineas' | 'unidades' | 'cod';
 
 interface CeldaTotal {
   valor: number;
   tono: 'bajo' | 'medio' | 'alto' | null;
 }
 
-interface Tramo {
-  chutes: ColumnaChute[];
-  /** Tramo de cada grupo sobre estos chutes; vacío si el cluster no tiene tramos. */
-  franja: SegmentoGrupo[];
-  /** filas[f][c]: la ruta en la fila f del chute c, o null. */
-  filas: (CeldaRutaReporte | null)[][];
-  totales: { etiqueta: string; celdas: CeldaTotal[] }[];
+interface FilaTotal {
+  clave: ClaveConcepto;
+  etiqueta: string;
+  celdas: CeldaTotal[];
 }
 
+interface Tramo {
+  chutes: ColumnaChute[];
+  /** filas[f][c]: la ruta en la fila f del chute c, o null. */
+  filas: (CeldaRutaReporte | null)[][];
+  totales: FilaTotal[];
+}
+
+/** Cuadrícula de un cluster en un día: sus chutes, en tramos que caben a lo ancho de la hoja. */
 interface Cuadricula {
+  id: number;
+  tramos: Tramo[];
+}
+
+/** Un día de un cluster en la hoja de Configuración. */
+interface SeccionConfiguracion {
+  dia: DiaBalanceo;
+  etiqueta: string;
+  ola: OlaReporte | null;
+  tramos: Tramo[];
+}
+
+interface ClusterConfiguracion {
   id: number;
   nombre: string;
   color: string;
-  resumen: string;
-  grupos: GrupoReporte[];
-  tramos: Tramo[];
+  /** Solo los días en que el cluster tiene rutas (las suyas o las diarias). */
+  secciones: SeccionConfiguracion[];
+  /** Vistas del filtro en que aparece la tarjeta: sus días y «Ambos». */
+  vistas: string;
+}
+
+/** Hoja «Resumen total»: los días sumados (las diarias cuentan en cada día que salen). */
+interface ResumenTotal {
+  indicadores: { clave: ClaveConcepto; etiqueta: string; valor: number }[];
+  /** Totales por chute; la columna Total va en el último tramo. */
+  tramos: { chutes: ColumnaChute[]; ultimo: boolean; filas: (FilaTotal & { total: number })[] }[];
+  /** Clusters con carga en algún día (los que no tienen rutas no se listan). */
+  clusters: { id: number; nombre: string; color: string; valores: { valor: number; porcentaje: number }[] }[];
+  totales: number[];
 }
 
 /** Indicador de la portada (tarjeta). */
@@ -185,7 +200,6 @@ interface VistaDia {
   cuadroClusters: { filas: (FilaComparativa & { entraron: number; salieron: number })[]; total: FilaComparativa | null };
   graficosBultos: { grupos: GrupoComparativo[]; ancho: number }[];
   cuadriculas: Cuadricula[];
-  totalGeneral: Tramo[];
 }
 
 /** Los dos días lado a lado (sin sumar las diarias dos veces). */
@@ -202,11 +216,9 @@ interface VistaAmbos {
     porDia: (OlaReporte | null)[];
   }[];
   conclusiones: { etiqueta: string; frases: string[] }[];
-  cuadriculas: Cuadricula[];
-  totalGeneral: Tramo[];
 }
 
-const CONCEPTOS: { clave: keyof Pick<CargaSimulacion, 'bultos' | 'lineas' | 'unidades' | 'cod'> | 'operarios'; etiqueta: string }[] = [
+const CONCEPTOS: { clave: ClaveConcepto; etiqueta: string }[] = [
   { clave: 'operarios', etiqueta: 'Total operarios' },
   { clave: 'bultos', etiqueta: 'Total bultos' },
   { clave: 'lineas', etiqueta: 'Total líneas' },
@@ -214,12 +226,16 @@ const CONCEPTOS: { clave: keyof Pick<CargaSimulacion, 'bultos' | 'lineas' | 'uni
   { clave: 'cod', etiqueta: 'Total locales' },
 ];
 
+/** El resumen total suma los días: los operarios no se suman (trabajan los dos días). */
+const CONCEPTOS_RESUMEN = CONCEPTOS.filter((c) => c.clave !== 'operarios');
+
 /** Secciones del índice: un ancla por hoja, siempre visible sea cual sea el filtro. */
 const SECCIONES = [
   { id: 'resumen', titulo: 'Resumen' },
   { id: 'cierres', titulo: 'Cierre por día' },
   { id: 'comparativos', titulo: 'Comparativos' },
   { id: 'configuracion', titulo: 'Configuración' },
+  { id: 'total', titulo: 'Resumen total' },
 ] as const;
 
 /**
@@ -235,7 +251,7 @@ const SECCIONES = [
   encapsulation: ViewEncapsulation.None,
   imports: [NgTemplateOutlet, Icon, Kpi, ComparativoChart],
   templateUrl: './reporte.html',
-  styleUrl: './reporte.scss',
+  styleUrls: ['./reporte.scss', './reporte-configuracion.scss'],
 })
 export class SimulacionReporteEjecutivo {
   private readonly api = inject(SimulacionApi);
@@ -460,8 +476,47 @@ export class SimulacionReporteEjecutivo {
       indicadores,
       olas,
       conclusiones: dias.map((v) => ({ etiqueta: v.etiqueta, frases: v.conclusiones })),
-      ...cuadriculasAmbos(d),
     };
+  });
+
+  // ---------------- Configuración: cada cluster con sus días, uno debajo del otro ----------------
+
+  readonly configuracion = computed<ClusterConfiguracion[]>(() => {
+    const d = this.datos();
+    const dias = this.vistasDia();
+    if (!d || dias.length === 0) {
+      return [];
+    }
+    // Un día sin rutas del cluster no se muestra; un cluster sin rutas en ningún día, tampoco.
+    return d.dias[0].cfg.clusters
+      .map((cluster) => {
+        const secciones = dias
+          .map((v) => ({
+            dia: v.dia,
+            etiqueta: v.etiqueta,
+            ola: v.olas.find((o) => o.id === cluster.id && o.rutas > 0) ?? null,
+            tramos: v.cuadriculas.find((c) => c.id === cluster.id)?.tramos ?? [],
+          }))
+          .filter((s) => s.tramos.length > 0);
+        return {
+          id: cluster.id,
+          nombre: cluster.nombre,
+          color: dias[0].olas.find((o) => o.id === cluster.id)?.color ?? 'var(--accent)',
+          secciones,
+          vistas: [...secciones.map((s) => s.dia), 'AMBOS'].join(' '),
+        };
+      })
+      .filter((c) => c.secciones.length > 0);
+  });
+
+  // ---------------- Resumen total ----------------
+
+  /** «L-X-V + M-J-S» (o el único día con rutas). */
+  readonly etiquetaDias = computed(() => this.vistasDia().map((v) => v.etiqueta).join(' + '));
+
+  readonly resumenTotal = computed<ResumenTotal | null>(() => {
+    const d = this.datos();
+    return d ? armarResumenTotal(d) : null;
   });
 }
 
@@ -661,7 +716,7 @@ function armarDia(d: DatosDia, finalizado: boolean): VistaDia {
         .sort((a, b) => compararChute(a.chute, b.chute))
         .map((c) => ({ etiqueta: c.chute, antes: Number(c.bultosOriginal), despues: Number(c.bultosBalanceado) })),
     ),
-    ...cuadriculasDia(d, colores),
+    cuadriculas: cuadriculasDia(d),
   };
 }
 
@@ -682,12 +737,6 @@ function totalesRutas(rutas: RutaSimulacion[]) {
 // ====================================================================
 // Cuadrículas de Configuración
 // ====================================================================
-
-/** Fuente de totales por chute: la carga de un día (en «Ambos» va una por día). */
-interface FuenteCarga {
-  sufijo: string | null;
-  cargaDe: (chute: number) => CargaSimulacion | undefined;
-}
 
 /** Rutas agrupadas por (cluster, chute), ordenadas por código. */
 function rutasPorCelda(rutas: RutaSimulacion[]): Map<string, RutaSimulacion[]> {
@@ -721,13 +770,6 @@ function cargaCluster(cfg: ConfiguracionSimulacion, clusterId: number): Map<numb
   return new Map(cfg.carga.filter((f) => f.clusterId === clusterId && f.rutas > 0).map((f) => [f.chuteId, f]));
 }
 
-/** Grupos del cluster en orden natural, con su color, tramo y rutas. */
-function gruposReporte(grupos: readonly GrupoCluster[], colores: Map<string, string>, rutasDe: (g: GrupoCluster) => number): GrupoReporte[] {
-  return [...grupos]
-    .sort((a, b) => compararNombre(a.nombre, b.nombre))
-    .map((g) => ({ nombre: g.nombre, color: colores.get(g.nombre) ?? 'var(--accent)', tramo: tramoGrupo(g), rutas: rutasDe(g) }));
-}
-
 /** Total general: suma de los clusters; los operarios son el máximo de sus olas. */
 function cargaGeneral(cfg: ConfiguracionSimulacion): Map<number, CargaSimulacion> {
   const general = new Map<number, CargaSimulacion>();
@@ -754,108 +796,82 @@ function cargaGeneral(cfg: ConfiguracionSimulacion): Map<number, CargaSimulacion
   return general;
 }
 
-/** Cuadrículas de un día: sus rutas (las suyas y las diarias) y su carga. */
-function cuadriculasDia(d: DatosDia, colores: Map<number, string>): Pick<VistaDia, 'cuadriculas' | 'totalGeneral'> {
+/** Cuadrículas de un día: cada cluster con sus rutas (las suyas y las diarias) y su carga por chute. */
+function cuadriculasDia(d: DatosDia): Cuadricula[] {
   const columnas = columnasDe(d.cfg, [d.cfg.carga], d.rutas);
   const porCelda = rutasPorCelda(d.rutas);
-  const cuadriculas = d.cfg.clusters.map((cluster) => {
+  return d.cfg.clusters.map((cluster) => {
     const carga = cargaCluster(d.cfg, cluster.id);
-    const rutas = [...carga.values()].reduce((t, f) => t + f.rutas, 0);
-    const bultos = [...carga.values()].reduce((t, f) => t + Number(f.bultos), 0);
-    // Con grupos (aunque sea uno), cada ruta lleva su pestaña de color y la cabecera
-    // dice el tramo de cada uno, con los mismos colores que la planilla.
     const grupos = cluster.grupos ?? [];
-    const coloresG = coloresGrupos(grupos.map((g) => g.nombre));
-    const partes = [
-      etiquetaEstadoCluster(cluster.estado),
-      `${formatearEntero(rutas)} rutas`,
-      `${formatearEntero(bultos)} bultos`,
-      ...(cluster.operariosOla ? [`${cluster.operariosOla} operarios`] : []),
-      ...(Number(cluster.limiteHoras) > 0 ? [`límite ${formatearHoras(Number(cluster.limiteHoras))}`] : []),
-    ];
     return {
       id: cluster.id,
-      nombre: cluster.nombre,
-      color: colores.get(cluster.id) ?? 'var(--accent)',
-      resumen: partes.join(' · '),
-      grupos: gruposReporte(grupos, coloresG, (g) => g.rutas),
-      // En el reporte, cada cluster muestra solo los chutes que usa (sin columnas vacías).
+      // Solo los chutes que el cluster usa ese día (sin columnas vacías).
       tramos: tramos(
         columnas.filter((c) => carga.has(c.id) || porCelda.has(`${cluster.id}:${c.id}`)),
         (chute) => porCelda.get(`${cluster.id}:${chute}`) ?? [],
-        [{ sufijo: null, cargaDe: (chute) => carga.get(chute) }],
-        false,
-        grupos.length > 0 ? { lista: grupos, colores: coloresG } : null,
-        false,
+        (chute) => carga.get(chute),
+        grupos.length > 0 ? coloresGrupos(grupos.map((g) => g.nombre)) : null,
       ),
     };
   });
-  const general = cargaGeneral(d.cfg);
-  return {
-    cuadriculas,
-    totalGeneral: tramos(columnas, () => [], [{ sufijo: null, cargaDe: (chute) => general.get(chute) }], true),
-  };
 }
 
 /**
- * «Ambos»: una sola cuadrícula por cluster con todas las rutas (cada una con su frecuencia, sin
- * repetir las diarias) y los totales por chute de cada día por separado (el semáforo es por día).
+ * Resumen total: los días sumados, por chute y por cluster. Cada día suma sus rutas y las
+ * diarias, así que una diaria cuenta en los dos días (es el volumen que se trabaja).
  */
-function cuadriculasAmbos(d: Datos): Pick<VistaAmbos, 'cuadriculas' | 'totalGeneral'> {
+function armarResumenTotal(d: Datos): ResumenTotal {
   const base = d.dias[0].cfg;
   const limites: Record<number, number> = {};
   base.clusters.forEach((c) => (limites[c.id] = Number(c.limiteHoras) || 0));
   const colores = new Map(resumirClusters(base, Number(base.velocidadBase) || 0, limites).map((r) => [r.id, r.color]));
-  const columnas = columnasDe(base, d.dias.map((x) => x.cfg.carga), d.todas);
-  const porCelda = rutasPorCelda(d.todas);
-  const cuadriculas = base.clusters.map((cluster) => {
-    const cargas = d.dias.map((x) => ({ dia: x.dia, carga: cargaCluster(x.cfg, cluster.id), cluster: x.cfg.clusters.find((c) => c.id === cluster.id) }));
-    const suyas = d.todas.filter((r) => r.clusterId === cluster.id);
-    const bultos = suyas.reduce((t, r) => t + Number(r.totalBultos), 0);
-    const operarios = cargas.map((x) => x.cluster?.operariosOla ?? 0).reduce((a, b) => Math.max(a, b), 0);
-    const limitesDia = cargas
-      .filter((x) => Number(x.cluster?.limiteHoras) > 0)
-      .map((x) => ({ dia: ETIQUETA_BALANCEO[x.dia], horas: formatearHoras(Number(x.cluster!.limiteHoras)) }));
-    const textoLimite =
-      limitesDia.length === 0
-        ? []
-        : new Set(limitesDia.map((l) => l.horas)).size === 1
-          ? [`límite ${limitesDia[0].horas}`]
-          : [`límite ${limitesDia.map((l) => `${l.dia} ${l.horas}`).join(' · ')}`];
-    const grupos = cluster.grupos ?? [];
-    const coloresG = coloresGrupos(grupos.map((g) => g.nombre));
+  const generales = d.dias.map((x) => cargaGeneral(x.cfg));
+  const columnas = columnasDe(base, d.dias.map((x) => x.cfg.carga), []);
+  const sumaChute = (chute: number, clave: ClaveConcepto) =>
+    generales.reduce((t, g) => t + Number(g.get(chute)?.[clave] ?? 0), 0);
+
+  const filas = CONCEPTOS_RESUMEN.map((concepto) => {
+    const crudos = columnas.map((c) => sumaChute(c.id, concepto.clave));
+    const valores = crudos.map(redondear);
+    const niveles = nivelesDeFila(valores);
+    return { ...concepto, valores, tonos: niveles.map(tonoSemaforo), total: redondear(crudos.reduce((a, b) => a + b, 0)) };
+  });
+  const partes = partir(columnas, CHUTES_RESUMEN);
+  let inicio = 0;
+  const tramosResumen = partes.map((chutes, i) => {
+    const desde = inicio;
+    inicio += chutes.length;
     return {
-      id: cluster.id,
-      nombre: cluster.nombre,
-      color: colores.get(cluster.id) ?? 'var(--accent)',
-      resumen: [
-        etiquetaEstadoCluster(cluster.estado),
-        `${formatearEntero(suyas.length)} rutas`,
-        `${formatearEntero(bultos)} bultos`,
-        ...(operarios > 0 ? [`${operarios} operarios`] : []),
-        ...textoLimite,
-      ].join(' · '),
-      // Rutas de cada grupo sin repetir (las de los dos días y las diarias una vez).
-      grupos: gruposReporte(grupos, coloresG, (g) => suyas.filter((r) => (r.grupo ?? '') === g.nombre).length),
-      tramos: tramos(
-        columnas.filter((c) => cargas.some((x) => x.carga.has(c.id)) || porCelda.has(`${cluster.id}:${c.id}`)),
-        (chute) => porCelda.get(`${cluster.id}:${chute}`) ?? [],
-        cargas.map((x) => ({ sufijo: ETIQUETA_BALANCEO[x.dia], cargaDe: (chute: number) => x.carga.get(chute) })),
-        false,
-        grupos.length > 0 ? { lista: grupos, colores: coloresG } : null,
-        true,
-      ),
+      chutes,
+      ultimo: i === partes.length - 1,
+      filas: filas.map((f) => ({
+        clave: f.clave,
+        etiqueta: f.etiqueta,
+        total: f.total,
+        celdas: chutes.map((_, j) => ({ valor: f.valores[desde + j], tono: f.tonos[desde + j] })),
+      })),
     };
   });
-  const generales = d.dias.map((x) => ({ dia: x.dia, general: cargaGeneral(x.cfg) }));
+
+  const totales = filas.map((f) => f.total);
+  const clusters = base.clusters.map((cluster) => {
+    const valores = CONCEPTOS_RESUMEN.map((concepto, i) => {
+      const crudo = d.dias.reduce(
+        (t, x) =>
+          t + x.cfg.carga.filter((f) => f.clusterId === cluster.id && f.rutas > 0).reduce((s, f) => s + Number(f[concepto.clave] ?? 0), 0),
+        0,
+      );
+      const valor = redondear(crudo);
+      return { valor, porcentaje: totales[i] > 0 ? Math.round((valor / totales[i]) * 100) : 0 };
+    });
+    return { id: cluster.id, nombre: cluster.nombre, color: colores.get(cluster.id) ?? 'var(--accent)', valores };
+  }).filter((c) => c.valores.some((v) => v.valor > 0));
+
   return {
-    cuadriculas,
-    totalGeneral: tramos(
-      columnas,
-      () => [],
-      generales.map((x) => ({ sufijo: ETIQUETA_BALANCEO[x.dia], cargaDe: (chute: number) => x.general.get(chute) })),
-      true,
-    ),
+    indicadores: filas.map((f) => ({ clave: f.clave, etiqueta: f.etiqueta, valor: f.total })),
+    tramos: tramosResumen,
+    clusters,
+    totales,
   };
 }
 
@@ -950,82 +966,40 @@ function etiquetaChute(nombre: string): string {
   return /^chute\b/i.test(nombre.trim()) ? nombre : `CHUTE ${nombre}`;
 }
 
-/** «CHUTE 15 → CHUTE 17», «CHUTE 15» o null si sus diarias aún no le dieron tramo. */
-function tramoGrupo(grupo: GrupoCluster): string | null {
-  if (!grupo.chuteDesde) {
-    return null;
-  }
-  return grupo.chuteHastaId !== grupo.chuteDesdeId && grupo.chuteHasta
-    ? `${etiquetaChute(grupo.chuteDesde)} → ${etiquetaChute(grupo.chuteHasta)}`
-    : etiquetaChute(grupo.chuteDesde);
-}
-
-/** Grupo cuyo tramo incluye el chute (los tramos son contiguos en orden natural), o null. */
-function grupoDelChute(chute: ColumnaChute, grupos: readonly GrupoCluster[]): GrupoCluster | null {
-  return (
-    grupos.find((g) => {
-      if (!g.chuteDesde) {
-        return false;
-      }
-      if (chute.id === g.chuteDesdeId || chute.id === g.chuteHastaId) {
-        return true;
-      }
-      const hasta = g.chuteHasta ?? g.chuteDesde;
-      return compararChute(chute.nombre, g.chuteDesde) > 0 && compararChute(chute.nombre, hasta) < 0;
-    }) ?? null
-  );
-}
-
-/** Franja de grupos de una tabla: chutes seguidos del mismo grupo se unen en un segmento. */
-function franjaGrupos(
-  chutes: ColumnaChute[],
-  grupos: { lista: readonly GrupoCluster[]; colores: Map<string, string> },
-): SegmentoGrupo[] {
-  if (!grupos.lista.some((g) => g.chuteDesde)) {
-    return [];
-  }
-  const segmentos: SegmentoGrupo[] = [];
-  for (const chute of chutes) {
-    const nombre = grupoDelChute(chute, grupos.lista)?.nombre ?? null;
-    const ultimo = segmentos.at(-1);
-    if (ultimo && ultimo.grupo === nombre) {
-      ultimo.span++;
-    } else {
-      segmentos.push({ grupo: nombre, color: nombre ? (grupos.colores.get(nombre) ?? null) : null, span: 1 });
-    }
-  }
-  return segmentos;
-}
-
-/** Marca de la ruta: D si es diaria; con todas las frecuencias (Ambos), también LXV o MJS. */
-function marcaDe(frecuencia: string | null | undefined, todas: boolean): MarcaFrecuencia | null {
+/** Frecuencia de la ruta: D si es diaria (o no tiene), si no L-X-V o M-J-S. */
+function marcaDe(frecuencia: string | null | undefined): MarcaFrecuencia {
   if (!frecuencia || frecuencia === 'DIARIA') {
     return 'D';
-  }
-  if (!todas) {
-    return null;
   }
   return frecuencia === 'MJS' ? 'MJS' : 'LXV';
 }
 
+/** Cantidad del servidor redondeada hacia arriba, sin arrastrar el error de los decimales. */
+function redondear(valor: number): number {
+  return Math.ceil(Math.round(valor * 1e6) / 1e6);
+}
+
+/** Parte la lista en tramos parejos de hasta `maximo` (29 con 12 → 10, 10 y 9; no 12, 12 y 5). */
+function partir<T>(lista: T[], maximo: number): T[][] {
+  const porTramo = Math.ceil(lista.length / Math.max(1, Math.ceil(lista.length / maximo)));
+  const partes: T[][] = [];
+  for (let i = 0; i < lista.length; i += porTramo) {
+    partes.push(lista.slice(i, i + porTramo));
+  }
+  return partes;
+}
+
 /**
- * Parte las columnas en tramos que caben a lo ancho de la hoja. Cada fuente de carga suma sus
- * filas de totales (en «Ambos», una por día con su sufijo); el semáforo es por fila.
+ * Parte las columnas de un cluster en tramos que caben junto a su panel. Cada tramo lleva sus
+ * rutas y los totales por chute; el semáforo se calcula con la fila completa.
  */
 function tramos(
   columnas: ColumnaChute[],
   rutasDe: (chute: number) => RutaSimulacion[],
-  fuentes: FuenteCarga[],
-  general: boolean,
-  grupos: { lista: readonly GrupoCluster[]; colores: Map<string, string> } | null = null,
-  todasLasFrecuencias = false,
+  cargaDe: (chute: number) => CargaSimulacion | undefined,
+  colores: Map<string, string> | null,
 ): Tramo[] {
-  const resultado: Tramo[] = [];
-  // Tramos parejos: 29 chutes van en 3 tablas de 10, 10 y 9 (no 12, 12 y 5).
-  const porTabla = Math.ceil(columnas.length / Math.max(1, Math.ceil(columnas.length / CHUTES_POR_TABLA)));
-  const filasTotal = fuentes.flatMap((fuente) => CONCEPTOS.map((concepto) => ({ fuente, concepto })));
-  for (let inicio = 0; inicio < columnas.length; inicio += porTabla) {
-    const chutes = columnas.slice(inicio, inicio + porTabla);
+  const resultado: Tramo[] = partir(columnas, CHUTES_POR_TABLA).map((chutes) => {
     const listas = chutes.map((c) => rutasDe(c.id));
     const alto = Math.max(0, ...listas.map((l) => l.length));
     const filas = Array.from({ length: alto }, (_, f) =>
@@ -1036,45 +1010,41 @@ function tramos(
         }
         // Código y bultos redondeados hacia arriba, como en la pantalla (el tipo va en el Excel).
         const bultos = formatearEntero(ruta.totalBultos);
-        const grupo = grupos && ruta.grupo ? ruta.grupo : null;
-        const marca = marcaDe(ruta.frecuencia, todasLasFrecuencias);
+        const grupo = colores && ruta.grupo ? ruta.grupo : null;
+        const marca = marcaDe(ruta.frecuencia);
         const movida = ruta.chuteId !== ruta.chuteOriginalId || ruta.clusterId !== ruta.clusterOriginalId;
         return {
           codigo: ruta.codigoRuta,
           bultos,
           grupo,
-          color: grupo ? (grupos?.colores.get(grupo) ?? null) : null,
+          color: grupo ? (colores?.get(grupo) ?? null) : null,
           marca,
-          letra: marca === null ? null : marca === 'D' ? 'D' : marca === 'LXV' ? 'L' : 'M',
           movida,
           titulo:
             `${ruta.codigoRuta} · ${bultos} bultos` +
             (grupo ? ` · grupo ${grupo}` : '') +
-            (marca === 'D' ? ' · diaria' : marca ? ` · ${ETIQUETA_BALANCEO[marca]}` : '') +
+            (marca === 'D' ? ' · diaria' : ` · ${ETIQUETA_BALANCEO[marca]}`) +
             (movida ? ' · movida' : ''),
         };
       }),
     );
-    resultado.push({
+    return {
       chutes,
-      franja: grupos ? franjaGrupos(chutes, grupos) : [],
       filas,
-      totales: filasTotal.map(({ fuente, concepto }) => ({
-        etiqueta:
-          (general && concepto.clave === 'operarios' ? 'Máx. operarios por ola' : concepto.etiqueta) +
-          (fuente.sufijo ? ` · ${fuente.sufijo}` : ''),
+      totales: CONCEPTOS.map((concepto) => ({
+        clave: concepto.clave,
+        etiqueta: concepto.etiqueta,
         celdas: chutes.map((c) => {
-          const carga = fuente.cargaDe(c.id);
+          const carga = cargaDe(c.id);
           const crudo = !carga ? 0 : concepto.clave === 'operarios' ? (carga.operarios ?? 0) : Number(carga[concepto.clave]);
-          return { valor: Math.ceil(Math.round(crudo * 1e6) / 1e6), tono: null };
+          return { valor: redondear(crudo), tono: null };
         }),
       })),
-    });
-  }
-  // Semáforo por línea con todos los chutes: se calcula sobre la fila completa.
-  filasTotal.forEach((_, fila) => {
-    const todos = resultado.flatMap((t) => t.totales[fila].celdas.map((c) => c.valor));
-    const niveles = nivelesDeFila(todos);
+    };
+  });
+  // Semáforo por línea con todos los chutes del cluster.
+  CONCEPTOS.forEach((_, fila) => {
+    const niveles = nivelesDeFila(resultado.flatMap((t) => t.totales[fila].celdas.map((c) => c.valor)));
     let i = 0;
     for (const tramo of resultado) {
       for (const celda of tramo.totales[fila].celdas) {

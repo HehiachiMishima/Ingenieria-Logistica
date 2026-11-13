@@ -57,7 +57,7 @@ public class SistemaService {
     public ApiResponse<SistemaResponse> crear(SistemaCrearRequest peticion) {
         Long actor = ActorActual.id();
         return Trazas.medir(log, "SistemaService.crear sistema=" + peticion.sistema(), () -> transacciones.ejecutar(() -> {
-            if (dataSistemaRepository.existsBySistema(peticion.sistema())) {
+            if (dataSistemaRepository.existsBySistema(peticion.sistema().trim())) {
                 throw new ConflictoException("Ya existe un sistema con el nombre '" + peticion.sistema() + "'.");
             }
 
@@ -122,7 +122,7 @@ public class SistemaService {
         return Trazas.medir(log,
                 "SistemaService.crearTipo sistemaId=" + sistemaId + " incidencia=" + peticion.incidencia(), () -> transacciones.ejecutar(() -> {
                     obtenerSistema(sistemaId);
-                    if (dataIncidenciaRepository.existsByIdDataSistemaAndIncidencia(sistemaId, peticion.incidencia())) {
+                    if (dataIncidenciaRepository.existsByIdDataSistemaAndIncidencia(sistemaId, peticion.incidencia().trim())) {
                         throw new ConflictoException(
                                 "Ya existe el tipo de incidencia '" + peticion.incidencia() + "' para este sistema.");
                     }

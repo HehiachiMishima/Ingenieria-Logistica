@@ -33,6 +33,11 @@ public class ZonaNegocio {
         return dia.atStartOfDay(zona).toInstant();
     }
 
+    /** Dia del negocio al que corresponde un instante UTC. */
+    public LocalDate dia(Instant instante) {
+        return instante.atZone(zona).toLocalDate();
+    }
+
     /** {@link #inicioDelDia} listo para parametros JDBC. */
     public Timestamp inicioDelDiaSql(LocalDate dia) {
         return Timestamp.from(inicioDelDia(dia));

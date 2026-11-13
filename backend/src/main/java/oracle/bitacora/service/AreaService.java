@@ -57,7 +57,7 @@ public class AreaService {
     public ApiResponse<AreaResponse> crear(AreaCrearRequest peticion) {
         Long actor = ActorActual.id();
         return Trazas.medir(log, "AreaService.crear area=" + peticion.area(), () -> transacciones.ejecutar(() -> {
-            if (dataAreaRepository.existsByArea(peticion.area())) {
+            if (dataAreaRepository.existsByArea(peticion.area().trim())) {
                 throw new ConflictoException("Ya existe un area con el nombre '" + peticion.area() + "'.");
             }
 
@@ -122,7 +122,7 @@ public class AreaService {
         return Trazas.medir(log,
                 "AreaService.crearResponsable areaId=" + areaId + " responsable=" + peticion.responsable(), () -> transacciones.ejecutar(() -> {
                     obtenerArea(areaId);
-                    if (dataResponsableRepository.existsByResponsable(peticion.responsable())) {
+                    if (dataResponsableRepository.existsByResponsable(peticion.responsable().trim())) {
                         throw new ConflictoException(
                                 "Ya existe un responsable con el nombre '" + peticion.responsable()
                                         + "' (puede pertenecer a otra area).");

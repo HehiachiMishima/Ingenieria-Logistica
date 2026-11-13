@@ -1,6 +1,12 @@
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import {
+  AbstractControl,
+  FormBuilder,
+  ReactiveFormsModule,
+  ValidationErrors,
+  Validators,
+} from '@angular/forms';
 import { PERMISOS } from '../../../../../../core/config/permisos';
 import { DirectorioUsuarios } from '../../../../../../core/services/directorio-usuarios';
 import { Notificaciones } from '../../../../../../core/services/notificaciones';
@@ -17,6 +23,15 @@ import { Paginador } from '../../../../../../shared/ui/paginador/paginador';
 import { Sistema, TipoIncidencia } from '../../../data/bitacora.model';
 import { SistemasApi } from '../../../data/sistemas.api';
 import { BitacoraCatalogos } from '../../../state/bitacora-catalogos';
+
+/** Largo máximo de los nombres (VARCHAR(50) en la base). */
+export const MAX_NOMBRE = 50;
+
+/** Rechaza un texto hecho solo de espacios (el backend lo guarda recortado). */
+function sinSoloEspacios(control: AbstractControl<string>): ValidationErrors | null {
+  const valor = control.value ?? '';
+  return valor.length > 0 && valor.trim().length === 0 ? { soloEspacios: true } : null;
+}
 
 @Component({
   selector: 'app-bitacora-sistemas',
@@ -43,6 +58,7 @@ export class Sistemas {
   private readonly directorio = inject(DirectorioUsuarios);
 
   readonly permisos = PERMISOS;
+  readonly maxNombre = MAX_NOMBRE;
 
   private readonly listado = new ListadoLocal<Sistema>(
     () => this.sistemasApi.listar(),
@@ -66,7 +82,7 @@ export class Sistemas {
   readonly eliminando = this.edicion.eliminando;
 
   readonly formulario = this.fb.nonNullable.group({
-    sistema: ['', [Validators.required, Validators.maxLength(50)]],
+    sistema: ['', [Validators.required, sinSoloEspacios, Validators.maxLength(MAX_NOMBRE)]],
   });
 
   readonly tiposAbierto = signal(false);
@@ -88,7 +104,7 @@ export class Sistemas {
   readonly tipoEliminando = this.edicionTipo.eliminando;
 
   readonly tipoFormulario = this.fb.nonNullable.group({
-    incidencia: ['', [Validators.required, Validators.maxLength(50)]],
+    incidencia: ['', [Validators.required, sinSoloEspacios, Validators.maxLength(MAX_NOMBRE)]],
   });
 
   constructor() {
@@ -138,7 +154,7 @@ export class Sistemas {
 
     const valores = this.formulario.getRawValue();
     const editando = this.editando();
-    const peticion = { sistema: valores.sistema };
+    const peticion = { sistema: valores.sistema.trim() };
     const peticion$ = editando
       ? this.sistemasApi.actualizar(editando.id, peticion)
       : this.sistemasApi.crear(peticion);
@@ -202,6 +218,30 @@ export class Sistemas {
     return control.touched && control.invalid;
   }
 
+  /** Mensaje del campo según el motivo real (vacío o demasiado largo); null si es válido o no se tocó. */
+  errorDe(campo: 'sistema' | 'incidencia'): string | null {
+    const control =
+      campo === 'sistema' ? this.formulario.controls.sistema : this.tipoFormulario.controls.incidencia;
+    if (!control.touched || control.valid) {
+      return null;
+    }
+    const etiqueta = campo === 'sistema' ? 'El nombre' : 'El tipo';
+    if (control.hasError('required') || control.hasError('soloEspacios')) {
+      return `${etiqueta} es obligatorio.`;
+    }
+    if (control.hasError('maxlength')) {
+      return `Máximo ${MAX_NOMBRE} caracteres (tiene ${control.value.length}).`;
+    }
+    return `${etiqueta} no es válido.`;
+  }
+
+  largoDe(campo: 'sistema' | 'incidencia'): number {
+    return (campo === 'sistema'
+      ? this.formulario.controls.sistema.value
+      : this.tipoFormulario.controls.incidencia.value
+    ).length;
+  }
+
   guardarTipo(): void {
     const sistema = this.sistemaTipos();
     if (!sistema || this.tipoGuardando()) {
@@ -214,7 +254,7 @@ export class Sistemas {
 
     const valores = this.tipoFormulario.getRawValue();
     const editando = this.tipoEditando();
-    const peticion = { incidencia: valores.incidencia };
+    const peticion = { incidencia: valores.incidencia.trim() };
     const peticion$ = editando
       ? this.sistemasApi.actualizarTipo(sistema.id, editando.id, peticion)
       : this.sistemasApi.crearTipo(sistema.id, peticion);

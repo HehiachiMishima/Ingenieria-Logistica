@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rampas 15–33</title>
+<style>
+  :root{
+    color-scheme: light;
+    /* Colores tomados del FORMATO.xlsx (tema de Office) */
+    --paleta:#4d5862;   /* Texto 2, +75 % */
+    --linea:#634ed9;    /* Texto 2, +50 % */
+    --rampa:#F2AA84;    /* Énfasis 2, +40 % */
+    --fondo:#FFFFFF;
+    --tinta:#0E2841;
+    --suave:#5B6B7C;
+    --borde:#E3E8EE;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background:var(--fondo);color:var(--tinta);
+    font:14px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+
+  /* ---------- barra superior ---------- */
+  header{
+    flex:0 0 auto;display:flex;align-items:center;gap:12px 20px;flex-wrap:wrap;
+    padding:10px 16px;border-bottom:1px solid var(--borde);
+  }
+  header h1{font-size:16px;font-weight:650;margin:0;letter-spacing:.01em}
+  header .sub{color:var(--suave);font-size:13px}
+  header .sub b{color:var(--tinta);font-weight:600;font-variant-numeric:tabular-nums}
+  .zoom{margin-left:auto;display:flex;align-items:center;gap:4px}
+  .zoom button{
+    font:inherit;font-size:13px;min-width:32px;height:30px;padding:0 10px;
+    border:1px solid var(--borde);background:#fff;color:var(--tinta);border-radius:6px;cursor:pointer;
+  }
+  .zoom button:hover{background:#F3F6F9}
+  .zoom button:focus-visible{outline:2px solid var(--linea);outline-offset:1px}
+  .zoom output{min-width:46px;text-align:center;font-variant-numeric:tabular-nums;color:var(--suave);font-size:13px}
+
+  /* ---------- patio con scroll horizontal ---------- */
+  .patio{
+    flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior-x:contain;
+    padding:8px 0;outline:none;
+  }
+  .patio:focus-visible{box-shadow:inset 0 0 0 2px var(--linea)}
+  .pista{display:flex;width:max-content;position:relative}
+
+  .rampa{position:relative;flex:0 0 auto}
+  .rampa > *{position:absolute}
+
+  .caja{
+    background:var(--rampa);
+    display:flex;align-items:center;justify-content:center;
+    font-family:"Aptos Narrow","Arial Narrow","Roboto Condensed","Helvetica Neue",Arial,sans-serif;
+    color:#000;font-weight:500;letter-spacing:.02em;white-space:nowrap;
+  }
+  .linea{background-repeat:repeat-y}
+  .paleta{background:var(--paleta)}
+
+  /* rampas fijas: primera a la izquierda, última a la derecha */
+  .fija{position:sticky;z-index:5;transition:filter .15s}
+  .fija.izq{left:0;background:var(--fondo)}
+  .fija.der{right:0}
+  .mascara{background:var(--fondo)}
+  .fija.izq.sombra{filter:drop-shadow(5px 0 5px rgba(14,40,65,.18))}
+  .fija.der.sombra{filter:drop-shadow(-5px 0 5px rgba(14,40,65,.18))}
+
+  @media (max-width:560px){
+    header{padding:8px 12px}
+    header .sub{flex-basis:100%;order:3}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="titulo">Rampas</h1>
+  <span class="sub" id="sub"></span>
+  <div class="zoom" role="group" aria-label="Zoom">
+    <button type="button" id="zMenos" aria-label="Alejar">−</button>
+    <output id="zVal">100 %</output>
+    <button type="button" id="zMas" aria-label="Acercar">+</button>
+    <button type="button" id="zAjustar">Ajustar</button>
+  </div>
+</header>
+
+<main class="patio" id="patio" tabindex="0" aria-label="Esquema de rampas y paletas">
+  <div class="pista" id="pista"></div>
+</main>
+
+<script>
+/* ================= CONFIGURACIÓN =================
+   desde / hasta : rampas a mostrar (consecutivas).
+   paletasPorRampa: se reparten mitad a cada lado de la línea.
+   La primera y la última rampa quedan fijas; las del medio se deslizan.        */
+const CONFIG = {
+  desde: 15,
+  hasta: 33,
+  paletasPorRampa: 10,
+};
+
+/* ================= GEOMETRÍA (proporciones del Excel) =================
+   Todo se mide en "filas" (r = alto de una fila de 18 pt del Excel):
+   columna normal = 3.6 r · columna angosta = 1.3 r · borde blanco = 0.3 r
+   paleta = 2 columnas × 7 filas · rampa = 4 normales + 2 angostas × 21 filas
+   la línea punteada ocupa una columna angosta, de la fila 1 a la última.    */
+const rampas = [];
+for (let n = CONFIG.desde; n <= CONFIG.hasta; n++) rampas.push(n);
+const porLado = Math.ceil(CONFIG.paletasPorRampa / 2);
+const filasPaletas = porLado * 7;
+const FILAS = 1 + filasPaletas + 2 + 21;          // 59 con 10 paletas
+
+const patio = document.getElementById('patio');
+const pista = document.getElementById('pista');
+let zoom = 1;
+
+document.getElementById('titulo').textContent = `Rampas ${CONFIG.desde}–${CONFIG.hasta}`;
+
+function el(cls, parent, title){
+  const d = document.createElement('div');
+  d.className = cls; if (title) d.title = title;
+  parent.appendChild(d); return d;
+}
+
+/* construir la estructura una sola vez */
+const unidades = rampas.map((num, i) => {
+  const u = el('rampa', pista);
+  u.dataset.rampa = num;
+  const primera = i === 0, ultima = i === rampas.length - 1;
+  if (primera) u.classList.add('fija', 'izq');
+  if (ultima)  u.classList.add('fija', 'der');
+  const m = {};
+  if (primera) m.vuelo = el('mascara', u);                 // tapa lo que pasa bajo sus paletas derechas
+  if (ultima){ m.arriba = el('mascara', u); m.abajo = el('mascara', u); }
+  const caja = el('caja', u, `Rampa ${num}`);
+  caja.textContent = `RAMPA ${num}`;
+  const linea = el('linea', u);
+  const pals = [];
+  for (let k = 0; k < CONFIG.paletasPorRampa; k++){
+    const p = el('paleta', u, `Rampa ${num}`);
+    p.dataset.rampa = num; p.dataset.paleta = k + 1;
+    pals.push(p);
+  }
+  return {u, num, primera, ultima, m, caja, linea, pals};
+});
+
+function px(e, l, t, w, h){
+  e.style.left = l + 'px'; e.style.top = t + 'px';
+  e.style.width = w + 'px'; e.style.height = h + 'px';
+}
+
+let G = null;
+function maquetar(){
+  const alto  = patio.clientHeight - 16 - 14;               // padding + barra de scroll
+  const ancho = patio.clientWidth;
+  const rAjuste = Math.min(alto / FILAS, ancho / 80);       // que entren las 2 fijas + algo del medio
+  const r = Math.max(4, Math.floor(rAjuste * zoom));
+  const b = 2 * Math.max(1, Math.round(r * 0.15));          // borde blanco (par para que quede nítido)
+  const n = Math.round(r * 3.6);                            // columna normal
+  const w = Math.round(r * 1.3);                            // columna angosta
+  const cajaW = 4 * n + 2 * w;                              // ancho de rampa
+  const P = cajaW + w;                                      // paso entre rampas (rampa + línea)
+  const M = r;                                              // margen lateral
+  const H = FILAS * r;
+  const topCaja = (1 + filasPaletas + 2) * r;
+  const fs = Math.max(11, Math.round(r * 0.667));
+  G = {r, b, n, w, P, M};
+
+  const dash = `linear-gradient(to bottom, transparent ${b/2}px, var(--linea) ${b/2}px, var(--linea) ${r - b/2}px, transparent ${r - b/2}px)`;
+
+  for (const x of unidades){
+    const off = x.primera ? M : 0;                          // la primera lleva margen a la izquierda
+    let ancho = P;
+    if (x.primera) ancho = M + P;
+    if (x.ultima)  ancho = P + 2 * n + M;                   // la última incluye sus paletas derechas
+    x.u.style.width = ancho + 'px';
+    x.u.style.height = H + 'px';
+
+    px(x.caja, off + b/2, topCaja + b/2, cajaW - b, 21 * r - b);
+    x.caja.style.fontSize = fs + 'px';
+
+    px(x.linea, off + cajaW + b/2, 0, w - b, H);
+    x.linea.style.backgroundImage = dash;
+    x.linea.style.backgroundSize = `100% ${r}px`;
+
+    // paletas: columna izquierda sobre el borde derecho de la rampa, columna derecha pasando la línea
+    const xIzq = off + 2 * n + 2 * w, xDer = off + P;
+    x.pals.forEach((p, k) => {
+      const lado = k < porLado ? 0 : 1, fila = lado ? k - porLado : k;
+      px(p, (lado ? xDer : xIzq) + b/2, (1 + fila * 7) * r + b/2, 2 * n - b, 7 * r - b);
+    });
+
+    if (x.m.vuelo) px(x.m.vuelo, M + P, 0, 2 * n, topCaja);
+    if (x.m.arriba) px(x.m.arriba, 2 * n + 2 * w, 0, ancho - (2 * n + 2 * w), topCaja);
+    if (x.m.abajo)  px(x.m.abajo, 0, topCaja, ancho, H - topCaja);
+  }
+  document.getElementById('zVal').textContent = Math.round(zoom * 100) + ' %';
+  estado();
+}
+
+/* sombras de las fijas + texto con las rampas visibles */
+const izq = unidades[0], der = unidades[unidades.length - 1];
+function estado(){
+  const max = patio.scrollWidth - patio.clientWidth;
+  izq.u.classList.toggle('sombra', patio.scrollLeft > 1);
+  der.u.classList.toggle('sombra', patio.scrollLeft < max - 1);
+  if (!G) return;
+  const a = patio.getBoundingClientRect();
+  const limI = izq.u.getBoundingClientRect().right;
+  const limD = der.u.getBoundingClientRect().left;
+  const vis = unidades.slice(1, -1).filter(x => {
+    const c = x.caja.getBoundingClientRect();
+    return c.left >= limI - 2 && c.right <= limD + G.w + 2;
+  }).map(x => x.num);
+  const medio = vis.length ? (vis.length > 1 ? `${vis[0]}–${vis[vis.length - 1]}` : `${vis[0]}`) : '—';
+  document.getElementById('sub').innerHTML =
+    `${CONFIG.paletasPorRampa} paletas por rampa · fijas: <b>${izq.num}</b> y <b>${der.num}</b> · en pantalla: <b>${medio}</b>`;
+}
+
+/* rueda del mouse → desplazamiento horizontal */
+patio.addEventListener('wheel', e => {
+  if (e.ctrlKey) return;
+  const sinVertical = patio.scrollHeight <= patio.clientHeight + 1;
+  if (sinVertical && Math.abs(e.deltaY) > Math.abs(e.deltaX)){
+    patio.scrollLeft += e.deltaY;
+    e.preventDefault();
+  }
+}, {passive:false});
+patio.addEventListener('scroll', estado, {passive:true});
+
+/* teclado: Inicio / Fin / Re Pág / Av Pág recorren las rampas */
+patio.addEventListener('keydown', e => {
+  const paso = Math.max(G ? G.P : 200, der.u.getBoundingClientRect().left - izq.u.getBoundingClientRect().right - (G ? G.P : 0));
+  const destino = {Home: 0, End: patio.scrollWidth,
+                   PageDown: patio.scrollLeft + paso, PageUp: patio.scrollLeft - paso}[e.key];
+  if (destino === undefined || patio.scrollHeight > patio.clientHeight + 1 && (e.key === 'PageDown' || e.key === 'PageUp')) return;
+  patio.scrollTo({left: destino, behavior: 'smooth'});
+  e.preventDefault();
+});
+
+/* zoom */
+function setZoom(z){
+  const centro = (patio.scrollLeft + patio.clientWidth / 2) / patio.scrollWidth;
+  zoom = Math.min(2.5, Math.max(0.5, Math.round(z * 10) / 10));
+  maquetar();
+  patio.scrollLeft = centro * patio.scrollWidth - patio.clientWidth / 2;
+}
+document.getElementById('zMas').onclick = () => setZoom(zoom + 0.1);
+document.getElementById('zMenos').onclick = () => setZoom(zoom - 0.1);
+document.getElementById('zAjustar').onclick = () => setZoom(1);
+
+let t;
+window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(maquetar, 60); });
+maquetar();
+</script>
+</body>
+</html>

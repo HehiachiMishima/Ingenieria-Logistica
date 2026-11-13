@@ -1,6 +1,6 @@
 import { Service, inject } from '@angular/core';
 import { Observable } from 'rxjs';
-import { AnaliticaBitacora } from './analitica.model';
+import { AnaliticaBitacora, CasoLargo } from './analitica.model';
 import {
   Incidencia,
   IncidenciaActualizarRequest,
@@ -32,6 +32,15 @@ export class IncidenciasApi {
       '/incidencias/analitica',
       filtros as Record<string, unknown>,
     );
+  }
+
+  /** Casos resueltos más largos de un sistema, con los filtros del dashboard. */
+  casosLargos(sistema: number, filtros: IncidenciaFiltros = {}, limite = 3): Observable<CasoLargo[]> {
+    return this.api.get<CasoLargo[]>('/incidencias/analitica/casos-largos', {
+      ...filtros,
+      sistema,
+      limite,
+    });
   }
 
   crear(peticion: IncidenciaCrearRequest): Observable<Incidencia> {
