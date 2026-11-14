@@ -622,6 +622,100 @@ class SimulacionFrecuenciasTest {
     assertTrue(mayor.subtract(menor).compareTo(new BigDecimal("37.35")) <= 0, carga.toString());
   }
 
+  // ---------------- Dueño del buff (se decide en las diarias) ----------------
+
+  /** Diarias pendientes en chutes 1 → n; buff donde se pida. Devuelve el parámetro de diarias. */
+  private ParametroCluster prepararDiarias(int chutes, Set<Long> buff, List<RutaProyeccion> rutas) {
+    ParametroCluster dia = parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_PENDIENTE);
+    List<Long> ids = java.util.stream.LongStream.rangeClosed(1, chutes).boxed().toList();
+    preparar(
+        List.of(
+            dia,
+            parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE)),
+        ids.stream().map((id) -> base(id, buff.contains(id))).toList(),
+        List.of());
+    when(chuteRepo.findAllById(any()))
+        .thenReturn(ids.stream().map((id) -> chute(id, "CHUTE " + id)).toList());
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL1)).thenReturn(rutas);
+    return dia;
+  }
+
+  @Test
+  void siLaRutaDelDiaPesaMasElBuffQuedaReservadoYLasDiariasVanAlLado() {
+    // Diarias 465 y 197; el día más pesado (M-J-S 1.531) gana: el buff (CHUTE 2) es de los días.
+    RutaProyeccion d465 = ruta(1L, 2L, "465.05", Balanceo.DIARIA);
+    RutaProyeccion d197 = ruta(2L, 2L, "197.49", Balanceo.DIARIA);
+    List<RutaProyeccion> rutas =
+        List.of(d465, d197, ruta(3L, 3L, "784.49", "LXV"), ruta(4L, 3L, "1531.63", "MJS"));
+    prepararDiarias(3, Set.of(2L), rutas);
+
+    BalanceoResponse resultado =
+        servicio.balancear(10L, Balanceo.DIA, CL1, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 3L)).datos();
+
+    assertTrue(d465.getChuteId() != 2L && d197.getChuteId() != 2L, "ninguna diaria en el buff reservado");
+    assertEquals(Set.of(1L, 3L), Set.of(d465.getChuteId(), d197.getChuteId()), "una a cada lado del buff");
+    assertTrue(resultado.mensaje().contains("Buff CHUTE 2: reservado para L-X-V y M-J-S"), resultado.mensaje());
+  }
+
+  @Test
+  void siLaDiariaPesaMasElBuffEsDeLasDiarias() {
+    RutaProyeccion d900 = ruta(1L, 1L, "900", Balanceo.DIARIA);
+    RutaProyeccion d100 = ruta(2L, 1L, "100", Balanceo.DIARIA);
+    List<RutaProyeccion> rutas =
+        List.of(d900, d100, ruta(3L, 3L, "300", "LXV"), ruta(4L, 3L, "200", "MJS"));
+    prepararDiarias(3, Set.of(2L), rutas);
+
+    BalanceoResponse resultado =
+        servicio.balancear(10L, Balanceo.DIA, CL1, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 3L)).datos();
+
+    assertEquals(2L, d900.getChuteId(), "la diaria más pesada al buff");
+    assertTrue(!resultado.mensaje().contains("reservado"), resultado.mensaje());
+  }
+
+  @Test
+  void conRutasEnUnSoloDiaElBuffNoSeReserva() {
+    // Sin M-J-S el buff reservado quedaría vacío ese día: se queda con las diarias.
+    RutaProyeccion d200 = ruta(1L, 1L, "200", Balanceo.DIARIA);
+    List<RutaProyeccion> rutas = List.of(d200, ruta(2L, 1L, "100", Balanceo.DIARIA), ruta(3L, 3L, "900", "LXV"));
+    prepararDiarias(3, Set.of(2L), rutas);
+
+    servicio.balancear(10L, Balanceo.DIA, CL1, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 3L));
+
+    assertEquals(2L, d200.getChuteId(), "la diaria más pesada al buff, como siempre");
+  }
+
+  @Test
+  void lasDiariasSeJuntanAlLadoDelBuffReservadoAunqueEsteAlFinal() {
+    // Buff en el último chute (5): con dos diarias, ocupan el 4 y el 3; el 1 y el 2 quedan libres.
+    RutaProyeccion d300 = ruta(1L, 1L, "300", Balanceo.DIARIA);
+    RutaProyeccion d250 = ruta(2L, 1L, "250", Balanceo.DIARIA);
+    List<RutaProyeccion> rutas =
+        List.of(d300, d250, ruta(3L, 1L, "800", "LXV"), ruta(4L, 1L, "700", "MJS"));
+    prepararDiarias(5, Set.of(5L), rutas);
+
+    servicio.balancear(10L, Balanceo.DIA, CL1, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 5L));
+
+    assertEquals(Set.of(3L, 4L), Set.of(d300.getChuteId(), d250.getChuteId()));
+  }
+
+  @Test
+  void unBuffConDiariasNoRecibeLaRutaPesadaDelDia() {
+    // L-X-V con la diaria (fija) en el buff 3: la de 800 ya no va encima de ella.
+    prepararBuff(false, false, true);
+    RutaProyeccion diaria = ruta(1L, 3L, "300", Balanceo.DIARIA);
+    RutaProyeccion r800 = ruta(2L, 1L, "800", "LXV");
+    List<RutaProyeccion> rutas = List.of(diaria, r800, ruta(3L, 1L, "250", "LXV"), ruta(4L, 2L, "200", "LXV"));
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL1)).thenReturn(rutas);
+
+    BalanceoResponse resultado =
+        servicio.balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.RUTAS, null).datos();
+
+    assertEquals(3L, diaria.getChuteId(), "la diaria fija no se mueve");
+    assertTrue(r800.getChuteId() != 3L, "el buff ya es de las diarias");
+    assertTrue(!resultado.mensaje().contains("pesada(s) a chutes con buff"), resultado.mensaje());
+  }
+
   @Test
   void conMasChutesConBuffQueRutasElBuffSobranteQuedaLibreNoVacio() {
     prepararBuff(false, true, true);

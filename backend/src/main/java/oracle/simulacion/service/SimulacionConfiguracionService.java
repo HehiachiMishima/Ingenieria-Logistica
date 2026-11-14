@@ -1353,6 +1353,7 @@ public class SimulacionConfiguracionService {
     int ancladas = 0;
     int libres = 0;
     boolean tope = false;
+    List<String> avisosBuff = new ArrayList<>();
     for (TramosGrupos.Tramo tramo : tramos) {
       List<RutaProyeccion> rutasGrupo = porGrupo.getOrDefault(tramo.grupo(), List.of());
       // Cada grupo se compara solo consigo mismo: su propio reparto. Las diarias
@@ -1360,8 +1361,18 @@ public class SimulacionConfiguracionService {
       Reparto reparto = new Reparto(rutasGrupo, inmoviles);
       int traidas = 0;
       Traslado traslado;
+      // 0. En las diarias se decide de quién es cada buff del tramo: de las diarias o de los días.
+      // Los reservados para los días no reciben diarias, y las diarias se juntan a su lado.
+      Set<Long> reservados = Set.of();
+      if (balanceo == Balanceo.DIA && tramo.chutes() != null && !chutesBuff.isEmpty()) {
+        DuenosBuff duenos =
+            duenosBuff(tramo.chutes(), chutesBuff, porGrupoTodas.getOrDefault(tramo.grupo(), List.of()));
+        reservados = duenos.reservados();
+        avisosBuff.addAll(duenos.avisos(ctx));
+      }
       if (tramo.chutes() != null) {
-        reparto.limitar(clusterId, tramo.chutes());
+        Set<Long> fuera = reservados;
+        reparto.limitar(clusterId, tramo.chutes().stream().filter((c) -> !fuera.contains(c)).toList());
       }
       // 1. El buff primero: los chutes con buff del tramo toman las rutas más pesadas del grupo
       // (estén donde estén), hasta la carga promedio, y quedan fijas ahí. Siempre deja una ruta
@@ -1374,7 +1385,7 @@ public class SimulacionConfiguracionService {
       if (tramo.chutes() != null) {
         // 2. Con lo que quedó, el tramo usa solo los chutes que puede llenar, en un bloque continuo
         // alrededor del buff: los demás quedan libres, sin huecos entre los usados.
-        reparto.ajustarRango(clusterId);
+        reparto.ajustarRango(clusterId, tramo.chutes(), reservados);
         libres += reparto.libres();
         // 3. Lo que está fuera entra al chute con menos carga. Cada ruta entra una sola vez.
         while ((traslado = reparto.traerAlRango(clusterId)) != null) {
@@ -1437,6 +1448,7 @@ public class SimulacionConfiguracionService {
     if (ancladas > 0) {
       mensaje.append(" ").append(ancladas).append(" ruta(s) pesada(s) a chutes con buff.");
     }
+    avisosBuff.forEach((aviso) -> mensaje.append(" ").append(aviso));
     if (libres > 0) {
       long rutasDia = rutasCluster.stream().filter((r) -> balanceo.mueve(r.getFrecuencia())).count();
       mensaje
@@ -1766,6 +1778,74 @@ public class SimulacionConfiguracionService {
   }
 
 
+  /**
+   * Dueño de cada buff de un tramo, decidido en las diarias. Buff por buff, en el orden del tramo,
+   * se compara la diaria más pesada que aún no tiene buff con la ruta más pesada de los días (la
+   * mayor entre L-X-V y M-J-S que aún no tiene buff): gana la que pesa más; a igual peso, la diaria
+   * (trabaja los dos días). Si gana el día, el buff queda reservado: las diarias no entran y en cada
+   * día recibe sus rutas más pesadas. Solo se reserva si los dos días tienen rutas en el grupo (si
+   * no, un día dejaría el buff vacío) y si el grupo tiene diarias (sin ellas no hay con qué chocar).
+   */
+  static DuenosBuff duenosBuff(List<Long> tramo, Set<Long> chutesBuff, List<RutaProyeccion> rutasGrupo) {
+    Comparator<BigDecimal> pesado = Comparator.reverseOrder();
+    List<BigDecimal> diarias = pesos(rutasGrupo, Balanceo.DIA, pesado);
+    List<BigDecimal> lxv = pesos(rutasGrupo, Balanceo.LXV, pesado);
+    List<BigDecimal> mjs = pesos(rutasGrupo, Balanceo.MJS, pesado);
+    List<Long> buffs = tramo.stream().filter(chutesBuff::contains).toList();
+    if (buffs.isEmpty() || diarias.isEmpty() || lxv.isEmpty() || mjs.isEmpty()) {
+      return new DuenosBuff(Set.of(), List.of());
+    }
+    Set<Long> reservados = new LinkedHashSet<>();
+    List<Decision> decisiones = new ArrayList<>();
+    int d = 0;
+    int j = 0;
+    for (Long buff : buffs) {
+      BigDecimal diaria = d < diarias.size() ? diarias.get(d) : null;
+      BigDecimal deLxv = j < lxv.size() ? lxv.get(j) : null;
+      BigDecimal deMjs = j < mjs.size() ? mjs.get(j) : null;
+      BigDecimal delDia = deLxv == null ? deMjs : deMjs == null ? deLxv : deLxv.max(deMjs);
+      if (delDia != null && (diaria == null || delDia.compareTo(diaria) > 0)) {
+        reservados.add(buff);
+        decisiones.add(new Decision(buff, delDia, diaria));
+        j++;
+      } else {
+        d++;
+      }
+    }
+    return new DuenosBuff(Set.copyOf(reservados), List.copyOf(decisiones));
+  }
+
+  /** Bultos de las rutas del grupo que mueve ese balanceo, de la más pesada a la más liviana. */
+  private static List<BigDecimal> pesos(
+      List<RutaProyeccion> rutas, Balanceo balanceo, Comparator<BigDecimal> orden) {
+    return rutas.stream()
+        .filter((r) -> balanceo.mueve(r.getFrecuencia()))
+        .map((r) -> ceroSiNulo(r.getTotalBultos()))
+        .sorted(orden)
+        .toList();
+  }
+
+  /** Un buff reservado para los días: la ruta del día que lo ganó y la diaria con la que compitió. */
+  record Decision(Long chute, BigDecimal delDia, BigDecimal diaria) {}
+
+  /** Buff reservados para los días en un tramo y por qué. */
+  record DuenosBuff(Set<Long> reservados, List<Decision> decisiones) {
+    List<String> avisos(Contexto ctx) {
+      return decisiones.stream()
+          .map(
+              (d) ->
+                  "Buff "
+                      + ctx.nombreChute(d.chute())
+                      + ": reservado para L-X-V y M-J-S ("
+                      + d.delDia().stripTrailingZeros().toPlainString()
+                      + (d.diaria() == null
+                          ? " bultos; ya no quedan diarias para él)."
+                          : " bultos supera a la diaria de " + d.diaria().stripTrailingZeros().toPlainString() + ").")
+                      + " Las diarias se juntan a su lado.")
+          .toList();
+    }
+  }
+
   /** Diferencia de carga entre los chutes de esas rutas (todas de un cluster), en %. */
   private static Integer dispersionPorChute(List<RutaProyeccion> rutas) {
     Map<Long, BigDecimal> porChute = new HashMap<>();
@@ -2020,17 +2100,25 @@ public class SimulacionConfiguracionService {
      * entre chutes con rutas fijas, luego los vecinos hacia el inicio del tramo y por último hacia el
      * final. Así no quedan chutes vacíos entre dos usados (p. ej. entre dos buff). Va antes de traer
      * rutas al rango, así lo que estaba en un chute recortado entra a los que quedan.
+     *
+     * <p>{@code orden}: el tramo completo, en orden. {@code anclas}: chutes del tramo que no reciben
+     * rutas aquí pero marcan dónde va el bloque (en las diarias, los buff reservados para los días:
+     * las diarias se juntan a su lado). Sin tramo no recorta nada.
      */
-    void ajustarRango(Long cluster) {
-      if (rango.isEmpty()) {
+    void ajustarRango(Long cluster, List<Long> orden, Set<Long> anclas) {
+      if (rango.isEmpty() || orden == null) {
         return;
       }
       int primero = -1;
       int ultimo = -1;
       Set<Long> quedanEnTramo = new HashSet<>();
-      for (int i = 0; i < rango.size(); i++) {
-        if (fijas.containsKey(new Par(cluster, rango.get(i)))) {
-          quedanEnTramo.add(rango.get(i));
+      for (int i = 0; i < orden.size(); i++) {
+        Long chute = orden.get(i);
+        boolean conFijas = rango.contains(chute) && fijas.containsKey(new Par(cluster, chute));
+        if (conFijas) {
+          quedanEnTramo.add(chute);
+        }
+        if (conFijas || anclas.contains(chute)) {
           primero = primero < 0 ? i : primero;
           ultimo = i;
         }
@@ -2039,19 +2127,19 @@ public class SimulacionConfiguracionService {
       if (faltan >= rango.size() - quedanEnTramo.size()) {
         return;
       }
-      // Sin rutas fijas el bloque empieza en el primer chute del tramo.
+      // Sin rutas fijas ni anclas el bloque empieza en el primer chute del tramo.
       if (primero < 0) {
         primero = 0;
         ultimo = -1;
       }
       for (int i = primero; i <= ultimo && faltan > 0; i++) {
-        faltan -= quedanEnTramo.add(rango.get(i)) ? 1 : 0;
+        faltan -= sumarAlBloque(orden.get(i), quedanEnTramo);
       }
       for (int i = primero - 1; i >= 0 && faltan > 0; i--) {
-        faltan -= quedanEnTramo.add(rango.get(i)) ? 1 : 0;
+        faltan -= sumarAlBloque(orden.get(i), quedanEnTramo);
       }
-      for (int i = ultimo + 1; i < rango.size() && faltan > 0; i++) {
-        faltan -= quedanEnTramo.add(rango.get(i)) ? 1 : 0;
+      for (int i = ultimo + 1; i < orden.size() && faltan > 0; i++) {
+        faltan -= sumarAlBloque(orden.get(i), quedanEnTramo);
       }
       Set<Long> fuera = new HashSet<>(rango);
       fuera.removeAll(quedanEnTramo);
@@ -2064,6 +2152,11 @@ public class SimulacionConfiguracionService {
         }
       });
       libres = fuera.size();
+    }
+
+    /** 1 si el chute es del rango y entra al bloque ahora; 0 si es un ancla o ya estaba. */
+    private int sumarAlBloque(Long chute, Set<Long> bloque) {
+      return rango.contains(chute) && bloque.add(chute) ? 1 : 0;
     }
 
     /**
@@ -2131,7 +2224,12 @@ public class SimulacionConfiguracionService {
       List<Traslado> hechos = new ArrayList<>();
       List<Long> ola = chutesDeOla(cluster);
       List<Long> base = rango.isEmpty() ? ola.stream().sorted().toList() : rango;
-      List<Long> destinos = base.stream().filter(chutesBuff::contains).toList();
+      // Un buff que ya tiene diarias fijas es de las diarias (se decidió en ellas): no ancla rutas
+      // del día. Los demás (reservados o sin diarias) toman las más pesadas.
+      List<Long> destinos =
+          base.stream()
+              .filter((chute) -> chutesBuff.contains(chute) && !fijas.containsKey(new Par(cluster, chute)))
+              .toList();
       if (destinos.isEmpty()) {
         return hechos;
       }

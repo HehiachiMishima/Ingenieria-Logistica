@@ -48,7 +48,7 @@ export const DETALLES: readonly GrupoDetalle[] = [
         icono: 'paquete',
         termino: 'Buff',
         texto:
-          'Global: se elige antes del primer balanceo. En cada paso el buff va primero: el chute con buff (etiqueta BUFF) toma las rutas más pesadas de su grupo, estén donde estén, hasta la carga promedio. Luego se reparte el resto en torno a él, con al menos una ruta en cada chute usado; si no alcanzan, los usados quedan juntos (sin huecos entre dos buff) y los demás, libres. Al emparejar, si mover una ruta sola no mejora, se intercambia una ruta por otra entre dos chutes.',
+          'Global: se elige antes del primer balanceo. En las diarias se decide de quién es cada buff: si la ruta más pesada de L-X-V o M-J-S pesa más que la diaria más pesada (y el grupo tiene rutas los dos días), el buff queda reservado para los días y las diarias se juntan a su lado; si no, es de las diarias y queda fijo con ellas. En cada paso el buff va primero: el chute con buff (etiqueta BUFF) toma las rutas más pesadas de su grupo, estén donde estén, hasta la carga promedio. Luego se reparte el resto en torno a él, con al menos una ruta en cada chute usado; si no alcanzan, los usados quedan juntos (sin huecos entre dos buff) y los demás, libres. Al emparejar, si mover una ruta sola no mejora, se intercambia una ruta por otra entre dos chutes.',
       },
       {
         icono: 'info',
