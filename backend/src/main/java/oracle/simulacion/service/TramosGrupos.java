@@ -11,8 +11,8 @@ import java.util.List;
  *
  * <p>Cuántos chutes recibe cada grupo depende de sus bultos: su parte del rango
  * es {@code chutes × bultos del grupo / bultos del cluster}. Cada grupo recibe
- * la parte entera, con un mínimo de 1 y nunca más chutes que rutas (un chute
- * sin ruta no aporta). Si sobran chutes, van uno a uno al grupo con la mayor
+ * la parte entera, con un mínimo de 1 y nunca más chutes que su tope (las rutas
+ * de su día con menos rutas: un chute sin ruta no aporta). Si sobran chutes, van uno a uno al grupo con la mayor
  * fracción pendiente; si faltan (por los mínimos), se quitan al que más se pasó
  * de su parte. En un empate decide la prioridad: el de mayor prioridad recibe
  * primero y pierde último.
@@ -22,8 +22,16 @@ import java.util.List;
  */
 final class TramosGrupos {
 
-  /** Un grupo del cluster con su carga (rutas ≥ 1). */
-  record Grupo(String nombre, long rutas, BigDecimal bultos) {}
+  /**
+   * Un grupo del cluster con su carga (rutas ≥ 1) y su tope de chutes: cuántos puede llenar en su
+   * día con menos rutas (diarias + rutas de ese día), así ningún día deja chutes vacíos.
+   */
+  record Grupo(String nombre, long rutas, BigDecimal bultos, long tope) {
+    /** Sin tope propio: tantos chutes como rutas. */
+    Grupo(String nombre, long rutas, BigDecimal bultos) {
+      this(nombre, rutas, bultos, rutas);
+    }
+  }
 
   /** Tramo de un grupo: sus chutes en el orden del rango; prioridad desde 1. */
   record Tramo(String grupo, int prioridad, long rutas, BigDecimal bultos, List<Long> chutes) {}
@@ -124,8 +132,8 @@ final class TramosGrupos {
     return new Reparto(List.copyOf(tramos), n - suma);
   }
 
-  /** Un grupo no recibe más chutes que rutas tiene (ni más que el rango). */
+  /** Un grupo no recibe más chutes que su tope (ni más que el rango). */
   private static long maximo(Grupo grupo, int n) {
-    return Math.max(1L, Math.min(grupo.rutas(), n));
+    return Math.max(1L, Math.min(grupo.tope(), n));
   }
 }

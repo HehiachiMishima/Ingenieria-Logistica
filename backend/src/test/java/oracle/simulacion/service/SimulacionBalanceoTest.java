@@ -388,7 +388,7 @@ class SimulacionBalanceoTest {
     BalanceoResponse resultado = lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 4L));
 
     assertEquals(Set.of(1L, 2L), Set.of(rutas.get(0).getChuteId(), rutas.get(1).getChuteId()));
-    assertTrue(resultado.mensaje().contains("2 chute(s) quedan libres ese día"), resultado.mensaje());
+    assertTrue(resultado.mensaje().contains("2 chute(s) del rango quedan fuera de este día"), resultado.mensaje());
   }
 
   @Test
@@ -2255,7 +2255,8 @@ class SimulacionBalanceoTest {
     Map<Long, Long> porChute = new HashMap<>();
     rutas.forEach((r) -> porChute.merge(r.getChuteId(), 1L, Long::sum));
     assertEquals(2, porChute.size());
-    verify(lotes).guardarGrupos(10L, CL3, List.of(new GrupoGuardado(CL3, "A", 1, 1L, 3L)));
+    // Dos diarias para tres chutes: el rango se recorta a 1 → 2 (con el 3, los dos días lo dejarían vacío).
+    verify(lotes).guardarGrupos(10L, CL3, List.of(new GrupoGuardado(CL3, "A", 1, 1L, 2L)));
   }
 
   @Test

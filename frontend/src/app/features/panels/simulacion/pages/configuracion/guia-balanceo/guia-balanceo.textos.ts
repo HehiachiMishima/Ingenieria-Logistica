@@ -48,7 +48,7 @@ export const DETALLES: readonly GrupoDetalle[] = [
         icono: 'paquete',
         termino: 'Buff',
         texto:
-          'Global: se elige antes del primer balanceo. En las diarias se decide de quién es cada buff: si la ruta más pesada de L-X-V o M-J-S pesa más que la diaria más pesada (y el grupo tiene rutas los dos días), el buff queda reservado para los días y las diarias se juntan a su lado; si no, es de las diarias y queda fijo con ellas. En cada paso el buff va primero: el chute con buff (etiqueta BUFF) toma las rutas más pesadas de su grupo, estén donde estén, hasta la carga promedio. Luego se reparte el resto en torno a él, con al menos una ruta en cada chute usado; si no alcanzan, los usados quedan juntos (sin huecos entre dos buff) y los demás, libres. Al emparejar, si mover una ruta sola no mejora, se intercambia una ruta por otra entre dos chutes.',
+          'Global: se elige antes del primer balanceo. Las diarias se ubican primero y quedan fijas para los dos días (si un buff es para una ruta más pesada de L-X-V o M-J-S, las diarias van a su lado). Después cada día arma sus propios tramos, sin respetar los chutes del otro día: primero cada buff es del grupo de la ruta más pesada de ese día, luego los grupos se ubican alrededor (cada uno con tantos chutes como puede llenar) y al final se empareja; si mover una ruta sola no mejora, se intercambia una por otra. Los chutes del rango que un día no usa quedan fuera de ese día (rayados, sin rutas ni operarios); dentro de cada tramo no queda ninguno vacío: si queda, se vuelve a llenar y emparejar.',
       },
       {
         icono: 'info',

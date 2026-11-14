@@ -644,6 +644,12 @@
   }
 }
 
+/* Chute del tramo que el día no usa: rayado, como los libres de la barra de tramos. Va antes de
+   destino/prohibido para que el arrastre siga resaltando. */
+.matriz__celda.matriz__celda--fuera {
+  background: repeating-linear-gradient(45deg, var(--surface-2) 0 4px, var(--surface) 4px 8px);
+}
+
 /* Ruta: código, etiqueta de tipo, cluster de origen y asa ⋮⋮. */
 .matriz-ruta {
   position: relative;

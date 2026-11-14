@@ -180,6 +180,8 @@ interface BloqueMatriz {
   estado: string;
   /** filas[f][c]: ruta en la fila f del chute c (en el orden de `chutesMatriz`), o null. */
   filas: (CeldaRuta | null)[][];
+  /** fuera[c]: el chute c es del tramo del cluster pero el día que muestra no lo usa. */
+  fuera: boolean[];
 }
 
 /**
@@ -1269,7 +1271,8 @@ export class SimulacionConfiguracion {
     const grupos = this.gruposRango();
     const desde = this.rangoDesde();
     const hasta = this.rangoHasta();
-    if (!cluster || id === null || grupos.length < 2) {
+    // También con un solo grupo: el servidor dice cuántos chutes del rango se pueden llenar.
+    if (!cluster || id === null || grupos.length < 1) {
       this.cargandoGrupos.set(false);
       this.vistaGrupos.set(null);
       this.pedidosVistaGrupos.next(null);
@@ -1329,7 +1332,7 @@ export class SimulacionConfiguracion {
       const n = numero(nombre);
       return n > n1 && n < n2;
     });
-    const tramos = this.gruposRango().length > 1 ? this.vistaGrupos() : null;
+    const tramos = this.gruposRango().length > 0 ? this.vistaGrupos() : null;
     const conTramos = tramos !== null && tramos.aviso === null && tramos.clusterId === cluster.id;
     const colores = this.coloresGrupo().get(cluster.id);
     // L-X-V y M-J-S usan este mismo rango: el día con menos rutas (las suyas y las diarias) que
@@ -1367,6 +1370,10 @@ export class SimulacionConfiguracion {
           }))
         : [],
       libres: conTramos ? tramos.chutesSinUsar : 0,
+      /** Chutes que de verdad se usan (el rango se recorta para que ningún día deje vacíos). */
+      usados: conTramos && tramos.grupos.length > 0
+        ? { desde: tramos.grupos[0].chuteDesde, hasta: tramos.grupos.at(-1)?.chuteHasta ?? null }
+        : null,
     };
   });
 
@@ -1505,7 +1512,59 @@ export class SimulacionConfiguracion {
         filtros: this.filtrosDe(cluster.id),
         ...this.estadoBloque(cluster.id),
         filas: celdas.get(cluster.id) ?? vacias(),
+        fuera: this.fueraPorCluster().get(cluster.id) ?? [],
       }));
+  });
+
+  /**
+   * Chutes del rango de cada cluster que el día que muestra no usa: cada día arma sus tramos con
+   * sus rutas (las diarias fijas) y lo que no ocupa queda fuera de ese día (sin rutas ni
+   * operarios). Solo en L-X-V y M-J-S ya balanceados; no depende de la búsqueda ni de filtros.
+   */
+  private readonly fueraPorCluster = computed(() => {
+    const chutes = this.chutesMatriz();
+    const indice = new Map(chutes.map((chute, i) => [chute.id, i]));
+    const vistas = this.vistasEfectivas();
+    const delDia = (vista: VistaCluster | undefined): vista is 'LXV' | 'MJS' =>
+      vista === 'LXV' || vista === 'MJS';
+    const conRutas = new Map<number, Set<number>>();
+    for (const ruta of this.rutasMatriz()) {
+      const vista = vistas[ruta.clusterId];
+      if (delDia(vista) && (ruta.frecuencia === vista || ruta.frecuencia === 'DIARIA')) {
+        let usados = conRutas.get(ruta.clusterId);
+        if (!usados) {
+          usados = new Set<number>();
+          conRutas.set(ruta.clusterId, usados);
+        }
+        usados.add(ruta.chuteId);
+      }
+    }
+    const resultado = new Map<number, boolean[]>();
+    for (const cluster of this.config()?.clusters ?? []) {
+      if (!delDia(vistas[cluster.id]) || cluster.estado === 'PENDIENTE') {
+        continue;
+      }
+      const usados = conRutas.get(cluster.id) ?? new Set<number>();
+      const fuera = Array<boolean>(chutes.length).fill(false);
+      // El rango del cluster (cada día arma sus tramos dentro de él): sus chutes sin rutas de ese
+      // día quedan fuera del día. Sin rango, los tramos de sus grupos.
+      const tramos =
+        cluster.chuteDesdeId !== null && cluster.chuteHastaId !== null
+          ? [{ desde: cluster.chuteDesdeId, hasta: cluster.chuteHastaId }]
+          : cluster.grupos.map((g) => ({ desde: g.chuteDesdeId, hasta: g.chuteHastaId }));
+      for (const tramo of tramos) {
+        const a = indice.get(tramo.desde ?? -1);
+        const b = indice.get(tramo.hasta ?? -1);
+        if (a === undefined || b === undefined) {
+          continue;
+        }
+        for (let i = Math.min(a, b); i <= Math.max(a, b); i++) {
+          fuera[i] = !usados.has(chutes[i].id);
+        }
+      }
+      resultado.set(cluster.id, fuera);
+    }
+    return resultado;
   });
 
   /** Títulos por ruta: cada objeto ruta es inmutable (moverla crea otro), así que se calculan una vez. */
