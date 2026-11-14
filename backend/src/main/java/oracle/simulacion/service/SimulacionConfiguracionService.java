@@ -130,7 +130,6 @@ public class SimulacionConfiguracionService {
    * muestre «sin operarios» en lugar de un tiempo inventado.
    */
   private static final BigDecimal SIN_OPERARIOS = new BigDecimal("1E+30");
-  private static final int MAX_ITERACIONES = 1000;
   private static final int MAX_TAMANO_PAGINA = 100;
   /**
    * Página de la planilla de rutas (keyset por id): la pide entera de corrido, así
@@ -1234,20 +1233,17 @@ public class SimulacionConfiguracionService {
   // ---------------- Paso 1: rutas ----------------
 
   /**
-   * Paso 1 del cluster en curso: reparte sus rutas hasta que su carga (bultos)
-   * quede pareja, grupo por grupo. Las rutas de un grupo nunca se mezclan con las
-   * de otro: con varios grupos, el rango es obligatorio y se divide en tramos de
-   * chutes seguidos, uno por grupo en el orden de su prioridad, del tamaño que
-   * le toca por sus bultos ({@link TramosGrupos}). Luego cada grupo se balancea
-   * solo dentro de su tramo: primero entran sus rutas que están fuera (también
-   * las movidas a mano a otro tramo; la más pesada primero, al chute del tramo
-   * con menos carga) y después se iguala la carga entre sus chutes. Con un solo
-   * grupo es el balanceo de siempre: con rango, todo el rango; sin rango, los
-   * chutes que ya usa. No toca operarios.
+   * Paso 1 del cluster en curso en una frecuencia. Cada frecuencia se balancea sola y en orden
+   * (Diarias primero; después L-X-V y M-J-S): solo mueve sus propias rutas y no mira las de las
+   * otras, así que no chocan. Las diarias, ya balanceadas, quedan fijas en los dos días y se apilan
+   * con sus rutas en el mismo chute.
    *
-   * <p>Diarias va primero: reparte las diarias y define el rango y los tramos (solo mientras los
-   * dos días sigan pendientes; si no, hay que restablecer el cluster). Cada día después mueve solo
-   * sus rutas dentro de ese rango y esos tramos, con las diarias como carga fija.
+   * <p>Por dentro ({@link RepartoFrecuencia}), en orden: primero por grupos (chutes según sus bultos,
+   * en chutes seguidos y nivelados), después el buff estratégico (columnas completas: el grupo con
+   * más bultos al buff con su chute más cargado) y al final la verificación (sin chutes vacíos entre
+   * los usados). Diarias elige el rango del cluster, solo mientras los dos días sigan pendientes;
+   * los días lo heredan. Sin rango (un solo grupo), se nivela entre los chutes que ya usa. Invalida
+   * los operarios del cluster.
    */
   private BalanceoResponse balancearRutas(
       Long archivoId, Balanceo balanceo, Long clusterId, BalanceoRequest pedido, Long actor) {
@@ -1273,249 +1269,134 @@ public class SimulacionConfiguracionService {
       throw new ConflictoException(
           nombre + " no tiene rutas " + balanceo.etiqueta() + ": no hay nada que balancear.");
     }
-    // Un día usa el rango y los tramos que definieron las diarias.
-    boolean heredado = balanceo.esDia();
-    List<Long> rango =
-        heredado ? rangoGuardado(ctx, diarias) : rangoDeBalanceo(ctx, parametro, pedido);
     List<RutaProyeccion> todasCluster =
         rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(archivoId, clusterId);
-    List<RutaProyeccion> rutasCluster =
-        todasCluster.stream().filter((r) -> visible(ctx, r.getFrecuencia())).toList();
-    // En un día las diarias ya están en su sitio: cuentan como carga pero no se mueven.
-    Set<Long> inmoviles =
-        rutasCluster.stream()
-            .filter((r) -> !balanceo.mueve(r.getFrecuencia()))
-            .map(RutaProyeccion::getId)
-            .collect(Collectors.toSet());
-    Map<String, List<RutaProyeccion>> porGrupo = new LinkedHashMap<>();
-    rutasCluster.forEach(
-        (ruta) -> porGrupo.computeIfAbsent(grupo(ruta), (g) -> new ArrayList<>()).add(ruta));
-    // Los tramos son del cluster (valen para los dos balanceos): se reparten con
-    // todas sus rutas, de las tres frecuencias.
-    Map<String, List<RutaProyeccion>> porGrupoTodas = new LinkedHashMap<>();
-    todasCluster.forEach(
-        (ruta) -> porGrupoTodas.computeIfAbsent(grupo(ruta), (g) -> new ArrayList<>()).add(ruta));
-    List<GrupoGuardado> guardados = gruposGuardados(archivoId, clusterId);
-    List<TramosGrupos.Tramo> tramos;
-    int sinUsar = 0;
-    // En las diarias el rango puede quedar más corto: solo los chutes que se pueden llenar.
-    List<Long> rangoUsado = rango;
-    List<String> avisosPlan = new ArrayList<>();
-    if (heredado && rango != null && !porGrupo.isEmpty()) {
-      // Cada día arma sus propios tramos con sus rutas: buff primero con las más pesadas del día,
-      // los grupos alrededor y las diarias fijas donde quedaron (lo único que comparten L-X-V y
-      // M-J-S). Un día no respeta las rutas del otro: los dos pueden usar los mismos chutes.
-      List<String> ordenDia = ordenNatural(porGrupo.keySet());
-      exigirChutesParaGrupos(nombre, rango.size(), porGrupo.size());
-      Map<Long, String> fijos = new HashMap<>();
-      for (RutaProyeccion ruta : rutasCluster) {
-        if (inmoviles.contains(ruta.getId())) {
-          String previo = fijos.putIfAbsent(ruta.getChuteId(), grupo(ruta));
-          if (previo != null && !previo.equals(grupo(ruta))) {
-            throw new ConflictoException(
-                nombre
-                    + ": "
-                    + ctx.nombreChute(ruta.getChuteId())
-                    + " tiene diarias de dos grupos ("
-                    + previo
-                    + " y "
-                    + grupo(ruta)
-                    + "). Restablece el cluster para ubicarlas de nuevo.");
-          }
-        }
-      }
-      List<RutaProyeccion> delDia =
-          rutasCluster.stream().filter((r) -> !inmoviles.contains(r.getId())).toList();
-      PlanTramos.Plan plan;
-      try {
-        plan =
-            PlanTramos.planificar(
-                rango, gruposDelDia(ordenDia, porGrupo, inmoviles), chutesConBuff(ctx), pesadas(delDia), fijos);
-      } catch (IllegalArgumentException intercaladas) {
-        throw new ConflictoException(
-            nombre
-                + ": las diarias de dos grupos quedaron intercaladas (movidas a mano)."
-                + " Restablece el cluster para ubicarlas de nuevo.");
-      }
-      tramos = plan.tramos();
-      sinUsar = plan.sinUsar();
-      avisosPlan.addAll(avisosPlan(ctx, plan, ordenDia, porGrupo, false));
-    } else if (heredado) {
-      tramos = tramosGuardados(ctx, rango, porGrupoTodas, guardados);
-      // Un grupo que llegó después (p. ej. una ruta cambiada de cluster) no tiene tramo: sin él
-      // se mezclaría con otros grupos.
-      List<String> sinTramo =
-          tramos.stream().filter((t) -> t.chutes() == null).map(TramosGrupos.Tramo::grupo).toList();
-      if (porGrupoTodas.size() > 1 && !sinTramo.isEmpty()) {
-        throw new ConflictoException(
-            nombre
-                + ": "
-                + (sinTramo.size() == 1 ? "el grupo " : "los grupos ")
-                + String.join(", ", sinTramo)
-                + " no tiene(n) tramo de chutes (llegaron después de balancear las diarias)."
-                + " Restablece el cluster para repartir de nuevo sus grupos.");
-      }
+    // Cada frecuencia es independiente: solo sus rutas. En un día, las diarias quedan donde están.
+    List<RutaProyeccion> propias =
+        todasCluster.stream().filter((r) -> balanceo.mueve(r.getFrecuencia())).toList();
+    long diariasFijas =
+        balanceo.esDia()
+            ? todasCluster.stream().filter((r) -> Balanceo.diaria(r.getFrecuencia())).count()
+            : 0;
+    Set<Long> chutesBuff = chutesConBuff(ctx);
+    // Rango del cluster: lo elige Diarias (recortado a lo que alguna frecuencia llena) y lo
+    // heredan los días. rangoPedido es el que eligió el usuario, para contar lo recortado.
+    List<Long> rangoPedido = null;
+    List<Long> rangoCluster;
+    if (balanceo.esDia()) {
+      rangoCluster = rangoGuardado(ctx, diarias);
     } else {
-      // Buff primero, los grupos alrededor y sin chutes vacíos (PlanTramos).
-      List<String> orden = ordenNatural(porGrupoTodas.keySet());
-      if (porGrupoTodas.size() > 1 && rango == null) {
+      rangoPedido = rangoDeBalanceo(ctx, parametro, pedido);
+      int gruposCluster = gruposDe(todasCluster).size();
+      if (gruposCluster > 1 && rangoPedido == null) {
         throw new SolicitudInvalidaException(
             nombre
                 + " tiene "
-                + porGrupoTodas.size()
+                + gruposCluster
                 + " grupos: elige el chute inicial y el final del rango para repartirlos.");
       }
-      if (rango != null && !porGrupoTodas.isEmpty()) {
-        exigirChutesParaGrupos(nombre, rango.size(), porGrupoTodas.size());
-        PlanTramos.Plan plan =
-            PlanTramos.planificar(
-                rango, cargaDelDia(orden, porGrupoTodas), chutesConBuff(ctx), pesadas(todasCluster));
-        tramos = plan.tramos();
-        sinUsar = plan.sinUsar();
-        rangoUsado = plan.rango();
-        avisosPlan.addAll(avisosPlan(ctx, plan, orden, porGrupoTodas, true));
-      } else {
-        // Un solo grupo (o ninguno): el balanceo de siempre sobre todo el rango.
-        tramos =
-            cargaDelDia(orden, porGrupoTodas).stream()
-                .map((g) -> new TramosGrupos.Tramo(g.nombre(), 1, g.rutas(), g.bultos(), rango))
-                .toList();
+      if (rangoPedido != null) {
+        exigirChutesParaGrupos(nombre, rangoPedido.size(), maximoPorFrecuencia(todasCluster, true));
       }
+      rangoCluster =
+          rangoPedido == null
+              ? null
+              : RepartoFrecuencia.rangoUsado(rangoPedido, chutesBuff, maximoPorFrecuencia(todasCluster, false));
     }
-    Set<Long> chutesBuff = chutesConBuff(ctx);
-    // Volver a balancear un cluster ya balanceado (p. ej. tras pasarle rutas de
-    // otro cluster) reparte desde como está hoy; si ya tenía operarios, su
-    // carga cambia y vuelve al paso 2.
+    List<Long> rango = rangoCluster != null ? rangoCluster : chutesQueUsan(ctx, propias);
+    List<String> orden = ordenNatural(gruposDe(propias));
+    exigirChutesParaGrupos(nombre, rango.size(), orden.size());
+    // Volver a balancear un cluster ya balanceado reparte desde como está hoy; si ya tenía
+    // operarios, su carga cambia y vuelve al paso 2.
     invalidarOperarios(ctx, List.of(clusterId));
-    Integer dispersionAntes = dispersionPorChute(rutasCluster);
+    Integer dispersionAntes = dispersionPorChute(propias);
+    RepartoFrecuencia.Plan plan =
+        RepartoFrecuencia.planificar(
+            rango,
+            chutesBuff,
+            orden,
+            propias.stream()
+                .map(
+                    (r) ->
+                        new RepartoFrecuencia.Ruta(
+                            r.getId(), grupo(r), ceroSiNulo(r.getTotalBultos()), r.getChuteId()))
+                .toList());
+    Map<String, List<Long>> tramoDe = new HashMap<>();
+    plan.tramos().forEach((t) -> tramoDe.put(t.grupo(), t.chutes()));
+    Set<Long> usados = new HashSet<>(plan.usados());
     List<Traslado> nivelaciones = new ArrayList<>();
     Map<Long, Long> chutesNuevos = new LinkedHashMap<>();
-    int fueraDelRango = 0;
-    int ancladas = 0;
-    int libres = 0;
-    boolean tope = false;
-    List<String> avisosBuff = new ArrayList<>();
-    List<Long> sinRutas = new ArrayList<>();
-    int bloqueDia = 0;
-    for (TramosGrupos.Tramo tramo : tramos) {
-      List<RutaProyeccion> rutasGrupo = porGrupo.getOrDefault(tramo.grupo(), List.of());
-      // Cada grupo se compara solo consigo mismo: su propio reparto. Las diarias
-      // fijas cuentan como carga pero no se mueven.
-      Reparto reparto = new Reparto(rutasGrupo, inmoviles);
-      int traidas = 0;
-      Traslado traslado;
-      // 0. En las diarias se decide de quién es cada buff del tramo: de las diarias o de los días.
-      // Los reservados para los días no reciben diarias, y las diarias se juntan a su lado.
-      Set<Long> reservados = Set.of();
-      if (balanceo == Balanceo.DIA && tramo.chutes() != null && !chutesBuff.isEmpty()) {
-        DuenosBuff duenos =
-            duenosBuff(tramo.chutes(), chutesBuff, porGrupoTodas.getOrDefault(tramo.grupo(), List.of()));
-        reservados = duenos.reservados();
-        avisosBuff.addAll(duenos.avisos(ctx));
+    int fueraDelTramo = 0;
+    for (RutaProyeccion ruta : propias) {
+      Long origen = ruta.getChuteId();
+      Long destino = plan.destino().get(ruta.getId());
+      if (destino == null || destino.equals(origen)) {
+        continue;
       }
-      if (tramo.chutes() != null) {
-        Set<Long> fuera = reservados;
-        reparto.limitar(clusterId, tramo.chutes().stream().filter((c) -> !fuera.contains(c)).toList());
+      boolean venia =
+          origen != null
+              && (orden.size() > 1 ? tramoDe.get(grupo(ruta)).contains(origen) : usados.contains(origen));
+      if (!venia) {
+        fueraDelTramo++;
       }
-      // 1. El buff primero: los chutes con buff del tramo toman las rutas más pesadas del grupo
-      // (estén donde estén), hasta la carga promedio, y quedan fijas ahí. Siempre deja una ruta
-      // para cada chute sin buff que el día pueda llenar.
-      if (!chutesBuff.isEmpty()) {
-        nivelaciones.addAll(reparto.anclar(clusterId, chutesBuff));
-        ancladas += reparto.ancladas();
-        traidas += reparto.deFuera();
-      }
-      if (tramo.chutes() != null) {
-        // 2. Con lo que quedó, el tramo usa solo los chutes que puede llenar, en un bloque continuo
-        // alrededor del buff: los demás quedan libres, sin huecos entre los usados.
-        reparto.ajustarRango(clusterId, tramo.chutes(), reservados);
-        libres += reparto.libres();
-        // 3. Lo que está fuera entra al chute con menos carga. Cada ruta entra una sola vez.
-        while ((traslado = reparto.traerAlRango(clusterId)) != null) {
-          nivelaciones.add(traslado);
-          traidas++;
-        }
-      }
-      fueraDelRango += traidas;
-      // 4. Ningún chute del tramo sin rutas: primero se llenan los vacíos, luego se empareja todo
-      // en torno al buff (sus rutas fijas cuentan como carga).
-      List<Traslado> llenados = reparto.llenarVacios(clusterId);
-      nivelaciones.addAll(llenados);
-      // Cada movimiento baja la suma de cuadrados de la carga, así que el
-      // proceso termina solo; el tope es una red de seguridad.
-      int maximo = traidas + Math.max(MAX_ITERACIONES, 4 * reparto.rutasDe(clusterId));
-      int pasos = traidas + emparejar(reparto, clusterId, nivelaciones, maximo - traidas);
-      // 5. Revisión final: dentro del bloque del día no puede quedar un chute sin rutas. Si queda,
-      // se vuelve a llenar y emparejar; si aun así queda, se avisa.
-      List<Long> vacios = reparto.vacios(clusterId);
-      for (int intento = 0; !vacios.isEmpty() && intento < REVISIONES && pasos < maximo; intento++) {
-        List<Traslado> otraVez = reparto.llenarVacios(clusterId);
-        if (otraVez.isEmpty()) {
-          break;
-        }
-        nivelaciones.addAll(otraVez);
-        pasos += otraVez.size() + emparejar(reparto, clusterId, nivelaciones, maximo - pasos);
-        vacios = reparto.vacios(clusterId);
-      }
-      sinRutas.addAll(vacios);
-      bloqueDia += reparto.bloque();
-      tope |= pasos >= maximo;
-      chutesNuevos.putAll(reparto.chutesNuevos());
+      nivelaciones.add(new Traslado(ruta, origen, destino));
+      ruta.setChuteId(destino);
+      chutesNuevos.put(ruta.getId(), destino);
     }
 
-    int movidas =
-        (int) nivelaciones.stream().map((t) -> t.ruta().getId()).distinct().count();
+    int movidas = nivelaciones.size();
     StringBuilder mensaje = new StringBuilder(nombre);
-    if (rangoUsado != null) {
+    if (rangoCluster != null) {
       mensaje
           .append(" (")
-          .append(ctx.nombreChute(rangoUsado.getFirst()))
+          .append(ctx.nombreChute(rangoCluster.getFirst()))
           .append(" → ")
-          .append(ctx.nombreChute(rangoUsado.getLast()))
+          .append(ctx.nombreChute(rangoCluster.getLast()))
           .append(")");
     }
     mensaje.append(": ").append(movidas).append(" ruta(s) movida(s)");
-    if (fueraDelRango > 0) {
+    if (fueraDelTramo > 0) {
       mensaje
           .append(", ")
-          .append(fueraDelRango)
-          .append(tramos.size() > 1 ? " desde chutes fuera de su tramo" : " desde chutes fuera del rango");
+          .append(fueraDelTramo)
+          .append(orden.size() > 1 ? " desde chutes fuera de su tramo" : " desde chutes fuera del rango");
     }
     mensaje.append(".");
-    if (!inmoviles.isEmpty()) {
+    if (diariasFijas > 0) {
+      mensaje.append(" ").append(diariasFijas).append(" ruta(s) diaria(s) ya fijas: no se movieron.");
+    }
+    boolean mayorDicho = false;
+    for (Map.Entry<Long, String> buff : plan.buffs().entrySet()) {
+      boolean esMayor = orden.size() > 1 && !mayorDicho && buff.getValue().equals(plan.mayor());
+      mayorDicho |= esMayor;
+      mensaje
+          .append(" Buff ")
+          .append(ctx.nombreChute(buff.getKey()))
+          .append(": grupo ")
+          .append(buff.getValue())
+          .append(" (")
+          .append(plan.carga().get(buff.getKey()).stripTrailingZeros().toPlainString())
+          .append(" bultos")
+          .append(esMayor ? "; el grupo con más bultos" : "")
+          .append(").");
+    }
+    int libres = rango.size() - plan.usados().size();
+    if (libres > 0 && !propias.isEmpty()) {
       mensaje
           .append(" ")
-          .append(inmoviles.size())
-          .append(" ruta(s) diaria(s) ya fijas: no se movieron.");
-    }
-    if (ancladas > 0) {
-      mensaje.append(" ").append(ancladas).append(" ruta(s) pesada(s) a chutes con buff.");
-    }
-    avisosBuff.forEach((aviso) -> mensaje.append(" ").append(aviso));
-    if (libres > 0) {
-      long rutasDia = rutasCluster.stream().filter((r) -> balanceo.mueve(r.getFrecuencia())).count();
-      mensaje
-          .append(" ")
-          .append(balanceo.etiqueta())
-          .append(": ")
-          .append(rutasDia)
-          .append(" ruta(s): usa un bloque de ")
-          .append(bloqueDia)
-          .append(" chute(s) seguidos; ")
           .append(libres)
-          .append(" chute(s) del tramo quedan fuera de este día (sin rutas ni operarios).");
+          .append(
+              balanceo.esDia()
+                  ? " chute(s) del rango quedan fuera de este día (sin rutas ni operarios)."
+                  : " chute(s) del rango quedan sin diarias (los usan L-X-V y M-J-S).");
     }
-    if (heredado) {
+    if (balanceo.esDia()) {
       mensaje.append(" Rango: el de las diarias; tramos propios de este día.");
     }
-    if (tramos.size() > 1) {
+    if (plan.tramos().size() > 1) {
       mensaje.append(" Tramos de grupos: ");
-      for (int i = 0; i < tramos.size(); i++) {
-        TramosGrupos.Tramo tramo = tramos.get(i);
-        if (tramo.chutes() == null || tramo.chutes().isEmpty()) {
-          mensaje.append(i == 0 ? "" : "; ").append(tramo.grupo()).append(" sin tramo");
-          continue;
-        }
+      for (int i = 0; i < plan.tramos().size(); i++) {
+        TramosGrupos.Tramo tramo = plan.tramos().get(i);
         mensaje
             .append(i == 0 ? "" : "; ")
             .append(tramo.grupo())
@@ -1528,27 +1409,15 @@ public class SimulacionConfiguracionService {
       }
       mensaje.append(".");
     }
-    if (sinUsar > 0 && heredado) {
-      mensaje
-          .append(" ")
-          .append(sinUsar)
-          .append(" chute(s) del rango quedan fuera de este día (sin rutas ni operarios).");
-    } else if (sinUsar > 0) {
+    if (rangoPedido != null && rangoCluster.size() < rangoPedido.size()) {
       mensaje
           .append(" Rango usado: ")
-          .append(rangoUsado.size())
+          .append(rangoCluster.size())
           .append(" de ")
-          .append(rango.size())
-          .append(" chutes; ningún día tiene rutas para los demás.");
+          .append(rangoPedido.size())
+          .append(" chutes; ninguna frecuencia tiene rutas para los demás.");
     }
-    avisosPlan.forEach((aviso) -> mensaje.append(" ").append(aviso));
-    if (!sinRutas.isEmpty()) {
-      mensaje
-          .append(" Revisión: ")
-          .append(sinRutas.stream().map(ctx::nombreChute).collect(Collectors.joining(", ")))
-          .append(" quedó sin rutas dentro del bloque: no hay rutas que mover sin vaciar otro chute.");
-    }
-    Integer dispersionDespues = dispersionPorChute(rutasCluster);
+    Integer dispersionDespues = dispersionPorChute(propias);
     if (dispersionAntes != null) {
       mensaje
           .append(" Diferencia de carga entre sus chutes: ")
@@ -1557,33 +1426,32 @@ public class SimulacionConfiguracionService {
           .append(dispersionDespues == null ? 0 : dispersionDespues)
           .append(" %.");
     }
-    if (tope) {
+    if (plan.tope()) {
       mensaje.append(" Se alcanzó el máximo de movimientos por ejecución.");
     }
 
     // Las rutas se leyeron en solo lectura: los chutes nuevos se guardan en lote.
     lotes.moverRutas(chutesNuevos);
-    if (rangoUsado != null) {
-      parametro.setChuteDesdeId(rangoUsado.getFirst());
-      parametro.setChuteHastaId(rangoUsado.getLast());
+    if (rangoCluster != null) {
+      parametro.setChuteDesdeId(rangoCluster.getFirst());
+      parametro.setChuteHastaId(rangoCluster.getLast());
     }
-    // Prioridad y tramo de cada grupo: el modal los propone la próxima vez y la
-    // configuración muestra dónde quedó cada grupo. Si los definió el otro
-    // balanceo, se quedan como están (son del cluster).
-    if (!heredado) {
-      lotes.guardarGrupos(
-          archivoId,
-          clusterId,
-          tramos.stream()
-              .map(
-                  (t) ->
-                      new GrupoGuardado(
-                          clusterId,
-                          t.grupo(),
-                          t.prioridad(),
-                          t.chutes() == null ? null : t.chutes().getFirst(),
-                          t.chutes() == null ? null : t.chutes().getLast()))
-              .toList());
+    // Diarias guarda el tramo de cada grupo con diarias (los demás no tienen: se arman en cada
+    // día) para mostrar dónde quedó y proponerlo la próxima vez.
+    if (!balanceo.esDia()) {
+      List<String> todos = ordenNatural(gruposDe(todasCluster));
+      List<GrupoGuardado> guardar = new ArrayList<>();
+      for (int i = 0; i < todos.size(); i++) {
+        List<Long> chutes = tramoDe.get(todos.get(i));
+        guardar.add(
+            new GrupoGuardado(
+                clusterId,
+                todos.get(i),
+                i + 1,
+                chutes == null ? null : chutes.getFirst(),
+                chutes == null ? null : chutes.getLast()));
+      }
+      lotes.guardarGrupos(archivoId, clusterId, guardar);
     }
     Instant momento = Instant.now();
     LanzamientoBalanceo lanzamiento =
@@ -1618,11 +1486,11 @@ public class SimulacionConfiguracionService {
   }
 
   /**
-   * Vista previa del paso de rutas: los grupos del cluster en orden natural y el tramo que
-   * recibiría cada uno. En Diarias, con el rango pedido (o el último); en un día, el rango y los
-   * tramos que ya definieron las diarias. «Fuera» cuenta solo las rutas que este balanceo movería
-   * (en un día, las diarias ya están fijas). No cambia nada; si así no se podría balancear, lo dice
-   * en {@code aviso}.
+   * Vista previa del paso de rutas de una frecuencia: el tramo que recibiría cada grupo con sus
+   * rutas de esa frecuencia (el mismo cálculo que el balanceo). En Diarias, con el rango pedido (o
+   * el último) recortado a lo que alguna frecuencia llena; en un día, con el rango de las diarias.
+   * «Fuera» cuenta las rutas del grupo que hoy están fuera de su tramo. No cambia nada; si así no se
+   * podría balancear, lo dice en {@code aviso}.
    */
   public ApiResponse<VistaBalanceoResponse> vistaBalanceo(
       Long archivoId, Long clusterId, BalanceoRequest pedido) {
@@ -1637,117 +1505,99 @@ public class SimulacionConfiguracionService {
           Contexto ctx = contexto(archivoId, balanceo, false);
           ParametroCluster parametro = parametroCluster(ctx, clusterId);
           String nombre = ctx.nombreCluster(clusterId);
-          // Rutas que este balanceo movería, por grupo y chute (para contar las que quedan fuera).
-          Map<String, Map<Long, Long>> rutasPorChute = new LinkedHashMap<>();
-          // Carga de cada grupo en su día más exigente (diarias + el mayor de L-X-V y M-J-S).
-          Map<String, CargaDia> porDia = new LinkedHashMap<>();
-          for (CargaGrupo fila : rutaRepo.cargaPorGrupo(archivoId)) {
-            if (!clusterId.equals(fila.getClusterId()) || fila.getRutas() == null || fila.getRutas() == 0) {
-              continue;
-            }
-            String g = fila.getGrupo() == null ? "" : fila.getGrupo();
-            if (balanceo.mueve(fila.getFrecuencia())) {
-              rutasPorChute
-                  .computeIfAbsent(g, (k) -> new HashMap<>())
-                  .merge(fila.getChuteId(), fila.getRutas(), Long::sum);
-            }
-            porDia
-                .computeIfAbsent(g, (k) -> new CargaDia())
-                .sumar(fila.getFrecuencia(), fila.getRutas(), ceroSiNulo(fila.getBultos()));
-          }
-          Map<String, TramosGrupos.Grupo> grupos = new LinkedHashMap<>();
-          porDia.forEach((g, carga) -> grupos.put(g, carga.grupo(g)));
-          List<TramosGrupos.Grupo> enOrden = ordenNatural(grupos.keySet()).stream().map(grupos::get).toList();
+          List<RutaProyeccion> todas = rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(archivoId, clusterId);
+          List<RutaProyeccion> propias =
+              todas.stream().filter((r) -> balanceo.mueve(r.getFrecuencia())).toList();
+          List<String> orden = ordenNatural(gruposDe(propias));
+          Set<Long> chutesBuff = chutesConBuff(ctx);
+          boolean heredado = balanceo.esDia();
           String aviso = null;
           List<Long> rango = null;
-          List<TramosGrupos.Tramo> tramos = new ArrayList<>();
-          int sinUsar = 0;
-          boolean heredado = balanceo.esDia();
-          if (heredado) {
-            ParametroCluster diarias = ctx.parametro(Balanceo.DIA, clusterId);
-            if (pendiente(diarias)) {
-              aviso = "Primero balancea las diarias de " + nombre + ": ahí se elige el rango de chutes.";
-            } else {
-              rango = rangoGuardado(ctx, diarias);
-            }
-            Map<String, GrupoGuardado> porClave = new HashMap<>();
-            gruposGuardados(archivoId, clusterId)
-                .forEach((g) -> porClave.putIfAbsent(SimulacionExcel.clave(g.grupo()), g));
-            for (TramosGrupos.Grupo g : enOrden) {
-              GrupoGuardado guardado = porClave.get(SimulacionExcel.clave(g.nombre()));
-              List<Long> chutes =
-                  aviso != null
-                      ? null
-                      : grupos.size() == 1
-                          ? rango
-                          : guardado == null
-                              ? null
-                              : chutesEntre(ctx, guardado.chuteDesdeId(), guardado.chuteHastaId());
-              if (aviso == null && chutes == null && grupos.size() > 1) {
-                aviso =
-                    "El grupo "
-                        + g.nombre()
-                        + " no tiene tramo de chutes (llegó después de balancear las diarias):"
-                        + " restablece el cluster para repartir de nuevo sus grupos.";
+          List<Long> donde = null;
+          try {
+            if (heredado) {
+              ParametroCluster diarias = ctx.parametro(Balanceo.DIA, clusterId);
+              if (pendiente(diarias)) {
+                aviso = "Primero balancea las diarias de " + nombre + ": ahí se elige el rango de chutes.";
+              } else {
+                rango = rangoGuardado(ctx, diarias);
+                donde = rango;
               }
-              tramos.add(new TramosGrupos.Tramo(g.nombre(), tramos.size() + 1, g.rutas(), g.bultos(), chutes));
+            } else {
+              rango = rangoDeBalanceo(ctx, parametro, pedido);
+              int gruposCluster = gruposDe(todas).size();
+              if (rango == null && gruposCluster > 1) {
+                aviso = "Elige el chute inicial y el final del rango para repartir sus " + gruposCluster + " grupos.";
+              } else if (rango != null) {
+                exigirChutesParaGrupos(nombre, rango.size(), maximoPorFrecuencia(todas, true));
+                donde = RepartoFrecuencia.rangoUsado(rango, chutesBuff, maximoPorFrecuencia(todas, false));
+              }
+            }
+            if (aviso == null && donde != null) {
+              exigirChutesParaGrupos(nombre, donde.size(), orden.size());
+            }
+          } catch (SolicitudInvalidaException error) {
+            aviso = error.getMessage();
+          }
+          Map<String, List<RutaProyeccion>> porGrupo = new LinkedHashMap<>();
+          propias.forEach((r) -> porGrupo.computeIfAbsent(grupo(r), (g) -> new ArrayList<>()).add(r));
+          List<TramoGrupoResponse> respuesta = new ArrayList<>();
+          int sinUsar = 0;
+          String usadoDesde = null;
+          String usadoHasta = null;
+          if (aviso == null && donde != null && !orden.isEmpty()) {
+            RepartoFrecuencia.Plan plan =
+                RepartoFrecuencia.planificar(
+                    donde,
+                    chutesBuff,
+                    orden,
+                    propias.stream()
+                        .map(
+                            (r) ->
+                                new RepartoFrecuencia.Ruta(
+                                    r.getId(), grupo(r), ceroSiNulo(r.getTotalBultos()), r.getChuteId()))
+                        .toList());
+            for (TramosGrupos.Tramo t : plan.tramos()) {
+              Set<Long> dentro = new HashSet<>(t.chutes());
+              long fuera = porGrupo.get(t.grupo()).stream().filter((r) -> !dentro.contains(r.getChuteId())).count();
+              respuesta.add(
+                  new TramoGrupoResponse(
+                      t.grupo(),
+                      t.prioridad(),
+                      t.rutas(),
+                      t.bultos(),
+                      t.chutes().size(),
+                      t.chutes().getFirst(),
+                      ctx.nombreChute(t.chutes().getFirst()),
+                      t.chutes().getLast(),
+                      ctx.nombreChute(t.chutes().getLast()),
+                      fuera));
+            }
+            // Diarias: chutes que ninguna frecuencia llena (el rango se recorta). Un día: los que
+            // ese día deja fuera.
+            List<Long> usados = heredado ? plan.usados() : donde;
+            sinUsar = rango.size() - usados.size();
+            if (!usados.isEmpty()) {
+              usadoDesde = ctx.nombreChute(usados.getFirst());
+              usadoHasta = ctx.nombreChute(usados.getLast());
             }
           } else {
-            try {
-              rango = rangoDeBalanceo(ctx, parametro, pedido);
-              if (rango == null && grupos.size() > 1) {
-                aviso = "Elige el chute inicial y el final del rango para repartir sus " + grupos.size() + " grupos.";
-              } else if (rango != null && grupos.size() > 1) {
-                exigirChutesParaGrupos(nombre, rango.size(), grupos.size());
-              }
-            } catch (SolicitudInvalidaException error) {
-              aviso = error.getMessage();
-            }
-            if (aviso == null && rango != null && !grupos.isEmpty()) {
-              // El mismo plan que hará el balanceo: buff primero, grupos alrededor, sin vacíos.
-              PlanTramos.Plan plan =
-                  PlanTramos.planificar(
-                      rango,
-                      enOrden,
-                      chutesConBuff(ctx),
-                      pesadas(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(archivoId, clusterId)));
-              tramos = plan.tramos();
-              sinUsar = plan.sinUsar();
-            } else {
-              List<Long> todo = aviso == null && grupos.size() == 1 ? rango : null;
-              for (TramosGrupos.Grupo g : enOrden) {
-                tramos.add(new TramosGrupos.Tramo(g.nombre(), tramos.size() + 1, g.rutas(), g.bultos(), todo));
-              }
+            for (String g : orden) {
+              List<RutaProyeccion> suyas = porGrupo.get(g);
+              respuesta.add(
+                  new TramoGrupoResponse(
+                      g,
+                      respuesta.size() + 1,
+                      suyas.size(),
+                      suyas.stream().map((r) -> ceroSiNulo(r.getTotalBultos())).reduce(BigDecimal.ZERO, BigDecimal::add),
+                      0,
+                      null,
+                      null,
+                      null,
+                      null,
+                      0));
             }
           }
-          List<TramoGrupoResponse> respuesta =
-              tramos.stream()
-                  .map(
-                      (t) -> {
-                        List<Long> chutes = t.chutes();
-                        long fuera = 0;
-                        if (chutes != null) {
-                          Set<Long> dentro = new HashSet<>(chutes);
-                          for (Map.Entry<Long, Long> e :
-                              rutasPorChute.getOrDefault(t.grupo(), Map.of()).entrySet()) {
-                            if (!dentro.contains(e.getKey())) {
-                              fuera += e.getValue();
-                            }
-                          }
-                        }
-                        return new TramoGrupoResponse(
-                            t.grupo(),
-                            t.prioridad(),
-                            t.rutas(),
-                            t.bultos(),
-                            chutes == null ? 0 : chutes.size(),
-                            chutes == null ? null : chutes.getFirst(),
-                            chutes == null ? null : ctx.nombreChute(chutes.getFirst()),
-                            chutes == null ? null : chutes.getLast(),
-                            chutes == null ? null : ctx.nombreChute(chutes.getLast()),
-                            fuera);
-                      })
-                  .toList();
           return new VistaBalanceoResponse(
               clusterId,
               nombre,
@@ -1755,9 +1605,49 @@ public class SimulacionConfiguracionService {
               sinUsar,
               aviso,
               respuesta,
-              heredado ? Balanceo.DIA.name() : null);
+              heredado ? Balanceo.DIA.name() : null,
+              usadoDesde,
+              usadoHasta);
         },
         "Vista previa del balanceo.");
+  }
+
+  /** Grupos de esas rutas (sin repetir). */
+  private static Set<String> gruposDe(List<RutaProyeccion> rutas) {
+    Set<String> grupos = new LinkedHashSet<>();
+    rutas.forEach((r) -> grupos.add(grupo(r)));
+    return grupos;
+  }
+
+  /**
+   * Lo más que pide una sola frecuencia del cluster (Diarias, L-X-V o M-J-S, cada una por su
+   * cuenta): sus grupos o sus rutas. El rango necesita un chute por grupo de la frecuencia con más
+   * grupos, y ninguna frecuencia llena más chutes que sus rutas.
+   */
+  private static int maximoPorFrecuencia(List<RutaProyeccion> rutas, boolean grupos) {
+    Map<Balanceo, Set<String>> gruposPor = new EnumMap<>(Balanceo.class);
+    Map<Balanceo, Integer> rutasPor = new EnumMap<>(Balanceo.class);
+    for (RutaProyeccion ruta : rutas) {
+      Balanceo dueno = Arrays.stream(Balanceo.values()).filter((b) -> b.mueve(ruta.getFrecuencia())).findFirst().orElse(null);
+      if (dueno == null) {
+        continue;
+      }
+      gruposPor.computeIfAbsent(dueno, (b) -> new HashSet<>()).add(grupo(ruta));
+      rutasPor.merge(dueno, 1, Integer::sum);
+    }
+    return grupos
+        ? gruposPor.values().stream().mapToInt(Set::size).max().orElse(0)
+        : rutasPor.values().stream().mapToInt(Integer::intValue).max().orElse(0);
+  }
+
+  /** Chutes que ya usan esas rutas (sin bloqueados), en el orden de las columnas. */
+  private List<Long> chutesQueUsan(Contexto ctx, List<RutaProyeccion> rutas) {
+    return rutas.stream()
+        .map(RutaProyeccion::getChuteId)
+        .filter((chute) -> chute != null && ctx.parametrosChute().containsKey(chute) && !bloqueado(ctx, chute))
+        .distinct()
+        .sorted(Comparator.comparing(ctx::nombreChute, PlanoChutes.ORDEN))
+        .toList();
   }
 
   /** Cada grupo necesita al menos un chute del rango. */
@@ -1787,252 +1677,12 @@ public class SimulacionConfiguracionService {
     return grupos.stream().sorted(ORDEN_NATURAL).toList();
   }
 
-  /**
-   * Carga de cada grupo en su día más pesado, en el orden dado: un chute lleva las diarias más
-   * las L-X-V unos días y las M-J-S otros, así que el tramo del grupo se dimensiona con las
-   * diarias más la mayor de las dos (no con la suma, que no ocurre ningún día).
-   */
-  private static List<TramosGrupos.Grupo> cargaDelDia(
-      List<String> orden, Map<String, List<RutaProyeccion>> porGrupo) {
-    return orden.stream()
-        .map(
-            (g) -> {
-              CargaDia carga = new CargaDia();
-              porGrupo
-                  .getOrDefault(g, List.of())
-                  .forEach((r) -> carga.sumar(r.getFrecuencia(), 1L, ceroSiNulo(r.getTotalBultos())));
-              return carga.grupo(g);
-            })
-        .toList();
-  }
-
-  /** Rutas y bultos de un grupo por frecuencia, para sacar su día más pesado. */
-  private static final class CargaDia {
-    private long rutasDiarias;
-    private long rutasLxv;
-    private long rutasMjs;
-    private BigDecimal bultosDiarias = BigDecimal.ZERO;
-    private BigDecimal bultosLxv = BigDecimal.ZERO;
-    private BigDecimal bultosMjs = BigDecimal.ZERO;
-
-    void sumar(String frecuencia, Long rutas, BigDecimal bultos) {
-      long n = rutas == null ? 0 : rutas;
-      if (Balanceo.LXV.name().equals(frecuencia)) {
-        rutasLxv += n;
-        bultosLxv = bultosLxv.add(bultos);
-      } else if (Balanceo.MJS.name().equals(frecuencia)) {
-        rutasMjs += n;
-        bultosMjs = bultosMjs.add(bultos);
-      } else {
-        rutasDiarias += n;
-        bultosDiarias = bultosDiarias.add(bultos);
-      }
-    }
-
-    /**
-     * Las diarias más el día más exigente, por separado para rutas y bultos: el tramo necesita
-     * chutes para las rutas del día con más rutas y capacidad para los bultos del día con más
-     * bultos (pueden ser días distintos).
-     */
-    TramosGrupos.Grupo grupo(String nombre) {
-      // Tope de chutes: los que llena su día más cargado (diarias + el día con más rutas), así
-      // ese día no se amontona. El día con menos rutas usa solo un bloque del tramo alrededor
-      // del buff; el resto del tramo queda fuera de ese día (sin rutas ni operarios).
-      long rutas = Math.max(1, rutasDiarias + Math.max(rutasLxv, rutasMjs));
-      return new TramosGrupos.Grupo(nombre, rutas, bultosDiarias.add(bultosLxv.max(bultosMjs)), rutas);
-    }
-
-    /** Un día sin rutas del grupo y sin diarias: ese día el grupo no tiene bloque. */
-    boolean diaSinRutas() {
-      return rutasDiarias == 0 && Math.min(rutasLxv, rutasMjs) == 0;
-    }
-  }
-
-
-  /**
-   * Grupos de un día para su plan: sus rutas y bultos de ese día (diarias incluidas) y su tope de
-   * chutes, que son los chutes donde ya están sus diarias (fijas) más uno por cada ruta que el día
-   * mueve: así ningún tramo del día tiene más chutes de los que puede llenar.
-   */
-  private static List<TramosGrupos.Grupo> gruposDelDia(
-      List<String> orden, Map<String, List<RutaProyeccion>> porGrupo, Set<Long> inmoviles) {
-    return orden.stream()
-        .map(
-            (g) -> {
-              List<RutaProyeccion> rutas = porGrupo.getOrDefault(g, List.of());
-              long conDiarias =
-                  rutas.stream()
-                      .filter((r) -> inmoviles.contains(r.getId()))
-                      .map(RutaProyeccion::getChuteId)
-                      .distinct()
-                      .count();
-              long movibles = rutas.stream().filter((r) -> !inmoviles.contains(r.getId())).count();
-              BigDecimal bultos =
-                  rutas.stream()
-                      .map((r) -> ceroSiNulo(r.getTotalBultos()))
-                      .reduce(BigDecimal.ZERO, BigDecimal::add);
-              return new TramosGrupos.Grupo(
-                  g, Math.max(1, rutas.size()), bultos, Math.max(1, conDiarias + movibles));
-            })
-        .toList();
-  }
-
-  /** Veces que la revisión final vuelve a llenar y emparejar un bloque con chutes sin rutas. */
-  private static final int REVISIONES = 3;
-
-  /**
-   * Empareja la ola del reparto: mueve una ruta a la vez y, cuando ninguna sola mejora, cambia una
-   * ruta por otra entre dos chutes. Cada paso baja la suma de cuadrados de la carga, así que
-   * termina solo; {@code maximo} es una red de seguridad. Devuelve los pasos hechos.
-   */
-  private static int emparejar(Reparto reparto, Long cluster, List<Traslado> destino, int maximo) {
-    int pasos = 0;
-    while (pasos < maximo) {
-      Traslado traslado = reparto.nivelar(cluster);
-      if (traslado != null) {
-        destino.add(traslado);
-      } else {
-        List<Traslado> cambio = reparto.intercambiar(cluster);
-        if (cambio.isEmpty()) {
-          break;
-        }
-        destino.addAll(cambio);
-      }
-      pasos++;
-    }
-    return pasos;
-  }
-
   /** Chutes con buff del registro que se pueden usar (no bloqueados en el plano). */
   private Set<Long> chutesConBuff(Contexto ctx) {
     return ctx.parametrosChute().entrySet().stream()
         .filter((e) -> e.getValue().isBuff() && !bloqueado(ctx, e.getKey()))
         .map(Map.Entry::getKey)
         .collect(Collectors.toSet());
-  }
-
-  /**
-   * Rutas del cluster de la más pesada a la más liviana, de las tres frecuencias (las diarias son
-   * una más): con ellas se decide de qué grupo es cada buff. A igual peso, la de menor id.
-   */
-  private static List<PlanTramos.Pesada> pesadas(List<RutaProyeccion> rutas) {
-    return rutas.stream()
-        .sorted(
-            Comparator.comparing((RutaProyeccion r) -> ceroSiNulo(r.getTotalBultos()))
-                .reversed()
-                .thenComparing(RutaProyeccion::getId))
-        .map((r) -> new PlanTramos.Pesada(grupo(r), ceroSiNulo(r.getTotalBultos())))
-        .toList();
-  }
-
-  /** Lo que el plan de las diarias decidió y conviene leer en el mensaje. */
-  private static List<String> avisosPlan(
-      Contexto ctx,
-      PlanTramos.Plan plan,
-      List<String> orden,
-      Map<String, List<RutaProyeccion>> porGrupo,
-      boolean revisarDias) {
-    List<String> avisos = new ArrayList<>();
-    if (orden.size() > 1) {
-      plan.duenos()
-          .forEach(
-              (chute, pesada) ->
-                  avisos.add(
-                      "Buff "
-                          + ctx.nombreChute(chute)
-                          + ": grupo "
-                          + pesada.grupo()
-                          + " (su ruta de "
-                          + pesada.bultos().stripTrailingZeros().toPlainString()
-                          + " bultos es la más pesada que quedaba)."));
-    }
-    plan.sinDueno()
-        .forEach(
-            (chute) ->
-                avisos.add(
-                    "Buff "
-                        + ctx.nombreChute(chute)
-                        + ": ningún grupo con rutas lo alcanza sin mezclarse con otro; queda como un chute más."));
-    for (String g : revisarDias ? orden : List.<String>of()) {
-      CargaDia carga = new CargaDia();
-      porGrupo.getOrDefault(g, List.of())
-          .forEach((r) -> carga.sumar(r.getFrecuencia(), 1L, ceroSiNulo(r.getTotalBultos())));
-      if (carga.diaSinRutas()) {
-        avisos.add(
-            "El grupo "
-                + g
-                + " no tiene diarias y le falta un día: ese día su tramo queda fuera de la ola.");
-      }
-    }
-    return avisos;
-  }
-
-  /**
-   * Dueño de cada buff de un tramo, decidido en las diarias. Buff por buff, en el orden del tramo,
-   * se compara la diaria más pesada que aún no tiene buff con la ruta más pesada de los días (la
-   * mayor entre L-X-V y M-J-S que aún no tiene buff): gana la que pesa más; a igual peso, la diaria
-   * (trabaja los dos días). Si gana el día, el buff queda reservado: las diarias no entran y en cada
-   * día recibe sus rutas más pesadas. Solo se reserva si los dos días tienen rutas en el grupo (si
-   * no, un día dejaría el buff vacío) y si el grupo tiene diarias (sin ellas no hay con qué chocar).
-   */
-  static DuenosBuff duenosBuff(List<Long> tramo, Set<Long> chutesBuff, List<RutaProyeccion> rutasGrupo) {
-    Comparator<BigDecimal> pesado = Comparator.reverseOrder();
-    List<BigDecimal> diarias = pesos(rutasGrupo, Balanceo.DIA, pesado);
-    List<BigDecimal> lxv = pesos(rutasGrupo, Balanceo.LXV, pesado);
-    List<BigDecimal> mjs = pesos(rutasGrupo, Balanceo.MJS, pesado);
-    List<Long> buffs = tramo.stream().filter(chutesBuff::contains).toList();
-    if (buffs.isEmpty() || diarias.isEmpty() || lxv.isEmpty() || mjs.isEmpty()) {
-      return new DuenosBuff(Set.of(), List.of());
-    }
-    Set<Long> reservados = new LinkedHashSet<>();
-    List<Decision> decisiones = new ArrayList<>();
-    int d = 0;
-    int j = 0;
-    for (Long buff : buffs) {
-      BigDecimal diaria = d < diarias.size() ? diarias.get(d) : null;
-      BigDecimal deLxv = j < lxv.size() ? lxv.get(j) : null;
-      BigDecimal deMjs = j < mjs.size() ? mjs.get(j) : null;
-      BigDecimal delDia = deLxv == null ? deMjs : deMjs == null ? deLxv : deLxv.max(deMjs);
-      if (delDia != null && (diaria == null || delDia.compareTo(diaria) > 0)) {
-        reservados.add(buff);
-        decisiones.add(new Decision(buff, delDia, diaria));
-        j++;
-      } else {
-        d++;
-      }
-    }
-    return new DuenosBuff(Set.copyOf(reservados), List.copyOf(decisiones));
-  }
-
-  /** Bultos de las rutas del grupo que mueve ese balanceo, de la más pesada a la más liviana. */
-  private static List<BigDecimal> pesos(
-      List<RutaProyeccion> rutas, Balanceo balanceo, Comparator<BigDecimal> orden) {
-    return rutas.stream()
-        .filter((r) -> balanceo.mueve(r.getFrecuencia()))
-        .map((r) -> ceroSiNulo(r.getTotalBultos()))
-        .sorted(orden)
-        .toList();
-  }
-
-  /** Un buff reservado para los días: la ruta del día que lo ganó y la diaria con la que compitió. */
-  record Decision(Long chute, BigDecimal delDia, BigDecimal diaria) {}
-
-  /** Buff reservados para los días en un tramo y por qué. */
-  record DuenosBuff(Set<Long> reservados, List<Decision> decisiones) {
-    List<String> avisos(Contexto ctx) {
-      return decisiones.stream()
-          .map(
-              (d) ->
-                  "Buff "
-                      + ctx.nombreChute(d.chute())
-                      + ": reservado para L-X-V y M-J-S ("
-                      + d.delDia().stripTrailingZeros().toPlainString()
-                      + (d.diaria() == null
-                          ? " bultos; ya no quedan diarias para él)."
-                          : " bultos supera a la diaria de " + d.diaria().stripTrailingZeros().toPlainString() + ").")
-                      + " Las diarias se juntan a su lado.")
-          .toList();
-    }
   }
 
   /** Diferencia de carga entre los chutes de esas rutas (todas de un cluster), en %. */
@@ -2116,602 +1766,6 @@ public class SimulacionConfiguracionService {
     return parametro == null
         ? null
         : chutesEntre(ctx, parametro.getChuteDesdeId(), parametro.getChuteHastaId());
-  }
-
-  /**
-   * Tramos de los grupos tal como los dejó el primer balanceo del cluster (son del cluster). Con
-   * un solo grupo, todo el rango. Un grupo sin tramo guardado se nivela entre los chutes que ya
-   * usa.
-   */
-  private List<TramosGrupos.Tramo> tramosGuardados(
-      Contexto ctx,
-      List<Long> rango,
-      Map<String, List<RutaProyeccion>> porGrupo,
-      List<GrupoGuardado> guardados) {
-    Map<String, GrupoGuardado> porClave = new HashMap<>();
-    guardados.forEach((g) -> porClave.putIfAbsent(SimulacionExcel.clave(g.grupo()), g));
-    List<String> orden = ordenNatural(porGrupo.keySet());
-    List<TramosGrupos.Tramo> tramos = new ArrayList<>();
-    for (TramosGrupos.Grupo g : cargaDelDia(orden, porGrupo)) {
-      GrupoGuardado guardado = porClave.get(SimulacionExcel.clave(g.nombre()));
-      List<Long> chutes =
-          porGrupo.size() == 1
-              ? rango
-              : guardado == null
-                  ? null
-                  : chutesEntre(ctx, guardado.chuteDesdeId(), guardado.chuteHastaId());
-      // Orden natural: la posición es el número del tramo (ya no hay prioridad elegida).
-      tramos.add(new TramosGrupos.Tramo(g.nombre(), tramos.size() + 1, g.rutas(), g.bultos(), chutes));
-    }
-    return tramos;
-  }
-
-  /**
-   * Reparto de rutas por carga de un cluster. Cada cluster es una ola que
-   * corre sola, así que lo que se iguala es la carga de ese cluster en cada
-   * chute que lo atiende (no la carga total del chute): solo necesita y mueve
-   * las rutas del cluster lanzado. Las rutas de cada (cluster, chute) van
-   * ordenadas por bultos: elegir la ruta a mover cuesta log(n), no recorrer
-   * todas.
-   */
-  private static final class Reparto {
-    /** La ola se da por pareja si la diferencia entre chutes es ≤ 10 % de su promedio. */
-    private static final BigDecimal TOLERANCIA_CARGA = new BigDecimal("0.10");
-
-    /** Bultos de cada cluster por chute (las rutas fijas también cuentan). */
-    private final Map<Long, Map<Long, BigDecimal>> carga = new HashMap<>();
-    /** Rutas que se pueden mover de cada (cluster, chute), agrupadas por bultos. */
-    private final Map<Par, TreeMap<BigDecimal, ArrayDeque<RutaProyeccion>>> rutas = new HashMap<>();
-    /** Rutas que se pueden mover en cada (cluster, chute). */
-    private final Map<Par, Integer> cuenta = new HashMap<>();
-    /**
-     * Rutas fijas de cada (cluster, chute): diarias ya acomodadas por un balanceo anterior o
-     * rutas pesadas ancladas en un chute con buff. Suman carga pero no se mueven.
-     */
-    private final Map<Par, Integer> fijas = new HashMap<>();
-    private final Map<Long, Integer> rutasPorCluster = new HashMap<>();
-    /** Chute final de cada ruta movida, para guardarlo en lote. */
-    private final Map<Long, Long> chutesNuevos = new LinkedHashMap<>();
-    /**
-     * Rango de balanceo, en orden: sus chutes siguen en la ola aunque queden en
-     * 0 (son destino válido); vacío = sin rango.
-     */
-    private final List<Long> rango = new ArrayList<>();
-    /** Chutes del tramo que quedaron fuera porque el día tiene menos rutas que chutes. */
-    private int libres;
-    /** Rutas pesadas que quedaron fijas en un chute con buff (traídas o que ya estaban ahí). */
-    private int ancladas;
-    /** Rutas que el buff trajo desde chutes fuera del tramo. */
-    private int deFuera;
-
-    Reparto(List<RutaProyeccion> rutasCluster) {
-      this(rutasCluster, Set.of());
-    }
-
-    /** {@code inmoviles}: ids de las rutas que cuentan como carga pero el balanceo no mueve. */
-    Reparto(List<RutaProyeccion> rutasCluster, Set<Long> inmoviles) {
-      for (RutaProyeccion ruta : rutasCluster) {
-        if (inmoviles.contains(ruta.getId())) {
-          fijas.merge(new Par(ruta.getClusterId(), ruta.getChuteId()), 1, Integer::sum);
-          sumar(ruta.getClusterId(), ruta.getChuteId(), ruta.getTotalBultos());
-        } else {
-          poner(ruta, ruta.getClusterId(), ruta.getChuteId());
-          rutasPorCluster.merge(ruta.getClusterId(), 1, Integer::sum);
-        }
-      }
-    }
-
-    Map<Long, Long> chutesNuevos() {
-      return chutesNuevos;
-    }
-
-    int rutasDe(Long cluster) {
-      return rutasPorCluster.getOrDefault(cluster, 0);
-    }
-
-    /**
-     * Diferencia de carga de la ola: (chute más cargado − menos cargado) /
-     * promedio, en %. Null si la ola tiene menos de dos chutes con carga.
-     */
-    Integer dispersion(Long cluster) {
-      return diferenciaBultos(carga.getOrDefault(cluster, Map.of()).values());
-    }
-
-    /** Fija el rango: sus chutes entran a la ola del cluster con carga 0 si aún no la tenían. */
-    void limitar(Long cluster, List<Long> chutesRango) {
-      rango.addAll(chutesRango);
-      Map<Long, BigDecimal> porChute = carga.computeIfAbsent(cluster, (id) -> new HashMap<>());
-      chutesRango.forEach((chute) -> porChute.putIfAbsent(chute, BigDecimal.ZERO));
-    }
-
-    /**
-     * Saca una ruta de un chute fuera del rango (el de menor id primero, su ruta
-     * más pesada) y la lleva al chute del rango con menos carga; a igual carga,
-     * el primero del rango. Las rutas fijas fuera del rango se quedan donde
-     * están. Null cuando ya no quedan rutas que se puedan traer.
-     */
-    Traslado traerAlRango(Long cluster) {
-      Map<Long, BigDecimal> porChute = carga.getOrDefault(cluster, Map.of());
-      Long origen =
-          porChute.keySet().stream()
-              .filter((chute) -> !rango.contains(chute) && rutasEn(cluster, chute) > 0)
-              .min(Comparator.naturalOrder())
-              .orElse(null);
-      if (origen == null) {
-        return null;
-      }
-      Long destino = rango.getFirst();
-      for (Long chute : rango) {
-        if (porChute.get(chute).compareTo(porChute.get(destino)) < 0) {
-          destino = chute;
-        }
-      }
-      RutaProyeccion ruta = rutas.get(new Par(cluster, origen)).lastEntry().getValue().peekFirst();
-      trasladar(ruta, cluster, origen, destino);
-      return new Traslado(ruta, origen, destino);
-    }
-
-    /** Rutas que se pueden mover en ese chute. */
-    private int rutasEn(Long cluster, Long chute) {
-      return cuenta.getOrDefault(new Par(cluster, chute), 0);
-    }
-
-    /**
-     * Chutes de la ola donde se nivela: con rango, los del rango en su orden (a igual carga gana el
-     * primero del tramo, así los libres quedan al final); sin él, los que ya usa, por id.
-     */
-    private List<Long> chutesDeOla(Long cluster) {
-      Map<Long, BigDecimal> porChute = carga.getOrDefault(cluster, Map.of());
-      if (rango.isEmpty()) {
-        return porChute.keySet().stream().sorted().toList();
-      }
-      return rango.stream().filter(porChute::containsKey).toList();
-    }
-
-    /** Chutes del tramo que este reparto deja sin rutas: el día tiene menos rutas que chutes. */
-    int libres() {
-      return libres;
-    }
-
-    int ancladas() {
-      return ancladas;
-    }
-
-    /** Rutas que el buff trajo desde chutes fuera del tramo. */
-    int deFuera() {
-      return deFuera;
-    }
-
-    /** Chutes del bloque que usa este reparto (el rango tras el recorte); 0 sin rango. */
-    int bloque() {
-      return rango.size();
-    }
-
-    /** Chutes del bloque sin ninguna ruta (ni movible ni fija): no debería quedar ninguno. */
-    List<Long> vacios(Long cluster) {
-      return rango.stream()
-          .filter((chute) -> rutasEn(cluster, chute) == 0 && !fijas.containsKey(new Par(cluster, chute)))
-          .toList();
-    }
-
-    /**
-     * Va después de anclar el buff: si las rutas movibles que quedan no alcanzan para todos los
-     * chutes del tramo, lo recorta a un bloque continuo. Quedan los chutes con rutas fijas (diarias
-     * o ancladas en el buff) y, de los demás, tantos como rutas movibles hay: primero los huecos
-     * entre chutes con rutas fijas, luego los vecinos hacia el inicio del tramo y por último hacia el
-     * final. Así no quedan chutes vacíos entre dos usados (p. ej. entre dos buff). Va antes de traer
-     * rutas al rango, así lo que estaba en un chute recortado entra a los que quedan.
-     *
-     * <p>{@code orden}: el tramo completo, en orden. {@code anclas}: chutes del tramo que no reciben
-     * rutas aquí pero marcan dónde va el bloque (en las diarias, los buff reservados para los días:
-     * las diarias se juntan a su lado). Sin tramo no recorta nada.
-     */
-    void ajustarRango(Long cluster, List<Long> orden, Set<Long> anclas) {
-      if (rango.isEmpty() || orden == null) {
-        return;
-      }
-      int primero = -1;
-      int ultimo = -1;
-      Set<Long> quedanEnTramo = new HashSet<>();
-      for (int i = 0; i < orden.size(); i++) {
-        Long chute = orden.get(i);
-        boolean conFijas = rango.contains(chute) && fijas.containsKey(new Par(cluster, chute));
-        if (conFijas) {
-          quedanEnTramo.add(chute);
-        }
-        if (conFijas || anclas.contains(chute)) {
-          primero = primero < 0 ? i : primero;
-          ultimo = i;
-        }
-      }
-      int faltan = rutasDe(cluster);
-      if (faltan >= rango.size() - quedanEnTramo.size()) {
-        return;
-      }
-      // Sin rutas fijas ni anclas el bloque empieza en el primer chute del tramo.
-      if (primero < 0) {
-        primero = 0;
-        ultimo = -1;
-      }
-      for (int i = primero; i <= ultimo && faltan > 0; i++) {
-        faltan -= sumarAlBloque(orden.get(i), quedanEnTramo);
-      }
-      for (int i = primero - 1; i >= 0 && faltan > 0; i--) {
-        faltan -= sumarAlBloque(orden.get(i), quedanEnTramo);
-      }
-      for (int i = ultimo + 1; i < orden.size() && faltan > 0; i++) {
-        faltan -= sumarAlBloque(orden.get(i), quedanEnTramo);
-      }
-      Set<Long> fuera = new HashSet<>(rango);
-      fuera.removeAll(quedanEnTramo);
-      rango.removeIf(fuera::contains);
-      Map<Long, BigDecimal> porChute = carga.getOrDefault(cluster, Map.of());
-      // Un chute recortado sin rutas sale de la ola (si tiene rutas, traerAlRango las saca).
-      fuera.forEach((chute) -> {
-        if (rutasEn(cluster, chute) == 0) {
-          porChute.remove(chute);
-        }
-      });
-      libres = fuera.size();
-    }
-
-    /** 1 si el chute es del rango y entra al bloque ahora; 0 si es un ancla o ya estaba. */
-    private int sumarAlBloque(Long chute, Set<Long> bloque) {
-      return rango.contains(chute) && bloque.add(chute) ? 1 : 0;
-    }
-
-    /**
-     * Llena los chutes del rango sin carga, en el orden del tramo: cada uno recibe una ruta del
-     * chute con más rutas movibles que no se quede vacío por darla (con dos o más, o con alguna
-     * fija). Entre sus rutas, la más cercana a la carga promedio de la ola. Devuelve los traslados.
-     */
-    List<Traslado> llenarVacios(Long cluster) {
-      List<Traslado> hechos = new ArrayList<>();
-      if (rango.isEmpty()) {
-        return hechos;
-      }
-      Map<Long, BigDecimal> porChute = carga.computeIfAbsent(cluster, (id) -> new HashMap<>());
-      for (Long vacio : rango) {
-        if (porChute.getOrDefault(vacio, BigDecimal.ZERO).signum() > 0 || rutasEn(cluster, vacio) > 0) {
-          continue;
-        }
-        Long origen = null;
-        for (Long chute : chutesDeOla(cluster)) {
-          int movibles = rutasEn(cluster, chute);
-          boolean puedeDar = movibles >= 2 || (movibles == 1 && fijas.containsKey(new Par(cluster, chute)));
-          if (puedeDar
-              && (origen == null
-                  || movibles > rutasEn(cluster, origen)
-                  || (movibles == rutasEn(cluster, origen)
-                      && porChute.get(chute).compareTo(porChute.get(origen)) > 0))) {
-            origen = chute;
-          }
-        }
-        if (origen == null) {
-          break;
-        }
-        List<Long> ola = chutesDeOla(cluster);
-        BigDecimal total = ola.stream().map((c) -> porChute.getOrDefault(c, BigDecimal.ZERO)).reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal promedio = total.divide(BigDecimal.valueOf(Math.max(1, ola.size())), ESCALA, RoundingMode.HALF_UP);
-        TreeMap<BigDecimal, ArrayDeque<RutaProyeccion>> candidatas = rutas.get(new Par(cluster, origen));
-        Map.Entry<BigDecimal, ArrayDeque<RutaProyeccion>> abajo = candidatas.floorEntry(promedio);
-        Map.Entry<BigDecimal, ArrayDeque<RutaProyeccion>> arriba = candidatas.ceilingEntry(promedio);
-        Map.Entry<BigDecimal, ArrayDeque<RutaProyeccion>> elegida =
-            abajo == null
-                ? arriba
-                : arriba == null
-                    ? abajo
-                    : promedio.subtract(abajo.getKey()).compareTo(arriba.getKey().subtract(promedio)) <= 0
-                        ? abajo
-                        : arriba;
-        RutaProyeccion ruta = elegida.getValue().peekFirst();
-        trasladar(ruta, cluster, origen, vacio);
-        hechos.add(new Traslado(ruta, origen, vacio));
-      }
-      return hechos;
-    }
-
-    /**
-     * Primer paso del reparto: llena los chutes con buff del tramo con las rutas más pesadas del
-     * grupo, estén donde estén (dentro o fuera del tramo). De la más pesada a la más liviana, por
-     * turnos entre los chutes con buff, cada una queda fija en su chute. Un chute con buff recibe
-     * rutas mientras no pase la carga promedio que tendrá el tramo (más la tolerancia); la primera
-     * entra aunque la pase, si el chute aún está bajo el promedio (es la más pesada). Cuando la
-     * siguiente ruta no cabe, ese chute queda lleno. Nunca se lleva tantas que falte una ruta para
-     * cada chute sin buff que el día puede llenar. Las diarias que ya están en el chute cuentan en
-     * su carga. Devuelve los traslados hechos.
-     */
-    List<Traslado> anclar(Long cluster, Collection<Long> chutesBuff) {
-      List<Traslado> hechos = new ArrayList<>();
-      List<Long> ola = chutesDeOla(cluster);
-      List<Long> base = rango.isEmpty() ? ola.stream().sorted().toList() : rango;
-      // Un buff que ya tiene diarias fijas es de las diarias (se decidió en ellas): no ancla rutas
-      // del día. Los demás (reservados o sin diarias) toman las más pesadas.
-      List<Long> destinos =
-          base.stream()
-              .filter((chute) -> chutesBuff.contains(chute) && !fijas.containsKey(new Par(cluster, chute)))
-              .toList();
-      if (destinos.isEmpty()) {
-        return hechos;
-      }
-      Map<Long, BigDecimal> porChute = carga.computeIfAbsent(cluster, (id) -> new HashMap<>());
-      int sueltas = rutasDe(cluster);
-      // Lo que se reparte: la carga del tramo más las rutas movibles que aún están fuera de él.
-      BigDecimal total = BigDecimal.ZERO;
-      for (Map.Entry<Long, BigDecimal> entrada : porChute.entrySet()) {
-        Long chute = entrada.getKey();
-        if (base.contains(chute)) {
-          total = total.add(entrada.getValue());
-        } else {
-          for (Map.Entry<BigDecimal, ArrayDeque<RutaProyeccion>> grupo :
-              rutas.getOrDefault(new Par(cluster, chute), new TreeMap<>()).entrySet()) {
-            total = total.add(grupo.getKey().multiply(BigDecimal.valueOf(grupo.getValue().size())));
-          }
-        }
-      }
-      // Chutes que usará el tramo: los que tienen rutas fijas y, de los demás, uno por ruta movible.
-      long conFijas = base.stream().filter((chute) -> fijas.containsKey(new Par(cluster, chute))).count();
-      long sinBuffLibres =
-          base.stream()
-              .filter((chute) -> !chutesBuff.contains(chute) && !fijas.containsKey(new Par(cluster, chute)))
-              .count();
-      long buffLibres = base.size() - conFijas - sinBuffLibres;
-      long usados = conFijas + Math.min(base.size() - conFijas, sueltas);
-      BigDecimal promedio = total.divide(BigDecimal.valueOf(Math.max(1, usados)), ESCALA, RoundingMode.HALF_UP);
-      BigDecimal tope = promedio.add(promedio.multiply(TOLERANCIA_CARGA));
-      // Cupo del buff: deja una ruta movible para cada chute sin buff que el día alcanza a llenar.
-      long cupo = sueltas - Math.min(sinBuffLibres, Math.max(0, sueltas - buffLibres));
-      // Candidatas: todas las rutas movibles del grupo, de la más pesada a la más liviana; a igual
-      // peso, primero la que ya está en un chute con buff (no se mueve sin necesidad).
-      List<RutaProyeccion> candidatas = new ArrayList<>();
-      for (Map.Entry<Par, TreeMap<BigDecimal, ArrayDeque<RutaProyeccion>>> entrada : rutas.entrySet()) {
-        if (entrada.getKey().clusterId().equals(cluster)) {
-          entrada.getValue().values().forEach(candidatas::addAll);
-        }
-      }
-      candidatas.sort(
-          Comparator.comparing(RutaProyeccion::getTotalBultos)
-              .reversed()
-              .thenComparing((RutaProyeccion r) -> !chutesBuff.contains(r.getChuteId()))
-              .thenComparing(RutaProyeccion::getId));
-      // Carga fija de cada chute con buff (diarias y rutas ya ancladas): las movibles que hoy
-      // están ahí no cuentan, si no ocupan el lugar de las pesadas (el emparejado las saca después).
-      Map<Long, BigDecimal> fija = new HashMap<>();
-      for (Long chute : destinos) {
-        BigDecimal movibles = BigDecimal.ZERO;
-        for (Map.Entry<BigDecimal, ArrayDeque<RutaProyeccion>> grupo :
-            rutas.getOrDefault(new Par(cluster, chute), new TreeMap<>()).entrySet()) {
-          movibles = movibles.add(grupo.getKey().multiply(BigDecimal.valueOf(grupo.getValue().size())));
-        }
-        fija.put(chute, porChute.getOrDefault(chute, BigDecimal.ZERO).subtract(movibles));
-      }
-      Set<Long> llenos = new HashSet<>();
-      Set<Long> conAncla = new HashSet<>();
-      int turno = 0;
-      for (RutaProyeccion ruta : candidatas) {
-        if (ancladas >= cupo) {
-          break;
-        }
-        Long destino = null;
-        // Por turnos: el siguiente chute con buff que aún tiene lugar para esta ruta.
-        for (int intento = 0; intento < destinos.size() && destino == null; intento++) {
-          Long chute = destinos.get((turno + intento) % destinos.size());
-          if (llenos.contains(chute)) {
-            continue;
-          }
-          BigDecimal actual = fija.get(chute);
-          boolean cabe = actual.add(ruta.getTotalBultos()).compareTo(tope) <= 0;
-          boolean primera = !conAncla.contains(chute) && actual.compareTo(promedio) < 0;
-          if (cabe || primera) {
-            destino = chute;
-            turno = (turno + intento + 1) % destinos.size();
-          } else {
-            llenos.add(chute);
-          }
-        }
-        if (destino == null) {
-          break;
-        }
-        Long origen = ruta.getChuteId();
-        if (!origen.equals(destino)) {
-          if (!rango.isEmpty() && !rango.contains(origen)) {
-            deFuera++;
-          }
-          trasladar(ruta, cluster, origen, destino);
-          hechos.add(new Traslado(ruta, origen, destino));
-        }
-        fijar(ruta, cluster, destino);
-        fija.merge(destino, ruta.getTotalBultos(), BigDecimal::add);
-        conAncla.add(destino);
-        ancladas++;
-      }
-      return hechos;
-    }
-
-    /**
-     * Un movimiento para emparejar la ola. Prueba los pares del más cargado (con rutas que se pueden
-     * mover) al más liviano y hace el primero que mejora: una ruta con 0 < bultos < diferencia, la
-     * más cercana a la mitad. Antes solo probaba el par extremo y, si su único candidato no servía
-     * (p. ej. el más cargado tenía una sola ruta), se detenía aunque otro chute pudiera llenar un
-     * vacío. Cada movimiento baja la suma de cuadrados de la carga, así que el proceso termina.
-     * Null si la ola ya está pareja (dentro de la tolerancia) o ningún par mejora.
-     */
-    Traslado nivelar(Long cluster) {
-      Map<Long, BigDecimal> porChute = carga.getOrDefault(cluster, Map.of());
-      List<Long> ola = chutesDeOla(cluster);
-      if (ola.size() < 2) {
-        return null;
-      }
-      BigDecimal total = BigDecimal.ZERO;
-      for (Long chute : ola) {
-        total = total.add(porChute.get(chute));
-      }
-      BigDecimal promedio = total.divide(BigDecimal.valueOf(ola.size()), ESCALA, RoundingMode.HALF_UP);
-      BigDecimal tolerancia = promedio.multiply(TOLERANCIA_CARGA);
-      // Orden estable: por carga y, a igual carga, por el orden del tramo.
-      List<Long> livianos =
-          ola.stream().sorted(Comparator.comparing(porChute::get)).toList();
-      List<Long> cargados =
-          ola.stream()
-              .filter((chute) -> rutasEn(cluster, chute) > 0)
-              .sorted(Comparator.comparing(porChute::get).reversed())
-              .toList();
-      for (Long cargado : cargados) {
-        for (Long liviano : livianos) {
-          BigDecimal diferencia = porChute.get(cargado).subtract(porChute.get(liviano));
-          if (diferencia.compareTo(tolerancia) <= 0) {
-            // Los demás livianos están aún más cerca de este cargado.
-            break;
-          }
-          RutaProyeccion mejor = candidata(rutas.get(new Par(cluster, cargado)), diferencia);
-          if (mejor != null) {
-            trasladar(mejor, cluster, cargado, liviano);
-            return new Traslado(mejor, cargado, liviano);
-          }
-        }
-      }
-      return null;
-    }
-
-    /**
-     * Cuando ningún movimiento de una sola ruta mejora (p. ej. las rutas del chute más cargado
-     * pesan más que la diferencia), cambia una ruta del más cargado por una más liviana del más
-     * liviano. Prueba los pares en el mismo orden que {@link #nivelar} y, en el primero que mejora,
-     * elige el cambio cuya diferencia de bultos (0 < a − b < diferencia) queda más cerca de la mitad
-     * de la diferencia. Solo cambia rutas movibles del mismo grupo: las fijas (diarias o ancladas en
-     * el buff) no se tocan. Cada cambio baja la suma de cuadrados de la carga, así que el proceso
-     * termina. Devuelve los dos traslados, o vacío si ningún par mejora.
-     */
-    List<Traslado> intercambiar(Long cluster) {
-      Map<Long, BigDecimal> porChute = carga.getOrDefault(cluster, Map.of());
-      List<Long> ola = chutesDeOla(cluster).stream().filter((chute) -> rutasEn(cluster, chute) > 0).toList();
-      if (ola.size() < 2) {
-        return List.of();
-      }
-      List<Long> todos = chutesDeOla(cluster);
-      BigDecimal total = BigDecimal.ZERO;
-      for (Long chute : todos) {
-        total = total.add(porChute.get(chute));
-      }
-      BigDecimal tolerancia =
-          total.divide(BigDecimal.valueOf(todos.size()), ESCALA, RoundingMode.HALF_UP).multiply(TOLERANCIA_CARGA);
-      List<Long> livianos = ola.stream().sorted(Comparator.comparing(porChute::get)).toList();
-      List<Long> cargados = ola.stream().sorted(Comparator.comparing(porChute::get).reversed()).toList();
-      for (Long cargado : cargados) {
-        for (Long liviano : livianos) {
-          BigDecimal diferencia = porChute.get(cargado).subtract(porChute.get(liviano));
-          if (diferencia.compareTo(tolerancia) <= 0) {
-            break;
-          }
-          BigDecimal mitad = diferencia.divide(BigDecimal.valueOf(2), ESCALA, RoundingMode.HALF_UP);
-          TreeMap<BigDecimal, ArrayDeque<RutaProyeccion>> deLiviano = rutas.get(new Par(cluster, liviano));
-          BigDecimal mejorA = null;
-          BigDecimal mejorB = null;
-          BigDecimal mejorDistancia = null;
-          for (BigDecimal a : rutas.get(new Par(cluster, cargado)).keySet()) {
-            // b ideal = a − mitad; vale cualquier b con a − diferencia < b < a.
-            BigDecimal ideal = a.subtract(mitad);
-            for (BigDecimal b : new BigDecimal[] {deLiviano.floorKey(ideal), deLiviano.ceilingKey(ideal)}) {
-              if (b == null || b.compareTo(a) >= 0 || b.compareTo(a.subtract(diferencia)) <= 0) {
-                continue;
-              }
-              BigDecimal distancia = a.subtract(b).subtract(mitad).abs();
-              if (mejorDistancia == null || distancia.compareTo(mejorDistancia) < 0) {
-                mejorA = a;
-                mejorB = b;
-                mejorDistancia = distancia;
-              }
-            }
-          }
-          if (mejorA != null) {
-            RutaProyeccion pesada = rutas.get(new Par(cluster, cargado)).get(mejorA).peekFirst();
-            RutaProyeccion liviana = deLiviano.get(mejorB).peekFirst();
-            trasladar(pesada, cluster, cargado, liviano);
-            trasladar(liviana, cluster, liviano, cargado);
-            return List.of(new Traslado(pesada, cargado, liviano), new Traslado(liviana, liviano, cargado));
-          }
-        }
-      }
-      return List.of();
-    }
-
-    /** La ruta con 0 < bultos < diferencia más cercana a la mitad de la diferencia, o null. */
-    private static RutaProyeccion candidata(
-        TreeMap<BigDecimal, ArrayDeque<RutaProyeccion>> candidatas, BigDecimal diferencia) {
-      BigDecimal mitad = diferencia.divide(BigDecimal.valueOf(2), ESCALA, RoundingMode.HALF_UP);
-      Map.Entry<BigDecimal, ArrayDeque<RutaProyeccion>> abajo = candidatas.floorEntry(mitad);
-      Map.Entry<BigDecimal, ArrayDeque<RutaProyeccion>> arriba = candidatas.higherEntry(mitad);
-      if (abajo != null && abajo.getKey().signum() <= 0) {
-        abajo = null;
-      }
-      if (arriba != null && arriba.getKey().compareTo(diferencia) >= 0) {
-        arriba = null;
-      }
-      Map.Entry<BigDecimal, ArrayDeque<RutaProyeccion>> elegida =
-          abajo == null
-              ? arriba
-              : arriba == null
-                  ? abajo
-                  : mitad.subtract(abajo.getKey()).compareTo(arriba.getKey().subtract(mitad)) <= 0
-                      ? abajo
-                      : arriba;
-      return elegida == null ? null : elegida.getValue().peekFirst();
-    }
-
-    private void poner(RutaProyeccion ruta, Long cluster, Long chute) {
-      Par par = new Par(cluster, chute);
-      rutas
-          .computeIfAbsent(par, (p) -> new TreeMap<>())
-          .computeIfAbsent(ruta.getTotalBultos(), (b) -> new ArrayDeque<>())
-          .addLast(ruta);
-      cuenta.merge(par, 1, Integer::sum);
-      sumar(cluster, chute, ruta.getTotalBultos());
-    }
-
-    /** Saca la ruta de las que se pueden mover; con {@code restar}, también su carga. */
-    private void sacar(RutaProyeccion ruta, Long cluster, Long chute, boolean restar) {
-      Par par = new Par(cluster, chute);
-      TreeMap<BigDecimal, ArrayDeque<RutaProyeccion>> porBultos = rutas.get(par);
-      ArrayDeque<RutaProyeccion> iguales = porBultos.get(ruta.getTotalBultos());
-      iguales.remove(ruta);
-      if (iguales.isEmpty()) {
-        porBultos.remove(ruta.getTotalBultos());
-      }
-      if (restar) {
-        sumar(cluster, chute, ruta.getTotalBultos().negate());
-      }
-      if (cuenta.merge(par, -1, Integer::sum) == 0) {
-        cuenta.remove(par);
-        rutas.remove(par);
-        // Un chute del rango (o con rutas fijas) sigue en la ola aunque se vacíe.
-        if (restar && !rango.contains(chute) && !fijas.containsKey(par)) {
-          carga.get(cluster).remove(chute);
-        }
-      }
-    }
-
-    private void quitar(RutaProyeccion ruta, Long cluster, Long chute) {
-      sacar(ruta, cluster, chute, true);
-    }
-
-    /** La ruta queda fija en su chute: sigue sumando carga pero ya no se mueve. */
-    private void fijar(RutaProyeccion ruta, Long cluster, Long chute) {
-      sacar(ruta, cluster, chute, false);
-      fijas.merge(new Par(cluster, chute), 1, Integer::sum);
-      // Ya no cuenta entre las movibles (el recorte del tramo depende de ellas).
-      rutasPorCluster.merge(cluster, -1, Integer::sum);
-    }
-
-    private void sumar(Long cluster, Long chute, BigDecimal bultos) {
-      carga.computeIfAbsent(cluster, (id) -> new HashMap<>()).merge(chute, bultos, BigDecimal::add);
-    }
-
-    private void trasladar(RutaProyeccion ruta, Long cluster, Long origen, Long destino) {
-      quitar(ruta, cluster, origen);
-      poner(ruta, cluster, destino);
-      ruta.setChuteId(destino);
-      chutesNuevos.put(ruta.getId(), destino);
-    }
   }
 
   // ---------------- Paso 2: operarios ----------------
@@ -4338,7 +3392,8 @@ public class SimulacionConfiguracionService {
     Map<Long, Map<String, long[]>> rutas = new HashMap<>();
     Map<Long, Map<String, BigDecimal>> bultos = new HashMap<>();
     // En un día ya balanceado cada grupo tiene sus propios tramos: van de su primer a su último
-    // chute con rutas de ese día (las diarias incluidas). Si no, los que guardaron las diarias.
+    // chute con rutas de ese día (cada frecuencia es independiente; las diarias solo si el grupo no
+    // tiene otras). Si no, los que guardaron las diarias.
     boolean porDia = ctx.balanceo().esDia();
     List<Long> ordenados =
         porDia
@@ -4351,6 +3406,7 @@ public class SimulacionConfiguracionService {
       posicion.put(ordenados.get(i), i);
     }
     Map<Long, Map<String, int[]>> delDia = new HashMap<>();
+    Map<Long, Map<String, int[]>> soloDiarias = new HashMap<>();
     for (CargaGrupo fila : cargaGrupos(ctx, true)) {
       if (fila.getRutas() == null || fila.getRutas() == 0) {
         continue;
@@ -4359,7 +3415,7 @@ public class SimulacionConfiguracionService {
       boolean suma = visible(ctx, fila.getFrecuencia());
       Integer donde = fila.getChuteId() == null ? null : posicion.get(fila.getChuteId());
       if (suma && donde != null) {
-        delDia
+        (ctx.balanceo().mueve(fila.getFrecuencia()) ? delDia : soloDiarias)
             .computeIfAbsent(fila.getClusterId(), (id) -> new HashMap<>())
             .merge(g, new int[] {donde, donde}, (a, b) -> new int[] {Math.min(a[0], b[0]), Math.max(a[1], b[1])});
       }
@@ -4393,6 +3449,9 @@ public class SimulacionConfiguracionService {
             Long desde = guardado == null ? null : guardado.chuteDesdeId();
             Long hasta = guardado == null ? null : guardado.chuteHastaId();
             int[] delGrupo = delDia.getOrDefault(clusterId, Map.of()).get(g);
+            if (delGrupo == null) {
+              delGrupo = soloDiarias.getOrDefault(clusterId, Map.of()).get(g);
+            }
             if (porDia && delGrupo != null && !pendiente(ctx.parametrosCluster().get(clusterId))) {
               desde = ordenados.get(delGrupo[0]);
               hasta = ordenados.get(delGrupo[1]);

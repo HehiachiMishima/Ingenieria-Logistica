@@ -2143,9 +2143,9 @@ class SimulacionBalanceoTest {
   }
 
   @Test
-  void elTramoDeUnGrupoSeDimensionaConSuDiaMasPesado() {
-    // A: 2 diarias (200) + 2 L-X-V (200) + 2 M-J-S (200) → su día más pesado: 400 bultos.
-    // B: 4 L-X-V (400). Con la suma, A pesaría 600 y se llevaría más chutes de los que usa un día.
+  void lasDiariasSeRepartenSoloConLasDiarias() {
+    // A: 2 diarias + 2 L-X-V + 2 M-J-S; B: 4 L-X-V. Cada frecuencia es independiente: Diarias solo
+    // reparte las 2 diarias de A y no toca las rutas de los días.
     List<RutaProyeccion> rutas = new ArrayList<>();
     rutas.add(conFrecuencia(rutaDe(1L, CL3, 1L, "A1", "100", "A"), "DIARIA"));
     rutas.add(conFrecuencia(rutaDe(2L, CL3, 1L, "A2", "100", "A"), "DIARIA"));
@@ -2161,8 +2161,13 @@ class SimulacionBalanceoTest {
 
     BalanceoResponse resultado = lanzarDiarias(CL3, new BalanceoRequest(1L, 6L));
 
-    // 400 y 400: 3 chutes cada uno.
-    assertTrue(resultado.mensaje().contains("A CHUTE 1 → CHUTE 3 (3 chute(s)); B CHUTE 4 → CHUTE 6 (3 chute(s))"), resultado.mensaje());
+    assertEquals(Set.of(1L, 2L), Set.of(rutas.get(0).getChuteId(), rutas.get(1).getChuteId()));
+    assertTrue(rutas.subList(2, rutas.size()).stream().allMatch((r) -> r.getChuteId() == 1L), "los días no se tocan");
+    // L-X-V tiene 6 rutas: el rango no se recorta; las diarias usan 2 de los 6 chutes.
+    assertTrue(resultado.mensaje().contains("4 chute(s) del rango quedan sin diarias"), resultado.mensaje());
+    verify(lotes)
+        .guardarGrupos(
+            10L, CL3, List.of(new GrupoGuardado(CL3, "A", 1, 1L, 2L), new GrupoGuardado(CL3, "B", 2, null, null)));
   }
 
   private static RutaProyeccion conFrecuencia(RutaProyeccion ruta, String frecuencia) {
@@ -2192,13 +2197,12 @@ class SimulacionBalanceoTest {
       chutes.add(chute(c, "CHUTE " + c));
     }
     prepararLectura(archivo(), List.of(limite(CL3, "100")), base, List.of(), List.of(cluster(CL3, "CL3")), chutes);
-    when(rutaRepo.cargaPorGrupo(10L))
-        .thenReturn(
-            List.of(
-                cargaGrupo(CL3, "A", 1L, 4, "400"),
-                cargaGrupo(CL3, "B", 1L, 2, "200"),
-                // Otro cluster: no cuenta.
-                cargaGrupo(CL1, "A", 1L, 9, "900")));
+    // Diarias de A (4 × 100) y de B (2 × 100), todas hoy en CHUTE 1.
+    List<RutaProyeccion> rutas = new ArrayList<>();
+    for (long id = 1; id <= 6; id++) {
+      rutas.add(diaria(rutaDe(id, CL3, 1L, "R" + id, "100", id <= 4 ? "A" : "B")));
+    }
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL3)).thenReturn(rutas);
 
     VistaBalanceoResponse vista =
         servicio.vistaBalanceo(10L, Balanceo.DIA, CL3, new BalanceoRequest(1L, 6L)).datos();
@@ -2230,8 +2234,11 @@ class SimulacionBalanceoTest {
         List.of(),
         List.of(cluster(CL3, "CL3")),
         List.of(chute(1L, "CHUTE 1")));
-    when(rutaRepo.cargaPorGrupo(10L))
-        .thenReturn(List.of(cargaGrupo(CL3, "A", 1L, 4, "400"), cargaGrupo(CL3, "B", 1L, 2, "200")));
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL3))
+        .thenReturn(
+            List.of(
+                diaria(rutaDe(1L, CL3, 1L, "A1", "400", "A")),
+                diaria(rutaDe(2L, CL3, 1L, "B1", "200", "B"))));
 
     VistaBalanceoResponse vista =
         servicio.vistaBalanceo(10L, Balanceo.DIA, CL3, new BalanceoRequest(1L, 1L)).datos();

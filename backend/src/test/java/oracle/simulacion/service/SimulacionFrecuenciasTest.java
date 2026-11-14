@@ -219,7 +219,9 @@ class SimulacionFrecuenciasTest {
         servicio.balancear(10L, Balanceo.MJS, CL1, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 3L)).datos();
 
     assertEquals(1L, diaria.getChuteId(), "la diaria ya balanceada no se mueve");
-    assertEquals(2L, m1.getChuteId(), "la ruta M-J-S se reparte alrededor de la diaria");
+    // Cada frecuencia es independiente: la diaria no cuenta en M-J-S, así que la de 300 se queda
+    // en su chute (apilada con la diaria) y la otra ocupa el chute libre.
+    assertEquals(1L, m1.getChuteId(), "la ruta M-J-S no se aparta de la diaria");
     assertEquals(2L, m2.getChuteId(), "la que estaba fuera del rango de las diarias entra");
     assertEquals(2L, soloLxv.getChuteId(), "una ruta L-X-V no aparece en M-J-S");
     assertTrue(resultado.mensaje().contains("diaria"), resultado.mensaje());
@@ -278,26 +280,32 @@ class SimulacionFrecuenciasTest {
   }
 
   @Test
-  void elTramoDeUnGrupoSeDimensionaConLasRutasDelDiaConMasRutas() {
+  void laVistaDeDiariasSoloMideLasDiariasYRecortaElRango() {
     ParametroCluster dia = parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_PENDIENTE);
     when(archivoRepo.findById(10L)).thenReturn(Optional.of(archivo()));
     when(configRepo.findById(10L)).thenReturn(Optional.of(configuracion()));
     prepararParametros(
         List.of(dia, parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE)),
-        List.of(base(1L, false), base(2L, false), base(3L, false)),
+        List.of(base(1L, false), base(2L, false), base(3L, false), base(4L, false), base(5L, false)),
         List.of());
-    // Grupo A: L-X-V 2 rutas pesadas, M-J-S 10 rutas livianas, 1 diaria.
-    when(rutaRepo.cargaPorGrupo(10L))
+    // Grupo A: 1 diaria, 2 L-X-V y 3 M-J-S. Cada frecuencia es independiente.
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL1))
         .thenReturn(
             List.of(
-                cargaGrupo("LXV", "A", 1L, 2, "1000"),
-                cargaGrupo("MJS", "A", 1L, 10, "900"),
-                cargaGrupo(Balanceo.DIARIA, "A", 1L, 1, "50")));
+                ruta(1L, 1L, "50", Balanceo.DIARIA),
+                ruta(2L, 1L, "500", "LXV"),
+                ruta(3L, 1L, "500", "LXV"),
+                ruta(4L, 1L, "300", "MJS"),
+                ruta(5L, 1L, "300", "MJS"),
+                ruta(6L, 1L, "300", "MJS")));
 
-    var vista = servicio.vistaBalanceo(10L, Balanceo.DIA, CL1, new BalanceoRequest(1L, 3L)).datos();
+    var vista = servicio.vistaBalanceo(10L, Balanceo.DIA, CL1, new BalanceoRequest(1L, 5L)).datos();
 
-    assertEquals(11, vista.grupos().get(0).rutas(), "diarias + el día con más rutas (M-J-S)");
-    assertEquals(0, new BigDecimal("1050").compareTo(vista.grupos().get(0).bultos()), "diarias + el día con más bultos");
+    assertEquals(1, vista.grupos().get(0).rutas(), "solo las diarias");
+    assertEquals(0, new BigDecimal("50").compareTo(vista.grupos().get(0).bultos()));
+    assertEquals(1, vista.grupos().get(0).chutes());
+    // La frecuencia con más rutas (M-J-S, 3) llena 3 de los 5 chutes: sobran 2.
+    assertEquals(2, vista.chutesSinUsar());
   }
 
   // ---------------- A mano ----------------
@@ -440,7 +448,7 @@ class SimulacionFrecuenciasTest {
         servicio.balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.RUTAS, null).datos();
 
     assertEquals(3L, pesada.getChuteId(), "la ruta más pesada va al chute con buff");
-    assertTrue(resultado.mensaje().contains("buff"), resultado.mensaje());
+    assertTrue(resultado.mensaje().contains("Buff CHUTE 3: grupo A (900 bultos)"), resultado.mensaje());
   }
 
   /** Diarias de CL1 ya balanceadas en CHUTE 1 → 3; L-X-V y M-J-S pendientes; buff donde se pida. */
@@ -458,7 +466,7 @@ class SimulacionFrecuenciasTest {
   }
 
   @Test
-  void elBuffSeLlenaConLasRutasMasPesadasHastaElPromedio() {
+  void primeroSeBalanceaPorGrupoYDespuesElBuffTomaLaColumnaMasCargada() {
     prepararBuff(false, false, true);
     String[] bultos = {"500", "450", "400", "300", "250", "200", "150", "150", "100", "100", "50", "50"};
     List<RutaProyeccion> rutas = new java.util.ArrayList<>();
@@ -470,21 +478,15 @@ class SimulacionFrecuenciasTest {
     BalanceoResponse resultado =
         servicio.balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.RUTAS, null).datos();
 
-    // Promedio 900 (2.700 / 3): 500 + 450 = 950 cabe con la tolerancia; la de 400 ya no.
-    assertEquals(3L, rutas.get(0).getChuteId(), "la de 500 va al buff");
-    assertEquals(3L, rutas.get(1).getChuteId(), "la de 450 va al buff");
-    assertTrue(rutas.get(2).getChuteId() != 3L, "la de 400 ya no cabe en el buff");
-    BigDecimal enBuff =
-        rutas.stream()
-            .filter((r) -> r.getChuteId() == 3L)
-            .map(RutaProyeccion::getTotalBultos)
-            .reduce(BigDecimal.ZERO, BigDecimal::add);
-    assertEquals(0, new BigDecimal("950").compareTo(enBuff), "el buff solo tiene las dos más pesadas");
-    assertTrue(resultado.mensaje().contains("2 ruta(s) pesada(s) a chutes con buff"), resultado.mensaje());
+    // 2.700 bultos en 3 chutes: quedan parejos (900 cada uno) y el buff tiene uno de ellos.
+    Map<Long, BigDecimal> carga = new java.util.TreeMap<>();
+    rutas.forEach((r) -> carga.merge(r.getChuteId(), r.getTotalBultos(), BigDecimal::add));
+    carga.values().forEach((c) -> assertEquals(0, new BigDecimal("900").compareTo(c), carga.toString()));
+    assertTrue(resultado.mensaje().contains("Buff CHUTE 3: grupo A (900 bultos)"), resultado.mensaje());
   }
 
   @Test
-  void elBuffVaPrimeroYNingunChuteDelTramoQuedaVacio() {
+  void laRutaMasPesadaTerminaEnElBuffYNingunChuteQuedaVacio() {
     prepararBuff(false, false, true);
     // Todo en CHUTE 1 y la más pesada fuera del tramo (CHUTE 5): el buff la toma directo.
     RutaProyeccion fuera = ruta(1L, 5L, "800", "LXV");
@@ -500,7 +502,7 @@ class SimulacionFrecuenciasTest {
       assertTrue(rutas.stream().anyMatch((r) -> r.getChuteId().equals(chute)), "CHUTE " + chute + " sin rutas");
     }
     assertTrue(resultado.mensaje().contains("1 desde chutes fuera del rango"), resultado.mensaje());
-    assertTrue(resultado.mensaje().contains("1 ruta(s) pesada(s) a chutes con buff"), resultado.mensaje());
+    assertTrue(resultado.mensaje().contains("Buff CHUTE 3: grupo A (800 bultos)"), resultado.mensaje());
   }
 
   @Test
@@ -645,31 +647,47 @@ class SimulacionFrecuenciasTest {
         .orElseThrow();
   }
 
+  /** Chutes que usan las rutas de esa frecuencia (sin las diarias), en el orden del rango. */
+  private static List<Long> usadosPor(List<RutaProyeccion> rutas, String frecuencia) {
+    return RANGO_PRINCIPAL.stream()
+        .filter((c) -> rutas.stream().anyMatch((r) -> frecuencia.equals(r.getFrecuencia()) && c.equals(r.getChuteId())))
+        .toList();
+  }
+
   @Test
-  void datoRealPrincipalLxvUsaTodoElRangoYElBuffLlevaLaMasPesada() {
+  void datoRealPrincipalLxvUsaTodoElRangoYElGrupoMayorTieneBuff() {
     List<RutaProyeccion> rutas = rutasPrincipal();
 
-    Map<Long, BigDecimal> carga = balancearPrincipal(Balanceo.LXV, rutas);
+    balancearPrincipal(Balanceo.LXV, rutas);
 
-    // L-X-V no respeta los chutes de M-J-S: usa los 9 del rango.
-    assertEquals(RANGO_PRINCIPAL, List.copyOf(carga.keySet()), carga.toString());
-    assertEquals(18L, conBultos(rutas, "784.49").getChuteId(), "la más pesada del día al primer buff");
-    assertEquals(22L, conBultos(rutas, "460.44").getChuteId());
-    assertEquals(25L, conBultos(rutas, "455.45").getChuteId());
+    // Solo las 12 rutas de L-X-V (las diarias no cuentan): llenan los 9 chutes.
+    assertEquals(RANGO_PRINCIPAL, usadosPor(rutas, "LXV"));
+    // El G3 (1.641,50) es el grupo con más bultos: su chute más cargado es un buff. La de 784,49,
+    // sola en su chute, también queda en un buff.
+    Map<Long, BigDecimal> g3 = new java.util.HashMap<>();
+    rutas.stream()
+        .filter((r) -> "LXV".equals(r.getFrecuencia()) && "3".equals(r.getGrupo()))
+        .forEach((r) -> g3.merge(r.getChuteId(), r.getTotalBultos(), BigDecimal::add));
+    Long masCargado = g3.entrySet().stream().max(Map.Entry.comparingByValue()).orElseThrow().getKey();
+    assertTrue(Set.of(18L, 22L, 25L).contains(masCargado), g3.toString());
+    assertTrue(Set.of(18L, 22L, 25L).contains(conBultos(rutas, "784.49").getChuteId()));
     assertEquals(15L, conBultos(rutas, "465.05").getChuteId(), "las diarias no se mueven");
   }
 
   @Test
-  void datoRealPrincipalMjsLlevaLasMasPesadasALosBuffAunqueQuedeUnLibre() {
+  void datoRealPrincipalMjsLlevaLasMasPesadasALosBuffSinHuecos() {
     List<RutaProyeccion> rutas = rutasPrincipal();
 
-    Map<Long, BigDecimal> carga = balancearPrincipal(Balanceo.MJS, rutas);
+    balancearPrincipal(Balanceo.MJS, rutas);
 
-    assertEquals(18L, conBultos(rutas, "1531.63").getChuteId(), "la más pesada de M-J-S al buff 18");
-    assertEquals(Set.of(22L, 25L), Set.of(conBultos(rutas, "878.19").getChuteId(), conBultos(rutas, "785.12").getChuteId()));
-    // El grupo 1 (diarias fijas en el 15 + una de M-J-S) solo llena dos chutes: el 17 y el 26
-    // quedan fuera de M-J-S.
-    assertEquals(List.of(15L, 16L, 18L, 22L, 23L, 24L, 25L), List.copyOf(carga.keySet()), carga.toString());
+    // 6 rutas de M-J-S: 6 chutes seguidos, sin huecos; los demás quedan fuera de M-J-S.
+    List<Long> usados = usadosPor(rutas, "MJS");
+    int desde = RANGO_PRINCIPAL.indexOf(usados.getFirst());
+    assertEquals(RANGO_PRINCIPAL.subList(desde, desde + 6), usados);
+    // Sin diarias que estorben, la de 1.531,63 y la más pesada del G2 (el mayor) van a buff.
+    assertTrue(Set.of(18L, 22L, 25L).contains(conBultos(rutas, "1531.63").getChuteId()));
+    assertTrue(Set.of(18L, 22L, 25L).contains(conBultos(rutas, "878.19").getChuteId()));
+    assertEquals(15L, conBultos(rutas, "465.05").getChuteId(), "las diarias no se mueven");
   }
 
   @Test
@@ -735,7 +753,7 @@ class SimulacionFrecuenciasTest {
     assertTrue(mayor.subtract(menor).compareTo(new BigDecimal("37.35")) <= 0, carga.toString());
   }
 
-  // ---------------- Dueño del buff (se decide en las diarias) ----------------
+  // ---------------- Buff: cada frecuencia por su cuenta ----------------
 
   /** Diarias pendientes en chutes 1 → n; buff donde se pida. Devuelve el parámetro de diarias. */
   private ParametroCluster prepararDiarias(int chutes, Set<Long> buff, List<RutaProyeccion> rutas) {
@@ -755,8 +773,8 @@ class SimulacionFrecuenciasTest {
   }
 
   @Test
-  void siLaRutaDelDiaPesaMasElBuffQuedaReservadoYLasDiariasVanAlLado() {
-    // Diarias 465 y 197; el día más pesado (M-J-S 1.531) gana: el buff (CHUTE 2) es de los días.
+  void lasDiariasUsanElBuffSinMirarLasRutasDeLosDias() {
+    // Aunque M-J-S tenga una ruta de 1.531, las diarias no la miran: la de 465 va al buff (CHUTE 2).
     RutaProyeccion d465 = ruta(1L, 2L, "465.05", Balanceo.DIARIA);
     RutaProyeccion d197 = ruta(2L, 2L, "197.49", Balanceo.DIARIA);
     List<RutaProyeccion> rutas =
@@ -766,13 +784,14 @@ class SimulacionFrecuenciasTest {
     BalanceoResponse resultado =
         servicio.balancear(10L, Balanceo.DIA, CL1, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 3L)).datos();
 
-    assertTrue(d465.getChuteId() != 2L && d197.getChuteId() != 2L, "ninguna diaria en el buff reservado");
-    assertEquals(Set.of(1L, 3L), Set.of(d465.getChuteId(), d197.getChuteId()), "una a cada lado del buff");
-    assertTrue(resultado.mensaje().contains("Buff CHUTE 2: reservado para L-X-V y M-J-S"), resultado.mensaje());
+    assertEquals(2L, d465.getChuteId(), "la diaria más pesada al buff");
+    assertTrue(!resultado.mensaje().contains("reservado"), resultado.mensaje());
+    // Ninguna frecuencia tiene más de 2 rutas: el rango queda en 2 chutes, con el buff.
+    assertTrue(resultado.mensaje().contains("Rango usado: 2 de 3 chutes"), resultado.mensaje());
   }
 
   @Test
-  void siLaDiariaPesaMasElBuffEsDeLasDiarias() {
+  void laDiariaMasPesadaVaAlBuff() {
     RutaProyeccion d900 = ruta(1L, 1L, "900", Balanceo.DIARIA);
     RutaProyeccion d100 = ruta(2L, 1L, "100", Balanceo.DIARIA);
     List<RutaProyeccion> rutas =
@@ -787,34 +806,26 @@ class SimulacionFrecuenciasTest {
   }
 
   @Test
-  void conRutasEnUnSoloDiaElBuffNoSeReserva() {
-    // Sin M-J-S el buff reservado quedaría vacío ese día: se queda con las diarias.
-    RutaProyeccion d200 = ruta(1L, 1L, "200", Balanceo.DIARIA);
-    List<RutaProyeccion> rutas = List.of(d200, ruta(2L, 1L, "100", Balanceo.DIARIA), ruta(3L, 3L, "900", "LXV"));
-    prepararDiarias(3, Set.of(2L), rutas);
-
-    servicio.balancear(10L, Balanceo.DIA, CL1, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 3L));
-
-    assertEquals(2L, d200.getChuteId(), "la diaria más pesada al buff, como siempre");
-  }
-
-  @Test
-  void lasDiariasSeJuntanAlLadoDelBuffReservadoAunqueEsteAlFinal() {
-    // Buff en el último chute (5): con dos diarias, ocupan el 4 y el 3; el 1 y el 2 quedan libres.
+  void elRangoRecortadoSeQuedaConElBuff() {
+    // Buff en el último chute (5) y ninguna frecuencia con más de 2 rutas: el rango queda en 4-5
+    // y la diaria más pesada va al buff.
     RutaProyeccion d300 = ruta(1L, 1L, "300", Balanceo.DIARIA);
     RutaProyeccion d250 = ruta(2L, 1L, "250", Balanceo.DIARIA);
     List<RutaProyeccion> rutas =
         List.of(d300, d250, ruta(3L, 1L, "800", "LXV"), ruta(4L, 1L, "700", "MJS"));
-    prepararDiarias(5, Set.of(5L), rutas);
+    ParametroCluster dia = prepararDiarias(5, Set.of(5L), rutas);
 
     servicio.balancear(10L, Balanceo.DIA, CL1, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 5L));
 
-    assertEquals(Set.of(3L, 4L), Set.of(d300.getChuteId(), d250.getChuteId()));
+    assertEquals(5L, d300.getChuteId());
+    assertEquals(4L, d250.getChuteId());
+    assertEquals(4L, dia.getChuteDesdeId());
+    assertEquals(5L, dia.getChuteHastaId());
   }
 
   @Test
-  void unBuffConDiariasNoRecibeLaRutaPesadaDelDia() {
-    // L-X-V con la diaria (fija) en el buff 3: la de 800 ya no va encima de ella.
+  void unDiaUsaElBuffAunqueTengaUnaDiariaDebajo() {
+    // L-X-V no mira las diarias: la de 800 va al buff 3 y se apila sobre la diaria fija.
     prepararBuff(false, false, true);
     RutaProyeccion diaria = ruta(1L, 3L, "300", Balanceo.DIARIA);
     RutaProyeccion r800 = ruta(2L, 1L, "800", "LXV");
@@ -825,8 +836,8 @@ class SimulacionFrecuenciasTest {
         servicio.balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.RUTAS, null).datos();
 
     assertEquals(3L, diaria.getChuteId(), "la diaria fija no se mueve");
-    assertTrue(r800.getChuteId() != 3L, "el buff ya es de las diarias");
-    assertTrue(!resultado.mensaje().contains("pesada(s) a chutes con buff"), resultado.mensaje());
+    assertEquals(3L, r800.getChuteId(), "la más pesada del día al buff");
+    assertTrue(resultado.mensaje().contains("Buff CHUTE 3: grupo A (800 bultos)"), resultado.mensaje());
   }
 
   @Test
@@ -854,7 +865,7 @@ class SimulacionFrecuenciasTest {
         servicio.balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.RUTAS, null).datos();
 
     assertEquals(3L, unica.getChuteId(), "el buff nunca queda libre: recibe la ruta más pesada");
-    assertTrue(resultado.mensaje().contains("buff"), resultado.mensaje());
+    assertTrue(resultado.mensaje().contains("Buff CHUTE 3"), resultado.mensaje());
   }
 
   @Test
@@ -869,16 +880,17 @@ class SimulacionFrecuenciasTest {
 
     servicio.balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.RUTAS, null);
 
-    // Promedio 600: la de 600 al primer buff, la de 500 al segundo; la de 400 no cabe en ninguno.
+    // Tres columnas de 600: los dos buff reciben la de 600 y la de 500 + 100; la de 400 + 100 + 100
+    // se queda en CHUTE 1, donde ya estaban (mueve menos).
     assertEquals(2L, r600.getChuteId());
     assertEquals(3L, r500.getChuteId());
     assertEquals(1L, r400.getChuteId());
   }
 
   @Test
-  void elBuffDelDiaEsDelGrupoDeSuRutaMasPesada() {
+  void elBuffDelDiaEsDelGrupoConMasBultos() {
     prepararBuff(false, true, false);
-    // Los tramos de las diarias ya no mandan en el día: cada día arma los suyos.
+    // Los tramos de las diarias no mandan en el día: cada frecuencia arma los suyos.
     when(lotes.grupos(10L))
         .thenReturn(List.of(new GrupoGuardado(CL1, "A", 1, 1L, 2L), new GrupoGuardado(CL1, "B", 2, 3L, 3L)));
     RutaProyeccion a100 = ruta(1L, 1L, "100", "LXV");
@@ -891,7 +903,8 @@ class SimulacionFrecuenciasTest {
 
     servicio.balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.RUTAS, null);
 
-    // La más pesada del día es de B: el buff (CHUTE 2) es de B y su tramo lo rodea (2 → 3).
+    // B suma 1.700 bultos (más que A): el buff (CHUTE 2) es de B, con su columna más cargada, y
+    // su tramo lo rodea (2 → 3).
     assertEquals(2L, b900.getChuteId(), "la más pesada del día va al buff");
     assertEquals(3L, b800.getChuteId());
     assertEquals(1L, a100.getChuteId(), "A queda en su propio tramo, sin mezclarse con B");

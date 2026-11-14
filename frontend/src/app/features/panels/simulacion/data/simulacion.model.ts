@@ -135,13 +135,20 @@ export interface VistaBalanceo {
   cluster: string;
   /** Chutes útiles del rango (sin bloqueados); null sin rango. */
   chutesRango: number | null;
-  /** Chutes del rango que no recibe ningún grupo (tienen menos rutas que chutes). */
+  /**
+   * En Diarias, chutes del rango que ninguna frecuencia llena (el rango se recorta); en un día, los
+   * que ese día deja fuera.
+   */
   chutesSinUsar: number;
   /** Por qué así no se podría balancear; null si se puede. */
   aviso: string | null;
+  /** Tramo de cada grupo con rutas de esa frecuencia (en Diarias, solo los que tienen diarias). */
   grupos: TramoGrupo[];
-  /** 'DIA' en un día: el rango y los tramos son los de las diarias; null si se eligen aquí. */
+  /** 'DIA' en un día: el rango es el de las diarias; null si se elige aquí. */
   heredadoDe?: 'DIA' | null;
+  /** Primer y último chute que se usarán (null sin tramos). */
+  usadoDesde?: string | null;
+  usadoHasta?: string | null;
 }
 
 /**

@@ -668,7 +668,7 @@
       }
       @if (v.libres > 0) {
       <span class="eje__segmento eje__segmento--libre" role="listitem" [style.flex-grow]="v.libres"
-        [title]="v.libres + ' chute(s) libres'"><small>{{ v.libres }}</small></span>
+        [title]="v.libres + ' chute(s) sin diarias (los usan L-X-V y M-J-S)'"><small>{{ v.libres }}</small></span>
       }
     </div>
     } @else if (cargandoGrupos()) {
@@ -685,18 +685,18 @@
   @if (v.fuera > 0) {
   <p class="eje__nota"><ui-icon name="flecha" [size]="13" /> {{ v.fuera | numero }} diaria(s) fuera del rango entrarán.</p>
   }
-  <!-- El rango se recorta a lo que llena el día más cargado; el otro día usa un bloque alrededor del buff. -->
-  @if (v.libres > 0 && v.usados; as u) {
+  <!-- El rango se recorta a lo que llena la frecuencia con más rutas (cada una es independiente). -->
+  @if (v.sinUsar > 0 && v.usados; as u) {
   <p class="eje__nota"><ui-icon name="calendario" [size]="13" /> Se usarán {{ v.chutesUtiles | numero }} de
-    {{ v.chutes | numero }} chutes ({{ u.desde }} → {{ u.hasta }}): ningún día tiene rutas para los demás.</p>
+    {{ v.chutes | numero }} chutes ({{ u.desde }} → {{ u.hasta }}): ninguna frecuencia tiene rutas para los demás.</p>
   }
-  <!-- Un día con menos rutas que chutes deja libres los que quedan fuera del bloque usado (en «Ambos» los ocupa el otro día). -->
+  <!-- Un día con menos rutas que chutes deja libres los de un extremo (en «Ambos» los ocupa el otro día). -->
   @for (d of v.cortos; track d.etiqueta) {
   <p class="eje__nota"><ui-icon name="calendario" [size]="13" /> {{ d.etiqueta }}: {{ d.rutas | numero }} ruta(s) para
-    {{ v.chutesUtiles | numero }} chutes · usa un bloque de {{ d.rutas | numero }} alrededor del buff; {{ d.libres | numero }} quedan fuera ese día.</p>
+    {{ v.chutesUtiles | numero }} chutes · usa un bloque de {{ d.rutas | numero }} chutes seguidos; {{ d.libres | numero }} quedan fuera ese día.</p>
   }
   @if (chutesBuff().size > 0) {
-  <p class="eje__nota"><span class="mz-buff">BUFF</span> {{ chutesBuff().size }} chute(s): en cada día, cada uno es del grupo de la ruta más pesada de ese día y ese grupo se ubica a su alrededor.</p>
+  <p class="eje__nota"><span class="mz-buff">BUFF</span> {{ chutesBuff().size }} chute(s): en cada frecuencia, primero se reparte por grupos y después el grupo con más bultos toma un buff con su chute más cargado.</p>
   }
   }
   <div modal-footer class="modal-foot">

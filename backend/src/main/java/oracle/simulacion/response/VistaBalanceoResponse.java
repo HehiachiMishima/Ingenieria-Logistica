@@ -3,14 +3,17 @@ package oracle.simulacion.response;
 import java.util.List;
 
 /**
- * Vista previa del paso 1 de un cluster: sus grupos en el orden de prioridad
- * con el tramo que recibiría cada uno. No cambia nada.
+ * Vista previa del paso 1 de un cluster en una frecuencia: el tramo que recibiría cada grupo con
+ * sus rutas de esa frecuencia. No cambia nada.
  *
  * @param chutesRango chutes útiles del rango (sin bloqueados); null sin rango
- * @param chutesSinUsar chutes del rango que no recibe ningún grupo (tienen menos rutas que chutes)
+ * @param chutesSinUsar en Diarias, chutes del rango que ninguna frecuencia llena (el rango se
+ *     recorta); en un día, los que ese día deja fuera
  * @param aviso por qué no se podría balancear así (rango inválido o muy chico); null si se puede
- * @param heredadoDe «DIA» cuando el rango y los tramos los definieron las diarias (vista de un día): aquí
- *     se reutilizan y no se eligen; null si se eligen aquí
+ * @param heredadoDe «DIA» cuando el rango lo definieron las diarias (vista de un día): aquí se
+ *     reutiliza y no se elige; null si se elige aquí
+ * @param usadoDesde primer chute que se usará (null sin tramos)
+ * @param usadoHasta último chute que se usará (null sin tramos)
  */
 public record VistaBalanceoResponse(
     Long clusterId,
@@ -19,8 +22,9 @@ public record VistaBalanceoResponse(
     int chutesSinUsar,
     String aviso,
     List<TramoGrupoResponse> grupos,
-    String heredadoDe) {
-
+    String heredadoDe,
+    String usadoDesde,
+    String usadoHasta) {
   public VistaBalanceoResponse(
       Long clusterId,
       String cluster,
@@ -28,6 +32,6 @@ public record VistaBalanceoResponse(
       int chutesSinUsar,
       String aviso,
       List<TramoGrupoResponse> grupos) {
-    this(clusterId, cluster, chutesRango, chutesSinUsar, aviso, grupos, null);
+    this(clusterId, cluster, chutesRango, chutesSinUsar, aviso, grupos, null, null, null);
   }
 }

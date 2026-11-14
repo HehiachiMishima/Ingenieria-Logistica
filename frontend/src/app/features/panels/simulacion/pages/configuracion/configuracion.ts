@@ -1335,14 +1335,17 @@ export class SimulacionConfiguracion {
     const tramos = this.gruposRango().length > 0 ? this.vistaGrupos() : null;
     const conTramos = tramos !== null && tramos.aviso === null && tramos.clusterId === cluster.id;
     const colores = this.coloresGrupo().get(cluster.id);
-    // L-X-V y M-J-S usan este mismo rango: el día con menos rutas (las suyas y las diarias) que
-    // chutes deja libres los del final. Solo informa (con grupos es por tramo: es una estimación).
-    const chutesUtiles = conTramos ? tramos.grupos.reduce((total, g) => total + g.chutes, 0) : incluidos.size;
+    // El rango se recorta a lo que llena la frecuencia con más rutas (cada una es independiente).
+    const sinUsar = conTramos ? tramos.chutesSinUsar : 0;
+    const chutesUtiles = incluidos.size - sinUsar;
+    const conDiarias = conTramos ? tramos.grupos.reduce((total, g) => total + g.chutes, 0) : 0;
+    // Cada día reparte solo sus rutas (las diarias se apilan): con menos rutas que chutes, deja
+    // libres los de un extremo. Solo informa.
     const { rutas: porFrecuencia } = this.avanceCluster(cluster.id);
     const cortos = DIAS_BALANCEO
       .map((dia) => ({ dia, propias: dia === 'LXV' ? porFrecuencia.lxv : porFrecuencia.mjs }))
       .filter((d) => d.propias > 0)
-      .map((d) => ({ etiqueta: ETIQUETA_BALANCEO[d.dia], rutas: d.propias + porFrecuencia.dia }))
+      .map((d) => ({ etiqueta: ETIQUETA_BALANCEO[d.dia], rutas: d.propias }))
       .filter((d) => d.rutas < chutesUtiles)
       .map((d) => ({ ...d, libres: chutesUtiles - d.rutas }));
     return {
@@ -1358,7 +1361,7 @@ export class SimulacionConfiguracion {
         ? tramos.grupos.reduce((total, t) => total + t.rutasFuera, 0)
         : filas.filter((fila) => !incluidos.has(fila.chuteId)).reduce((total, fila) => total + fila.rutas, 0),
       // Con menos rutas que chutes, algunos quedan vacíos: no necesitan gente.
-      minimo: conTramos ? tramos.grupos.reduce((total, t) => total + t.chutes, 0) : Math.min(incluidos.size, rutas),
+      minimo: conTramos ? chutesUtiles : Math.min(incluidos.size, rutas),
       /** Barra de tramos: un segmento por grupo, del ancho de sus chutes. */
       tramos: conTramos
         ? tramos.grupos.map((t) => ({
@@ -1369,10 +1372,13 @@ export class SimulacionConfiguracion {
             color: colores?.get(t.grupo) ?? null,
           }))
         : [],
-      libres: conTramos ? tramos.chutesSinUsar : 0,
-      /** Chutes que de verdad se usan (el rango se recorta para que ningún día deje vacíos). */
-      usados: conTramos && tramos.grupos.length > 0
-        ? { desde: tramos.grupos[0].chuteDesde, hasta: tramos.grupos.at(-1)?.chuteHasta ?? null }
+      /** Chutes del rango sin diarias (los usan L-X-V y M-J-S): el resto de la barra de tramos. */
+      libres: conTramos ? Math.max(0, incluidos.size - conDiarias) : 0,
+      /** Chutes del rango que ninguna frecuencia llena: el rango se recorta. */
+      sinUsar,
+      /** Chutes que de verdad se usan (el rango recortado). */
+      usados: conTramos && tramos.usadoDesde
+        ? { desde: tramos.usadoDesde, hasta: tramos.usadoHasta ?? null }
         : null,
     };
   });
@@ -1517,9 +1523,10 @@ export class SimulacionConfiguracion {
   });
 
   /**
-   * Chutes del rango de cada cluster que el día que muestra no usa: cada día arma sus tramos con
-   * sus rutas (las diarias fijas) y lo que no ocupa queda fuera de ese día (sin rutas ni
-   * operarios). Solo en L-X-V y M-J-S ya balanceados; no depende de la búsqueda ni de filtros.
+   * Chutes del rango de cada cluster que el día que muestra no usa: cada día arma sus tramos solo
+   * con sus rutas (las diarias quedan fijas y se apilan) y lo que no ocupa queda fuera de ese día
+   * (sin rutas ni operarios). Solo en L-X-V y M-J-S ya balanceados; no depende de la búsqueda ni
+   * de filtros.
    */
   private readonly fueraPorCluster = computed(() => {
     const chutes = this.chutesMatriz();

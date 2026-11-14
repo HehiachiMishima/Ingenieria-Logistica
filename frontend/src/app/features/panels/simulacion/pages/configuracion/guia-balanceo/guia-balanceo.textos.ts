@@ -13,13 +13,13 @@ export const DETALLES: readonly GrupoDetalle[] = [
         icono: 'reloj',
         termino: '1 · Diarias',
         texto:
-          'Primero, en cada cluster: eliges el rango de chutes y cada grupo recibe su tramo en orden natural (1, 2, 3…). Desde ahí las diarias quedan fijas para el automático.',
+          'Primero, en cada cluster: eliges el rango de chutes y se reparten solo las diarias, por grupos. Desde ahí quedan fijas para los dos días.',
       },
       {
         icono: 'layers',
         termino: '2 · L-X-V y M-J-S',
         texto:
-          'En cualquier orden. Cada día reparte solo sus rutas, dentro del rango de las diarias y con ellas como carga fija.',
+          'En cualquier orden y cada uno por su cuenta: reparte solo sus rutas, dentro del rango de las diarias. Las diarias no se mueven ni cuentan en su reparto: se apilan en el mismo chute.',
       },
       {
         icono: 'usuarios',
@@ -48,7 +48,7 @@ export const DETALLES: readonly GrupoDetalle[] = [
         icono: 'paquete',
         termino: 'Buff',
         texto:
-          'Global: se elige antes del primer balanceo. Las diarias se ubican primero y quedan fijas para los dos días (si un buff es para una ruta más pesada de L-X-V o M-J-S, las diarias van a su lado). Después cada día arma sus propios tramos, sin respetar los chutes del otro día: primero cada buff es del grupo de la ruta más pesada de ese día, luego los grupos se ubican alrededor (cada uno con tantos chutes como puede llenar) y al final se empareja; si mover una ruta sola no mejora, se intercambia una por otra. Los chutes del rango que un día no usa quedan fuera de ese día (rayados, sin rutas ni operarios); dentro de cada tramo no queda ninguno vacío: si queda, se vuelve a llenar y emparejar.',
+          'Global: se elige antes del primer balanceo. Cada frecuencia (Diarias, L-X-V y M-J-S) se balancea sola y en orden: primero por grupos (cada grupo en chutes seguidos según sus bultos y con sus rutas parejas; si mover una ruta sola no mejora, se intercambia una por otra) y después el buff: se mueven columnas completas para que el grupo con más bultos tenga un buff con su chute más cargado y los buff lleven la mayor carga. Al final se verifica que entre los chutes usados no quede ninguno vacío; los que una frecuencia no usa quedan en los extremos, fuera de ese día (rayados, sin rutas ni operarios).',
       },
       {
         icono: 'info',
@@ -104,13 +104,13 @@ export const DETALLES: readonly GrupoDetalle[] = [
         icono: 'layers',
         termino: 'Tramos',
         texto:
-          'Al balancear las diarias eliges el rango y los grupos lo ocupan en orden natural: cada uno, chutes seguidos según sus bultos (al menos uno, nunca más que sus rutas). Los días usan esos mismos tramos.',
+          'El rango lo eliges al balancear las diarias. Cada frecuencia arma sus propios tramos dentro de él: cada grupo, chutes seguidos según sus bultos (al menos uno, nunca más que sus rutas), en el orden que mejor aprovecha el buff.',
       },
       {
         icono: 'control',
         termino: 'Balanceo por grupo',
         texto:
-          'Cada grupo se iguala solo dentro de su tramo: el balanceo nunca junta rutas de grupos distintos en un chute. A mano sí puedes moverlas a cualquier chute.',
+          'Cada grupo se iguala solo dentro de su tramo: el balanceo nunca junta en un chute rutas de grupos distintos de la misma frecuencia (las diarias de otro grupo sí pueden quedar apiladas). A mano puedes moverlas a cualquier chute.',
       },
     ],
   },
