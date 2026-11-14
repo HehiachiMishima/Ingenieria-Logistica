@@ -314,7 +314,8 @@
   <ui-empty icono="search" titulo="Sin rutas" mensaje="Ninguna ruta coincide con los filtros." />
   }
 
-  <div class="mz-tablero" appScrollMatriz appArrastreRutas [validar]="motivoNoMover" (soltar)="soltarRuta($event)"
+  <div class="mz-tablero" appScrollMatriz appArrastreRutas [validar]="motivoNoMoverRutas" [grupo]="grupoArrastre"
+    (soltar)="soltarRuta($event)" (keydown.escape)="limpiarSeleccion()"
     [class.mz-tablero--min]="minimizado()">
     @for (bloque of bloquesMatriz(); track bloque.cluster.id) {
     @let m = metricas.get(bloque.cluster.id);
@@ -401,11 +402,11 @@
           <span class="mz-filtros__grupo">
             <button type="button" class="mz-filtro" [class.mz-filtro--activo]="bloque.filtros.lxv"
               [attr.aria-pressed]="bloque.filtros.lxv" [disabled]="ocupado() || bloque.filtros.sinLxv" aria-label="L-X-V"
-              [title]="bloque.filtros.sinLxv ? 'Sin carga L-X-V en ' + c.nombre : 'Ver L-X-V: sus rutas y las diarias'"
+              [title]="bloque.filtros.sinLxv ? 'Sin rutas L-X-V en ' + c.nombre : 'Ver L-X-V: sus rutas y las diarias'"
               (click)="alternarFiltro(c.id, 'LXV')">{{ plegado ? 'L' : 'L-X-V' }}</button>
             <button type="button" class="mz-filtro" [class.mz-filtro--activo]="bloque.filtros.mjs"
               [attr.aria-pressed]="bloque.filtros.mjs" [disabled]="ocupado() || bloque.filtros.sinMjs" aria-label="M-J-S"
-              [title]="bloque.filtros.sinMjs ? 'Sin carga M-J-S en ' + c.nombre : 'Ver M-J-S: sus rutas y las diarias'"
+              [title]="bloque.filtros.sinMjs ? 'Sin rutas M-J-S en ' + c.nombre : 'Ver M-J-S: sus rutas y las diarias'"
               (click)="alternarFiltro(c.id, 'MJS')">{{ plegado ? 'M' : 'M-J-S' }}</button>
             <button type="button" class="mz-filtro" [class.mz-filtro--activo]="bloque.filtros.diaria"
               [attr.aria-pressed]="bloque.filtros.diaria" [disabled]="ocupado() || bloque.filtros.sinDiarias" aria-label="Diarias"
@@ -454,17 +455,21 @@
                 [attr.data-chute]="chute.id">
                 @if (fila[c]; as celda) {
                 @let ruta = celda.ruta;
-                @let guardando = rutaGuardando() === ruta.id;
+                @let guardando = rutaGuardando() === ruta.id || rutasGuardando().has(ruta.id);
+                @let elegida = seleccion().has(ruta.id);
                 @let movible = celda.movible && !guardando;
                 <div class="matriz-ruta" [class.matriz-ruta--movible]="movible"
                   [attr.draggable]="movible ? 'true' : null" [attr.data-arrastre-ruta]="movible ? ruta.id : null"
                   [class.matriz-ruta--guardando]="guardando" [class.matriz-ruta--movida]="celda.movida"
                   [class.matriz-ruta--activa]="detalle()?.tipo === 'ruta' && detalle()?.id === ruta.id"
-                  [title]="celda.titulo" role="button" tabindex="0" aria-haspopup="dialog"
-                  [attr.aria-label]="'Detalle de la ruta ' + ruta.codigoRuta + ', ' + celda.bultos + ' bultos' + (celda.grupo !== null ? ', grupo ' + celda.grupo : '') + ', ' + celda.frecuencia.titulo"
+                  [class.matriz-ruta--elegida]="elegida"
+                  [title]="movible ? celda.titulo + '\nCtrl/⌘+clic: elegir varias · Mayús+clic: un tramo' : celda.titulo"
+                  role="button" tabindex="0" aria-haspopup="dialog"
+                  [attr.aria-label]="(elegida ? 'Seleccionada. ' : '') + 'Detalle de la ruta ' + ruta.codigoRuta + ', ' + celda.bultos + ' bultos' + (celda.grupo !== null ? ', grupo ' + celda.grupo : '') + ', ' + celda.frecuencia.titulo"
                   [class.matriz-ruta--grupo]="celda.grupoColor !== null" [style.--grupo-color]="celda.grupoColor"
-                  (click)="abrirDetalleRuta($event, ruta.id)" (keydown.enter)="abrirDetalleRuta($event, ruta.id)"
-                  (keydown.space)="abrirDetalleRuta($event, ruta.id)">
+                  (mousedown)="presionarRuta($event)" (contextmenu)="menuRuta($event, ruta.id)"
+                  (click)="clicRuta($event, ruta.id)" (keydown.enter)="clicRuta($event, ruta.id)"
+                  (keydown.space)="clicRuta($event, ruta.id)">
                   @if (celda.grupo !== null) {
                   <!-- Pestaña del grupo: su número sobre su color (el aria-label de la ruta ya lo dice). -->
                   <span class="matriz-ruta__pestana" [class.matriz-ruta__pestana--corta]="celda.grupo.length <= 2"
@@ -518,6 +523,33 @@
               id: 'totales-generales',
             }" />
   </div>
+
+  <!-- Selección de varias rutas: cuántas y sus bultos. Se mueven solo arrastrando una de ellas. -->
+  @if (resumenSeleccion(); as sel) {
+  <div class="sel-barra" role="region" aria-label="Rutas seleccionadas" (keydown.escape)="limpiarSeleccion()">
+    <p class="sel-barra__cuenta" aria-live="polite">
+      <ui-icon name="layers" [size]="16" />
+      <span><strong>{{ sel.rutas }}</strong> {{ sel.rutas === 1 ? 'ruta' : 'rutas' }}</span>
+      <span class="sel-barra__bultos"><ng-container [ngTemplateOutlet]="cajaBulto" />{{ sel.bultos | entero }}</span>
+      @if (sel.diarias > 0) {
+      <span class="sel-barra__aviso" title="Una diaria movida cambia en L-X-V y en M-J-S">
+        <ui-icon name="alerta" [size]="12" /> {{ sel.diarias }} {{ sel.diarias === 1 ? 'diaria' : 'diarias' }}
+      </span>
+      }
+    </p>
+    <p class="sel-barra__pista">
+      @if (rutasGuardando().size > 0) {
+      <span class="ui-spinner" aria-hidden="true"></span> Moviendo…
+      } @else {
+      <ui-icon name="flecha" [size]="14" /> Arrastra una de ellas para moverlas
+      }
+    </p>
+    <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm sel-barra__boton" [disabled]="rutasGuardando().size > 0"
+      title="Quitar la selección (Esc)" (click)="limpiarSeleccion()">
+      <ui-icon name="close" [size]="14" /> Limpiar
+    </button>
+  </div>
+  }
   }
 </section>
 }

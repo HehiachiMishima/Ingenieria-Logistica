@@ -32,6 +32,12 @@ public interface RutaProyeccionRepository
    */
   boolean existsByArchivoIdAndClusterIdAndIdNot(Long archivoId, Long clusterId, Long id);
 
+  /** Rutas del registro con esos ids (mover varias): por clave primaria, filtradas por registro. */
+  List<RutaProyeccion> findByArchivoIdAndIdIn(Long archivoId, Collection<Long> ids);
+
+  /** Rutas del cluster: idx_rutas_archivo_cluster (solo el índice). */
+  long countByArchivoIdAndClusterId(Long archivoId, Long clusterId);
+
   /** Rutas que hoy están en otro cluster, agrupadas por (cluster original, cluster actual). */
   @Query("""
       SELECT r.clusterOriginalId AS origen,

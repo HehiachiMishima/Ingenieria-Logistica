@@ -233,6 +233,9 @@ function posicionDetalle(ancla: HTMLElement, altoEstimado: number): PosicionDeta
 /** Motivo interno: soltar la ruta en su misma celda no hace nada (y no avisa). */
 const SIN_CAMBIO = 'sin-cambio';
 
+/** Mac: Ctrl+clic es el clic derecho, así que la selección usa ⌘ (y Ctrl llega como menú). */
+const ES_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
 type CampoCarga = 'rutas' | 'operarios' | 'bultos' | 'unidades' | 'lineas' | 'cod';
 
 /** Un valor por chute, en el orden de las columnas de la matriz. */
@@ -372,14 +375,39 @@ export class SimulacionConfiguracion {
         (cluster) => cfgDe(vistaDe(cluster.id)).clusters.find((c) => c.id === cluster.id) ?? cluster,
       ),
       carga: [
-        ...(['LXV', 'MJS', 'DIA'] as const).flatMap((balanceo) =>
+        ...(['LXV', 'MJS'] as const).flatMap((balanceo) =>
           (configs[balanceo] ?? (balanceo === 'LXV' ? lxv : null))?.carga.filter(
             (fila) => vistaDe(fila.clusterId) === balanceo,
           ) ?? [],
         ),
+        ...this.cargaDiarias(),
         ...this.cargaAmbos(),
       ],
     };
+  });
+
+  /**
+   * Carga de los clusters en «Diarias»: sus rutas diarias con los operarios de cada chute como
+   * en «Ambos» (Diarias no es una ola: la gente es la de los días, así que va el mayor de los dos).
+   */
+  private readonly cargaDiarias = computed<CargaSimulacion[]>(() => {
+    const vistas = this.vistasEfectivas();
+    const { LXV: lxv, MJS: mjs, DIA: dia } = this.configs();
+    const filas = (dia?.carga ?? []).filter((fila) => vistas[fila.clusterId] === 'DIA');
+    if (filas.length === 0) {
+      return [];
+    }
+    const operarios = new Map<string, number>();
+    for (const fila of [...(lxv?.carga ?? []), ...(mjs?.carga ?? [])]) {
+      if (fila.operarios !== null && vistas[fila.clusterId] === 'DIA') {
+        const clave = `${fila.clusterId}:${fila.chuteId}`;
+        operarios.set(clave, Math.max(operarios.get(clave) ?? 0, Number(fila.operarios)));
+      }
+    }
+    return filas.map((fila) => {
+      const valor = operarios.get(`${fila.clusterId}:${fila.chuteId}`);
+      return valor === undefined ? fila : { ...fila, operarios: valor };
+    });
   });
 
   /**
@@ -444,10 +472,9 @@ export class SimulacionConfiguracion {
       lxv: vista === 'LXV' || vista === 'AMBOS',
       mjs: vista === 'MJS' || vista === 'AMBOS',
       diaria: vista === 'DIA',
-      // Un día se ve si tiene carga (rutas propias o diarias, que salen todos los días): ahí
-      // también están sus operarios. Solo se bloquea el día sin nada.
-      sinLxv: rutas.lxv === 0 && rutas.dia === 0,
-      sinMjs: rutas.mjs === 0 && rutas.dia === 0,
+      // Cada frecuencia (también Diarias) se ve solo si el cluster tiene rutas propias de ella.
+      sinLxv: rutas.lxv === 0,
+      sinMjs: rutas.mjs === 0,
       sinDiarias: rutas.dia === 0,
     };
   }
@@ -463,7 +490,11 @@ export class SimulacionConfiguracion {
       return;
     }
     if (filtro === 'DIA') {
-      this.cambiarVista(clusterId, filtros.diaria ? 'LXV' : 'DIA');
+      // Soltar Diarias vuelve al primer día con rutas; un cluster solo de diarias se queda en D.
+      const vuelta = filtros.diaria ? (!filtros.sinLxv ? 'LXV' : !filtros.sinMjs ? 'MJS' : null) : 'DIA';
+      if (vuelta) {
+        this.cambiarVista(clusterId, vuelta);
+      }
       return;
     }
     if (filtros.diaria) {
@@ -984,6 +1015,8 @@ export class SimulacionConfiguracion {
   readonly restableciendo = signal(false);
   /** Ruta cuyo movimiento (de chute o de cluster) se está guardando. */
   readonly rutaGuardando = signal<number | null>(null);
+  /** Rutas de un movimiento en grupo mientras se guardan. */
+  readonly rutasGuardando = signal<ReadonlySet<number>>(new Set());
   /** Recarga tras un paso: hasta que llegue, las acciones siguen bloqueadas. */
   readonly recargando = signal(false);
   /** Una sola escritura a la vez: los botones de acción se deshabilitan juntos. */
@@ -993,7 +1026,8 @@ export class SimulacionConfiguracion {
       this.trabajando() !== null ||
       this.restableciendo() ||
       this.recargando() ||
-      this.rutaGuardando() !== null,
+      this.rutaGuardando() !== null ||
+      this.rutasGuardando().size > 0,
   );
 
   /** Todos los clusters cerrados: la simulación terminó. */
@@ -2278,16 +2312,247 @@ export class SimulacionConfiguracion {
     return suma(configs.LXV) + suma(configs.MJS) - suma(configs.DIA);
   }
 
+  // ---------------- Selección de varias rutas ----------------
+
+  /** Rutas elegidas con Ctrl/⌘+clic o Mayús+clic para moverlas juntas. */
+  private readonly seleccionElegida = signal<ReadonlySet<number>>(new Set());
+  /** Última ruta pulsada: Mayús+clic elige desde ella hasta otra de la misma celda. */
+  private anclaSeleccion: number | null = null;
+
+  /**
+   * Cada ruta que se puede mover, con la columna de su celda (cluster y chute) en el orden en
+   * que se ve: Mayús+clic elige un tramo de esa columna.
+   */
+  private readonly columnasMovibles = computed(() => {
+    const chutes = this.chutesMatriz();
+    const columnaDe = new Map<number, readonly number[]>();
+    for (const bloque of this.bloquesMatriz()) {
+      chutes.forEach((_, c) => {
+        const columna: number[] = [];
+        for (const fila of bloque.filas) {
+          const celda = fila[c];
+          if (celda?.movible) {
+            columna.push(celda.ruta.id);
+          }
+        }
+        for (const id of columna) {
+          columnaDe.set(id, columna);
+        }
+      });
+    }
+    return columnaDe;
+  });
+
+  /** La selección vigente: sin las rutas que ya no se ven o ya no se pueden mover. */
+  readonly seleccion = computed<ReadonlySet<number>>(() => {
+    const elegidas = this.seleccionElegida();
+    const movibles = this.columnasMovibles();
+    const vigentes = [...elegidas].filter((id) => movibles.has(id));
+    return vigentes.length === elegidas.size ? elegidas : new Set(vigentes);
+  });
+
+  /** Lo que muestra la barra flotante (solo informa: se mueven arrastrando): rutas, bultos y diarias. */
+  readonly resumenSeleccion = computed(() => {
+    const ids = this.seleccion();
+    if (ids.size === 0) {
+      return null;
+    }
+    const porId = this.rutasPorId();
+    let bultos = 0;
+    let diarias = 0;
+    for (const id of ids) {
+      const ruta = porId.get(id);
+      if (ruta) {
+        bultos += Number(ruta.totalBultos ?? 0);
+        diarias += esDiaria(ruta) ? 1 : 0;
+      }
+    }
+    return { rutas: ids.size, bultos, diarias };
+  });
+
+  /**
+   * Clic en una ruta: solo, abre su ficha; con Ctrl/⌘ la suma o la quita de la selección; con
+   * Mayús elige el tramo desde la última pulsada (si están en la misma celda).
+   */
+  clicRuta(evento: Event, rutaId: number): void {
+    const teclas = evento as MouseEvent;
+    // En Mac, Ctrl+clic es el clic derecho: lo atiende `menuRuta` (aquí ni abre la ficha).
+    if (ES_MAC && teclas.ctrlKey && !teclas.metaKey) {
+      evento.preventDefault();
+      return;
+    }
+    if (!teclas.ctrlKey && !teclas.metaKey && !teclas.shiftKey) {
+      this.abrirDetalleRuta(evento, rutaId);
+      return;
+    }
+    evento.preventDefault();
+    this.alternarSeleccion(rutaId, teclas.shiftKey);
+  }
+
+  /**
+   * Mayús+clic no debe seleccionar el texto de la matriz. Sin Mayús no se toca: cancelar el
+   * mousedown impediría arrastrar la ruta. (Un manejador que devuelve false lo cancela.)
+   */
+  presionarRuta(evento: MouseEvent): void {
+    if (evento.shiftKey) {
+      evento.preventDefault();
+    }
+  }
+
+  /** Ctrl+clic en Mac llega como menú contextual: también suma o quita la ruta de la selección. */
+  menuRuta(evento: MouseEvent, rutaId: number): void {
+    if (ES_MAC && evento.ctrlKey && evento.button === 0) {
+      evento.preventDefault();
+      this.alternarSeleccion(rutaId, evento.shiftKey);
+    }
+  }
+
+  private alternarSeleccion(rutaId: number, tramo: boolean): void {
+    const columnas = this.columnasMovibles();
+    const columna = columnas.get(rutaId);
+    if (!columna) {
+      this.notificaciones.advertencia(
+        'No se puede seleccionar',
+        'Esa ruta no se puede mover: su cluster está cerrado o no tienes permiso.',
+      );
+      return;
+    }
+    this.detalle.set(null);
+    const nueva = new Set(this.seleccion());
+    const ancla = this.anclaSeleccion;
+    if (tramo && ancla !== null && columnas.get(ancla) === columna) {
+      const desde = columna.indexOf(ancla);
+      const hasta = columna.indexOf(rutaId);
+      for (const id of columna.slice(Math.min(desde, hasta), Math.max(desde, hasta) + 1)) {
+        nueva.add(id);
+      }
+    } else if (nueva.has(rutaId)) {
+      nueva.delete(rutaId);
+    } else {
+      nueva.add(rutaId);
+    }
+    this.anclaSeleccion = rutaId;
+    this.seleccionElegida.set(nueva);
+  }
+
+  limpiarSeleccion(): void {
+    this.seleccionElegida.set(new Set());
+    this.anclaSeleccion = null;
+  }
+
+  /** Al tomar una ruta seleccionada viaja toda la selección; si no, solo ella. */
+  readonly grupoArrastre = (rutaId: number): readonly number[] => {
+    const seleccion = this.seleccion();
+    return seleccion.size > 1 && seleccion.has(rutaId) ? [...seleccion] : [rutaId];
+  };
+
+  /**
+   * Las reglas de mover una ruta, para varias: basta una que no pueda para que no se mueva
+   * ninguna (como el servidor), y ningún cluster puede quedarse sin rutas.
+   */
+  readonly motivoNoMoverRutas = (rutaIds: readonly number[], clusterId: number, chuteId: number): string | null => {
+    if (rutaIds.length === 1) {
+      return this.motivoNoMover(rutaIds[0], clusterId, chuteId);
+    }
+    const porId = this.rutasPorId();
+    const salenDe = new Map<number, number>();
+    let cambia = false;
+    for (const id of rutaIds) {
+      const motivo = this.motivoNoMover(id, clusterId, chuteId);
+      if (motivo === SIN_CAMBIO) {
+        continue;
+      }
+      // Que el grupo sí pueda dejar su cluster se mira abajo, con todas las que salen.
+      const ruta = porId.get(id);
+      const soloQuedaUna = ruta && motivo?.endsWith('un cluster no puede quedarse sin rutas.');
+      if (motivo !== null && !soloQuedaUna) {
+        return ruta ? `Ruta ${ruta.codigoRuta}: ${motivo}` : motivo;
+      }
+      if (ruta && ruta.clusterId !== clusterId) {
+        salenDe.set(ruta.clusterId, (salenDe.get(ruta.clusterId) ?? 0) + 1);
+      }
+      cambia = true;
+    }
+    for (const [origen, salen] of salenDe) {
+      if (this.rutasDelCluster(origen) <= salen) {
+        const nombre = this.config()?.clusters.find((c) => c.id === origen)?.nombre ?? 'su cluster';
+        return `Se llevarían todas las rutas de ${nombre}: un cluster no puede quedarse sin rutas.`;
+      }
+    }
+    return cambia ? null : SIN_CAMBIO;
+  };
+
+  /**
+   * Varias rutas a una celda en un solo llamado: el servidor las mueve todas o ninguna (y dice
+   * cuál falló). La matriz se corrige en el sitio y los otros balanceos se refrescan.
+   */
+  private moverVarias(rutaIds: readonly number[], clusterId: number, chuteId: number): void {
+    const id = this.seleccionado();
+    const cfg = this.config();
+    if (id === null || !cfg) {
+      return;
+    }
+    const porId = this.rutasPorId();
+    const rutas = rutaIds
+      .map((rutaId) => porId.get(rutaId))
+      .filter((ruta): ruta is RutaSimulacion => !!ruta && (ruta.clusterId !== clusterId || ruta.chuteId !== chuteId));
+    if (rutas.length === 0) {
+      return;
+    }
+    const nombreCluster = cfg.clusters.find((c) => c.id === clusterId)?.nombre ?? '';
+    const nombreChute = cfg.chutes.find((c) => c.id === chuteId)?.nombre ?? '';
+    // La respuesta trae la configuración de lo que muestra el destino («Ambos»: L-X-V).
+    const vista = this.vistaDe(clusterId);
+    const balanceo: Balanceo = vista === 'AMBOS' ? 'LXV' : vista;
+    const diarias = rutas.filter(esDiaria).length;
+    const ids = new Set(rutas.map((ruta) => ruta.id));
+
+    this.rutasGuardando.set(ids);
+    this.conCambiosGuardados(id, () => this.api.moverRutas(id, [...ids], clusterId, chuteId, balanceo))
+      .pipe(
+        finalize(() => this.rutasGuardando.set(new Set())),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: (config) => {
+          if (this.seleccionado() === id) {
+            this.aplicarConfiguracion(config);
+            this.actualizarRutas(ids, { clusterId, cluster: nombreCluster, chuteId, chute: nombreChute });
+            this.refrescarDemas(id, balanceo);
+            this.limpiarSeleccion();
+          }
+          const texto = `${rutas.length} rutas → ${nombreCluster} · chute ${nombreChute}.`;
+          if (diarias > 0) {
+            this.notificaciones.advertencia(
+              'Rutas movidas',
+              `${texto} ${diarias === 1 ? 'Una es diaria: cambia' : `${diarias} son diarias: cambian`} en L-X-V y en M-J-S.`,
+            );
+          } else {
+            this.notificaciones.exito('Rutas movidas', texto);
+          }
+        },
+        // El interceptor ya muestra el motivo del servidor; el cambio es todo o nada.
+        error: () => undefined,
+      });
+  }
+
   /**
    * Suelta una ruta en otra celda. Mismo cluster → cambia de chute; otra fila
    * de cluster → cambia de cluster (y de chute si también cambió de columna).
    * La matriz se corrige en el sitio, sin volver a pedir todas las rutas.
    */
-  soltarRuta({ rutaId, clusterId, chuteId, motivo }: DestinoRuta): void {
+  soltarRuta({ rutaId, rutaIds, clusterId, chuteId, motivo }: DestinoRuta): void {
     if (motivo !== null) {
       if (motivo !== SIN_CAMBIO) {
-        this.notificaciones.advertencia('No se puede mover la ruta', motivo);
+        this.notificaciones.advertencia(
+          rutaIds.length > 1 ? 'No se pueden mover las rutas' : 'No se puede mover la ruta',
+          motivo,
+        );
       }
+      return;
+    }
+    if (rutaIds.length > 1) {
+      this.moverVarias(rutaIds, clusterId, chuteId);
       return;
     }
     const ruta = this.rutasPorId().get(rutaId);
@@ -2320,7 +2585,7 @@ export class SimulacionConfiguracion {
         next: (config) => {
           if (this.seleccionado() === id) {
             this.aplicarConfiguracion(config);
-            this.actualizarRuta(ruta.id, { clusterId, cluster: nombreCluster, chuteId, chute: nombreChute });
+            this.actualizarRutas(new Set([ruta.id]), { clusterId, cluster: nombreCluster, chuteId, chute: nombreChute });
             // Los otros balanceos también cambiaron (carga, operarios invalidados).
             this.refrescarDemas(id, balanceo);
           }
@@ -2341,15 +2606,15 @@ export class SimulacionConfiguracion {
   }
 
   /**
-   * Corrige una ruta en la matriz tras guardarla. Si con los filtros vigentes
+   * Corrige rutas en la matriz tras guardarlas. Si con los filtros vigentes
    * ya no debería verse (otro cluster o chute filtrado), sale de la lista.
    */
-  private actualizarRuta(rutaId: number, cambios: Partial<RutaSimulacion>): void {
+  private actualizarRutas(rutaIds: ReadonlySet<number>, cambios: Partial<RutaSimulacion>): void {
     const clusters = this.filtroCluster();
     const chutes = this.filtroChute();
     this.rutasMatriz.update((rutas) =>
       rutas.flatMap((ruta) => {
-        if (ruta.id !== rutaId) {
+        if (!rutaIds.has(ruta.id)) {
           return [ruta];
         }
         const nueva = { ...ruta, ...cambios };
@@ -3016,12 +3281,12 @@ function rutasPorFrecuencia(
 }
 
 /**
- * Vista que se puede mostrar: un día, si tiene carga (rutas propias o diarias); Diarias, si tiene
- * diarias; Ambos, si los dos días tienen carga. Balancear un día sigue exigiendo rutas propias.
+ * Vista que se puede mostrar: cada frecuencia (L-X-V, M-J-S o Diarias) solo si el cluster tiene
+ * rutas propias de ella; Ambos, solo si tiene rutas de L-X-V y de M-J-S.
  */
 export function vistaValida(vista: VistaCluster, rutas: { dia: number; lxv: number; mjs: number }): boolean {
-  const lxv = rutas.lxv > 0 || rutas.dia > 0;
-  const mjs = rutas.mjs > 0 || rutas.dia > 0;
+  const lxv = rutas.lxv > 0;
+  const mjs = rutas.mjs > 0;
   switch (vista) {
     case 'LXV':
       return lxv;
@@ -3035,11 +3300,11 @@ export function vistaValida(vista: VistaCluster, rutas: { dia: number; lxv: numb
 }
 
 /**
- * Vista con que abre un cluster: el primer día con carga (L-X-V, luego M-J-S). Un cluster con solo
- * diarias abre en L-X-V, donde están sus operarios (Diarias no es una ola).
+ * Vista con que abre un cluster: la primera frecuencia con rutas propias (L-X-V, M-J-S, Diarias).
+ * Un cluster con solo diarias abre en D, que muestra los operarios del día que más tiene.
  */
 export function vistaInicial(rutas: { dia: number; lxv: number; mjs: number }): VistaCluster {
-  return rutas.lxv > 0 || rutas.dia > 0 ? 'LXV' : rutas.mjs > 0 ? 'MJS' : 'LXV';
+  return rutas.lxv > 0 ? 'LXV' : rutas.mjs > 0 ? 'MJS' : 'DIA';
 }
 
 /** Iniciales del cluster para su avatar: «CLUSTER 12» → «C12», «Norte» → «NO». */

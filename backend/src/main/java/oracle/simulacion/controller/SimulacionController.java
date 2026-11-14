@@ -19,6 +19,7 @@ import oracle.simulacion.request.FaseBalanceo;
 import oracle.simulacion.request.LadoChute;
 import oracle.simulacion.request.Limites;
 import oracle.simulacion.request.MoverRutaRequest;
+import oracle.simulacion.request.MoverRutasRequest;
 import oracle.simulacion.request.RegistroActualizarRequest;
 import oracle.simulacion.response.ArchivoSimulacionResponse;
 import oracle.simulacion.response.BalanceoResponse;
@@ -180,6 +181,16 @@ public class SimulacionController {
       @RequestParam String balanceo,
       @Valid @RequestBody MoverRutaRequest req) {
     return configuracionService.mover(id, Balanceo.de(balanceo), rutaId, req);
+  }
+
+  /** Varias rutas a una celda (cluster y chute) en un solo paso: todas o ninguna. */
+  @PutMapping("/{id}/rutas/mover")
+  @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
+  public ApiResponse<ConfiguracionSimulacionResponse> moverRutas(
+      @PathVariable Long id,
+      @RequestParam String balanceo,
+      @Valid @RequestBody MoverRutasRequest req) {
+    return configuracionService.moverVarias(id, Balanceo.de(balanceo), req);
   }
 
   /** Pasa una ruta a otro cluster (ambos clusters sin cerrar). */

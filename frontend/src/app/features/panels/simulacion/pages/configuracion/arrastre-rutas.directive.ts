@@ -1,8 +1,11 @@
 import { Directive, ElementRef, OnDestroy, OnInit, inject, input, output } from '@angular/core';
 
-/** Celda de la matriz donde se soltó una ruta. */
+/** Celda de la matriz donde se soltaron una o varias rutas. */
 export interface DestinoRuta {
+  /** La ruta que se tomó con el mouse. */
   rutaId: number;
+  /** Todas las que se mueven: la tomada y, si estaba seleccionada, toda la selección. */
+  rutaIds: readonly number[];
   clusterId: number;
   chuteId: number;
   /** Por qué no se puede mover ahí (null = movimiento válido). */
@@ -25,12 +28,15 @@ export interface DestinoRuta {
 export class ArrastreRutas implements OnInit, OnDestroy {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
-  /** Motivo por el que la ruta no puede ir a esa celda, o null si puede. */
-  readonly validar = input.required<(rutaId: number, clusterId: number, chuteId: number) => string | null>();
+  /** Motivo por el que esas rutas no pueden ir a esa celda, o null si pueden. */
+  readonly validar = input.required<(rutaIds: readonly number[], clusterId: number, chuteId: number) => string | null>();
+  /** Rutas que viajan al tomar una: por defecto solo ella; con selección, toda la selección. */
+  readonly grupo = input<(rutaId: number) => readonly number[]>((rutaId) => [rutaId]);
   readonly soltar = output<DestinoRuta>();
 
   private rutaId: number | null = null;
-  private origen: HTMLElement | null = null;
+  private rutaIds: readonly number[] = [];
+  private origenes: HTMLElement[] = [];
   private clave: string | null = null;
   private motivo: string | null = null;
   private marcadas: HTMLElement[] = [];
@@ -65,22 +71,57 @@ export class ArrastreRutas implements OnInit, OnDestroy {
     if (!asa || !id) {
       return;
     }
+    const ids = this.grupo()(id);
     this.rutaId = id;
-    this.origen = asa.closest<HTMLElement>('.matriz-ruta');
+    this.rutaIds = ids.includes(id) ? ids : [id];
+    const host = this.host.nativeElement;
+    this.origenes = this.rutaIds.flatMap((rutaId) => {
+      const elemento = host.querySelector<HTMLElement>(`[data-arrastre-ruta="${rutaId}"]`);
+      return elemento ? [elemento.closest<HTMLElement>('.matriz-ruta') ?? elemento] : [];
+    });
     // Chrome cancela el arrastre si el origen cambia de estilo dentro de
     // `dragstart` (p. ej. pointer-events): las clases van en el cuadro siguiente.
-    const origen = this.origen;
+    const origenes = this.origenes;
     requestAnimationFrame(() => {
       if (this.rutaId === id) {
-        origen?.classList.add('matriz-ruta--arrastrada');
-        this.host.nativeElement.classList.add('matriz--arrastrando');
+        for (const origen of origenes) {
+          origen.classList.add('matriz-ruta--arrastrada');
+        }
+        host.classList.add('matriz--arrastrando');
       }
     });
     if (evento.dataTransfer) {
       evento.dataTransfer.effectAllowed = 'move';
       // Firefox no arrastra sin datos.
-      evento.dataTransfer.setData('text/plain', String(id));
+      evento.dataTransfer.setData('text/plain', this.rutaIds.join(','));
+      if (this.rutaIds.length > 1) {
+        this.fantasma(evento.dataTransfer, this.rutaIds.length);
+      }
     }
+  }
+
+  /**
+   * Imagen del arrastre en grupo: una pastilla con cuántas rutas viajan. Va fuera de la pantalla
+   * solo mientras el navegador la captura (estilos en línea: vive en el body, fuera del componente).
+   */
+  private fantasma(datos: DataTransfer, cantidad: number): void {
+    const pastilla = document.createElement('div');
+    pastilla.textContent = `${cantidad} rutas`;
+    Object.assign(pastilla.style, {
+      position: 'fixed',
+      top: '-200px',
+      left: '0',
+      padding: '6px 12px',
+      borderRadius: '999px',
+      background: 'var(--accent)',
+      color: '#fff',
+      font: '600 13px/1.2 system-ui, sans-serif',
+      whiteSpace: 'nowrap',
+      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.25)',
+    });
+    document.body.appendChild(pastilla);
+    datos.setDragImage(pastilla, 16, 16);
+    setTimeout(() => pastilla.remove());
   }
 
   private alPasar(evento: DragEvent): void {
@@ -98,7 +139,7 @@ export class ArrastreRutas implements OnInit, OnDestroy {
     const clave = `${clusterId}:${chuteId}`;
     if (clave !== this.clave) {
       this.clave = clave;
-      this.motivo = this.validar()(this.rutaId, clusterId, chuteId);
+      this.motivo = this.validar()(this.rutaIds, clusterId, chuteId);
       this.marcar(clusterId, chuteId, this.motivo === null);
     }
     // Siempre «move»: con «none» el navegador no dispara `drop` y no se podría
@@ -111,6 +152,7 @@ export class ArrastreRutas implements OnInit, OnDestroy {
   private alSoltar(evento: DragEvent): void {
     const celda = this.celdaDe(evento);
     const rutaId = this.rutaId;
+    const rutaIds = this.rutaIds;
     this.limpiar();
     if (!celda || rutaId === null) {
       return;
@@ -118,7 +160,13 @@ export class ArrastreRutas implements OnInit, OnDestroy {
     evento.preventDefault();
     const clusterId = Number(celda.dataset['cluster']);
     const chuteId = Number(celda.dataset['chute']);
-    this.soltar.emit({ rutaId, clusterId, chuteId, motivo: this.validar()(rutaId, clusterId, chuteId) });
+    this.soltar.emit({
+      rutaId,
+      rutaIds,
+      clusterId,
+      chuteId,
+      motivo: this.validar()(rutaIds, clusterId, chuteId),
+    });
   }
 
   private celdaDe(evento: DragEvent): HTMLElement | null {
@@ -148,10 +196,13 @@ export class ArrastreRutas implements OnInit, OnDestroy {
 
   private limpiar(): void {
     this.desmarcar();
-    this.origen?.classList.remove('matriz-ruta--arrastrada');
+    for (const origen of this.origenes) {
+      origen.classList.remove('matriz-ruta--arrastrada');
+    }
     this.host.nativeElement.classList.remove('matriz--arrastrando');
     this.rutaId = null;
-    this.origen = null;
+    this.rutaIds = [];
+    this.origenes = [];
     this.clave = null;
     this.motivo = null;
   }

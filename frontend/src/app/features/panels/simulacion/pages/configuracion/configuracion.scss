@@ -507,6 +507,12 @@
   background: color-mix(in srgb, var(--cluster-color, var(--accent)) 8%, transparent);
 }
 
+/* Ruta elegida para moverla con otras (Ctrl/⌘+clic): borde y fondo del acento. */
+.matriz-ruta--elegida {
+  box-shadow: inset 0 0 0 2px var(--accent);
+  background: var(--accent-soft);
+}
+
 .matriz-ruta:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
@@ -1503,5 +1509,123 @@
   &--alerta {
     color: var(--danger);
     background: var(--danger-soft);
+  }
+}
+
+/* ---------------- Barra de la selección (varias rutas) ---------------- */
+
+.sel-barra {
+  position: fixed;
+  left: 50%;
+  bottom: max(var(--space-4), env(safe-area-inset-bottom));
+  z-index: var(--z-sticky);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  width: max-content;
+  max-width: calc(100% - 2 * var(--space-4));
+  padding: var(--space-2) var(--space-3);
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+  font-size: var(--fs-sm);
+
+  @include bp.down(sm) {
+    left: var(--space-4);
+    right: var(--space-4);
+    width: auto;
+    max-width: none;
+    transform: none;
+  }
+}
+
+.sel-barra__cuenta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  min-width: 0;
+
+  ui-icon {
+    flex: none;
+    color: var(--accent);
+  }
+
+  /* En el celular: la cuenta y «Limpiar» arriba; la pista de arrastre abajo. */
+  @include bp.down(sm) {
+    flex: 1 1 0;
+    order: 1;
+  }
+}
+
+.sel-barra__bultos {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.sel-barra__aviso {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px var(--space-2);
+  border-radius: 999px;
+  background: var(--warning-soft);
+  color: var(--text);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+
+  ui-icon {
+    flex: none;
+    color: var(--warning);
+  }
+}
+
+.sel-barra__pista {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+
+  ui-icon {
+    flex: none;
+    color: var(--accent);
+  }
+
+  @include bp.down(sm) {
+    flex: 1 1 100%;
+    order: 3;
+  }
+}
+
+.sel-barra__boton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+
+  ui-icon {
+    flex: none;
+  }
+
+  @include bp.down(sm) {
+    order: 2;
+    min-height: 44px;
+  }
+}
+
+/* En pantallas táctiles (también el celular girado) los controles miden 44 px. */
+@media (pointer: coarse) {
+  .sel-barra__boton {
+    min-height: 44px;
   }
 }

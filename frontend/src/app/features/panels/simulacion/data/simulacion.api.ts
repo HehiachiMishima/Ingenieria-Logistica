@@ -145,6 +145,23 @@ export class SimulacionApi {
   }
 
   /**
+   * Varias rutas a una celda (cluster y chute) en un solo paso: el servidor las mueve todas o
+   * ninguna y devuelve la configuración del balanceo indicado.
+   */
+  moverRutas(
+    id: number,
+    rutaIds: readonly number[],
+    clusterId: number,
+    chuteId: number,
+    balanceo: Balanceo = 'LXV',
+  ): Observable<ConfiguracionSimulacion> {
+    return this.api.put<ConfiguracionSimulacion>(
+      `/simulacion/registros/${id}/rutas/mover?balanceo=${balanceo}`,
+      { rutaIds, clusterId, chuteId },
+    );
+  }
+
+  /**
    * Pasa una ruta a otro cluster (antes o después de balancear, con ninguno de
    * los dos cerrado) y, si se indica, también a otro chute en el mismo paso.
    */

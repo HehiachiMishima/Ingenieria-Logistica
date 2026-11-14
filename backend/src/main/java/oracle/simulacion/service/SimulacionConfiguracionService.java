@@ -80,6 +80,7 @@ import oracle.simulacion.request.FaseBalanceo;
 import oracle.simulacion.request.LadoChute;
 import oracle.simulacion.request.Limites;
 import oracle.simulacion.request.MoverRutaRequest;
+import oracle.simulacion.request.MoverRutasRequest;
 import oracle.simulacion.response.BalanceoResponse;
 import oracle.simulacion.response.CambioClusterResponse;
 import oracle.simulacion.response.CargaSimulacionResponse;
@@ -769,6 +770,136 @@ public class SimulacionConfiguracionService {
           return aConfiguracion(ctx);
         },
         "Ruta cambiada de cluster.");
+  }
+
+  /**
+   * Mueve varias rutas a una misma celda (cluster y chute) en una sola transacción, con las reglas
+   * de mover y cambiar de cluster una por una: si una no puede, no se mueve ninguna y el mensaje
+   * dice cuál y por qué. Cada ruta deja su historial en su dueño (Diarias, para una diaria) y los
+   * operarios se invalidan solo en los días y clusters que cambiaron. La respuesta es la
+   * configuración del balanceo indicado.
+   */
+  public ApiResponse<ConfiguracionSimulacionResponse> moverVarias(
+      Long archivoId, Balanceo balanceo, MoverRutasRequest req) {
+    Long actor = ActorActual.id();
+    List<Long> ids = req.rutaIds().stream().distinct().toList();
+    return escribir(
+        "mover varias archivo=" + archivoId + " balanceo=" + balanceo + " rutas=" + ids.size(),
+        () -> {
+          Contexto ctx = contexto(archivoId, balanceo, true);
+          Long clusterDestino = req.clusterId();
+          Long chuteDestino = req.chuteId();
+          if (!ctx.parametrosCluster().containsKey(clusterDestino)) {
+            throw new SolicitudInvalidaException(
+                "El cluster " + clusterDestino + " no pertenece al registro.");
+          }
+          if (!ctx.parametrosChute().containsKey(chuteDestino)) {
+            throw new SolicitudInvalidaException(
+                "El chute " + chuteDestino + " no pertenece al registro.");
+          }
+          Map<Long, RutaProyeccion> porId = new HashMap<>();
+          for (RutaProyeccion ruta : rutaRepo.findByArchivoIdAndIdIn(archivoId, ids)) {
+            porId.put(ruta.getId(), ruta);
+          }
+          List<RutaProyeccion> cambian = new ArrayList<>();
+          Map<Long, Integer> salenDe = new HashMap<>();
+          for (Long id : ids) {
+            RutaProyeccion ruta = porId.get(id);
+            if (ruta == null) {
+              throw new RecursoNoEncontradoException("No existe la ruta " + id + ".");
+            }
+            boolean otroCluster = !ruta.getClusterId().equals(clusterDestino);
+            boolean otroChute = !ruta.getChuteId().equals(chuteDestino);
+            if (!otroCluster && !otroChute) {
+              continue;
+            }
+            List<Balanceo> afectados = balanceosDe(ruta);
+            String accion = otroCluster ? "cambiar rutas de cluster" : "mover sus rutas";
+            try {
+              exigirAbiertoEn(ctx, afectados, ruta.getClusterId(), accion);
+              if (otroCluster) {
+                exigirAbiertoEn(ctx, afectados, clusterDestino, accion);
+              }
+              if (otroChute) {
+                exigirNoBloqueado(ctx, chuteDestino);
+              }
+            } catch (ConflictoException e) {
+              throw new ConflictoException("Ruta " + ruta.getCodigoRuta() + ": " + e.getMessage());
+            }
+            if (otroCluster) {
+              salenDe.merge(ruta.getClusterId(), 1, Integer::sum);
+            }
+            cambian.add(ruta);
+          }
+          if (cambian.isEmpty()) {
+            throw new ConflictoException(
+                "Las rutas ya están en "
+                    + ctx.nombreCluster(clusterDestino)
+                    + " · "
+                    + etiquetaChute(ctx, chuteDestino)
+                    + ".");
+          }
+          // Un cluster no puede quedarse sin rutas: las que salen no pueden ser todas las suyas.
+          for (Map.Entry<Long, Integer> sale : salenDe.entrySet()) {
+            if (rutaRepo.countByArchivoIdAndClusterId(archivoId, sale.getKey()) <= sale.getValue()) {
+              throw new ConflictoException(
+                  "Se llevarían todas las rutas de "
+                      + ctx.nombreCluster(sale.getKey())
+                      + ": un cluster no puede quedarse sin rutas.");
+            }
+          }
+          Long trabajo = enCurso(ctx);
+          Map<Balanceo, Set<Long>> invalidar = new EnumMap<>(Balanceo.class);
+          for (RutaProyeccion ruta : cambian) {
+            String dueno = Balanceo.deRuta(ruta.getFrecuencia()).name();
+            Long clusterAntes = ruta.getClusterId();
+            Long chuteAntes = ruta.getChuteId();
+            if (!clusterAntes.equals(clusterDestino)) {
+              ruta.setClusterId(clusterDestino);
+              HistorialBalanceo log =
+                  nuevoLog(
+                      archivoId,
+                      HistorialBalanceo.ACCION_CAMBIAR_CLUSTER,
+                      HistorialBalanceo.MOTIVO_MANUAL,
+                      actor,
+                      Instant.now());
+              log.setRutaId(ruta.getId());
+              log.setChuteOrigenId(chuteAntes);
+              log.setChuteDestinoId(chuteAntes);
+              log.setClusterOrigenId(clusterAntes);
+              log.setClusterDestinoId(clusterDestino);
+              log.setBalanceo(dueno);
+              log.setClusterTrabajoId(trabajo);
+              historialRepo.save(log);
+            }
+            if (!chuteAntes.equals(chuteDestino)) {
+              // Como al cambiar una sola: primero el cluster y después el chute, así deshacer
+              // devuelve primero el chute.
+              ruta.setChuteId(chuteDestino);
+              HistorialBalanceo movimiento =
+                  movimiento(
+                      archivoId,
+                      null,
+                      new Traslado(ruta, chuteAntes, chuteDestino),
+                      HistorialBalanceo.MOTIVO_MANUAL,
+                      actor,
+                      Instant.now());
+              movimiento.setBalanceo(dueno);
+              movimiento.setClusterTrabajoId(trabajo);
+              historialRepo.save(movimiento);
+            }
+            for (Balanceo b : balanceosDe(ruta)) {
+              Set<Long> clusters = invalidar.computeIfAbsent(b, (k) -> new HashSet<>());
+              clusters.add(clusterAntes);
+              clusters.add(clusterDestino);
+            }
+          }
+          // Cada día vuelve al paso de operarios solo en los clusters cuya carga cambió.
+          invalidar.forEach((b, clusters) -> invalidarOperariosEn(ctx, List.of(b), clusters));
+          tocar(ctx.archivo(), actor);
+          return aConfiguracion(ctx);
+        },
+        "Rutas movidas.");
   }
 
   /**

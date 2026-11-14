@@ -25,6 +25,7 @@ import java.util.function.Supplier;
 import oracle.common.config.CacheRespuestas;
 import oracle.common.config.Transacciones;
 import oracle.common.exception.ConflictoException;
+import oracle.common.exception.RecursoNoEncontradoException;
 import oracle.common.exception.SolicitudInvalidaException;
 import oracle.common.response.PaginaResponse;
 import oracle.simulacion.model.ArchivoExcel;
@@ -68,6 +69,7 @@ import oracle.simulacion.request.ConfiguracionActualizarRequest;
 import oracle.simulacion.request.FaseBalanceo;
 import oracle.simulacion.request.LadoChute;
 import oracle.simulacion.request.MoverRutaRequest;
+import oracle.simulacion.request.MoverRutasRequest;
 import oracle.simulacion.response.BalanceoResponse;
 import oracle.simulacion.response.ChuteComparativoResponse;
 import oracle.simulacion.response.ChuteParametroResponse;
@@ -1848,6 +1850,100 @@ class SimulacionBalanceoTest {
     assertEquals(CL1, ruta.getClusterId());
     assertEquals(1L, ruta.getChuteId());
     verify(historialRepo).save(any());
+  }
+
+  // ---------------- Mover varias rutas (selección) ----------------
+
+  /** Además de la ruta 1 (CL3 · CHUTE 1), las rutas indicadas; todas del registro 10. */
+  private void conRutas(RutaProyeccion... rutas) {
+    List<RutaProyeccion> lista = new ArrayList<>(List.of(rutas));
+    lenient().when(rutaRepo.findByArchivoIdAndIdIn(eq(10L), any())).thenReturn(lista);
+  }
+
+  @Test
+  void moverVariasLlevaTodasALaCeldaEnUnPasoYDejaHistorialPorRuta() {
+    ParametroCluster cl1 = limite(CL1, "2", ParametroCluster.ESTADO_LISTO);
+    RutaProyeccion r1 = prepararCambio(cl1, limite(CL3, "2"));
+    RutaProyeccion r2 = ruta(2L, CL3, 2L, "3031", "5");
+    RutaProyeccion r3 = ruta(3L, CL1, 1L, "3032", "5");
+    conRutas(r1, r2, r3);
+    when(rutaRepo.countByArchivoIdAndClusterId(10L, CL3)).thenReturn(5L);
+    ArgumentCaptor<HistorialBalanceo> logs = ArgumentCaptor.forClass(HistorialBalanceo.class);
+
+    servicio.moverVarias(
+        10L, Balanceo.LXV, new MoverRutasRequest(List.of(1L, 2L, 3L, 3L), CL1, 2L));
+
+    for (RutaProyeccion ruta : List.of(r1, r2, r3)) {
+      assertEquals(CL1, ruta.getClusterId());
+      assertEquals(2L, ruta.getChuteId());
+    }
+    // r1: cluster y chute (2) · r2: solo cluster · r3: solo chute. La repetida cuenta una vez.
+    verify(historialRepo, org.mockito.Mockito.times(4)).save(logs.capture());
+    assertEquals(HistorialBalanceo.ACCION_CAMBIAR_CLUSTER, logs.getAllValues().get(0).getTipoAccion());
+    assertEquals(HistorialBalanceo.ACCION_MOVER_RUTA, logs.getAllValues().get(1).getTipoAccion());
+    assertEquals(1L, logs.getAllValues().get(1).getChuteOrigenId());
+    // La carga de CL1 cambió: vuelve al paso de operarios.
+    assertEquals(ParametroCluster.ESTADO_RUTAS, cl1.getEstado());
+    verify(archivoRepo).save(any());
+  }
+
+  @Test
+  void moverVariasEsTodoONadaYDiceQueRutaFallo() {
+    RutaProyeccion r1 =
+        prepararCambio(
+            limite(CL1, "2"), limite(CL2, "2", ParametroCluster.ESTADO_CERRADO), limite(CL3, "2"));
+    RutaProyeccion r2 = ruta(2L, CL2, 1L, "4040", "5");
+    conRutas(r1, r2);
+
+    ConflictoException error =
+        assertThrows(
+            ConflictoException.class,
+            () ->
+                servicio.moverVarias(
+                    10L, Balanceo.LXV, new MoverRutasRequest(List.of(1L, 2L), CL1, 2L)));
+
+    assertTrue(error.getMessage().contains("Ruta 4040"), error.getMessage());
+    assertTrue(error.getMessage().contains("CL2 está cerrado"), error.getMessage());
+    assertEquals(CL3, r1.getClusterId());
+    assertEquals(1L, r1.getChuteId());
+    verify(historialRepo, never()).save(any());
+  }
+
+  @Test
+  void moverVariasNoDejaUnClusterSinRutas() {
+    RutaProyeccion r1 = prepararCambio(limite(CL1, "2"), limite(CL3, "2"));
+    RutaProyeccion r2 = ruta(2L, CL3, 2L, "3031", "5");
+    conRutas(r1, r2);
+    when(rutaRepo.countByArchivoIdAndClusterId(10L, CL3)).thenReturn(2L);
+
+    ConflictoException error =
+        assertThrows(
+            ConflictoException.class,
+            () ->
+                servicio.moverVarias(
+                    10L, Balanceo.LXV, new MoverRutasRequest(List.of(1L, 2L), CL1, 1L)));
+
+    assertTrue(error.getMessage().contains("todas las rutas de CL3"), error.getMessage());
+    assertEquals(CL3, r1.getClusterId());
+    verify(historialRepo, never()).save(any());
+  }
+
+  @Test
+  void moverVariasRechazaUnaRutaAjenaYUnaSeleccionSinCambios() {
+    RutaProyeccion r1 = prepararCambio(limite(CL1, "2"), limite(CL3, "2"));
+    conRutas(r1);
+
+    assertThrows(
+        RecursoNoEncontradoException.class,
+        () ->
+            servicio.moverVarias(
+                10L, Balanceo.LXV, new MoverRutasRequest(List.of(1L, 99L), CL1, 1L)));
+    ConflictoException sinCambio =
+        assertThrows(
+            ConflictoException.class,
+            () -> servicio.moverVarias(10L, Balanceo.LXV, new MoverRutasRequest(List.of(1L), CL3, 1L)));
+    assertTrue(sinCambio.getMessage().contains("ya están en CL3"), sinCambio.getMessage());
+    verify(historialRepo, never()).save(any());
   }
 
   @Test
