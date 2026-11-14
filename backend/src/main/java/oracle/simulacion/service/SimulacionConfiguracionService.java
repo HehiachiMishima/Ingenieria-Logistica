@@ -1194,6 +1194,7 @@ public class SimulacionConfiguracionService {
     Map<Long, Long> chutesNuevos = new LinkedHashMap<>();
     int fueraDelRango = 0;
     int ancladas = 0;
+    int libres = 0;
     boolean tope = false;
     for (TramosGrupos.Tramo tramo : tramos) {
       List<RutaProyeccion> rutasGrupo = porGrupo.getOrDefault(tramo.grupo(), List.of());
@@ -1204,6 +1205,9 @@ public class SimulacionConfiguracionService {
       Traslado traslado;
       if (tramo.chutes() != null) {
         reparto.limitar(clusterId, tramo.chutes());
+        // Si el día no alcanza para todo el tramo, los chutes del final quedan libres.
+        reparto.ajustarRango(clusterId);
+        libres += reparto.libres();
         // Cada ruta de fuera entra una sola vez: termina en a lo sumo rutasDe pasos.
         while ((traslado = reparto.traerAlRango(clusterId)) != null) {
           nivelaciones.add(traslado);
@@ -1217,6 +1221,9 @@ public class SimulacionConfiguracionService {
         nivelaciones.addAll(anclas);
         ancladas += anclas.size();
       }
+      // Ningún chute del tramo sin rutas: primero se llenan los vacíos, luego se empareja.
+      List<Traslado> llenados = reparto.llenarVacios(clusterId);
+      nivelaciones.addAll(llenados);
       // Cada movimiento baja la suma de cuadrados de la carga, así que el
       // proceso termina solo; el tope es una red de seguridad.
       int maximo = traidas + Math.max(MAX_ITERACIONES, 4 * reparto.rutasDe(clusterId));
@@ -1256,6 +1263,17 @@ public class SimulacionConfiguracionService {
     }
     if (ancladas > 0) {
       mensaje.append(" ").append(ancladas).append(" ruta(s) pesada(s) a chutes con buff.");
+    }
+    if (libres > 0) {
+      long rutasDia = rutasCluster.stream().filter((r) -> balanceo.mueve(r.getFrecuencia())).count();
+      mensaje
+          .append(" ")
+          .append(balanceo.etiqueta())
+          .append(": ")
+          .append(rutasDia)
+          .append(" ruta(s) para su tramo; ")
+          .append(libres)
+          .append(" chute(s) quedan libres ese día, al final del tramo.");
     }
     if (heredado) {
       mensaje.append(" Rango y tramos: los de las diarias.");
@@ -1717,6 +1735,8 @@ public class SimulacionConfiguracionService {
      * 0 (son destino válido); vacío = sin rango.
      */
     private final List<Long> rango = new ArrayList<>();
+    /** Chutes del tramo que quedaron fuera porque el día tiene menos rutas que chutes. */
+    private int libres;
 
     Reparto(List<RutaProyeccion> rutasCluster) {
       this(rutasCluster, Set.of());
@@ -1790,12 +1810,99 @@ public class SimulacionConfiguracionService {
       return cuenta.getOrDefault(new Par(cluster, chute), 0);
     }
 
-    /** Chutes de la ola donde se nivela: con rango, solo los del rango; sin él, los que ya usa. */
+    /**
+     * Chutes de la ola donde se nivela: con rango, los del rango en su orden (a igual carga gana el
+     * primero del tramo, así los libres quedan al final); sin él, los que ya usa, por id.
+     */
     private List<Long> chutesDeOla(Long cluster) {
       Map<Long, BigDecimal> porChute = carga.getOrDefault(cluster, Map.of());
-      return porChute.keySet().stream()
-          .filter((chute) -> rango.isEmpty() || rango.contains(chute))
-          .toList();
+      if (rango.isEmpty()) {
+        return porChute.keySet().stream().sorted().toList();
+      }
+      return rango.stream().filter(porChute::containsKey).toList();
+    }
+
+    /** Chutes del tramo que este reparto deja sin rutas: el día tiene menos rutas que chutes. */
+    int libres() {
+      return libres;
+    }
+
+    /**
+     * Si el día no alcanza para todos los chutes del tramo, lo recorta: quedan los chutes con rutas
+     * fijas (diarias o ancladas) y, de los demás, solo los primeros que se pueden llenar con una
+     * ruta movible cada uno. Los del final quedan libres. Va antes de traer rutas al rango, así lo
+     * que estaba en un chute recortado entra a los que siguen.
+     */
+    void ajustarRango(Long cluster) {
+      if (rango.isEmpty()) {
+        return;
+      }
+      List<Long> sinFijas = rango.stream().filter((chute) -> !fijas.containsKey(new Par(cluster, chute))).toList();
+      int movibles = rutasDe(cluster);
+      if (movibles >= sinFijas.size()) {
+        return;
+      }
+      Set<Long> fuera = new HashSet<>(sinFijas.subList(movibles, sinFijas.size()));
+      rango.removeIf(fuera::contains);
+      Map<Long, BigDecimal> porChute = carga.getOrDefault(cluster, Map.of());
+      // Un chute recortado sin rutas sale de la ola (si tiene rutas, traerAlRango las saca).
+      fuera.forEach((chute) -> {
+        if (rutasEn(cluster, chute) == 0) {
+          porChute.remove(chute);
+        }
+      });
+      libres = fuera.size();
+    }
+
+    /**
+     * Llena los chutes del rango sin carga, en el orden del tramo: cada uno recibe una ruta del
+     * chute con más rutas movibles que no se quede vacío por darla (con dos o más, o con alguna
+     * fija). Entre sus rutas, la más cercana a la carga promedio de la ola. Devuelve los traslados.
+     */
+    List<Traslado> llenarVacios(Long cluster) {
+      List<Traslado> hechos = new ArrayList<>();
+      if (rango.isEmpty()) {
+        return hechos;
+      }
+      Map<Long, BigDecimal> porChute = carga.computeIfAbsent(cluster, (id) -> new HashMap<>());
+      for (Long vacio : rango) {
+        if (porChute.getOrDefault(vacio, BigDecimal.ZERO).signum() > 0 || rutasEn(cluster, vacio) > 0) {
+          continue;
+        }
+        Long origen = null;
+        for (Long chute : chutesDeOla(cluster)) {
+          int movibles = rutasEn(cluster, chute);
+          boolean puedeDar = movibles >= 2 || (movibles == 1 && fijas.containsKey(new Par(cluster, chute)));
+          if (puedeDar
+              && (origen == null
+                  || movibles > rutasEn(cluster, origen)
+                  || (movibles == rutasEn(cluster, origen)
+                      && porChute.get(chute).compareTo(porChute.get(origen)) > 0))) {
+            origen = chute;
+          }
+        }
+        if (origen == null) {
+          break;
+        }
+        List<Long> ola = chutesDeOla(cluster);
+        BigDecimal total = ola.stream().map((c) -> porChute.getOrDefault(c, BigDecimal.ZERO)).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal promedio = total.divide(BigDecimal.valueOf(Math.max(1, ola.size())), ESCALA, RoundingMode.HALF_UP);
+        TreeMap<BigDecimal, ArrayDeque<RutaProyeccion>> candidatas = rutas.get(new Par(cluster, origen));
+        Map.Entry<BigDecimal, ArrayDeque<RutaProyeccion>> abajo = candidatas.floorEntry(promedio);
+        Map.Entry<BigDecimal, ArrayDeque<RutaProyeccion>> arriba = candidatas.ceilingEntry(promedio);
+        Map.Entry<BigDecimal, ArrayDeque<RutaProyeccion>> elegida =
+            abajo == null
+                ? arriba
+                : arriba == null
+                    ? abajo
+                    : promedio.subtract(abajo.getKey()).compareTo(arriba.getKey().subtract(promedio)) <= 0
+                        ? abajo
+                        : arriba;
+        RutaProyeccion ruta = elegida.getValue().peekFirst();
+        trasladar(ruta, cluster, origen, vacio);
+        hechos.add(new Traslado(ruta, origen, vacio));
+      }
+      return hechos;
     }
 
     /**
@@ -1839,11 +1946,12 @@ public class SimulacionConfiguracionService {
     }
 
     /**
-     * Un movimiento para emparejar la ola: del chute más cargado que tenga rutas
-     * que se pueden mover al menos cargado, la ruta que deja ambos más cerca del
-     * medio. Cada movimiento reduce la diferencia, así que el proceso termina.
-     * Null si la ola ya está pareja (dentro de la tolerancia) o ninguna ruta la
-     * mejora.
+     * Un movimiento para emparejar la ola. Prueba los pares del más cargado (con rutas que se pueden
+     * mover) al más liviano y hace el primero que mejora: una ruta con 0 < bultos < diferencia, la
+     * más cercana a la mitad. Antes solo probaba el par extremo y, si su único candidato no servía
+     * (p. ej. el más cargado tenía una sola ruta), se detenía aunque otro chute pudiera llenar un
+     * vacío. Cada movimiento baja la suma de cuadrados de la carga, así que el proceso termina.
+     * Null si la ola ya está pareja (dentro de la tolerancia) o ningún par mejora.
      */
     Traslado nivelar(Long cluster) {
       Map<Long, BigDecimal> porChute = carga.getOrDefault(cluster, Map.of());
@@ -1851,33 +1959,41 @@ public class SimulacionConfiguracionService {
       if (ola.size() < 2) {
         return null;
       }
-      Long cargado = null;
-      Long liviano = null;
       BigDecimal total = BigDecimal.ZERO;
       for (Long chute : ola) {
-        BigDecimal valor = porChute.get(chute);
-        total = total.add(valor);
-        if (rutasEn(cluster, chute) > 0
-            && (cargado == null || valor.compareTo(porChute.get(cargado)) > 0)) {
-          cargado = chute;
+        total = total.add(porChute.get(chute));
+      }
+      BigDecimal promedio = total.divide(BigDecimal.valueOf(ola.size()), ESCALA, RoundingMode.HALF_UP);
+      BigDecimal tolerancia = promedio.multiply(TOLERANCIA_CARGA);
+      // Orden estable: por carga y, a igual carga, por el orden del tramo.
+      List<Long> livianos =
+          ola.stream().sorted(Comparator.comparing(porChute::get)).toList();
+      List<Long> cargados =
+          ola.stream()
+              .filter((chute) -> rutasEn(cluster, chute) > 0)
+              .sorted(Comparator.comparing(porChute::get).reversed())
+              .toList();
+      for (Long cargado : cargados) {
+        for (Long liviano : livianos) {
+          BigDecimal diferencia = porChute.get(cargado).subtract(porChute.get(liviano));
+          if (diferencia.compareTo(tolerancia) <= 0) {
+            // Los demás livianos están aún más cerca de este cargado.
+            break;
+          }
+          RutaProyeccion mejor = candidata(rutas.get(new Par(cluster, cargado)), diferencia);
+          if (mejor != null) {
+            trasladar(mejor, cluster, cargado, liviano);
+            return new Traslado(mejor, cargado, liviano);
+          }
         }
-        if (liviano == null || valor.compareTo(porChute.get(liviano)) < 0) {
-          liviano = chute;
-        }
       }
-      if (cargado == null || cargado.equals(liviano)) {
-        return null;
-      }
-      BigDecimal diferencia = porChute.get(cargado).subtract(porChute.get(liviano));
-      BigDecimal promedio =
-          total.divide(BigDecimal.valueOf(ola.size()), ESCALA, RoundingMode.HALF_UP);
-      if (diferencia.compareTo(promedio.multiply(TOLERANCIA_CARGA)) <= 0) {
-        return null;
-      }
+      return null;
+    }
+
+    /** La ruta con 0 < bultos < diferencia más cercana a la mitad de la diferencia, o null. */
+    private static RutaProyeccion candidata(
+        TreeMap<BigDecimal, ArrayDeque<RutaProyeccion>> candidatas, BigDecimal diferencia) {
       BigDecimal mitad = diferencia.divide(BigDecimal.valueOf(2), ESCALA, RoundingMode.HALF_UP);
-      TreeMap<BigDecimal, ArrayDeque<RutaProyeccion>> candidatas =
-          rutas.get(new Par(cluster, cargado));
-      // Solo sirven rutas con 0 < bultos < diferencia; la mejor es la más cercana a la mitad.
       Map.Entry<BigDecimal, ArrayDeque<RutaProyeccion>> abajo = candidatas.floorEntry(mitad);
       Map.Entry<BigDecimal, ArrayDeque<RutaProyeccion>> arriba = candidatas.higherEntry(mitad);
       if (abajo != null && abajo.getKey().signum() <= 0) {
@@ -1894,12 +2010,7 @@ public class SimulacionConfiguracionService {
                   : mitad.subtract(abajo.getKey()).compareTo(arriba.getKey().subtract(mitad)) <= 0
                       ? abajo
                       : arriba;
-      if (elegida == null) {
-        return null;
-      }
-      RutaProyeccion mejor = elegida.getValue().peekFirst();
-      trasladar(mejor, cluster, cargado, liviano);
-      return new Traslado(mejor, cargado, liviano);
+      return elegida == null ? null : elegida.getValue().peekFirst();
     }
 
     private void poner(RutaProyeccion ruta, Long cluster, Long chute) {

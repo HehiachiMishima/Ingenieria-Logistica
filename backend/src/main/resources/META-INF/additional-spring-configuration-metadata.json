@@ -173,5 +173,20 @@
     "name": "picking.sync.timeout-ms",
     "type": "java.lang.Integer",
     "description": "Tiempo máximo de conexión al SFTP, en ms."
+  },
+  {
+    "name": "simulacion.chutes.primero",
+    "type": "java.lang.String",
+    "description": "A description for 'simulacion.chutes.primero'"
+  },
+  {
+    "name": "simulacion.chutes.ultimo",
+    "type": "java.lang.String",
+    "description": "A description for 'simulacion.chutes.ultimo'"
+  },
+  {
+    "name": "simulacion.chutes.bloqueados",
+    "type": "java.lang.String",
+    "description": "A description for 'simulacion.chutes.bloqueados'"
   }
 ]}

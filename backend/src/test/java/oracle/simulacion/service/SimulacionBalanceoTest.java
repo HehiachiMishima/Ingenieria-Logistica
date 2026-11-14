@@ -341,6 +341,80 @@ class SimulacionBalanceoTest {
   }
 
   @Test
+  void ningunChuteDelRangoQuedaVacioAunqueElMasCargadoTengaUnaSolaRuta() {
+    // CHUTE 1: una ruta de 500 (la más cargada); CHUTE 2: cinco de 60; CHUTE 3: vacío.
+    // Antes, el par «más cargado / más liviano» no podía mejorar y el balanceo se detenía.
+    ParametroCluster cl3 = limite(CL3, "100");
+    prepararRegistro(
+        archivo(),
+        configuracion("100", null),
+        List.of(cl3),
+        List.of(operarios(1L, 0), operarios(2L, 0), operarios(3L, 0)),
+        List.of(),
+        List.of(cluster(CL3, "CL3")),
+        List.of(chute(1L, "CHUTE 1"), chute(2L, "CHUTE 2"), chute(3L, "CHUTE 3")));
+    List<RutaProyeccion> rutas = new ArrayList<>();
+    rutas.add(ruta(1L, CL3, 1L, "3001", "500"));
+    for (long i = 2; i <= 6; i++) {
+      rutas.add(ruta(i, CL3, 2L, "30" + i, "60"));
+    }
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL3)).thenReturn(rutas);
+
+    lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 3L));
+
+    Map<Long, Long> porChute = new HashMap<>();
+    rutas.forEach((r) -> porChute.merge(r.getChuteId(), 1L, Long::sum));
+    assertEquals(Set.of(1L, 2L, 3L), porChute.keySet(), porChute.toString());
+  }
+
+  @Test
+  void conMenosRutasQueChutesLosLibresQuedanAlFinalYSeAvisa() {
+    // Dos rutas para un tramo de cuatro chutes: ocupan el 1 y el 2; el 3 y el 4 quedan libres.
+    ParametroCluster cl3 = limite(CL3, "100");
+    prepararRegistro(
+        archivo(),
+        configuracion("100", null),
+        List.of(cl3),
+        List.of(operarios(1L, 0), operarios(2L, 0), operarios(3L, 0), operarios(4L, 0)),
+        List.of(),
+        List.of(cluster(CL3, "CL3")),
+        List.of(chute(1L, "CHUTE 1"), chute(2L, "CHUTE 2"), chute(3L, "CHUTE 3"), chute(4L, "CHUTE 4")));
+    List<RutaProyeccion> rutas =
+        List.of(ruta(1L, CL3, 1L, "3001", "100"), ruta(2L, CL3, 1L, "3002", "100"));
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL3)).thenReturn(rutas);
+
+    BalanceoResponse resultado = lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 4L));
+
+    assertEquals(Set.of(1L, 2L), Set.of(rutas.get(0).getChuteId(), rutas.get(1).getChuteId()));
+    assertTrue(resultado.mensaje().contains("2 chute(s) quedan libres ese día"), resultado.mensaje());
+  }
+
+  @Test
+  void lasDiariasNoSeMuevenYSuChuteNoCuentaComoVacio() {
+    // Rango 1 → 3: una diaria fija en CHUTE 3 y dos rutas L-X-V en CHUTE 1. El 3 ya tiene carga;
+    // el 2 está vacío y recibe una ruta del día. La diaria sigue en su chute.
+    ParametroCluster cl3 = limite(CL3, "100");
+    prepararRegistro(
+        archivo(),
+        configuracion("100", null),
+        List.of(cl3),
+        List.of(operarios(1L, 0), operarios(2L, 0), operarios(3L, 0)),
+        List.of(),
+        List.of(cluster(CL3, "CL3")),
+        List.of(chute(1L, "CHUTE 1"), chute(2L, "CHUTE 2"), chute(3L, "CHUTE 3")));
+    RutaProyeccion diaria = ruta(3L, CL3, 3L, "3003", "100");
+    diaria.setFrecuencia("DIARIA");
+    List<RutaProyeccion> rutas =
+        List.of(ruta(1L, CL3, 1L, "3001", "100"), ruta(2L, CL3, 1L, "3002", "100"), diaria);
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL3)).thenReturn(rutas);
+
+    lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(1L, 3L));
+
+    assertEquals(3L, diaria.getChuteId());
+    assertEquals(Set.of(1L, 2L), Set.of(rutas.get(0).getChuteId(), rutas.get(1).getChuteId()));
+  }
+
+  @Test
   void rangoInvertidoSigueElOrdenNaturalDeLosChutes() {
     // Orden natural: CHUTE 2 (1), CHUTE 3 (3), CHUTE 10 (2). «CHUTE 3 → CHUTE 2» es
     // CHUTE 2 → CHUTE 3: la ruta de CHUTE 10 queda fuera y entra al chute del rango

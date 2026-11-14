@@ -401,11 +401,11 @@
           <span class="mz-filtros__grupo">
             <button type="button" class="mz-filtro" [class.mz-filtro--activo]="bloque.filtros.lxv"
               [attr.aria-pressed]="bloque.filtros.lxv" [disabled]="ocupado() || bloque.filtros.sinLxv" aria-label="L-X-V"
-              [title]="bloque.filtros.sinLxv ? 'Sin rutas L-X-V en ' + c.nombre : 'Ver L-X-V: sus rutas y las diarias'"
+              [title]="bloque.filtros.sinLxv ? 'Sin carga L-X-V en ' + c.nombre : 'Ver L-X-V: sus rutas y las diarias'"
               (click)="alternarFiltro(c.id, 'LXV')">{{ plegado ? 'L' : 'L-X-V' }}</button>
             <button type="button" class="mz-filtro" [class.mz-filtro--activo]="bloque.filtros.mjs"
               [attr.aria-pressed]="bloque.filtros.mjs" [disabled]="ocupado() || bloque.filtros.sinMjs" aria-label="M-J-S"
-              [title]="bloque.filtros.sinMjs ? 'Sin rutas M-J-S en ' + c.nombre : 'Ver M-J-S: sus rutas y las diarias'"
+              [title]="bloque.filtros.sinMjs ? 'Sin carga M-J-S en ' + c.nombre : 'Ver M-J-S: sus rutas y las diarias'"
               (click)="alternarFiltro(c.id, 'MJS')">{{ plegado ? 'M' : 'M-J-S' }}</button>
             <button type="button" class="mz-filtro" [class.mz-filtro--activo]="bloque.filtros.diaria"
               [attr.aria-pressed]="bloque.filtros.diaria" [disabled]="ocupado() || bloque.filtros.sinDiarias" aria-label="Diarias"
@@ -630,6 +630,11 @@
   }
   @if (v.fuera > 0) {
   <p class="eje__nota"><ui-icon name="flecha" [size]="13" /> {{ v.fuera | numero }} diaria(s) fuera del rango entrarán.</p>
+  }
+  <!-- Un día con menos rutas que chutes deja libres los del final (en «Ambos» los ocupa el otro día). -->
+  @for (d of v.cortos; track d.etiqueta) {
+  <p class="eje__nota"><ui-icon name="calendario" [size]="13" /> {{ d.etiqueta }}: {{ d.rutas | numero }} ruta(s) para
+    {{ v.chutesUtiles | numero }} chutes · {{ d.libres | numero }} libre(s) ese día, al final del tramo.</p>
   }
   @if (chutesBuff().size > 0) {
   <p class="eje__nota"><span class="mz-buff">BUFF</span> {{ chutesBuff().size }} chute(s) reciben primero la más pesada.</p>

@@ -1391,6 +1391,11 @@
   .mz-buff {
     margin-left: 0;
   }
+
+  /* Con el texto en dos líneas, el ícono no se encoge. */
+  ui-icon {
+    flex: none;
+  }
 }
 
 /* Operarios: un número grande con − / +. */

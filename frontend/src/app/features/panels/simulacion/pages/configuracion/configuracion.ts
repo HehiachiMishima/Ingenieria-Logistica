@@ -444,9 +444,10 @@ export class SimulacionConfiguracion {
       lxv: vista === 'LXV' || vista === 'AMBOS',
       mjs: vista === 'MJS' || vista === 'AMBOS',
       diaria: vista === 'DIA',
-      // Una frecuencia sin rutas en el cluster no se puede ver: su filtro queda bloqueado.
-      sinLxv: rutas.lxv === 0,
-      sinMjs: rutas.mjs === 0,
+      // Un día se ve si tiene carga (rutas propias o diarias, que salen todos los días): ahí
+      // también están sus operarios. Solo se bloquea el día sin nada.
+      sinLxv: rutas.lxv === 0 && rutas.dia === 0,
+      sinMjs: rutas.mjs === 0 && rutas.dia === 0,
       sinDiarias: rutas.dia === 0,
     };
   }
@@ -1210,7 +1211,19 @@ export class SimulacionConfiguracion {
     const tramos = this.gruposRango().length > 1 ? this.vistaGrupos() : null;
     const conTramos = tramos !== null && tramos.aviso === null && tramos.clusterId === cluster.id;
     const colores = this.coloresGrupo().get(cluster.id);
+    // L-X-V y M-J-S usan este mismo rango: el día con menos rutas (las suyas y las diarias) que
+    // chutes deja libres los del final. Solo informa (con grupos es por tramo: es una estimación).
+    const chutesUtiles = conTramos ? tramos.grupos.reduce((total, g) => total + g.chutes, 0) : incluidos.size;
+    const { rutas: porFrecuencia } = this.avanceCluster(cluster.id);
+    const cortos = DIAS_BALANCEO
+      .map((dia) => ({ dia, propias: dia === 'LXV' ? porFrecuencia.lxv : porFrecuencia.mjs }))
+      .filter((d) => d.propias > 0)
+      .map((d) => ({ etiqueta: ETIQUETA_BALANCEO[d.dia], rutas: d.propias + porFrecuencia.dia }))
+      .filter((d) => d.rutas < chutesUtiles)
+      .map((d) => ({ ...d, libres: chutesUtiles - d.rutas }));
     return {
+      chutesUtiles,
+      cortos,
       primero: orden[inicio].etiqueta,
       ultimo: orden[fin].etiqueta,
       saltados,
@@ -3002,23 +3015,31 @@ function rutasPorFrecuencia(
   return dia + lxv + mjs === 0 ? { dia: 1, lxv: 1, mjs: 1 } : { dia, lxv, mjs };
 }
 
-/** La vista se puede mostrar: su frecuencia tiene rutas (Ambos, si los dos días tienen). */
+/**
+ * Vista que se puede mostrar: un día, si tiene carga (rutas propias o diarias); Diarias, si tiene
+ * diarias; Ambos, si los dos días tienen carga. Balancear un día sigue exigiendo rutas propias.
+ */
 export function vistaValida(vista: VistaCluster, rutas: { dia: number; lxv: number; mjs: number }): boolean {
+  const lxv = rutas.lxv > 0 || rutas.dia > 0;
+  const mjs = rutas.mjs > 0 || rutas.dia > 0;
   switch (vista) {
     case 'LXV':
-      return rutas.lxv > 0;
+      return lxv;
     case 'MJS':
-      return rutas.mjs > 0;
+      return mjs;
     case 'DIA':
       return rutas.dia > 0;
     default:
-      return rutas.lxv > 0 && rutas.mjs > 0;
+      return lxv && mjs;
   }
 }
 
-/** Vista con que abre un cluster: la primera frecuencia con rutas (L-X-V, M-J-S, Diarias). */
+/**
+ * Vista con que abre un cluster: el primer día con carga (L-X-V, luego M-J-S). Un cluster con solo
+ * diarias abre en L-X-V, donde están sus operarios (Diarias no es una ola).
+ */
 export function vistaInicial(rutas: { dia: number; lxv: number; mjs: number }): VistaCluster {
-  return rutas.lxv > 0 ? 'LXV' : rutas.mjs > 0 ? 'MJS' : 'DIA';
+  return rutas.lxv > 0 || rutas.dia > 0 ? 'LXV' : rutas.mjs > 0 ? 'MJS' : 'LXV';
 }
 
 /** Iniciales del cluster para su avatar: «CLUSTER 12» → «C12», «Norte» → «NO». */
