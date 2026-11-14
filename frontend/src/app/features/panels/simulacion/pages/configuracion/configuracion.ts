@@ -42,7 +42,6 @@ import {
   ConfiguracionSimulacion,
   ConfiguracionSimulacionRequest,
   RutaSimulacion,
-  TramoGrupo,
   VistaBalanceo,
   rutaEnBalanceo,
 } from '../../data/simulacion.model';
