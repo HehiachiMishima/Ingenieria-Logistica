@@ -97,7 +97,7 @@ type Detalle =
                               <li class="ce__caso">
                                 <div class="ce__caso-linea">
                                   <span class="ce__ticket">{{ c.ticket }}</span>
-                                  <span class="ce__desc" [title]="c.descripcion">{{ c.tipo }} · {{ c.descripcion }}</span>
+                                  <span class="ce__desc"></span>
                                   <strong class="ce__dur">{{ duracion(c.segundos) }}</strong>
                                 </div>
                                 <div class="ce__caso-meta">

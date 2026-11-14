@@ -96,9 +96,6 @@ import oracle.simulacion.response.DashboardSimulacionResponse;
 import oracle.simulacion.response.DotacionChuteResponse;
 import oracle.simulacion.response.FlujoChuteResponse;
 import oracle.simulacion.response.FlujoOperariosResponse;
-import oracle.simulacion.response.HistorialRegistroResponse;
-import oracle.simulacion.response.HistorialSimulacionResponse;
-import oracle.simulacion.response.LanzamientoSimulacionResponse;
 import oracle.simulacion.response.MovimientoChuteResponse;
 import oracle.simulacion.response.OlaSimulacionResponse;
 import oracle.simulacion.response.ResumenRutasDashboardResponse;
@@ -139,6 +136,8 @@ public class SimulacionConfiguracionService {
    * que páginas grandes ahorran viajes en serie (5 000 rutas: 5 peticiones, no 50).
    */
   private static final int MAX_TAMANO_RUTAS = 1_000;
+  /** Lote interno al leer todas las rutas: menos idas a la base que con la página pública. */
+  private static final int LOTE_TODAS_RUTAS = 5_000;
   /** Página máxima de los listados paginados con OFFSET (detalle del dashboard e historial). */
   private static final int MAX_PAGINA = 2_000;
   /** Tope total de la transacción de una lectura: corta la consulta en el servidor. */
@@ -267,6 +266,37 @@ public class SimulacionConfiguracionService {
           Long siguiente = filas.size() < t ? null : filas.getLast().getId();
           Long total = despues == null ? rutaRepo.count(filtros) : null;
           return new PaginaRutasResponse(lista, total, siguiente);
+        },
+        "Rutas del registro.");
+  }
+
+  /**
+   * Todas las rutas del registro en una sola lectura (reporte, PDF y Excel): el contexto se arma
+   * una vez y las rutas se leen por lotes de 5 000 con keyset, sin el conteo de la
+   * paginación. Antes, cada página de 1 000 volvía a armar el contexto (unas 5 consultas).
+   */
+  public ApiResponse<List<RutaSimulacionResponse>> todasLasRutas(Long archivoId) {
+    return leer(
+        "todas las rutas id=" + archivoId,
+        () -> {
+          Contexto ctx = contexto(archivoId, false);
+          List<RutaSimulacionResponse> todas = new ArrayList<>();
+          Long despues = null;
+          while (true) {
+            Long desde = despues;
+            Specification<RutaProyeccion> lote =
+                (root, query, cb) ->
+                    desde == null
+                        ? cb.equal(root.get("archivoId"), archivoId)
+                        : cb.and(cb.equal(root.get("archivoId"), archivoId), cb.greaterThan(root.get("id"), desde));
+            List<RutaProyeccion> filas =
+                rutaRepo.findBy(lote, (q) -> q.sortBy(Sort.by("id").ascending()).limit(LOTE_TODAS_RUTAS).all());
+            filas.forEach((ruta) -> todas.add(aRuta(ctx, ruta)));
+            if (filas.size() < LOTE_TODAS_RUTAS) {
+              return todas;
+            }
+            despues = filas.getLast().getId();
+          }
         },
         "Rutas del registro.");
   }
@@ -1015,147 +1045,6 @@ public class SimulacionConfiguracionService {
           return aConfiguracion(ctx);
         },
         "Cluster reabierto.");
-  }
-
-  public ApiResponse<HistorialRegistroResponse> historial(Long archivoId) {
-    return historial(archivoId, Balanceo.LXV);
-  }
-
-  /**
-   * Balanceos cuyo historial se ve desde uno: un día ve el suyo y el de Diarias (sus diarias
-   * cambian también ahí); Diarias, solo el suyo.
-   */
-  private static List<String> historialDe(Balanceo balanceo) {
-    return balanceo == Balanceo.DIA
-        ? List.of(Balanceo.DIA.name())
-        : List.of(balanceo.name(), Balanceo.DIA.name());
-  }
-
-  /** Lanzamientos que se ven desde un balanceo (y cuántos cambios a mano tiene). */
-  public ApiResponse<HistorialRegistroResponse> historial(Long archivoId, Balanceo balanceo) {
-    return leer(
-        "historial id=" + archivoId + " balanceo=" + balanceo,
-        () -> {
-          Contexto ctx = contexto(archivoId, balanceo, false);
-          List<LanzamientoSimulacionResponse> lanzamientos =
-              lanzamientoRepo
-                  .findTop200ByArchivoIdAndBalanceoInOrderByIdDesc(archivoId, historialDe(balanceo))
-                  .stream()
-                  .map(
-                      (lanzamiento) ->
-                          new LanzamientoSimulacionResponse(
-                              lanzamiento.getId(),
-                              lanzamiento.getClusterId(),
-                              ctx.nombreCluster(lanzamiento.getClusterId()),
-                              lanzamiento.getFase(),
-                              etiquetaLanzamiento(lanzamiento, balanceo),
-                              lanzamiento.getCreadoEn(),
-                              lanzamiento.getCreadoPor(),
-                              lanzamiento.getRutas(),
-                              lanzamiento.getChutesOperarios()))
-                  .toList();
-          return new HistorialRegistroResponse(
-              lanzamientos,
-              historialRepo.countByArchivoIdAndBalanceoInAndLanzamientoIdIsNull(
-                  archivoId, historialDe(balanceo)));
-        },
-        "Historial de balanceo.");
-  }
-
-  /** Mensaje del lanzamiento; uno de Diarias visto desde un día lo dice delante. */
-  private static String etiquetaLanzamiento(LanzamientoBalanceo lanzamiento, Balanceo vista) {
-    return vista != Balanceo.DIA && Balanceo.DIA.name().equals(lanzamiento.getBalanceo())
-        ? Balanceo.DIA.etiqueta() + " · " + lanzamiento.getMensaje()
-        : lanzamiento.getMensaje();
-  }
-
-  /**
-   * Cambios de un lanzamiento (o, con lanzamientoId nulo, los que no tienen
-   * lanzamiento), del más reciente al más antiguo y paginados: un balanceo
-   * grande mueve miles de rutas.
-   */
-  public ApiResponse<PaginaResponse<HistorialSimulacionResponse>> historialCambios(
-      Long archivoId, Long lanzamientoId, int pagina, int tamano) {
-    return historialCambios(archivoId, Balanceo.LXV, lanzamientoId, pagina, tamano);
-  }
-
-  public ApiResponse<PaginaResponse<HistorialSimulacionResponse>> historialCambios(
-      Long archivoId, Balanceo balanceo, Long lanzamientoId, int pagina, int tamano) {
-    PageRequest pageable =
-        PageRequest.of(
-            Math.min(Math.max(pagina, 1), MAX_PAGINA) - 1,
-            Math.min(Math.max(tamano, 1), MAX_TAMANO_PAGINA),
-            Sort.by("id").descending());
-    return leer(
-        "historial cambios id=" + archivoId + " balanceo=" + balanceo + " lanzamiento=" + lanzamientoId,
-        () -> {
-          Contexto ctx = contexto(archivoId, false);
-          if (lanzamientoId != null) {
-            // El lanzamiento tiene que ser del registro y verse desde este balanceo.
-            lanzamientoRepo
-                .findById(lanzamientoId)
-                .filter(
-                    (l) ->
-                        archivoId.equals(l.getArchivoId())
-                            && historialDe(balanceo).contains(l.getBalanceo()))
-                .orElseThrow(
-                    () ->
-                        new RecursoNoEncontradoException(
-                            "No existe el lanzamiento "
-                                + lanzamientoId
-                                + " en "
-                                + balanceo.etiqueta()
-                                + "."));
-          }
-          Page<HistorialBalanceo> page =
-              lanzamientoId == null
-                  ? historialRepo.findByArchivoIdAndBalanceoInAndLanzamientoIdIsNull(
-                      archivoId, historialDe(balanceo), pageable)
-                  : historialRepo.findByArchivoIdAndLanzamientoId(archivoId, lanzamientoId, pageable);
-          Set<Long> rutaIds = new HashSet<>();
-          page.forEach(
-              (log) -> {
-                if (log.getRutaId() != null) {
-                  rutaIds.add(log.getRutaId());
-                }
-              });
-          Map<Long, RutaProyeccion> rutas =
-              rutaRepo.findAllById(rutaIds).stream()
-                  .collect(Collectors.toMap(RutaProyeccion::getId, Function.identity()));
-          List<HistorialSimulacionResponse> cambios =
-              page.getContent().stream()
-                  .map(
-                      (log) -> {
-                        RutaProyeccion ruta =
-                            log.getRutaId() == null ? null : rutas.get(log.getRutaId());
-                        return new HistorialSimulacionResponse(
-                            log.getId(),
-                            log.getLanzamientoId(),
-                            log.getTipoAccion(),
-                            log.getMotivo(),
-                            log.getRutaId(),
-                            ruta == null ? null : ruta.getCodigoRuta(),
-                            ruta == null ? null : ctx.nombreCluster(ruta.getClusterId()),
-                            ruta == null || ruta.getTipo() == null ? null : ruta.getTipo().name(),
-                            ruta == null ? null : ruta.getTotalBultos(),
-                            ctx.nombreChute(log.getChuteOrigenId()),
-                            ctx.nombreChute(log.getChuteDestinoId()),
-                            ctx.nombreChute(log.getChuteModificadoId()),
-                            log.getClusterOrigenId() == null
-                                ? null
-                                : ctx.nombreCluster(log.getClusterOrigenId()),
-                            log.getClusterDestinoId() == null
-                                ? null
-                                : ctx.nombreCluster(log.getClusterDestinoId()),
-                            log.getOperariosOrigen(),
-                            log.getOperariosDestino(),
-                            log.getCreadoEn(),
-                            log.getCreadoPor());
-                      })
-                  .toList();
-          return PaginaResponse.de(page, cambios);
-        },
-        "Cambios del historial.");
   }
 
   /** Vista final (clusterId nulo) o la vista del lanzamiento de un cluster. */
@@ -2775,7 +2664,7 @@ public class SimulacionConfiguracionService {
   }
 
   /** Une las filas de las frecuencias visibles de un mismo (cluster, chute). */
-  private static List<CargaRutas> sumarCarga(Contexto ctx, List<CargaRutas> filas) {
+  static List<CargaRutas> sumarCarga(Contexto ctx, List<CargaRutas> filas) {
     Map<Par, Carga> unidas = new LinkedHashMap<>();
     for (CargaRutas fila : filas) {
       if (!visible(ctx, fila.getFrecuencia())) {
@@ -3534,7 +3423,7 @@ public class SimulacionConfiguracionService {
    * Registro, velocidad, parámetros, operarios por ola y nombres de catálogo
    * (sin rutas). operariosOla solo tiene las olas LISTO o CERRADO.
    */
-  private record Contexto(
+  record Contexto(
       ArchivoExcel archivo,
       /** Balanceo en que se trabaja (L-X-V, M-J-S o Diarias). */
       Balanceo balanceo,
@@ -3594,7 +3483,7 @@ public class SimulacionConfiguracionService {
     return contexto(archivoId, Balanceo.LXV, bloquear);
   }
 
-  private Contexto contexto(Long archivoId, Balanceo balanceo, boolean bloquear) {
+  Contexto contexto(Long archivoId, Balanceo balanceo, boolean bloquear) {
     ArchivoExcel archivo =
         (bloquear ? archivoRepo.bloquear(archivoId) : archivoRepo.findById(archivoId))
             .orElseThrow(

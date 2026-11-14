@@ -30,9 +30,7 @@ import oracle.simulacion.response.ClusterParametroResponse;
 import oracle.simulacion.response.ConfiguracionSimulacionResponse;
 import oracle.simulacion.response.DashboardSimulacionResponse;
 import oracle.simulacion.response.OlaSimulacionResponse;
-import oracle.simulacion.response.PaginaRutasResponse;
 import oracle.simulacion.response.RutaSimulacionResponse;
-import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.ConditionalFormattingRule;
@@ -40,7 +38,6 @@ import org.apache.poi.ss.usermodel.ConditionalFormattingThreshold;
 import org.apache.poi.ss.usermodel.DataBarFormatting;
 import org.apache.poi.ss.usermodel.DataValidation;
 import org.apache.poi.ss.usermodel.DataValidationConstraint;
-import org.apache.poi.ss.usermodel.FillPatternType;
 import org.apache.poi.ss.usermodel.FontFormatting;
 import org.apache.poi.ss.usermodel.HorizontalAlignment;
 import org.apache.poi.ss.usermodel.PatternFormatting;
@@ -48,7 +45,6 @@ import org.apache.poi.ss.usermodel.PrintSetup;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.SheetConditionalFormatting;
-import org.apache.poi.ss.usermodel.VerticalAlignment;
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.ss.util.CellRangeAddressList;
 import org.apache.poi.ss.util.CellReference;
@@ -71,11 +67,9 @@ import org.apache.poi.xddf.usermodel.chart.XDDFValueAxis;
 import org.apache.poi.xssf.usermodel.XSSFCellStyle;
 import org.apache.poi.xssf.usermodel.XSSFChart;
 import org.apache.poi.xssf.usermodel.XSSFClientAnchor;
-import org.apache.poi.xssf.usermodel.XSSFColor;
 import org.apache.poi.xssf.usermodel.XSSFConditionalFormattingRule;
 import org.apache.poi.xssf.usermodel.XSSFDataValidationHelper;
 import org.apache.poi.xssf.usermodel.XSSFDrawing;
-import org.apache.poi.xssf.usermodel.XSSFFont;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFSheetConditionalFormatting;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -109,7 +103,6 @@ import org.springframework.stereotype.Service;
 @Service
 public class SimulacionReporte {
 
-  private static final int PAGINA_RUTAS = 1_000;
   private static final ZoneId ZONA = ZoneId.of("America/Lima");
   private static final DateTimeFormatter FECHA =
       DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm", Locale.forLanguageTag("es-PE"));
@@ -154,15 +147,7 @@ public class SimulacionReporte {
   }
 
   private List<RutaSimulacionResponse> todasLasRutas(Long archivoId) {
-    List<RutaSimulacionResponse> rutas = new ArrayList<>();
-    Long despues = null;
-    do {
-      PaginaRutasResponse pagina =
-          servicio.rutas(archivoId, despues, PAGINA_RUTAS, null, null, null).datos();
-      rutas.addAll(pagina.contenido());
-      despues = pagina.siguiente();
-    } while (despues != null);
-    return rutas;
+    return servicio.todasLasRutas(archivoId).datos();
   }
 
   /** Lo que se muestra de un día: su configuración, su dashboard y sus rutas (con las diarias). */
@@ -206,7 +191,7 @@ public class SimulacionReporte {
     private final List<ClusterParametroResponse> clusters;
 
     private XSSFWorkbook libro;
-    private Estilos e;
+    private EstilosReporte e;
     private Sheet datos;
     private int filaDatos = 1;
     private final List<Grafico> graficos = new ArrayList<>();
@@ -234,7 +219,7 @@ public class SimulacionReporte {
       try (XSSFWorkbook nuevo = new XSSFWorkbook();
           ByteArrayOutputStream salida = new ByteArrayOutputStream()) {
         libro = nuevo;
-        e = new Estilos(libro);
+        e = new EstilosReporte(libro);
         Sheet resumen = libro.createSheet("Resumen");
         Sheet tiempos = libro.createSheet("Tiempos y comparativos");
         Sheet configuracion = libro.createSheet("Configuración");
@@ -1103,7 +1088,7 @@ public class SimulacionReporte {
     /** Barra de datos (0 % a 100 %) en el color del acento: el peso de cada cluster. */
     private static void barra(Sheet hoja, CellRangeAddress zona) {
       XSSFSheetConditionalFormatting formatos = (XSSFSheetConditionalFormatting) hoja.getSheetConditionalFormatting();
-      XSSFConditionalFormattingRule regla = formatos.createConditionalFormattingRule(Estilos.color("93C5FD"));
+      XSSFConditionalFormattingRule regla = formatos.createConditionalFormattingRule(EstilosReporte.color("93C5FD"));
       DataBarFormatting barra = regla.getDataBarFormatting();
       barra.getMinThreshold().setRangeType(ConditionalFormattingThreshold.RangeType.NUMBER);
       barra.getMinThreshold().setValue(0d);
@@ -1161,12 +1146,12 @@ public class SimulacionReporte {
       ConditionalFormattingRule regla = formatos.createConditionalFormattingRule(formula);
       if (fondo != null) {
         PatternFormatting relleno = regla.createPatternFormatting();
-        relleno.setFillBackgroundColor(Estilos.color(fondo));
+        relleno.setFillBackgroundColor(EstilosReporte.color(fondo));
         relleno.setFillPattern(PatternFormatting.SOLID_FOREGROUND);
       }
       if (letra != null) {
         FontFormatting fuente = regla.createFontFormatting();
-        fuente.setFontColor(Estilos.color(letra));
+        fuente.setFontColor(EstilosReporte.color(letra));
         fuente.setFontStyle(false, negrita);
       }
       formatos.addConditionalFormatting(zona, regla);
@@ -1184,7 +1169,7 @@ public class SimulacionReporte {
     /** Ruta de un grupo: fondo suave de su color (el de la planilla y el PDF) y el texto oscuro. */
     private CellStyle estiloRuta(String hex) {
       return estilosGrupo.computeIfAbsent(hex, (h) -> {
-        XSSFCellStyle estilo = Estilos.estilo(libro, mezcla(h, 0.18), Estilos.fuente(libro, 9, true, "0F172A"),
+        XSSFCellStyle estilo = EstilosReporte.estilo(libro, mezcla(h, 0.18), EstilosReporte.fuente(libro, 9, true, "0F172A"),
             HorizontalAlignment.LEFT, true);
         return estilo;
       });
@@ -1424,158 +1409,5 @@ public class SimulacionReporte {
       case "RUTAS" -> "Rutas balanceadas";
       default -> "En espera";
     };
-  }
-
-  /** Estilos del libro, creados una vez (Excel admite pocos miles). */
-  private static final class Estilos {
-    final CellStyle titulo;
-    final CellStyle subtitulo;
-    final CellStyle alerta;
-    final CellStyle aviso;
-    final CellStyle leyenda;
-    final CellStyle seccion;
-    final CellStyle cabecera;
-    final CellStyle texto;
-    final CellStyle fuerte;
-    final CellStyle centro;
-    final CellStyle derecha;
-    final CellStyle numero;
-    final CellStyle totalNumero;
-    final CellStyle etiqueta;
-    final CellStyle etiquetaTotal;
-    final CellStyle etiquetaSelector;
-    final CellStyle selector;
-    final CellStyle pista;
-    final CellStyle kpiEtiqueta;
-    final CellStyle kpi;
-    final CellStyle kpiDetalle;
-    final CellStyle ruta;
-    final CellStyle vacia;
-    final CellStyle subeCentro;
-    final CellStyle bajaCentro;
-    final CellStyle semBajo;
-    final CellStyle semMedio;
-    final CellStyle semAlto;
-    /** Semáforo de los totales por chute: la cifra con miles, a la derecha. */
-    final CellStyle semBajoNumero;
-    final CellStyle semMedioNumero;
-    final CellStyle semAltoNumero;
-    /** Banda de cada día en Configuración: el color de su pestaña de frecuencia. */
-    final CellStyle diaLxv;
-    final CellStyle diaMjs;
-    final CellStyle kpiNumero;
-    final CellStyle porcentaje;
-    final CellStyle porcentajeTotal;
-    /** Horas como hora de Excel: «2:31» (2 h 31 min); suma bien y se grafica. */
-    final CellStyle hora;
-    final CellStyle horaFuerte;
-    /** Comparativo: «antes» atenuado, «después» en negrita y la variación con signo. */
-    final CellStyle antes;
-    final CellStyle despues;
-    final CellStyle variacion;
-
-    Estilos(XSSFWorkbook libro) {
-      short miles = libro.createDataFormat().getFormat("#,##0");
-      short formatoHora = libro.createDataFormat().getFormat("[h]:mm");
-      hora = estilo(libro, null, fuente(libro, 10, false, "1E293B"), HorizontalAlignment.RIGHT, true);
-      hora.setDataFormat(formatoHora);
-      horaFuerte = estilo(libro, null, fuente(libro, 10, true, "0F172A"), HorizontalAlignment.RIGHT, true);
-      horaFuerte.setDataFormat(formatoHora);
-      antes = estilo(libro, null, fuente(libro, 10, false, "64748B"), HorizontalAlignment.RIGHT, true);
-      antes.setDataFormat(miles);
-      despues = estilo(libro, null, fuente(libro, 10, true, "0F172A"), HorizontalAlignment.RIGHT, true);
-      despues.setDataFormat(miles);
-      variacion = estilo(libro, "F8FAFC", fuente(libro, 9, true, "1D63ED"), HorizontalAlignment.RIGHT, true);
-      variacion.setDataFormat(libro.createDataFormat().getFormat("+0%;[Color10]-0%;0%"));
-      titulo = estilo(libro, null, fuente(libro, 16, true, "0F1E3D"), HorizontalAlignment.LEFT, false);
-      subtitulo = estilo(libro, null, fuente(libro, 10, false, "64748B"), HorizontalAlignment.LEFT, false);
-      alerta = estilo(libro, "FEF3C7", fuente(libro, 10, true, "92400E"), HorizontalAlignment.LEFT, false);
-      aviso = estilo(libro, "EEF2FF", fuente(libro, 10, true, "3730A3"), HorizontalAlignment.LEFT, false);
-      leyenda = estilo(libro, null, fuente(libro, 9, false, "475569"), HorizontalAlignment.LEFT, false);
-      seccion = estilo(libro, "E2E8F0", fuente(libro, 11, true, "0F1E3D"), HorizontalAlignment.LEFT, false);
-      cabecera = estilo(libro, "0F1E3D", fuente(libro, 10, true, "FFFFFF"), HorizontalAlignment.CENTER, true);
-      cabecera.setWrapText(true);
-      texto = estilo(libro, null, fuente(libro, 10, false, "1E293B"), HorizontalAlignment.LEFT, false);
-      fuerte = estilo(libro, null, fuente(libro, 10, true, "0F172A"), HorizontalAlignment.LEFT, true);
-      centro = estilo(libro, null, fuente(libro, 10, false, "1E293B"), HorizontalAlignment.CENTER, true);
-      derecha = estilo(libro, null, fuente(libro, 10, false, "1E293B"), HorizontalAlignment.RIGHT, true);
-      numero = estilo(libro, null, fuente(libro, 10, false, "1E293B"), HorizontalAlignment.RIGHT, true);
-      numero.setDataFormat(miles);
-      totalNumero = estilo(libro, "F8FAFC", fuente(libro, 10, true, "0F172A"), HorizontalAlignment.RIGHT, true);
-      totalNumero.setDataFormat(miles);
-      etiqueta = estilo(libro, "F8FAFC", fuente(libro, 9, true, "475569"), HorizontalAlignment.LEFT, true);
-      etiquetaTotal = estilo(libro, "F1F5F9", fuente(libro, 9, true, "334155"), HorizontalAlignment.LEFT, true);
-      etiquetaSelector = estilo(libro, "0F1E3D", fuente(libro, 11, true, "FFFFFF"), HorizontalAlignment.RIGHT, true);
-      selector = estilo(libro, "FEF9C3", fuente(libro, 12, true, "0F1E3D"), HorizontalAlignment.CENTER, true);
-      selector.setBorderBottom(BorderStyle.MEDIUM);
-      selector.setBorderTop(BorderStyle.MEDIUM);
-      selector.setBorderLeft(BorderStyle.MEDIUM);
-      selector.setBorderRight(BorderStyle.MEDIUM);
-      pista = estilo(libro, null, fuente(libro, 9, false, "64748B"), HorizontalAlignment.LEFT, false);
-      kpiEtiqueta = estilo(libro, "F8FAFC", fuente(libro, 9, true, "64748B"), HorizontalAlignment.LEFT, false);
-      kpi = estilo(libro, "F8FAFC", fuente(libro, 16, true, "0F1E3D"), HorizontalAlignment.LEFT, false);
-      kpiDetalle = estilo(libro, "F8FAFC", fuente(libro, 9, false, "64748B"), HorizontalAlignment.LEFT, false);
-      ruta = estilo(libro, null, fuente(libro, 9, true, "0F172A"), HorizontalAlignment.LEFT, true);
-      vacia = estilo(libro, null, fuente(libro, 9, false, "94A3B8"), HorizontalAlignment.CENTER, false);
-      subeCentro = estilo(libro, null, fuente(libro, 10, true, "059669"), HorizontalAlignment.CENTER, true);
-      bajaCentro = estilo(libro, null, fuente(libro, 10, true, "DC2626"), HorizontalAlignment.CENTER, true);
-      semBajo = estilo(libro, "FEF3C7", fuente(libro, 10, true, "92400E"), HorizontalAlignment.CENTER, true);
-      semMedio = estilo(libro, "D1FAE5", fuente(libro, 10, true, "065F46"), HorizontalAlignment.CENTER, true);
-      semAlto = estilo(libro, "FEE2E2", fuente(libro, 10, true, "991B1B"), HorizontalAlignment.CENTER, true);
-      semBajoNumero = estilo(libro, "FEF3C7", fuente(libro, 10, true, "92400E"), HorizontalAlignment.RIGHT, true);
-      semBajoNumero.setDataFormat(miles);
-      semMedioNumero = estilo(libro, "D1FAE5", fuente(libro, 10, true, "065F46"), HorizontalAlignment.RIGHT, true);
-      semMedioNumero.setDataFormat(miles);
-      semAltoNumero = estilo(libro, "FEE2E2", fuente(libro, 10, true, "991B1B"), HorizontalAlignment.RIGHT, true);
-      semAltoNumero.setDataFormat(miles);
-      diaLxv = estilo(libro, "1D4ED8", fuente(libro, 10, true, "FFFFFF"), HorizontalAlignment.CENTER, true);
-      diaMjs = estilo(libro, "C2410C", fuente(libro, 10, true, "FFFFFF"), HorizontalAlignment.CENTER, true);
-      kpiNumero = estilo(libro, "F8FAFC", fuente(libro, 16, true, "0F1E3D"), HorizontalAlignment.LEFT, false);
-      kpiNumero.setDataFormat(miles);
-      short pct = libro.createDataFormat().getFormat("0%");
-      porcentaje = estilo(libro, null, fuente(libro, 9, false, "64748B"), HorizontalAlignment.RIGHT, true);
-      porcentaje.setDataFormat(pct);
-      porcentajeTotal = estilo(libro, "F8FAFC", fuente(libro, 9, true, "334155"), HorizontalAlignment.RIGHT, true);
-      porcentajeTotal.setDataFormat(pct);
-    }
-
-    static XSSFFont fuente(XSSFWorkbook libro, int puntos, boolean negrita, String color) {
-      XSSFFont fuente = libro.createFont();
-      fuente.setFontName("Calibri");
-      fuente.setFontHeightInPoints((short) puntos);
-      fuente.setBold(negrita);
-      fuente.setColor(color(color));
-      return fuente;
-    }
-
-    static XSSFCellStyle estilo(
-        XSSFWorkbook libro, String fondo, XSSFFont fuente, HorizontalAlignment alineacion, boolean borde) {
-      XSSFCellStyle estilo = libro.createCellStyle();
-      estilo.setFont(fuente);
-      estilo.setAlignment(alineacion);
-      estilo.setVerticalAlignment(VerticalAlignment.CENTER);
-      if (fondo != null) {
-        estilo.setFillForegroundColor(color(fondo));
-        estilo.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-      }
-      if (borde) {
-        XSSFColor gris = color("E2E8F0");
-        estilo.setBorderBottom(BorderStyle.THIN);
-        estilo.setBorderTop(BorderStyle.THIN);
-        estilo.setBorderLeft(BorderStyle.THIN);
-        estilo.setBorderRight(BorderStyle.THIN);
-        estilo.setBottomBorderColor(gris);
-        estilo.setTopBorderColor(gris);
-        estilo.setLeftBorderColor(gris);
-        estilo.setRightBorderColor(gris);
-      }
-      return estilo;
-    }
-
-    static XSSFColor color(String hex) {
-      int rgb = Integer.parseInt(hex, 16);
-      return new XSSFColor(
-          new byte[] {(byte) (rgb >> 16), (byte) (rgb >> 8), (byte) rgb}, null);
-    }
   }
 }

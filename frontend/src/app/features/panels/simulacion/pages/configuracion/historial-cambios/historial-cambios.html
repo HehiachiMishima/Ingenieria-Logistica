@@ -41,38 +41,95 @@
       mensaje="Todavía no se han movido rutas."
     />
   } @else {
-    @for (grupo of grupos(); track grupo.clave) {
-      @let abiertoEste = abiertoGrupo() === grupo.clave;
-      <section class="historial-grupo" [class.historial-grupo--abierto]="abiertoEste">
+    @let grupo = grupoActual();
+    <!-- Un chip por lanzamiento (el más reciente, elegido): se compara en la cortina. -->
+    <div class="hc-chips" role="listbox" aria-label="Lanzamientos">
+      @for (g of grupos(); track g.clave) {
         <button
           type="button"
-          class="historial-grupo__head"
-          [attr.aria-expanded]="abiertoEste"
-          (click)="alternar(grupo)"
+          role="option"
+          class="hc-chip"
+          [class.hc-chip--activo]="g.clave === grupo?.clave"
+          [attr.aria-selected]="g.clave === grupo?.clave"
+          [title]="g.titulo"
+          (click)="elegir(g)"
         >
-          <span class="historial-grupo__textos">
-            <span class="historial-grupo__titulo">{{ grupo.titulo }}</span>
-            @if (grupo.fecha) {
-              <span class="historial-grupo__meta">
-                {{ grupo.fecha | date: 'dd/MM/yyyy HH:mm' }} ·
-                {{ grupo.creadoPor | actorLabel }}
-              </span>
-            }
-            @if (grupo.mensaje) {
-              <span class="historial-grupo__mensaje">{{ grupo.mensaje }}</span>
-            }
+          <span class="hc-chip__icono">
+            <app-icono-sim [nombre]="g.fase === null ? 'mano' : g.fase === 'OPERARIOS' ? 'operario' : 'balanza'" [tamano]="16" />
           </span>
-          <ul class="historial-grupo__resumen">
-            @if (grupo.rutas > 0) {
-              <li>{{ (grupo.rutas | numero) }} ruta(s) movida(s)</li>
-            }
-            @if (grupo.chutesOperarios > 0) {
-              <li>{{ (grupo.chutesOperarios | numero) }} chute(s) con otra dotación</li>
-            }
-          </ul>
-          <ui-icon class="historial-grupo__flecha" name="flecha" [size]="16" />
+          <span class="hc-chip__texto">
+            <strong>{{ g.cluster }}</strong>
+            <small>
+              {{ g.fase === null ? (g.rutas | numero) + ' cambio(s)' : g.fase === 'RUTAS' ? 'Rutas' : 'Operarios' }}
+              @if (g.fecha) {
+                · {{ g.fecha | date: 'HH:mm' }}
+              }
+            </small>
+          </span>
         </button>
+      }
+    </div>
 
+    @if (grupo) {
+      <p class="hc-meta">
+        @if (grupo.fecha) {
+          {{ grupo.fecha | date: 'dd/MM/yyyy HH:mm' }} · {{ grupo.creadoPor | actorLabel }} ·
+        }
+        {{ grupo.mensaje }}
+      </p>
+
+      @if (grupo.lanzamientoId === null) {
+        <p class="hc-aviso">
+          <app-icono-sim nombre="mano" [tamano]="18" />
+          Cambios hechos a mano: no tienen un antes y después único. Revisa la lista.
+        </p>
+      } @else if (cargandoComparativo()) {
+        <div class="loading"><span class="ui-spinner"></span> Comparando…</div>
+      } @else if (errorComparativo()) {
+        <p class="hc-aviso hc-aviso--error"><ui-icon name="alerta" [size]="16" /> {{ errorComparativo() }}</p>
+      } @else if (vista(); as v) {
+        <!-- Cortina: a la izquierda del borde, los chutes antes; a la derecha, después. -->
+        <app-cortina-comparativa [chutes]="v.chutes" [operarios]="v.operarios" />
+        <p class="hc-unidad">
+          @if (v.operarios) {
+            <app-icono-sim nombre="operario" [tamano]="14" /> = 1 operario
+          } @else {
+            <app-icono-sim nombre="caja" [tamano]="14" /> = {{ v.unidad }} bultos
+          }
+          · arrastra la manija o toca un chute
+        </p>
+
+        <div class="hc-fichas">
+          @for (f of v.fichas; track f.etiqueta) {
+            <div class="hc-ficha">
+              <app-icono-sim [nombre]="f.icono" [estado]="f.estado" [tamano]="22" />
+              <span class="hc-ficha__texto">
+                <small>{{ f.etiqueta }}</small>
+                <strong>
+                  @if (f.antes !== null) {
+                    <s>{{ f.antes }}</s> →
+                  }
+                  <span class="hc-ficha__despues">{{ f.despues }}</span>
+                </strong>
+              </span>
+            </div>
+          }
+        </div>
+      } @else {
+        <p class="hc-aviso">Este lanzamiento no cambió la carga de ningún chute.</p>
+      }
+
+      @let abiertoEste = abiertoGrupo() === grupo.clave;
+      <button
+        type="button"
+        class="ui-btn ui-btn--secondary ui-btn--sm hc-ver"
+        [attr.aria-expanded]="abiertoEste"
+        (click)="verCambios()"
+      >
+        <ui-icon class="hc-ver__flecha" [class.hc-ver__flecha--abierta]="abiertoEste" name="flecha" [size]="14" />
+        {{ abiertoEste ? 'Ocultar cambios' : grupo.fase === 'OPERARIOS' ? 'Ver cambios' : 'Ver rutas movidas' }}
+      </button>
+      <section class="historial-grupo historial-grupo--abierto hc-detalle">
         @if (abiertoEste) {
           @if (cambios(); as pagina) {
             <div

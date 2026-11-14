@@ -749,32 +749,6 @@
   }
 }
 
-/* Tipo con el aspecto de `ui-badge`. */
-.matriz-ruta__tipo {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  padding: 1px 6px;
-  border-radius: var(--radius-xs);
-  font-size: 0.64rem;
-  font-weight: 700;
-  color: var(--text-2);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  user-select: none;
-
-  &--b2b {
-    color: var(--info);
-    background: var(--info-soft);
-    border-color: color-mix(in srgb, var(--info) 22%, var(--border));
-  }
-
-  &--b2c {
-    color: var(--success);
-    background: var(--success-soft);
-    border-color: color-mix(in srgb, var(--success) 22%, var(--border));
-  }
-}
 
 .matriz-ruta .cluster-original {
   /* Es lo primero que se acorta: la columna nunca crece (los clusters son tablas
@@ -986,12 +960,10 @@
   min-width: 0;
 }
 
-.ico-total,
-.mz-totales .caja-bulto {
-  flex: none;
+/* Ícono del concepto (app-icono-sim sin tamaño fijo): 18 px, 16 en el riel minimizado. */
+.ico-total {
   width: 18px;
   height: 18px;
-  overflow: visible;
 }
 
 /* Tipografía: etiqueta legible y cifra con dígitos de ancho fijo para que las columnas se lean en vertical. */
@@ -1024,8 +996,7 @@
     font-size: 0.6rem;
     line-height: 1;
 
-    .ico-total,
-    .caja-bulto {
+    .ico-total {
       width: 16px;
       height: 16px;
     }

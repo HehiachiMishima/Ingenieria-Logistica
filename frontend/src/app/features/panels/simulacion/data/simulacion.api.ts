@@ -6,6 +6,7 @@ import {
   DiaBalanceo,
   BalanceoCuerpo,
   BalanceoSimulacion,
+  ComparativoLanzamiento,
   ConfiguracionSimulacion,
   ConfiguracionSimulacionRequest,
   DashboardSimulacion,
@@ -16,6 +17,7 @@ import {
   RegistroSimulacionActualizarRequest,
   RutasDashboardFiltros,
   RutasDashboardSimulacion,
+  RutaSimulacion,
   RutasSimulacionFiltros,
   VistaBalanceo,
 } from './simulacion.model';
@@ -74,6 +76,11 @@ export class SimulacionApi {
       ...(filtros.clusterIds.length > 0 ? { clusterIds: filtros.clusterIds.join(',') } : {}),
       ...(filtros.chuteIds.length > 0 ? { chuteIds: filtros.chuteIds.join(',') } : {}),
     });
+  }
+
+  /** Todas las rutas del registro de una vez (reporte): una sola lectura en el servidor. */
+  todasLasRutas(id: number): Observable<RutaSimulacion[]> {
+    return this.api.get<RutaSimulacion[]>(`/simulacion/registros/${id}/rutas/todas`);
   }
 
   /** Velocidad, máximo por chute, buff y límites de horas (valen para los tres balanceos). */
@@ -212,6 +219,18 @@ export class SimulacionApi {
     return this.api.get<Pagina<HistorialSimulacion>>(
       `/simulacion/registros/${id}/historial/cambios`,
       { lanzamientoId, pagina, tamano, balanceo },
+    );
+  }
+
+  /** Antes y después de un lanzamiento en los chutes de su cluster. */
+  comparativoLanzamiento(
+    id: number,
+    lanzamientoId: number,
+    balanceo: Balanceo = 'LXV',
+  ): Observable<ComparativoLanzamiento> {
+    return this.api.get<ComparativoLanzamiento>(
+      `/simulacion/registros/${id}/historial/${lanzamientoId}/comparativo`,
+      { balanceo },
     );
   }
 

@@ -1,0 +1,100 @@
+/* Cortina: dos capas iguales superpuestas; la del antes se recorta hasta el borde. */
+.cc {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  scrollbar-width: thin;
+}
+
+.cc-escena {
+  position: relative;
+  /* 56 px por chute: siete cifras entran enteras; con muchos chutes, la cortina se desplaza. */
+  min-width: max(100%, calc(var(--chutes, 6) * 56px));
+  height: 300px;
+  overflow: hidden;
+  cursor: ew-resize;
+  user-select: none;
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+}
+
+.cc-etiqueta {
+  position: absolute;
+  top: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 10px 2px 4px;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  border-radius: 999px;
+  pointer-events: none;
+
+  &--antes {
+    left: 8px;
+    color: var(--danger);
+    background: var(--danger-soft);
+  }
+
+  &--despues {
+    right: 8px;
+    color: var(--success);
+    background: var(--success-soft);
+  }
+}
+
+/* Borde de la cortina con su manija: se arrastra (mouse o dedo) sin mover la página. */
+.cc-manija {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 3;
+  width: 3px;
+  margin-left: -1.5px;
+  background: var(--accent);
+  touch-action: none;
+  cursor: ew-resize;
+
+  &__boton {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    margin: -16px 0 0 -16px;
+    font-size: 0.9rem;
+    font-weight: 800;
+    color: #fff;
+    background: var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent);
+  }
+
+  /* Área de agarre más ancha que la línea, cómoda con el dedo. */
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0 -20px;
+  }
+}
+
+
+.cc-capa {
+  position: absolute;
+  inset: 0;
+}
+
+.cc-capa--despues {
+  background: color-mix(in srgb, var(--success) 7%, var(--surface));
+}
+
+.cc-capa--antes {
+  background: color-mix(in srgb, var(--danger) 7%, var(--surface));
+}

@@ -23,11 +23,22 @@ import { Paginador } from '../../../../../../shared/ui/paginador/paginador';
 import { SimulacionApi } from '../../../data/simulacion.api';
 import {
   Balanceo,
+  ComparativoLanzamiento,
   ETIQUETA_BALANCEO,
+  FaseBalanceo,
   HistorialRegistroSimulacion,
   HistorialSimulacion,
 } from '../../../data/simulacion.model';
+import {
+  EstadoCara,
+  IconoSim,
+  NombreIconoSim,
+  diferenciaCarga,
+  estadosCarga,
+} from '../../../icono-sim/icono-sim';
 import { NumeroPipe } from '../../../numero.pipe';
+import { ChuteCortina, CortinaComparativa } from './cortina-comparativa/cortina-comparativa';
+import { formatearEntero } from '../../../simulacion-formato';
 
 /** Un lanzamiento (o los cambios sin lanzamiento) tal como se lista. */
 interface GrupoHistorial {
@@ -35,6 +46,9 @@ interface GrupoHistorial {
   /** null = cambios sin lanzamiento (a mano o de versiones anteriores). */
   lanzamientoId: number | null;
   titulo: string;
+  /** Para el chip: el cluster (o «A mano») y la fase (null en los cambios a mano). */
+  cluster: string;
+  fase: FaseBalanceo | null;
   mensaje: string | null;
   fecha: string | null;
   creadoPor: number | null;
@@ -42,15 +56,38 @@ interface GrupoHistorial {
   chutesOperarios: number;
 }
 
+/** Una ficha comparativa: el antes (tachado) y el después. */
+interface FichaComparada {
+  icono: NombreIconoSim;
+  estado: EstadoCara;
+  etiqueta: string;
+  antes: string | null;
+  despues: string;
+}
+
+/** Escala de las torres: una caja vale 1, 2 o 5 × 10ⁿ bultos, así la más alta tiene unas 8. */
+function unidadCaja(maximo: number): number {
+  const bruto = Math.max(1, maximo / 8);
+  const base = 10 ** Math.floor(Math.log10(bruto));
+  return [1, 2, 5, 10].map((m) => m * base).find((u) => u >= bruto) ?? 10 * base;
+}
+
+/** «CHUTE 15» → «15»: la columna es angosta; el nombre completo va en el title. */
+function chuteCorto(nombre: string): string {
+  return nombre.replace(/^chute\s*/i, '') || nombre;
+}
+
 /**
- * Modal con los cambios del registro: cada lanzamiento con sus totales, del
- * más reciente al más antiguo. Los cambios de uno se piden paginados al
- * abrirlo: un balanceo grande mueve miles de rutas.
+ * Modal con los cambios del registro. Arriba, un chip por lanzamiento (el más reciente
+ * elegido); el elegido se compara con una cortina: los chutes antes (a la izquierda) y después
+ * (a la derecha) como torres de cajas con su carita, o de operarios si fue la asignación de la
+ * ola. Debajo, las fichas antes → después y la lista de cambios, plegada y paginada: un
+ * balanceo grande mueve miles de rutas.
  */
 @Component({
   selector: 'app-simulacion-historial-cambios',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, ActorLabelPipe, EmptyState, Icon, Modal, Paginador, NumeroPipe],
+  imports: [DatePipe, ActorLabelPipe, CortinaComparativa, EmptyState, Icon, IconoSim, Modal, Paginador, NumeroPipe],
   templateUrl: './historial-cambios.html',
   styleUrl: './historial-cambios.scss',
 })
@@ -102,6 +139,8 @@ export class SimulacionHistorialCambios {
       titulo: `${lanzamiento.cluster} · ${
         lanzamiento.fase === 'RUTAS' ? 'Balanceo de rutas' : 'Asignación de operarios'
       }`,
+      cluster: lanzamiento.cluster,
+      fase: lanzamiento.fase,
       mensaje: lanzamiento.mensaje,
       fecha: lanzamiento.creadoEn,
       creadoPor: lanzamiento.creadoPor,
@@ -113,6 +152,8 @@ export class SimulacionHistorialCambios {
         clave: 'sin',
         lanzamientoId: null,
         titulo: 'Movimientos sin lanzamiento',
+        cluster: 'A mano',
+        fase: null,
         mensaje: 'Hechos a mano o con una versión anterior del balanceo.',
         fecha: null,
         creadoPor: null,
@@ -122,6 +163,66 @@ export class SimulacionHistorialCambios {
     }
     return grupos;
   });
+
+  /** Lanzamiento elegido en los chips; por defecto, el más reciente. */
+  readonly seleccion = signal<string | null>(null);
+  readonly grupoActual = computed<GrupoHistorial | null>(() => {
+    const grupos = this.grupos();
+    return grupos.find((g) => g.clave === this.seleccion()) ?? grupos[0] ?? null;
+  });
+
+  readonly comparativo = signal<ComparativoLanzamiento | null>(null);
+  readonly cargandoComparativo = signal(false);
+  readonly errorComparativo = signal<string | null>(null);
+
+  /** Torres de la cortina y fichas antes → después del lanzamiento elegido. */
+  readonly vista = computed(() => {
+    const c = this.comparativo();
+    if (!c || c.chutes.length === 0) {
+      return null;
+    }
+    const operarios = c.fase === 'OPERARIOS';
+    const antes = c.chutes.map((x) => x.antes);
+    const despues = c.chutes.map((x) => x.despues);
+    const unidad = operarios ? 1 : unidadCaja(Math.max(1, ...antes, ...despues));
+    const estadosAntes = operarios ? antes.map(() => null) : estadosCarga(antes);
+    const estadosDespues = operarios ? despues.map(() => null) : estadosCarga(despues);
+    const piezas = (valor: number) =>
+      Array.from({ length: valor > 0 ? Math.max(1, Math.round(valor / unidad)) : 0 }, (_, i) => i);
+    const lado = (valor: number, estado: EstadoCara | null) => ({
+      valor: formatearEntero(valor),
+      piezas: piezas(valor),
+      estado,
+    });
+    const suma = (v: number[]) => v.reduce((t, n) => t + n, 0);
+    const saturados = (e: (EstadoCara | null)[]) => String(e.filter((x) => x === 'mal').length);
+    const porcentaje = (v: number | null) => (v === null ? '—' : `${v} %`);
+    const fichas: FichaComparada[] = operarios
+      ? [
+          { icono: 'operario', estado: 'bien', etiqueta: 'Operarios', antes: formatearEntero(suma(antes)), despues: formatearEntero(suma(despues)) },
+          { icono: 'balanza', estado: 'bien', etiqueta: 'Chutes con otra dotación', antes: null, despues: formatearEntero(c.chutes.filter((x) => x.antes !== x.despues).length) },
+        ]
+      : [
+          { icono: 'caja', estado: 'bien', etiqueta: 'Rutas movidas', antes: null, despues: formatearEntero(c.rutas) },
+          { icono: 'caja', estado: 'bien', etiqueta: 'Bultos movidos', antes: null, despues: formatearEntero(c.bultosMovidos) },
+          { icono: 'balanza', estado: 'bien', etiqueta: 'Diferencia', antes: porcentaje(diferenciaCarga(antes)), despues: porcentaje(diferenciaCarga(despues)) },
+          { icono: 'cara', estado: 'mal', etiqueta: 'Saturados', antes: saturados(estadosAntes), despues: saturados(estadosDespues) },
+        ];
+    return {
+      operarios,
+      unidad: formatearEntero(unidad),
+      chutes: c.chutes.map((x, i): ChuteCortina => ({
+        id: x.chuteId,
+        nombre: x.chute,
+        corto: chuteCorto(x.chute),
+        antes: lado(x.antes, estadosAntes[i]),
+        despues: lado(x.despues, estadosDespues[i]),
+      })),
+      fichas,
+    };
+  });
+
+  private solicitudComparativo = 0;
 
   constructor() {
     // Al abrir el modal (o cambiar de registro con él abierto) se recarga la lista.
@@ -135,6 +236,7 @@ export class SimulacionHistorialCambios {
         // Cerrado: cualquier respuesta en vuelo ya no se pinta.
         this.solicitudHistorial++;
         this.solicitud++;
+        this.solicitudComparativo++;
         return;
       }
       if (id !== null) {
@@ -157,6 +259,10 @@ export class SimulacionHistorialCambios {
     this.abiertoGrupo.set(null);
     this.cambios.set(null);
     this.error.set(null);
+    this.seleccion.set(null);
+    this.solicitudComparativo++;
+    this.comparativo.set(null);
+    this.errorComparativo.set(null);
     this.cargando.set(true);
     this.api
       .historial(id, this.balanceo())
@@ -173,6 +279,7 @@ export class SimulacionHistorialCambios {
         next: (historial) => {
           if (solicitud === this.solicitudHistorial) {
             this.historial.set(historial);
+            this.elegir(this.grupos()[0] ?? null);
           }
         },
         error: (err: unknown) => {
@@ -197,6 +304,53 @@ export class SimulacionHistorialCambios {
     const id = this.registroId();
     if (id !== null) {
       this.cargar(id);
+    }
+  }
+
+  /** Elige un lanzamiento en los chips: pliega su lista y pide su antes y después. */
+  elegir(grupo: GrupoHistorial | null): void {
+    this.seleccion.set(grupo?.clave ?? null);
+    this.abiertoGrupo.set(null);
+    this.cambios.set(null);
+    const id = this.registroId();
+    const solicitud = ++this.solicitudComparativo;
+    this.comparativo.set(null);
+    this.errorComparativo.set(null);
+    if (!grupo || grupo.lanzamientoId === null || id === null) {
+      // Los cambios a mano no tienen un antes y después único: solo su lista.
+      this.cargandoComparativo.set(false);
+      return;
+    }
+    this.cargandoComparativo.set(true);
+    this.api
+      .comparativoLanzamiento(id, grupo.lanzamientoId, this.balanceo())
+      .pipe(
+        finalize(() => {
+          if (solicitud === this.solicitudComparativo) {
+            this.cargandoComparativo.set(false);
+          }
+        }),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: (comparativo) => {
+          if (solicitud === this.solicitudComparativo) {
+            this.comparativo.set(comparativo);
+          }
+        },
+        error: (err: unknown) => {
+          if (solicitud === this.solicitudComparativo) {
+            this.errorComparativo.set(mensajeDeError(err));
+          }
+        },
+      });
+  }
+
+  /** Despliega o pliega la lista de cambios del lanzamiento elegido. */
+  verCambios(): void {
+    const grupo = this.grupoActual();
+    if (grupo) {
+      this.alternar(grupo);
     }
   }
 

@@ -42,6 +42,7 @@ import oracle.simulacion.repository.ArchivoExcelRepository;
 import oracle.simulacion.repository.CambioParaDeshacer;
 import oracle.simulacion.repository.CargaGrupo;
 import oracle.simulacion.repository.CargaRutas;
+import oracle.simulacion.repository.DeltaChute;
 import oracle.simulacion.repository.GrupoGuardado;
 import oracle.simulacion.repository.ChuteRepository;
 import oracle.simulacion.repository.ClusterRepository;
@@ -94,6 +95,7 @@ class SimulacionFrecuenciasTest {
   @Mock private Transacciones transacciones;
 
   private SimulacionConfiguracionService servicio;
+  private SimulacionHistorialService historialServicio;
 
   @BeforeEach
   void preparar() {
@@ -113,6 +115,8 @@ class SimulacionFrecuenciasTest {
             transacciones,
             new CacheRespuestas(false, 1, 1),
             PlanoChutes.fijo(1, 3, Set.of(), Map.of()));
+    historialServicio =
+        new SimulacionHistorialService(servicio, historialRepo, lanzamientoRepo, rutaRepo, transacciones);
     lenient()
         .when(transacciones.ejecutar(any()))
         .thenAnswer(invocacion -> ((Supplier<?>) invocacion.getArgument(0)).get());
@@ -703,10 +707,73 @@ class SimulacionFrecuenciasTest {
     when(lanzamientoRepo.findTop200ByArchivoIdAndBalanceoInOrderByIdDesc(10L, List.of("LXV", "DIA")))
         .thenReturn(List.of(diarias));
 
-    var historial = servicio.historial(10L, Balanceo.LXV).datos();
+    var historial = historialServicio.historial(10L, Balanceo.LXV).datos();
 
     assertEquals("Diarias · CL1: 2 ruta(s) movida(s).", historial.lanzamientos().getFirst().mensaje());
     verify(historialRepo).countByArchivoIdAndBalanceoInAndLanzamientoIdIsNull(10L, List.of("LXV", "DIA"));
+  }
+
+  @Test
+  void elComparativoDeRutasDescuentaLosCambiosPosteriores() {
+    when(archivoRepo.findById(10L)).thenReturn(Optional.of(archivo()));
+    when(configRepo.findById(10L)).thenReturn(Optional.of(configuracion()));
+    prepararParametros(
+        List.of(parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_RUTAS)), List.of(base(1L, false)), List.of());
+    LanzamientoBalanceo rutas = new LanzamientoBalanceo();
+    rutas.setId(5L);
+    rutas.setArchivoId(10L);
+    rutas.setBalanceo("LXV");
+    rutas.setClusterId(CL1);
+    rutas.setFase("RUTAS");
+    rutas.setRutas(2);
+    when(lanzamientoRepo.findById(5L)).thenReturn(Optional.of(rutas));
+    // Hoy: CHUTE 1 con 100 bultos y CHUTE 2 con 50.
+    when(rutaRepo.cargaPorCluster(10L, CL1))
+        .thenReturn(List.of(carga("LXV", CL1, 1L, "100"), carga("LXV", CL1, 2L, "50")));
+    when(historialRepo.ultimoCambio(5L)).thenReturn(40L);
+    // El lanzamiento pasó 30 bultos del 1 al 2; después, a mano, 10 volvieron al 1.
+    when(historialRepo.deltasDeLanzamiento(10L, CL1, 5L, 40L, List.of("LXV", "DIA")))
+        .thenReturn(List.of(delta(1L, "-30", "10"), delta(2L, "30", "-10")));
+
+    var comparativo = historialServicio.comparativoLanzamiento(10L, Balanceo.LXV, 5L).datos();
+
+    assertEquals(30, comparativo.bultosMovidos());
+    assertEquals(2, comparativo.rutas());
+    var uno = comparativo.chutes().stream().filter((c) -> c.chuteId() == 1L).findFirst().orElseThrow();
+    var dos = comparativo.chutes().stream().filter((c) -> c.chuteId() == 2L).findFirst().orElseThrow();
+    // Después del lanzamiento: 100 − 10 y 50 + 10; antes: 90 + 30 y 60 − 30.
+    assertEquals(120, uno.antes());
+    assertEquals(90, uno.despues());
+    assertEquals(30, dos.antes());
+    assertEquals(60, dos.despues());
+  }
+
+  @Test
+  void elComparativoDeOperariosUsaLoQueGuardaElHistorial() {
+    when(archivoRepo.findById(10L)).thenReturn(Optional.of(archivo()));
+    when(configRepo.findById(10L)).thenReturn(Optional.of(configuracion()));
+    prepararParametros(
+        List.of(parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_RUTAS)), List.of(base(1L, false)), List.of());
+    LanzamientoBalanceo operarios = new LanzamientoBalanceo();
+    operarios.setId(6L);
+    operarios.setArchivoId(10L);
+    operarios.setBalanceo("LXV");
+    operarios.setClusterId(CL1);
+    operarios.setFase("OPERARIOS");
+    when(lanzamientoRepo.findById(6L)).thenReturn(Optional.of(operarios));
+    HistorialBalanceo asignado = new HistorialBalanceo();
+    asignado.setChuteModificadoId(1L);
+    asignado.setOperariosOrigen(0);
+    asignado.setOperariosDestino(3);
+    when(historialRepo.findByLanzamientoIdAndTipoAccion(6L, HistorialBalanceo.ACCION_ASIGNAR_OPERARIOS))
+        .thenReturn(List.of(asignado));
+
+    var chutes = historialServicio.comparativoLanzamiento(10L, Balanceo.LXV, 6L).datos().chutes();
+
+    assertEquals(1, chutes.size());
+    assertEquals(0, chutes.getFirst().antes());
+    assertEquals(3, chutes.getFirst().despues());
+    verify(historialRepo, never()).deltasDeLanzamiento(any(), any(), any(), any(), any());
   }
 
   @Test
@@ -723,7 +790,7 @@ class SimulacionFrecuenciasTest {
 
     assertThrows(
         RecursoNoEncontradoException.class,
-        () -> servicio.historialCambios(10L, Balanceo.MJS, 5L, 1, 25));
+        () -> historialServicio.historialCambios(10L, Balanceo.MJS, 5L, 1, 25));
   }
 
   // ---------------- Ayudas ----------------
@@ -811,6 +878,22 @@ class SimulacionFrecuenciasTest {
 
       public BigDecimal getBultos() {
         return new BigDecimal(bultos);
+      }
+    };
+  }
+
+  private static DeltaChute delta(Long chuteId, String delta, String posterior) {
+    return new DeltaChute() {
+      public Long getChuteId() {
+        return chuteId;
+      }
+
+      public BigDecimal getDelta() {
+        return new BigDecimal(delta);
+      }
+
+      public BigDecimal getDeltaPosterior() {
+        return new BigDecimal(posterior);
       }
     };
   }

@@ -1,196 +1,43 @@
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  computed,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+  untracked,
+} from '@angular/core';
 import { Icon } from '../../../../../../shared/ui/icon/icon';
 import { Modal } from '../../../../../../shared/ui/modal/modal';
-import { colorCluster } from '../../../simulacion-formato';
+import { IconoSim, NombreIconoSim, estadosCarga } from '../../../icono-sim/icono-sim';
+import { DETALLES } from './guia-balanceo.textos';
 
-interface GrupoDetalle {
-  titulo: string;
-  items: readonly { icono: string; termino: string; texto: string }[];
-}
+/** Cajas por chute del ejemplo (cada caja, 40 bultos): desparejo a propósito. */
+const CAJAS_INICIO: readonly number[] = [9, 2, 7, 1, 8, 3];
+const BULTOS_POR_CAJA = 40;
+/** Alto de una caja con su separación (px): la silueta del antes usa la misma escala. */
+const ALTO_CAJA = 21;
 
-/** Barras de ejemplo (alto en %) para dibujar cada paso. */
-const RUTAS_ANTES = [92, 34, 58];
-const RUTAS_DESPUES = [62, 60, 64];
-/** Chutes del ejemplo de operarios: carga (alto en %) y gente asignada. */
-const OPERARIOS = [
-  { carga: 90, operarios: 4 },
-  { carga: 50, operarios: 2 },
-  { carga: 45, operarios: 2 },
+/** Los tres pasos, con una frase corta cada uno. */
+const PASOS: readonly { icono: NombreIconoSim; titulo: string; texto: string }[] = [
+  { icono: 'caja', titulo: 'Reparte', texto: 'Cajas al chute vacío' },
+  { icono: 'operario', titulo: 'Asigna', texto: 'Operarios al más lento' },
+  { icono: 'reloj', titulo: 'Cierra', texto: 'Antes del límite' },
 ];
 
-/** Respuestas cortas a las dudas de la pantalla, agrupadas por tema. */
-const DETALLES: readonly GrupoDetalle[] = [
-  {
-    titulo: 'Frecuencias y balanceos',
-    items: [
-      {
-        icono: 'reloj',
-        termino: '1 · Diarias',
-        texto:
-          'Primero, en cada cluster: eliges el rango de chutes y cada grupo recibe su tramo en orden natural (1, 2, 3…). Desde ahí las diarias quedan fijas para el automático.',
-      },
-      {
-        icono: 'layers',
-        termino: '2 · L-X-V y M-J-S',
-        texto:
-          'En cualquier orden. Cada día reparte solo sus rutas, dentro del rango de las diarias y con ellas como carga fija.',
-      },
-      {
-        icono: 'usuarios',
-        termino: '3 · Operarios · 4 · Cerrar',
-        texto:
-          'Una sola cantidad de operarios, la misma para los dos días. Cerrar cierra Diarias, L-X-V y M-J-S a la vez.',
-      },
-      {
-        icono: 'refresh',
-        termino: 'Rehacer las diarias',
-        texto:
-          'Si ya balanceaste un día, primero restablece el cluster: deshace sus tres balanceos. «Restablecer todo» devuelve el registro entero a la proyección.',
-      },
-      {
-        icono: 'flecha',
-        termino: 'A mano',
-        texto:
-          'Todo se mueve, también las diarias. Mover una diaria la cambia en los dos días.',
-      },
-      {
-        icono: 'ver',
-        termino: 'Filtros del panel',
-        texto:
-          'L-X-V, M-J-S (los dos juntos = Ambos, apilados) y Diarias (sola). Los totales siguen el filtro: en Ambos las diarias cuentan una vez y los operarios son el máximo de los dos días.',
-      },
-      {
-        icono: 'paquete',
-        termino: 'Buff',
-        texto:
-          'Global: se elige antes del primer balanceo. En cada paso, la ruta más pesada va a un chute con buff (etiqueta BUFF en su cabecera).',
-      },
-      {
-        icono: 'info',
-        termino: 'Columna FRECUENCIA',
-        texto:
-          'Días L, M, X, J, V, S separados por guion (L-X-V, M-J-S, L-X, V…) o DIARIA. Días mezclados (p. ej. L-M) cuentan como diaria.',
-      },
-    ],
-  },
-  {
-    titulo: 'Parámetros',
-    items: [
-      {
-        icono: 'usuarios',
-        termino: 'Operarios de la ola',
-        texto:
-          'Cada cluster ingresa una cantidad (mínimo uno por chute con carga), la misma para L-X-V y M-J-S; la próxima vez se propone la última que usó. La gente de la ola anterior se queda en su chute si el cierre no empeora.',
-      },
-      {
-        icono: 'tendencia',
-        termino: 'Velocidad',
-        texto: 'Bultos por hora que mueve cada operario.',
-      },
-      {
-        icono: 'layers',
-        termino: 'Máximo por chute',
-        texto:
-          'Tope de operarios en un mismo chute. Vacío: un chute puede recibir a toda la ola. Se bloquea cuando un cluster ya se cerró: reábrelo para cambiarlo.',
-      },
-      {
-        icono: 'lock',
-        termino: 'Chutes del 1 al 33',
-        texto:
-          'Siempre se ven del CHUTE 1 al 33, aunque el Excel no los traiga. El 19, 20 y 21 están bloqueados: no se muestran, el Excel no puede traer rutas en ellos y un rango que los cruza (p. ej. 18 → 22) reparte solo en los disponibles.',
-      },
-      {
-        icono: 'reloj',
-        termino: 'Límite de horas',
-        texto: 'Por cluster. La barra muestra cuánto usa: verde cumple, rojo excede.',
-      },
-    ],
-  },
-  {
-    titulo: 'Grupos',
-    items: [
-      {
-        icono: 'nodos',
-        termino: 'Qué es un grupo',
-        texto:
-          'Columna GRUPO del Excel: rutas de un mismo cluster que se balancean juntas. Cada ruta tiene un solo grupo y no cambia.',
-      },
-      {
-        icono: 'layers',
-        termino: 'Tramos',
-        texto:
-          'Al balancear las diarias eliges el rango y los grupos lo ocupan en orden natural: cada uno, chutes seguidos según sus bultos (al menos uno, nunca más que sus rutas). Los días usan esos mismos tramos.',
-      },
-      {
-        icono: 'control',
-        termino: 'Balanceo por grupo',
-        texto:
-          'Cada grupo se iguala solo dentro de su tramo: el balanceo nunca junta rutas de grupos distintos en un chute. A mano sí puedes moverlas a cualquier chute.',
-      },
-    ],
-  },
-  {
-    titulo: 'Mover rutas a mano',
-    items: [
-      {
-        icono: 'flecha',
-        termino: 'Cambiar de chute',
-        texto: 'Arrastra la ruta con ⋮⋮ a otra columna del mismo cluster.',
-      },
-      {
-        icono: 'area',
-        termino: 'Cambiar de cluster',
-        texto:
-          'Arrástrala al cuadro de otro cluster no cerrado, antes o después de balancear. Los destinos no permitidos se marcan en rojo.',
-      },
-      {
-        icono: 'ver',
-        termino: 'Rutas movidas',
-        texto:
-          'Las que ya no están donde venían en el Excel se ven rayadas; «← CLx» indica su cluster original.',
-      },
-      {
-        icono: 'usuarios',
-        termino: 'Después de mover',
-        texto: 'Si los clusters afectados ya tenían operarios, se borran: vuelve a balancear operarios.',
-      },
-      {
-        icono: 'control',
-        termino: 'Volver a balancear',
-        texto:
-          'Con el cluster en curso ya balanceado, reparte de nuevo sus rutas desde como están hoy. Si tiene varios grupos, una ruta que moviste a mano al tramo de otro grupo vuelve al de su grupo (el modal te dice cuántas entrarán).',
-      },
-    ],
-  },
-  {
-    titulo: 'Reglas',
-    items: [
-      {
-        icono: 'lock',
-        termino: 'Cluster cerrado',
-        texto:
-          'Se cierra en los tres balanceos a la vez y ya no cambia. Al reabrirlo, los clusters que se trabajaron después vuelven a la proyección.',
-      },
-      {
-        icono: 'refresh',
-        termino: 'Restablecer',
-        texto:
-          'El cluster: deshace sus tres balanceos (Diarias, L-X-V y M-J-S), lo que moviste a mano mientras estuvo en curso y los operarios de su ola. «Restablecer todo»: el registro entero.',
-      },
-      {
-        icono: 'dashboard',
-        termino: 'Al terminar',
-        texto: 'Cerrado el último cluster, el resumen queda en el dashboard.',
-      },
-    ],
-  },
-];
-
-/** Guía visual del balanceo: olas en orden, los tres pasos y las reglas. */
+/**
+ * Guía visual del balanceo: seis chutes de ejemplo como torres de cajas con su carita. Al abrir,
+ * las cajas pasan del chute lleno al vacío (queda la silueta de cómo estaba), llegan los
+ * operarios y se ve el cierre; abajo, los tres pasos se completan. Con «reducir movimiento» se
+ * muestra el final directamente. Las reglas detalladas quedan plegadas al final.
+ */
 @Component({
   selector: 'app-simulacion-guia-balanceo',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, Modal],
+  imports: [Icon, Modal, IconoSim],
   templateUrl: './guia-balanceo.html',
   styleUrl: './guia-balanceo.scss',
 })
@@ -198,17 +45,122 @@ export class SimulacionGuiaBalanceo {
   readonly abierto = input(false);
   readonly cerrar = output<void>();
 
-  readonly olas = ['CL1', 'CL2', 'CL3'].map((nombre, indice) => ({
-    nombre,
-    color: colorCluster(indice),
-  }));
-  readonly rutasAntes = RUTAS_ANTES;
-  readonly rutasDespues = RUTAS_DESPUES;
-  /** Lo que la pantalla no explica: parámetros, arrastre manual y reglas. */
+  /** Lo que la animación no explica: parámetros, arrastre manual y reglas. */
   readonly detalles = DETALLES;
+  readonly pasos = PASOS;
+  readonly bultosPorCaja = BULTOS_POR_CAJA;
+  readonly altoCaja = ALTO_CAJA;
 
-  readonly chutes = OPERARIOS.map((chute) => ({
-    ...chute,
-    personas: Array.from({ length: chute.operarios }, (_, i) => i),
-  }));
+  readonly cajas = signal<number[]>([...CAJAS_INICIO]);
+  readonly operarios = signal<number[]>(CAJAS_INICIO.map(() => 0));
+  /** -1 = aún no empieza; 0, 1, 2 = paso en curso; 3 = terminado. */
+  readonly paso = signal(-1);
+  readonly movidas = signal(0);
+
+  readonly chutes = computed(() => {
+    const cajas = this.cajas();
+    const estados = estadosCarga(cajas);
+    const operarios = this.operarios();
+    return cajas.map((n, i) => ({
+      numero: i + 1,
+      cajas: Array.from({ length: n }, (_, k) => k),
+      operarios: Array.from({ length: operarios[i] }, (_, k) => k),
+      estado: estados[i] ?? 'medio',
+      inicio: CAJAS_INICIO[i],
+      diferencia: (n - CAJAS_INICIO[i]) * BULTOS_POR_CAJA,
+      bultos: n * BULTOS_POR_CAJA,
+    }));
+  });
+
+  /** Avance de la línea de pasos (0 a 100 % entre el primero y el último). */
+  readonly avance = computed(() => (Math.max(0, Math.min(this.paso(), 2)) / 2) * 100);
+
+  private temporizadores: ReturnType<typeof setTimeout>[] = [];
+  private readonly sinMovimiento =
+    typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  constructor() {
+    // Al abrir corre sola; al cerrar se detiene y vuelve al inicio.
+    effect(() => {
+      const abierto = this.abierto();
+      untracked(() => (abierto ? this.balancear() : this.reiniciar()));
+    });
+    inject(DestroyRef).onDestroy(() => this.detener());
+  }
+
+  /** Reproduce el ejemplo desde el principio. */
+  balancear(): void {
+    this.reiniciar();
+    if (this.sinMovimiento) {
+      this.irAlFinal();
+      return;
+    }
+    this.paso.set(0);
+    this.esperar(400, () => this.moverCaja());
+  }
+
+  private moverCaja(): void {
+    const cajas = [...this.cajas()];
+    const mayor = cajas.indexOf(Math.max(...cajas));
+    const menor = cajas.indexOf(Math.min(...cajas));
+    if (cajas[mayor] - cajas[menor] <= 1) {
+      this.esperar(600, () => this.asignar(0));
+      return;
+    }
+    cajas[mayor]--;
+    cajas[menor]++;
+    this.cajas.set(cajas);
+    this.movidas.update((n) => n + 1);
+    this.esperar(420, () => this.moverCaja());
+  }
+
+  private asignar(chute: number): void {
+    this.paso.set(1);
+    if (chute >= CAJAS_INICIO.length) {
+      this.esperar(600, () => {
+        this.paso.set(2);
+        this.esperar(900, () => this.paso.set(3));
+      });
+      return;
+    }
+    this.operarios.update((o) => o.map((n, i) => (i === chute ? 1 : n)));
+    this.esperar(200, () => this.asignar(chute + 1));
+  }
+
+  /** El resultado sin animación: cajas parejas, un operario por chute y los pasos completos. */
+  private irAlFinal(): void {
+    const cajas = [...CAJAS_INICIO];
+    let movidas = 0;
+    for (;;) {
+      const mayor = cajas.indexOf(Math.max(...cajas));
+      const menor = cajas.indexOf(Math.min(...cajas));
+      if (cajas[mayor] - cajas[menor] <= 1) {
+        break;
+      }
+      cajas[mayor]--;
+      cajas[menor]++;
+      movidas++;
+    }
+    this.cajas.set(cajas);
+    this.movidas.set(movidas);
+    this.operarios.set(cajas.map(() => 1));
+    this.paso.set(3);
+  }
+
+  private reiniciar(): void {
+    this.detener();
+    this.cajas.set([...CAJAS_INICIO]);
+    this.operarios.set(CAJAS_INICIO.map(() => 0));
+    this.movidas.set(0);
+    this.paso.set(-1);
+  }
+
+  private esperar(ms: number, accion: () => void): void {
+    this.temporizadores.push(setTimeout(accion, ms));
+  }
+
+  private detener(): void {
+    this.temporizadores.forEach(clearTimeout);
+    this.temporizadores = [];
+  }
 }

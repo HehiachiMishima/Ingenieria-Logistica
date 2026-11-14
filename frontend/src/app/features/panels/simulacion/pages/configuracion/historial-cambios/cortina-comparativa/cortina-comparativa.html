@@ -1,0 +1,31 @@
+<div class="cc">
+  <div
+    #escena
+    class="cc-escena"
+    [style.--chutes]="chutes().length"
+    role="slider"
+    tabindex="0"
+    aria-label="Comparar antes y después"
+    aria-valuetext="Antes a la izquierda del borde, después a la derecha"
+    aria-valuemin="0"
+    aria-valuemax="100"
+    [attr.aria-valuenow]="posicionRedonda()"
+    (click)="llevar($event, escena)"
+    (keydown)="tecla($event)"
+  >
+    <app-capa-cortina class="cc-capa--despues" [chutes]="chutes()" lado="despues" [operarios]="operarios()" />
+    <app-capa-cortina class="cc-capa--antes" [chutes]="chutes()" lado="antes" [operarios]="operarios()"
+      [style.clip-path]="recorte()" />
+    <span class="cc-etiqueta cc-etiqueta--antes"><app-icono-sim nombre="cara" estado="mal" [tamano]="16" /> Antes</span>
+    <span class="cc-etiqueta cc-etiqueta--despues"><app-icono-sim nombre="cara" estado="bien" [tamano]="16" /> Después</span>
+    <span
+      class="cc-manija"
+      [style.left.%]="posicion()"
+      (pointerdown)="tomar($event)"
+      (pointermove)="mover($event, escena)"
+      (click)="$event.stopPropagation()"
+    >
+      <span class="cc-manija__boton" aria-hidden="true">‹ ›</span>
+    </span>
+  </div>
+</div>

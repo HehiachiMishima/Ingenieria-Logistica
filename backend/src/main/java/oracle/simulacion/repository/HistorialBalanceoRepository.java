@@ -26,6 +26,59 @@ public interface HistorialBalanceoRepository extends JpaRepository<HistorialBala
   long countByArchivoIdAndBalanceoInAndLanzamientoIdIsNull(
       Long archivoId, Collection<String> balanceos);
 
+  /** Último cambio del lanzamiento: lo que viene después es posterior a él (null si no cambió nada). */
+  @Query("SELECT MAX(h.id) FROM HistorialBalanceo h WHERE h.lanzamientoId = :lanzamientoId")
+  Long ultimoCambio(@Param("lanzamientoId") Long lanzamientoId);
+
+  /** Operarios por chute de un lanzamiento de la fase OPERARIOS (antes → después). */
+  List<HistorialBalanceo> findByLanzamientoIdAndTipoAccion(Long lanzamientoId, String tipoAccion);
+
+  /**
+   * Bultos que entraron menos los que salieron, por chute, de las rutas del cluster: los del
+   * lanzamiento (idx_historial_lanzamiento) y los de los cambios posteriores a él en los
+   * balanceos que se ven (idx_historial_archivo, por id). Con la carga de hoy, dan el antes y el
+   * después del lanzamiento sin guardar fotos de la carga.
+   */
+  @Query(
+      value =
+          """
+          WITH cambios AS (
+            SELECT h.chute_origen_id AS origen, h.chute_destino_id AS destino,
+                   r.total_bultos AS bultos, TRUE AS del_lanzamiento
+              FROM historial_balanceo h
+              JOIN rutas_proyeccion r ON r.id = h.ruta_id
+             WHERE h.lanzamiento_id = :lanzamientoId
+               AND h.tipo_accion = 'MOVER_RUTA'
+               AND r.cluster_id = :clusterId
+            UNION ALL
+            SELECT h.chute_origen_id, h.chute_destino_id, r.total_bultos, FALSE
+              FROM historial_balanceo h
+              JOIN rutas_proyeccion r ON r.id = h.ruta_id
+             WHERE h.archivo_id = :archivoId
+               AND h.id > :desde
+               AND h.balanceo IN (:balanceos)
+               AND h.tipo_accion = 'MOVER_RUTA'
+               AND r.cluster_id = :clusterId
+          )
+          SELECT x.chute_id AS chuteId,
+                 COALESCE(SUM(CASE WHEN x.del_lanzamiento THEN x.bultos ELSE 0 END), 0) AS delta,
+                 COALESCE(SUM(CASE WHEN x.del_lanzamiento THEN 0 ELSE x.bultos END), 0) AS deltaPosterior
+            FROM (
+              SELECT destino AS chute_id, bultos, del_lanzamiento FROM cambios
+              UNION ALL
+              SELECT origen, -bultos, del_lanzamiento FROM cambios
+            ) x
+           WHERE x.chute_id IS NOT NULL
+           GROUP BY x.chute_id
+          """,
+      nativeQuery = true)
+  List<DeltaChute> deltasDeLanzamiento(
+      @Param("archivoId") Long archivoId,
+      @Param("clusterId") Long clusterId,
+      @Param("lanzamientoId") Long lanzamientoId,
+      @Param("desde") Long desde,
+      @Param("balanceos") Collection<String> balanceos);
+
   /** Todo el historial del registro, en una sola sentencia (restablecer todo). */
   @Modifying
   @Query("DELETE FROM HistorialBalanceo h WHERE h.archivoId = :archivoId")

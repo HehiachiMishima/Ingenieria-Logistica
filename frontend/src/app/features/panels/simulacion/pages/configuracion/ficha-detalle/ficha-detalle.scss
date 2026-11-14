@@ -1,7 +1,6 @@
 /*
- * Fichas flotantes de la matriz: la de una ruta y la de un cluster. Archivo aparte del
- * componente (el principal pasaba el presupuesto de estilos). Iconos a color iguales a los de
- * la tabla de totales; todo con los tokens del tema (claro y oscuro).
+ * Fichas flotantes de la matriz: la de una ruta y la de un cluster. Iconos a color iguales a
+ * los de la tabla de totales; todo con los tokens del tema (claro y oscuro).
  */
 
 .detalle-pop {
@@ -96,11 +95,6 @@
   &--caja {
     background: color-mix(in srgb, var(--pop-color, var(--accent)) 16%, var(--surface));
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pop-color, var(--accent)) 35%, transparent);
-
-    svg {
-      width: 26px;
-      height: 26px;
-    }
   }
 }
 
@@ -311,11 +305,6 @@
     background: var(--surface-2);
     border-radius: 9px;
 
-    svg {
-      width: 18px;
-      height: 18px;
-    }
-
     &--mono {
       color: var(--pop-color, var(--accent));
       background: color-mix(in srgb, var(--pop-color, var(--accent)) 14%, var(--surface));
@@ -341,11 +330,6 @@
     min-width: 0;
     padding: 4px 2px;
     text-align: center;
-
-    svg {
-      width: 16px;
-      height: 16px;
-    }
   }
 
   dt {
@@ -444,11 +428,6 @@
   &__icono {
     display: inline-flex;
     flex: none;
-
-    svg {
-      width: 20px;
-      height: 20px;
-    }
   }
 }
 
@@ -821,5 +800,32 @@
   .detalle-pop,
   .ficha-pasos__punto {
     animation: none !important;
+  }
+}
+
+/* Tipo con el aspecto de `ui-badge`. */
+.matriz-ruta__tipo {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  font-size: 0.64rem;
+  font-weight: 700;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  user-select: none;
+
+  &--b2b {
+    color: var(--info);
+    background: var(--info-soft);
+    border-color: color-mix(in srgb, var(--info) 22%, var(--border));
+  }
+
+  &--b2c {
+    color: var(--success);
+    background: var(--success-soft);
+    border-color: color-mix(in srgb, var(--success) 22%, var(--border));
   }
 }

@@ -1,0 +1,247 @@
+<!-- Ficha flotante de una ruta o de un cluster (hoja inferior en celular). -->
+@let r = ruta();
+@let k = cluster();
+@let pos = posicion();
+<div class="detalle-pop" [class.detalle-pop--hoja]="pos.hoja" role="dialog"
+  [attr.aria-label]="r ? 'Detalle de la ruta ' + r.ruta.codigoRuta : 'Detalle de ' + k!.c.nombre"
+  [style.left.px]="pos.left" [style.top.px]="pos.top" [style.bottom.px]="pos.bottom"
+  [style.max-height.px]="pos.maxAlto" [style.--pop-color]="r ? r.color : k!.c.color">
+  @if (r) {
+  <!-- ============ Ruta ============ -->
+  <header class="ficha-cabeza">
+    <span class="ficha-avatar ficha-avatar--caja" aria-hidden="true">
+      <app-icono-sim nombre="caja" [tamano]="26" />
+    </span>
+    <div class="ficha-cabeza__titulo">
+      <span class="ficha-kicker">Ruta</span>
+      <strong>{{ r.ruta.codigoRuta }}</strong>
+    </div>
+    <span class="matriz-ruta__tipo" [class.matriz-ruta__tipo--b2b]="r.ruta.tipo === 'B2B'"
+      [class.matriz-ruta__tipo--b2c]="r.ruta.tipo === 'B2C'">{{ r.ruta.tipo }}</span>
+    <button type="button" class="ficha-cerrar" aria-label="Cerrar detalle" (click)="cerrar.emit()">
+      <ui-icon name="close" [size]="16" />
+    </button>
+  </header>
+
+  <!-- Frecuencia y dónde está: cluster · grupo → chute. -->
+  <div class="ficha-chips">
+    <span class="ficha-frecuencia" [attr.data-frecuencia]="r.frecuencia.tipo" [title]="r.frecuencia.titulo">
+      <ui-icon name="calendario" [size]="12" />
+      {{ r.frecuencia.tipo === 'D' ? 'Diaria · 6 días' : r.frecuencia.tipo === 'MJS' ? 'M-J-S' : 'L-X-V' }}
+    </span>
+    <span class="ficha-chip"><span class="ficha-chip__color" aria-hidden="true"></span>{{ r.ruta.cluster }}</span>
+    @if (r.ruta.grupo) {
+    <span class="ficha-chip ficha-chip--grupo" [style.--g]="r.colorGrupo">
+      <span class="ficha-chip__grupo">{{ r.ruta.grupo }}</span>Grupo
+    </span>
+    }
+    <ui-icon class="ficha-chips__flecha" name="flecha" [size]="12" />
+    <span class="ficha-chip"><ui-icon name="almacen" [size]="12" />{{ r.ruta.chute }}</span>
+  </div>
+
+  <dl class="ficha-datos">
+    <div class="ficha-dato ficha-dato--destacado">
+      <span class="ficha-dato__icono"><app-icono-sim nombre="bultos" [tamano]="18" /></span>
+      <dt>Bultos</dt>
+      <dd>{{ r.ruta.totalBultos | entero }}</dd>
+    </div>
+    <div class="ficha-dato">
+      <span class="ficha-dato__icono"><app-icono-sim nombre="unidades" [tamano]="18" /></span>
+      <dt>Unidades</dt>
+      <dd>{{ r.ruta.totalUnidades | entero }}</dd>
+    </div>
+    <div class="ficha-dato">
+      <span class="ficha-dato__icono"><app-icono-sim nombre="lineas" [tamano]="18" /></span>
+      <dt>Líneas</dt>
+      <dd>{{ r.ruta.totalLineas | entero }}</dd>
+    </div>
+    <div class="ficha-dato">
+      <span class="ficha-dato__icono"><app-icono-sim nombre="cod" [tamano]="18" /></span>
+      <dt>Locales (COD)</dt>
+      <dd>{{ r.ruta.conteoCod | entero }}</dd>
+    </div>
+  </dl>
+
+  @if (r.parte !== null) {
+  <div class="ficha-barra" [attr.aria-label]="r.parte + ' % de los bultos de su chute'">
+    <div class="ficha-barra__texto">
+      <span>De los bultos de su chute</span>
+      <strong>{{ r.parte }} %</strong>
+    </div>
+    <span class="ficha-barra__pista"><span [style.width.%]="r.parte"></span></span>
+  </div>
+  }
+
+  @if (r.operarios !== null) {
+  <p class="ficha-nota ficha-nota--operarios">
+    <span class="ficha-nota__icono"><app-icono-sim nombre="operarios" [tamano]="20" /></span>
+    <span><strong>{{ r.operarios }}</strong> operario(s) en su chute</span>
+  </p>
+  }
+
+  @if (r.movida) {
+  <!-- Recorrido: de dónde venía en el Excel a dónde está hoy. -->
+  <div class="ficha-recorrido" aria-label="Ruta movida">
+    <span class="ficha-recorrido__punto">
+      <small>Excel</small>
+      <strong>{{ r.ruta.clusterOriginal }} · {{ r.ruta.chuteOriginal }}</strong>
+    </span>
+    <ui-icon name="flecha" [size]="14" />
+    <span class="ficha-recorrido__punto ficha-recorrido__punto--hoy">
+      <small>Hoy</small>
+      <strong>{{ r.ruta.cluster }} · {{ r.ruta.chute }}</strong>
+    </span>
+  </div>
+  }
+
+  @if (r.aviso) {
+  <p class="ficha-pie" [class.ficha-pie--cerrado]="r.cerrado">
+    <ui-icon [name]="r.cerrado ? 'lock' : 'info'" [size]="13" /> {{ r.aviso }}
+  </p>
+  }
+  } @else if (k) {
+  <!-- ============ Cluster ============ -->
+  @let c = k.c;
+  <header class="ficha-cabeza">
+    <span class="ficha-avatar" aria-hidden="true">{{ k.iniciales }}</span>
+    <div class="ficha-cabeza__titulo">
+      <span class="ficha-kicker">Cluster</span>
+      <strong>{{ c.nombre }}</strong>
+    </div>
+    <span class="ficha-estado" [class.ficha-estado--cerrado]="c.cerrado" [class.ficha-estado--curso]="c.enCurso">
+      <ui-icon [name]="k.iconoEstado" [size]="12" />{{ k.estado }}
+    </span>
+    <button type="button" class="ficha-cerrar" aria-label="Cerrar detalle" (click)="cerrar.emit()">
+      <ui-icon name="close" [size]="16" />
+    </button>
+  </header>
+
+  <!-- Recorrido de 5 pasos: hecho, el que toca u omitido (día sin rutas propias). -->
+  <ol class="ficha-pasos" aria-label="Avance">
+    @for (p of k.pasos; track p.clave) {
+    <li class="ficha-pasos__paso" [attr.data-estado]="p.estado" [title]="p.titulo">
+      <span class="ficha-pasos__punto">
+        @switch (p.estado) {
+        @case ('hecho') { <ui-icon name="check" [size]="11" /> }
+        @case ('omitido') { – }
+        @default {
+        @switch (p.clave) {
+        @case ('OPERARIOS') { <ui-icon name="usuarios" [size]="11" /> }
+        @case ('CERRAR') { <ui-icon name="lock" [size]="10" /> }
+        @default { {{ p.corta }} }
+        }
+        }
+        }
+      </span>
+      <span class="ficha-pasos__texto">{{ p.etiqueta }}</span>
+    </li>
+    }
+  </ol>
+
+  <span class="ficha-vista"><ui-icon name="ver" [size]="12" /> Mostrando {{ k.etiquetaVista }}</span>
+
+  <dl class="ficha-datos">
+    <div class="ficha-dato ficha-dato--destacado">
+      <span class="ficha-dato__icono ficha-dato__icono--mono"><ui-icon name="truck" [size]="15" /></span>
+      <dt>Rutas</dt>
+      <dd>{{ (k.m?.rutas ?? 0) | entero }}</dd>
+    </div>
+    <div class="ficha-dato ficha-dato--destacado">
+      <span class="ficha-dato__icono"><app-icono-sim nombre="bultos" [tamano]="18" /></span>
+      <dt>Bultos</dt>
+      <dd>{{ (k.m?.bultos ?? 0) | entero }}</dd>
+    </div>
+  </dl>
+  <dl class="ficha-mini">
+    <div [title]="'Líneas: ' + ((k.m?.lineas ?? 0) | entero)">
+      <app-icono-sim nombre="lineas" [tamano]="16" />
+      <dt>Líneas</dt><dd>{{ (k.m?.lineas ?? 0) | entero }}</dd>
+    </div>
+    <div [title]="'Unidades: ' + ((k.m?.unidades ?? 0) | entero)">
+      <app-icono-sim nombre="unidades" [tamano]="16" />
+      <dt>Unidades</dt><dd>{{ (k.m?.unidades ?? 0) | entero }}</dd>
+    </div>
+    <div [title]="'Locales (COD): ' + ((k.m?.cod ?? 0) | entero)">
+      <app-icono-sim nombre="cod" [tamano]="16" />
+      <dt>COD</dt><dd>{{ (k.m?.cod ?? 0) | entero }}</dd>
+    </div>
+    <div [title]="'Chutes: ' + (c.chutes | entero)">
+      <ui-icon class="ficha-mini__mono" name="almacen" [size]="14" />
+      <dt>Chutes</dt><dd>{{ c.chutes | entero }}</dd>
+    </div>
+    @if (k.operarios !== null) {
+    <div [title]="'Operarios: ' + (k.operarios | entero)">
+      <app-icono-sim nombre="operarios" [tamano]="16" />
+      <dt>Operarios</dt><dd>{{ k.operarios | entero }}</dd>
+    </div>
+    }
+  </dl>
+
+  @if (!k.ambos && c.balanceado && c.dispersion !== null) {
+  <p class="ficha-indicador" [class.ficha-indicador--mal]="c.dispersion > 10">
+    <ui-icon name="tendencia" [size]="13" />
+    <span>Diferencia de bultos entre sus chutes</span>
+    <strong>{{ c.dispersion }} %</strong>
+  </p>
+  }
+
+  <!-- Un cierre por día con operarios (las diarias no tienen cierre propio). -->
+  @if (k.cierres.length > 0) {
+  <section class="ficha-seccion">
+    <h3 class="ficha-seccion__titulo"><ui-icon name="reloj" [size]="13" /> Cierre por día</h3>
+    @for (dia of k.cierres; track dia.etiqueta) {
+    @let medible = dia.limite > 0 && dia.uso !== null;
+    <div class="ficha-cierre" [class.ficha-cierre--fuera]="medible && !dia.cumple" [class.ficha-cierre--ok]="medible && dia.cumple">
+      <div class="ficha-cierre__fila">
+        <strong class="ficha-cierre__dia">{{ dia.etiqueta }}</strong>
+        <span class="ficha-cierre__horas">{{ dia.tiempo | horas }}@if (dia.limite > 0) { <small> de {{ dia.limite | horas }}</small> }</span>
+        @if (medible) {
+        <span class="ficha-cierre__veredicto">
+          <ui-icon [name]="dia.cumple ? 'checkCircleFilled' : 'xCircle'" [size]="13" />
+          {{ dia.cumple ? 'Cumple' : 'Fuera por ' + (dia.exceso | horas) }}
+        </span>
+        }
+      </div>
+      @if (medible) {
+      <span class="ficha-barra__pista"><span [style.width.%]="dia.uso"></span></span>
+      }
+    </div>
+    }
+  </section>
+  }
+
+  @if (!k.ambos && c.previo && c.siguen > 0) {
+  <p class="ficha-nota ficha-nota--operarios">
+    <span class="ficha-nota__icono"><app-icono-sim nombre="operarios" [tamano]="20" /></span>
+    <span><strong>{{ c.siguen }}</strong> operario(s) siguen en su chute desde {{ c.previo }}</span>
+  </p>
+  }
+
+  @if (k.grupos.length > 0) {
+  <section class="ficha-seccion">
+    <h3 class="ficha-seccion__titulo"><ui-icon name="layers" [size]="13" /> {{ k.grupos.length > 1 ? 'Grupos y sus tramos' : 'Grupo' }}</h3>
+    <ol class="ficha-grupos">
+      @for (g of k.grupos; track g.nombre) {
+      <li class="ficha-grupo" [style.--g]="g.color">
+        <span class="ficha-grupo__nombre" [title]="g.nombre">{{ g.nombre }}</span>
+        <span class="ficha-grupo__tramo">
+          @if (g.chuteDesde) {
+          {{ g.chuteDesde }}@if (g.chuteHastaId !== g.chuteDesdeId) { → {{ g.chuteHasta }} }
+          } @else if (k.grupos.length === 1) {
+          <!-- Un solo grupo balanceado sin rango usa todos los chutes del cluster: no tiene tramo propio. -->
+          Todos sus chutes
+          } @else {
+          <span class="ficha-grupo__alerta"><ui-icon name="alertTriangle" [size]="12" /> Sin tramo</span>
+          }
+        </span>
+        <span class="ficha-grupo__rutas">{{ g.rutas | entero }} ruta(s)</span>
+        @if (g.franja; as f) {
+        <span class="ficha-grupo__franja" aria-hidden="true"><span [style.left.%]="f.inicio" [style.width.%]="f.ancho"></span></span>
+        }
+      </li>
+      }
+    </ol>
+  </section>
+  }
+  }
+</div>

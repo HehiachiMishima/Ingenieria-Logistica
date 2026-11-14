@@ -69,6 +69,22 @@ public interface RutaProyeccionRepository
       """)
   List<CargaRutas> cargaPorArchivo(@Param("archivoId") Long archivoId);
 
+  /** La misma carga, de un solo cluster (comparativo de un lanzamiento): idx_rutas_archivo_cluster. */
+  @Query("""
+      SELECT r.clusterId AS clusterId,
+             r.chuteId AS chuteId,
+             COUNT(r) AS rutas,
+             COALESCE(SUM(r.totalBultos), 0) AS bultos,
+             COALESCE(SUM(r.totalUnidades), 0) AS unidades,
+             COALESCE(SUM(r.totalLineas), 0) AS lineas,
+             COALESCE(SUM(r.conteoCod), 0) AS cod,
+             r.frecuencia AS frecuencia
+        FROM RutaProyeccion r
+       WHERE r.archivoId = :archivoId AND r.clusterId = :clusterId
+       GROUP BY r.clusterId, r.chuteId, r.frecuencia
+      """)
+  List<CargaRutas> cargaPorCluster(@Param("archivoId") Long archivoId, @Param("clusterId") Long clusterId);
+
   /**
    * Carga por (cluster, grupo, chute): grupos de cada cluster, su carga y
    * dónde están hoy sus rutas (modal de balanceo y configuración). Usa

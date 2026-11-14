@@ -318,6 +318,25 @@ export interface HistorialRegistroSimulacion {
   sinLanzamiento: number;
 }
 
+/** Un chute antes y después de un lanzamiento: bultos (fase RUTAS) u operarios (fase OPERARIOS). */
+export interface ChuteComparado {
+  chuteId: number;
+  chute: string;
+  antes: number;
+  despues: number;
+}
+
+/** Antes y después de un lanzamiento en los chutes de su cluster. */
+export interface ComparativoLanzamiento {
+  lanzamientoId: number;
+  clusterId: number;
+  cluster: string;
+  fase: FaseBalanceo;
+  rutas: number;
+  bultosMovidos: number;
+  chutes: ChuteComparado[];
+}
+
 /** RUTAS: reparte las rutas de la ola de un cluster; OPERARIOS: asigna los operarios de su ola. */
 export type FaseBalanceo = 'RUTAS' | 'OPERARIOS';
 

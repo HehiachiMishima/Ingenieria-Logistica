@@ -2,97 +2,90 @@
   [abierto]="abierto()"
   ancho="lg"
   titulo="¿Cómo balancea?"
-  subtitulo="Un cluster a la vez: rutas (Diarias, luego cada día), operarios y cierre."
+  subtitulo="Un cluster a la vez, en tres pasos"
   (cerrar)="cerrar.emit()"
 >
   <div class="guia">
-    <section class="olas" aria-label="Orden de trabajo">
-      <div class="olas__fila">
-        @for (ola of olas; track ola.nombre; let ultima = $last) {
-          <span class="olas__chip" [style.--cluster-color]="ola.color">{{ ola.nombre }}</span>
-          @if (!ultima) {
-            <ui-icon class="olas__flecha" name="flecha" [size]="16" />
-          }
-        }
-      </div>
-      <p class="olas__nota">
-        <ui-icon name="usuarios" [size]="15" /> El mismo equipo pasa de un cluster al siguiente
-      </p>
-    </section>
-
-    <ol class="pasos">
-      <li class="paso">
-        <span class="paso__numero">1</span>
-        <h3 class="paso__titulo">Rutas</h3>
-        <div class="viz" aria-hidden="true">
-          <div class="viz__barras viz__barras--antes">
-            @for (alto of rutasAntes; track $index) {
-              <span [style.height.%]="alto"></span>
+    <!-- Seis chutes de ejemplo: torre de cajas, carita y la silueta de cómo estaba. -->
+    <div class="guia-zona" role="img"
+      aria-label="Ejemplo: seis chutes desparejos; las cajas pasan del lleno al vacío hasta quedar parejos.">
+      @for (c of chutes(); track c.numero) {
+        <div class="guia-chute">
+          <app-icono-sim nombre="cara" [estado]="c.estado" [tamano]="26" />
+          <span class="guia-chute__operarios">
+            @for (o of c.operarios; track o) {
+              <app-icono-sim class="guia-chute__operario" nombre="operario" [tamano]="16" />
             }
-          </div>
-          <ui-icon class="viz__flecha" name="flecha" [size]="16" />
-          <div class="viz__barras">
-            @for (alto of rutasDespues; track $index) {
-              <span [style.height.%]="alto"></span>
-            }
-          </div>
-        </div>
-        <p class="paso__texto">Diarias primero (eliges el rango); luego L-X-V y M-J-S, cada uno dentro de ese rango, igualando los bultos de sus chutes.</p>
-        <span class="paso__dato">Meta: diferencia ≤ 10 %</span>
-      </li>
-
-      <li class="paso">
-        <span class="paso__numero">2</span>
-        <h3 class="paso__titulo">Operarios</h3>
-        <div class="viz viz--operarios" aria-hidden="true">
-          @for (chute of chutes; track $index) {
-            <div class="viz__chute">
-              <span class="viz__personas">
-                @for (persona of chute.personas; track persona) {
-                  <i></i>
-                }
-              </span>
-              <span class="viz__carga" [style.height.%]="chute.carga"></span>
-            </div>
-          }
-        </div>
-        <p class="paso__texto">Eliges cuántos operarios tiene la ola (la misma cantidad para los dos días): cada uno va al chute que más tarda.</p>
-        <span class="paso__dato">tiempo = bultos ÷ (velocidad × operarios)</span>
-      </li>
-
-      <li class="paso">
-        <span class="paso__numero">3</span>
-        <h3 class="paso__titulo">Cerrar</h3>
-        <div class="viz viz--cerrar" aria-hidden="true">
-          <span class="viz__ola viz__ola--hecha" [style.--cluster-color]="olas[0].color">
-            <ui-icon name="check" [size]="14" /> CL1
           </span>
-          <ui-icon class="viz__flecha" name="flecha" [size]="16" />
-          <span class="viz__ola" [style.--cluster-color]="olas[1].color">CL2</span>
-        </div>
-        <p class="paso__texto">Cierra los tres balanceos y el equipo pasa al siguiente cluster tal como quedó.</p>
-        <span class="paso__dato">Al cerrar el último: resumen en el dashboard</span>
-      </li>
-    </ol>
-
-    <div class="detalles">
-      @for (grupo of detalles; track grupo.titulo) {
-        <section class="detalles__grupo" [attr.aria-label]="grupo.titulo">
-          <h4>{{ grupo.titulo }}</h4>
-          <dl>
-            @for (item of grupo.items; track item.termino) {
-              <div class="detalles__item">
-                <dt><ui-icon [name]="item.icono" [size]="14" /> {{ item.termino }}</dt>
-                <dd>{{ item.texto }}</dd>
-              </div>
+          <span class="guia-chute__pila">
+            <span class="guia-chute__silueta" [class.guia-chute__silueta--visible]="c.diferencia !== 0"
+              [style.height.px]="c.inicio * altoCaja"></span>
+            <span class="guia-chute__torre">
+              @for (k of c.cajas; track k) {
+                <app-icono-sim class="guia-chute__caja" nombre="caja" [tamano]="22" />
+              }
+            </span>
+          </span>
+          <app-icono-sim nombre="rampa" />
+          <span class="guia-chute__pie">
+            <strong>{{ c.bultos }}</strong>
+            @if (c.diferencia !== 0) {
+              <span [class]="c.diferencia > 0 ? 'guia-sube' : 'guia-baja'">
+                {{ c.diferencia > 0 ? '+' : '' }}{{ c.diferencia }}
+              </span>
+            } @else {
+              <span>Chute {{ c.numero }}</span>
             }
-          </dl>
-        </section>
+          </span>
+        </div>
       }
     </div>
+
+    <!-- Los tres pasos: se completan en verde a medida que avanza. -->
+    <ol class="guia-pasos" [style.--avance.%]="avance()">
+      @for (p of pasos; track p.titulo; let i = $index) {
+        <li class="guia-paso" [class.guia-paso--actual]="paso() === i" [class.guia-paso--hecho]="paso() > i">
+          <span class="guia-paso__icono"><app-icono-sim [nombre]="p.icono" [tamano]="20" /></span>
+          <strong>{{ p.titulo }}</strong>
+          <small>{{ p.texto }}</small>
+        </li>
+      }
+    </ol>
+
+    <!-- Resultado, al terminar. -->
+    <div class="guia-resultado" aria-live="polite">
+      @if (paso() === 3) {
+        <span class="guia-ficha"><app-icono-sim nombre="caja" [tamano]="18" /><strong>{{ movidas() }}</strong> cajas movidas</span>
+        <span class="guia-ficha"><app-icono-sim nombre="operario" [tamano]="18" /><strong>6</strong> operarios</span>
+        <span class="guia-ficha"><app-icono-sim nombre="reloj" [tamano]="18" /><strong>7h 40m</strong> de 8h</span>
+      }
+    </div>
+
+    <!-- Reglas y dudas frecuentes: plegadas para no cargar la explicación. -->
+    <details class="guia-reglas">
+      <summary><ui-icon name="info" [size]="15" /> Reglas y detalles</summary>
+      <div class="detalles">
+        @for (grupo of detalles; track grupo.titulo) {
+          <section class="detalles__grupo" [attr.aria-label]="grupo.titulo">
+            <h4>{{ grupo.titulo }}</h4>
+            <dl>
+              @for (item of grupo.items; track item.termino) {
+                <div class="detalles__item">
+                  <dt><ui-icon [name]="item.icono" [size]="14" /> {{ item.termino }}</dt>
+                  <dd>{{ item.texto }}</dd>
+                </div>
+              }
+            </dl>
+          </section>
+        }
+      </div>
+    </details>
   </div>
 
   <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--secondary" (click)="balancear()">
+      <ui-icon name="refresh" [size]="16" /> Repetir
+    </button>
     <button type="button" class="ui-btn ui-btn--primary" (click)="cerrar.emit()">Entendido</button>
   </div>
 </ui-modal>

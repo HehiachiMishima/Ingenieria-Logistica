@@ -120,6 +120,7 @@ class SimulacionBalanceoTest {
   @Captor private ArgumentCaptor<LanzamientoBalanceo> lanzamiento;
 
   private SimulacionConfiguracionService servicio;
+  private SimulacionHistorialService historialServicio;
 
   /** Fila de Diarias de cada cluster (ya balanceada): de ahí sale el rango que hereda L-X-V. */
   private final Map<Long, ParametroCluster> diariasPorCluster = new HashMap<>();
@@ -142,6 +143,8 @@ class SimulacionBalanceoTest {
             transacciones,
             new CacheRespuestas(false, 1, 1),
             PlanoChutes.fijo(1, 33, Set.of(19, 20, 21), Map.of()));
+    historialServicio =
+        new SimulacionHistorialService(servicio, historialRepo, lanzamientoRepo, rutaRepo, transacciones);
     lenient()
         .when(transacciones.ejecutar(any()))
         .thenAnswer(invocacion -> ((Supplier<?>) invocacion.getArgument(0)).get());
@@ -1630,9 +1633,9 @@ class SimulacionBalanceoTest {
         .thenReturn(new PageImpl<>(List.of(log), PageRequest.of(1, 25), 1200));
     when(rutaRepo.findAllById(any())).thenReturn(List.of(ruta(5L, CL1, 2L, "3050", "40")));
 
-    HistorialRegistroResponse historial = servicio.historial(10L).datos();
+    HistorialRegistroResponse historial = historialServicio.historial(10L).datos();
     PaginaResponse<HistorialSimulacionResponse> cambios =
-        servicio.historialCambios(10L, 77L, 2, 25).datos();
+        historialServicio.historialCambios(10L, 77L, 2, 25).datos();
 
     assertEquals(1200, historial.lanzamientos().get(0).rutas());
     assertEquals(3L, historial.sinLanzamiento());

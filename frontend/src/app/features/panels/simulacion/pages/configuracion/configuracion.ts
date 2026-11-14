@@ -53,6 +53,8 @@ import { DirectorioUsuarios } from '../../../../../core/services/directorio-usua
 import { HasPermiso } from '../../../../../shared/directives/has-permiso.directive';
 import { EmptyState } from '../../../../../shared/ui/empty-state/empty-state';
 import { Icon } from '../../../../../shared/ui/icon/icon';
+import { IconoSim } from '../../icono-sim/icono-sim';
+import { FichaDetalle } from './ficha-detalle/ficha-detalle';
 import { Modal } from '../../../../../shared/ui/modal/modal';
 import { ChipFiltro, FiltrosActivos } from '../../../../../shared/ui/panel-filtros/filtros-activos';
 import { PanelFiltros } from '../../../../../shared/ui/panel-filtros/panel-filtros';
@@ -189,7 +191,7 @@ const MIN_FILAS = 4;
  * Dónde se dibuja la ficha de detalle: junto a su ancla (abajo o arriba,
  * según el espacio) o, en pantallas angostas o bajas, como hoja inferior.
  */
-interface PosicionDetalle {
+export interface PosicionDetalle {
   hoja: boolean;
   left: number | null;
   top: number | null;
@@ -275,7 +277,9 @@ interface EstadoRutasMatriz {
     ReactiveFormsModule,
     HasPermiso,
     EmptyState,
+    FichaDetalle,
     Icon,
+    IconoSim,
     Modal,
     SelectBuscable,
     SelectMultiple,
@@ -291,7 +295,7 @@ interface EstadoRutasMatriz {
     HorasPipe,
 ],
   templateUrl: './configuracion.html',
-  styleUrls: ['./configuracion.scss', './configuracion-panel.scss', './configuracion-ficha.scss'],
+  styleUrls: ['./configuracion.scss', './configuracion-panel.scss'],
 })
 export class SimulacionConfiguracion {
   private readonly api = inject(SimulacionApi);

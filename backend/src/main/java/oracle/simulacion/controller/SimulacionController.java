@@ -22,15 +22,18 @@ import oracle.simulacion.request.MoverRutaRequest;
 import oracle.simulacion.request.RegistroActualizarRequest;
 import oracle.simulacion.response.ArchivoSimulacionResponse;
 import oracle.simulacion.response.BalanceoResponse;
+import oracle.simulacion.response.ComparativoLanzamientoResponse;
 import oracle.simulacion.response.ConfiguracionSimulacionResponse;
 import oracle.simulacion.response.DashboardSimulacionResponse;
 import oracle.simulacion.response.HistorialRegistroResponse;
 import oracle.simulacion.response.HistorialSimulacionResponse;
 import oracle.simulacion.response.PaginaRutasResponse;
+import oracle.simulacion.response.RutaSimulacionResponse;
 import oracle.simulacion.response.RutasDashboardResponse;
 import oracle.simulacion.response.VistaBalanceoResponse;
 import oracle.simulacion.service.SimulacionConfiguracionService;
 import oracle.simulacion.service.SimulacionExcel;
+import oracle.simulacion.service.SimulacionHistorialService;
 import oracle.simulacion.service.SimulacionRegistroService;
 import oracle.simulacion.service.SimulacionReporte;
 import org.springframework.http.ContentDisposition;
@@ -57,6 +60,7 @@ public class SimulacionController {
 
   private final SimulacionRegistroService registroService;
   private final SimulacionConfiguracionService configuracionService;
+  private final SimulacionHistorialService historialService;
   private final SimulacionReporte reporte;
 
   private static final MediaType XLSX =
@@ -66,9 +70,11 @@ public class SimulacionController {
   public SimulacionController(
       SimulacionRegistroService registroService,
       SimulacionConfiguracionService configuracionService,
+      SimulacionHistorialService historialService,
       SimulacionReporte reporte) {
     this.registroService = registroService;
     this.configuracionService = configuracionService;
+    this.historialService = historialService;
     this.reporte = reporte;
   }
 
@@ -157,6 +163,13 @@ public class SimulacionController {
       @RequestParam(required = false) List<Long> clusterIds,
       @RequestParam(required = false) List<Long> chuteIds) {
     return configuracionService.rutas(id, despues, tamano, texto, clusterIds, chuteIds);
+  }
+
+  /** Todas las rutas del registro de una vez (reporte PDF y HTML): una sola lectura en la base. */
+  @GetMapping("/{id}/rutas/todas")
+  @PreAuthorize("hasAuthority('VER_CONFIGURACION_SIMULACION')")
+  public ApiResponse<List<RutaSimulacionResponse>> todasLasRutas(@PathVariable Long id) {
+    return configuracionService.todasLasRutas(id);
   }
 
   @PutMapping("/{id}/rutas/{rutaId}/mover")
@@ -253,7 +266,7 @@ public class SimulacionController {
   @PreAuthorize("hasAuthority('VER_CONFIGURACION_SIMULACION')")
   public ApiResponse<HistorialRegistroResponse> historial(
       @PathVariable Long id, @RequestParam(required = false) String balanceo) {
-    return configuracionService.historial(id, Balanceo.de(balanceo));
+    return historialService.historial(id, Balanceo.de(balanceo));
   }
 
   /** Cambios de un lanzamiento (sin lanzamientoId: los que no tienen), paginados. */
@@ -265,8 +278,18 @@ public class SimulacionController {
       @RequestParam(defaultValue = "1") int pagina,
       @RequestParam(defaultValue = "25") int tamano,
       @RequestParam(required = false) String balanceo) {
-    return configuracionService.historialCambios(
+    return historialService.historialCambios(
         id, Balanceo.de(balanceo), lanzamientoId, pagina, tamano);
+  }
+
+  /** Antes y después de un lanzamiento en los chutes de su cluster (bultos u operarios). */
+  @GetMapping("/{id}/historial/{lanzamientoId}/comparativo")
+  @PreAuthorize("hasAuthority('VER_CONFIGURACION_SIMULACION')")
+  public ApiResponse<ComparativoLanzamientoResponse> comparativoLanzamiento(
+      @PathVariable Long id,
+      @PathVariable Long lanzamientoId,
+      @RequestParam(required = false) String balanceo) {
+    return historialService.comparativoLanzamiento(id, Balanceo.de(balanceo), lanzamientoId);
   }
 
   /** Sin clusterId, el resumen del registro; con él, la vista de ese cluster. */
