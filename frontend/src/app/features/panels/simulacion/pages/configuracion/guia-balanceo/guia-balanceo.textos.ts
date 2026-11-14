@@ -48,7 +48,7 @@ export const DETALLES: readonly GrupoDetalle[] = [
         icono: 'paquete',
         termino: 'Buff',
         texto:
-          'Global: se elige antes del primer balanceo. En cada paso, la ruta más pesada va a un chute con buff (etiqueta BUFF en su cabecera).',
+          'Global: se elige antes del primer balanceo. En cada paso el buff va primero: el chute con buff (etiqueta BUFF) toma las rutas más pesadas de su grupo, estén donde estén, hasta la carga promedio. Luego se reparte el resto en torno a él, con al menos una ruta en cada chute usado; si no alcanzan, los usados quedan juntos (sin huecos entre dos buff) y los demás, libres. Al emparejar, si mover una ruta sola no mejora, se intercambia una ruta por otra entre dos chutes.',
       },
       {
         icono: 'info',

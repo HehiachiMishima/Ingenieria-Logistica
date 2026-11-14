@@ -469,6 +469,7 @@ public class SimulacionConfiguracionService {
         () -> {
           Contexto ctx = contexto(archivoId, balanceo, true);
           SimulacionConfig config = ctx.config();
+          exigirPredeterminadosAbiertos(ctx, req);
           if (config.getCreadoEn() == null) {
             Auditoria.alCrear(config, actor);
           } else {
@@ -574,6 +575,31 @@ public class SimulacionConfiguracionService {
           return aConfiguracion(ctx);
         },
         "Parámetros guardados.");
+  }
+
+  /**
+   * Con los predeterminados bloqueados, ningún registro cambia su velocidad ni su buff: hay que
+   * desbloquearlos (para todos) antes. Lo demás (límites, máximo por chute) sí se guarda.
+   */
+  private void exigirPredeterminadosAbiertos(Contexto ctx, ConfiguracionActualizarRequest req) {
+    if (!SimulacionPredeterminadosService.actuales(lotes).bloqueado()) {
+      return;
+    }
+    BigDecimal velocidad = ctx.config().getVelocidadBase();
+    boolean cambiaVelocidad = velocidad == null || velocidad.compareTo(req.velocidadBase()) != 0;
+    boolean cambiaBuff =
+        req.chutes() != null
+            && req.chutes().stream()
+                .anyMatch(
+                    (c) -> {
+                      ParametroChute actual = ctx.parametrosChute().get(c.chuteId());
+                      return c.buff() != null && actual != null && c.buff() != actual.isBuff();
+                    });
+    if (cambiaVelocidad || cambiaBuff) {
+      throw new ConflictoException(
+          "La velocidad y los chutes con buff están bloqueados para todos los registros:"
+              + " desbloquéalos para cambiarlos.");
+    }
   }
 
   /**
@@ -1336,31 +1362,47 @@ public class SimulacionConfiguracionService {
       Traslado traslado;
       if (tramo.chutes() != null) {
         reparto.limitar(clusterId, tramo.chutes());
-        // Si el día no alcanza para todo el tramo, los chutes del final quedan libres.
+      }
+      // 1. El buff primero: los chutes con buff del tramo toman las rutas más pesadas del grupo
+      // (estén donde estén), hasta la carga promedio, y quedan fijas ahí. Siempre deja una ruta
+      // para cada chute sin buff que el día pueda llenar.
+      if (!chutesBuff.isEmpty()) {
+        nivelaciones.addAll(reparto.anclar(clusterId, chutesBuff));
+        ancladas += reparto.ancladas();
+        traidas += reparto.deFuera();
+      }
+      if (tramo.chutes() != null) {
+        // 2. Con lo que quedó, el tramo usa solo los chutes que puede llenar, en un bloque continuo
+        // alrededor del buff: los demás quedan libres, sin huecos entre los usados.
         reparto.ajustarRango(clusterId);
         libres += reparto.libres();
-        // Cada ruta de fuera entra una sola vez: termina en a lo sumo rutasDe pasos.
+        // 3. Lo que está fuera entra al chute con menos carga. Cada ruta entra una sola vez.
         while ((traslado = reparto.traerAlRango(clusterId)) != null) {
           nivelaciones.add(traslado);
           traidas++;
         }
       }
       fueraDelRango += traidas;
-      // Chutes con buff: reciben primero las rutas más pesadas, que quedan ahí.
-      if (!chutesBuff.isEmpty()) {
-        List<Traslado> anclas = reparto.anclar(clusterId, chutesBuff);
-        nivelaciones.addAll(anclas);
-        ancladas += anclas.size();
-      }
-      // Ningún chute del tramo sin rutas: primero se llenan los vacíos, luego se empareja.
+      // 4. Ningún chute del tramo sin rutas: primero se llenan los vacíos, luego se empareja todo
+      // en torno al buff (sus rutas fijas cuentan como carga).
       List<Traslado> llenados = reparto.llenarVacios(clusterId);
       nivelaciones.addAll(llenados);
       // Cada movimiento baja la suma de cuadrados de la carga, así que el
       // proceso termina solo; el tope es una red de seguridad.
       int maximo = traidas + Math.max(MAX_ITERACIONES, 4 * reparto.rutasDe(clusterId));
       int pasos = traidas;
-      while (pasos < maximo && (traslado = reparto.nivelar(clusterId)) != null) {
-        nivelaciones.add(traslado);
+      while (pasos < maximo) {
+        traslado = reparto.nivelar(clusterId);
+        if (traslado != null) {
+          nivelaciones.add(traslado);
+        } else {
+          // Ninguna ruta sola mejora: se prueba cambiar una ruta por otra entre dos chutes.
+          List<Traslado> cambio = reparto.intercambiar(clusterId);
+          if (cambio.isEmpty()) {
+            break;
+          }
+          nivelaciones.addAll(cambio);
+        }
         pasos++;
       }
       tope |= pasos >= maximo;
@@ -1404,7 +1446,7 @@ public class SimulacionConfiguracionService {
           .append(rutasDia)
           .append(" ruta(s) para su tramo; ")
           .append(libres)
-          .append(" chute(s) quedan libres ese día, al final del tramo.");
+          .append(" chute(s) quedan libres ese día; los usados quedan juntos, sin huecos.");
     }
     if (heredado) {
       mensaje.append(" Rango y tramos: los de las diarias.");
@@ -1868,6 +1910,10 @@ public class SimulacionConfiguracionService {
     private final List<Long> rango = new ArrayList<>();
     /** Chutes del tramo que quedaron fuera porque el día tiene menos rutas que chutes. */
     private int libres;
+    /** Rutas pesadas que quedaron fijas en un chute con buff (traídas o que ya estaban ahí). */
+    private int ancladas;
+    /** Rutas que el buff trajo desde chutes fuera del tramo. */
+    private int deFuera;
 
     Reparto(List<RutaProyeccion> rutasCluster) {
       this(rutasCluster, Set.of());
@@ -1958,22 +2004,57 @@ public class SimulacionConfiguracionService {
       return libres;
     }
 
+    int ancladas() {
+      return ancladas;
+    }
+
+    /** Rutas que el buff trajo desde chutes fuera del tramo. */
+    int deFuera() {
+      return deFuera;
+    }
+
     /**
-     * Si el día no alcanza para todos los chutes del tramo, lo recorta: quedan los chutes con rutas
-     * fijas (diarias o ancladas) y, de los demás, solo los primeros que se pueden llenar con una
-     * ruta movible cada uno. Los del final quedan libres. Va antes de traer rutas al rango, así lo
-     * que estaba en un chute recortado entra a los que siguen.
+     * Va después de anclar el buff: si las rutas movibles que quedan no alcanzan para todos los
+     * chutes del tramo, lo recorta a un bloque continuo. Quedan los chutes con rutas fijas (diarias
+     * o ancladas en el buff) y, de los demás, tantos como rutas movibles hay: primero los huecos
+     * entre chutes con rutas fijas, luego los vecinos hacia el inicio del tramo y por último hacia el
+     * final. Así no quedan chutes vacíos entre dos usados (p. ej. entre dos buff). Va antes de traer
+     * rutas al rango, así lo que estaba en un chute recortado entra a los que quedan.
      */
     void ajustarRango(Long cluster) {
       if (rango.isEmpty()) {
         return;
       }
-      List<Long> sinFijas = rango.stream().filter((chute) -> !fijas.containsKey(new Par(cluster, chute))).toList();
-      int movibles = rutasDe(cluster);
-      if (movibles >= sinFijas.size()) {
+      int primero = -1;
+      int ultimo = -1;
+      Set<Long> quedanEnTramo = new HashSet<>();
+      for (int i = 0; i < rango.size(); i++) {
+        if (fijas.containsKey(new Par(cluster, rango.get(i)))) {
+          quedanEnTramo.add(rango.get(i));
+          primero = primero < 0 ? i : primero;
+          ultimo = i;
+        }
+      }
+      int faltan = rutasDe(cluster);
+      if (faltan >= rango.size() - quedanEnTramo.size()) {
         return;
       }
-      Set<Long> fuera = new HashSet<>(sinFijas.subList(movibles, sinFijas.size()));
+      // Sin rutas fijas el bloque empieza en el primer chute del tramo.
+      if (primero < 0) {
+        primero = 0;
+        ultimo = -1;
+      }
+      for (int i = primero; i <= ultimo && faltan > 0; i++) {
+        faltan -= quedanEnTramo.add(rango.get(i)) ? 1 : 0;
+      }
+      for (int i = primero - 1; i >= 0 && faltan > 0; i--) {
+        faltan -= quedanEnTramo.add(rango.get(i)) ? 1 : 0;
+      }
+      for (int i = ultimo + 1; i < rango.size() && faltan > 0; i++) {
+        faltan -= quedanEnTramo.add(rango.get(i)) ? 1 : 0;
+      }
+      Set<Long> fuera = new HashSet<>(rango);
+      fuera.removeAll(quedanEnTramo);
       rango.removeIf(fuera::contains);
       Map<Long, BigDecimal> porChute = carga.getOrDefault(cluster, Map.of());
       // Un chute recortado sin rutas sale de la ola (si tiene rutas, traerAlRango las saca).
@@ -2037,41 +2118,113 @@ public class SimulacionConfiguracionService {
     }
 
     /**
-     * Ancla las rutas más pesadas en los chutes con buff de la ola: a cada uno, en orden, la ruta
-     * más pesada que aún se puede mover (se trae si está en otro chute) y queda fija. Así el chute
-     * con buff termina con más carga que los demás. Devuelve los traslados hechos.
+     * Primer paso del reparto: llena los chutes con buff del tramo con las rutas más pesadas del
+     * grupo, estén donde estén (dentro o fuera del tramo). De la más pesada a la más liviana, por
+     * turnos entre los chutes con buff, cada una queda fija en su chute. Un chute con buff recibe
+     * rutas mientras no pase la carga promedio que tendrá el tramo (más la tolerancia); la primera
+     * entra aunque la pase, si el chute aún está bajo el promedio (es la más pesada). Cuando la
+     * siguiente ruta no cabe, ese chute queda lleno. Nunca se lleva tantas que falte una ruta para
+     * cada chute sin buff que el día puede llenar. Las diarias que ya están en el chute cuentan en
+     * su carga. Devuelve los traslados hechos.
      */
     List<Traslado> anclar(Long cluster, Collection<Long> chutesBuff) {
       List<Traslado> hechos = new ArrayList<>();
       List<Long> ola = chutesDeOla(cluster);
-      List<Long> destinos =
-          (rango.isEmpty() ? ola.stream().sorted().toList() : rango).stream()
-              .filter(chutesBuff::contains)
-              .toList();
-      for (Long destino : destinos) {
-        Par mejor = null;
-        BigDecimal pesoMejor = null;
-        for (Map.Entry<Par, TreeMap<BigDecimal, ArrayDeque<RutaProyeccion>>> entrada : rutas.entrySet()) {
-          if (!entrada.getKey().clusterId().equals(cluster) || entrada.getValue().isEmpty()) {
-            continue;
-          }
-          BigDecimal peso = entrada.getValue().lastKey();
-          if (pesoMejor == null
-              || peso.compareTo(pesoMejor) > 0
-              || (peso.compareTo(pesoMejor) == 0 && entrada.getKey().chuteId().equals(destino))) {
-            mejor = entrada.getKey();
-            pesoMejor = peso;
+      List<Long> base = rango.isEmpty() ? ola.stream().sorted().toList() : rango;
+      List<Long> destinos = base.stream().filter(chutesBuff::contains).toList();
+      if (destinos.isEmpty()) {
+        return hechos;
+      }
+      Map<Long, BigDecimal> porChute = carga.computeIfAbsent(cluster, (id) -> new HashMap<>());
+      int sueltas = rutasDe(cluster);
+      // Lo que se reparte: la carga del tramo más las rutas movibles que aún están fuera de él.
+      BigDecimal total = BigDecimal.ZERO;
+      for (Map.Entry<Long, BigDecimal> entrada : porChute.entrySet()) {
+        Long chute = entrada.getKey();
+        if (base.contains(chute)) {
+          total = total.add(entrada.getValue());
+        } else {
+          for (Map.Entry<BigDecimal, ArrayDeque<RutaProyeccion>> grupo :
+              rutas.getOrDefault(new Par(cluster, chute), new TreeMap<>()).entrySet()) {
+            total = total.add(grupo.getKey().multiply(BigDecimal.valueOf(grupo.getValue().size())));
           }
         }
-        if (mejor == null) {
+      }
+      // Chutes que usará el tramo: los que tienen rutas fijas y, de los demás, uno por ruta movible.
+      long conFijas = base.stream().filter((chute) -> fijas.containsKey(new Par(cluster, chute))).count();
+      long sinBuffLibres =
+          base.stream()
+              .filter((chute) -> !chutesBuff.contains(chute) && !fijas.containsKey(new Par(cluster, chute)))
+              .count();
+      long buffLibres = base.size() - conFijas - sinBuffLibres;
+      long usados = conFijas + Math.min(base.size() - conFijas, sueltas);
+      BigDecimal promedio = total.divide(BigDecimal.valueOf(Math.max(1, usados)), ESCALA, RoundingMode.HALF_UP);
+      BigDecimal tope = promedio.add(promedio.multiply(TOLERANCIA_CARGA));
+      // Cupo del buff: deja una ruta movible para cada chute sin buff que el día alcanza a llenar.
+      long cupo = sueltas - Math.min(sinBuffLibres, Math.max(0, sueltas - buffLibres));
+      // Candidatas: todas las rutas movibles del grupo, de la más pesada a la más liviana; a igual
+      // peso, primero la que ya está en un chute con buff (no se mueve sin necesidad).
+      List<RutaProyeccion> candidatas = new ArrayList<>();
+      for (Map.Entry<Par, TreeMap<BigDecimal, ArrayDeque<RutaProyeccion>>> entrada : rutas.entrySet()) {
+        if (entrada.getKey().clusterId().equals(cluster)) {
+          entrada.getValue().values().forEach(candidatas::addAll);
+        }
+      }
+      candidatas.sort(
+          Comparator.comparing(RutaProyeccion::getTotalBultos)
+              .reversed()
+              .thenComparing((RutaProyeccion r) -> !chutesBuff.contains(r.getChuteId()))
+              .thenComparing(RutaProyeccion::getId));
+      // Carga fija de cada chute con buff (diarias y rutas ya ancladas): las movibles que hoy
+      // están ahí no cuentan, si no ocupan el lugar de las pesadas (el emparejado las saca después).
+      Map<Long, BigDecimal> fija = new HashMap<>();
+      for (Long chute : destinos) {
+        BigDecimal movibles = BigDecimal.ZERO;
+        for (Map.Entry<BigDecimal, ArrayDeque<RutaProyeccion>> grupo :
+            rutas.getOrDefault(new Par(cluster, chute), new TreeMap<>()).entrySet()) {
+          movibles = movibles.add(grupo.getKey().multiply(BigDecimal.valueOf(grupo.getValue().size())));
+        }
+        fija.put(chute, porChute.getOrDefault(chute, BigDecimal.ZERO).subtract(movibles));
+      }
+      Set<Long> llenos = new HashSet<>();
+      Set<Long> conAncla = new HashSet<>();
+      int turno = 0;
+      for (RutaProyeccion ruta : candidatas) {
+        if (ancladas >= cupo) {
           break;
         }
-        RutaProyeccion ruta = rutas.get(mejor).lastEntry().getValue().peekFirst();
-        if (!mejor.chuteId().equals(destino)) {
-          trasladar(ruta, cluster, mejor.chuteId(), destino);
-          hechos.add(new Traslado(ruta, mejor.chuteId(), destino));
+        Long destino = null;
+        // Por turnos: el siguiente chute con buff que aún tiene lugar para esta ruta.
+        for (int intento = 0; intento < destinos.size() && destino == null; intento++) {
+          Long chute = destinos.get((turno + intento) % destinos.size());
+          if (llenos.contains(chute)) {
+            continue;
+          }
+          BigDecimal actual = fija.get(chute);
+          boolean cabe = actual.add(ruta.getTotalBultos()).compareTo(tope) <= 0;
+          boolean primera = !conAncla.contains(chute) && actual.compareTo(promedio) < 0;
+          if (cabe || primera) {
+            destino = chute;
+            turno = (turno + intento + 1) % destinos.size();
+          } else {
+            llenos.add(chute);
+          }
+        }
+        if (destino == null) {
+          break;
+        }
+        Long origen = ruta.getChuteId();
+        if (!origen.equals(destino)) {
+          if (!rango.isEmpty() && !rango.contains(origen)) {
+            deFuera++;
+          }
+          trasladar(ruta, cluster, origen, destino);
+          hechos.add(new Traslado(ruta, origen, destino));
         }
         fijar(ruta, cluster, destino);
+        fija.merge(destino, ruta.getTotalBultos(), BigDecimal::add);
+        conAncla.add(destino);
+        ancladas++;
       }
       return hechos;
     }
@@ -2119,6 +2272,68 @@ public class SimulacionConfiguracionService {
         }
       }
       return null;
+    }
+
+    /**
+     * Cuando ningún movimiento de una sola ruta mejora (p. ej. las rutas del chute más cargado
+     * pesan más que la diferencia), cambia una ruta del más cargado por una más liviana del más
+     * liviano. Prueba los pares en el mismo orden que {@link #nivelar} y, en el primero que mejora,
+     * elige el cambio cuya diferencia de bultos (0 < a − b < diferencia) queda más cerca de la mitad
+     * de la diferencia. Solo cambia rutas movibles del mismo grupo: las fijas (diarias o ancladas en
+     * el buff) no se tocan. Cada cambio baja la suma de cuadrados de la carga, así que el proceso
+     * termina. Devuelve los dos traslados, o vacío si ningún par mejora.
+     */
+    List<Traslado> intercambiar(Long cluster) {
+      Map<Long, BigDecimal> porChute = carga.getOrDefault(cluster, Map.of());
+      List<Long> ola = chutesDeOla(cluster).stream().filter((chute) -> rutasEn(cluster, chute) > 0).toList();
+      if (ola.size() < 2) {
+        return List.of();
+      }
+      List<Long> todos = chutesDeOla(cluster);
+      BigDecimal total = BigDecimal.ZERO;
+      for (Long chute : todos) {
+        total = total.add(porChute.get(chute));
+      }
+      BigDecimal tolerancia =
+          total.divide(BigDecimal.valueOf(todos.size()), ESCALA, RoundingMode.HALF_UP).multiply(TOLERANCIA_CARGA);
+      List<Long> livianos = ola.stream().sorted(Comparator.comparing(porChute::get)).toList();
+      List<Long> cargados = ola.stream().sorted(Comparator.comparing(porChute::get).reversed()).toList();
+      for (Long cargado : cargados) {
+        for (Long liviano : livianos) {
+          BigDecimal diferencia = porChute.get(cargado).subtract(porChute.get(liviano));
+          if (diferencia.compareTo(tolerancia) <= 0) {
+            break;
+          }
+          BigDecimal mitad = diferencia.divide(BigDecimal.valueOf(2), ESCALA, RoundingMode.HALF_UP);
+          TreeMap<BigDecimal, ArrayDeque<RutaProyeccion>> deLiviano = rutas.get(new Par(cluster, liviano));
+          BigDecimal mejorA = null;
+          BigDecimal mejorB = null;
+          BigDecimal mejorDistancia = null;
+          for (BigDecimal a : rutas.get(new Par(cluster, cargado)).keySet()) {
+            // b ideal = a − mitad; vale cualquier b con a − diferencia < b < a.
+            BigDecimal ideal = a.subtract(mitad);
+            for (BigDecimal b : new BigDecimal[] {deLiviano.floorKey(ideal), deLiviano.ceilingKey(ideal)}) {
+              if (b == null || b.compareTo(a) >= 0 || b.compareTo(a.subtract(diferencia)) <= 0) {
+                continue;
+              }
+              BigDecimal distancia = a.subtract(b).subtract(mitad).abs();
+              if (mejorDistancia == null || distancia.compareTo(mejorDistancia) < 0) {
+                mejorA = a;
+                mejorB = b;
+                mejorDistancia = distancia;
+              }
+            }
+          }
+          if (mejorA != null) {
+            RutaProyeccion pesada = rutas.get(new Par(cluster, cargado)).get(mejorA).peekFirst();
+            RutaProyeccion liviana = deLiviano.get(mejorB).peekFirst();
+            trasladar(pesada, cluster, cargado, liviano);
+            trasladar(liviana, cluster, liviano, cargado);
+            return List.of(new Traslado(pesada, cargado, liviano), new Traslado(liviana, liviano, cargado));
+          }
+        }
+      }
+      return List.of();
     }
 
     /** La ruta con 0 < bultos < diferencia más cercana a la mitad de la diferencia, o null. */
@@ -2184,6 +2399,8 @@ public class SimulacionConfiguracionService {
     private void fijar(RutaProyeccion ruta, Long cluster, Long chute) {
       sacar(ruta, cluster, chute, false);
       fijas.merge(new Par(cluster, chute), 1, Integer::sum);
+      // Ya no cuenta entre las movibles (el recorte del tramo depende de ellas).
+      rutasPorCluster.merge(cluster, -1, Integer::sum);
     }
 
     private void sumar(Long cluster, Long chute, BigDecimal bultos) {

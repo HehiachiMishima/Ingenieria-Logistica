@@ -36,9 +36,13 @@
       <label class="ui-label" for="config-velocidad">Velocidad (bultos/h)</label>
       <input id="config-velocidad" type="number" class="ui-input" min="0.01" [max]="limitesValidos.velocidad" step="any"
         inputmode="decimal" [value]="velocidad()"
-        [disabled]="!config() || !puedeModificar() || equipoBloqueado() !== null || ocupado()"
+        [disabled]="!config() || !puedeModificar() || equipoBloqueado() !== null || fijados() || ocupado()"
         (change)="setVelocidad($event)" />
-      @if (equipoBloqueado(); as cerrado) {
+      @if (fijados()) {
+      <span class="config-panel__ayuda">
+        <ui-icon name="lock" [size]="12" /> Predeterminada para todos los registros
+      </span>
+      } @else if (equipoBloqueado(); as cerrado) {
       <span class="config-panel__ayuda">
         <ui-icon name="lock" [size]="12" /> Bloqueado por {{ cerrado.nombre }}
       </span>
@@ -47,14 +51,31 @@
     <div class="config-panel__campo">
       <label class="ui-label" for="config-buff">Chutes con buff</label>
       <ui-select-multiple campoId="config-buff" [opciones]="opcionesChute()" [valores]="buffElegidos()"
-        placeholder="Ninguno" [deshabilitado]="!config() || !puedeModificar() || buffBloqueado() || ocupado()"
+        placeholder="Ninguno" [deshabilitado]="!config() || !puedeModificar() || buffBloqueado() || fijados() || ocupado()"
         (valoresCambia)="setBuff($event)" />
-      @if (buffBloqueado()) {
+      @if (fijados()) {
+      <span class="config-panel__ayuda">
+        <ui-icon name="lock" [size]="12" /> Predeterminado para todos los registros
+      </span>
+      } @else if (buffBloqueado()) {
       <span class="config-panel__ayuda">
         <ui-icon name="lock" [size]="12" /> Se define antes de balancear
       </span>
       }
-
+    </div>
+    <!-- Candado: la velocidad y el buff que se ven quedan para todos los registros. -->
+    <div *hasPermiso="permisos.MODIFICAR_CONFIGURACION_SIMULACION" class="config-panel__fijar">
+      <button type="button" class="ui-btn ui-btn--secondary config-panel__candado" [class.config-panel__candado--activo]="fijados()"
+        [attr.aria-pressed]="fijados()" [disabled]="!config() || predeterminados() === null || ocupado()"
+        [title]="fijados() ? 'Desbloquear la velocidad y el buff para cambiarlos' : 'Bloquear esta velocidad y este buff para todos los registros'"
+        (click)="alternarFijado()">
+        @if (fijando()) {
+        <span class="ui-spinner config-spinner" aria-hidden="true"></span>
+        } @else {
+        <ui-icon [name]="fijados() ? 'key' : 'lock'" [size]="16" />
+        }
+        {{ fijados() ? 'Desbloquear' : 'Bloquear' }}
+      </button>
     </div>
     <div class="config-panel__acciones">
       <button *hasPermiso="permisos.CREAR_REGISTRO_SIMULACION" type="button" class="ui-btn ui-btn--secondary"
@@ -224,8 +245,8 @@
           }
           {{ chute.etiqueta }}
           @if (chutesBuff().has(chute.id)) {
-          <!-- Chute con más capacidad: recibe primero las rutas más pesadas. -->
-          <span class="mz-buff" title="Chute con buff: recibe primero las rutas más pesadas">BUFF</span>
+          <!-- Chute con buff: se llena primero con las rutas más pesadas de su grupo, hasta el promedio. -->
+          <span class="mz-buff" title="Chute con buff: se llena primero con las rutas más pesadas de su grupo, hasta la carga promedio">BUFF</span>
           }
         </th>
         }
@@ -663,13 +684,13 @@
   @if (v.fuera > 0) {
   <p class="eje__nota"><ui-icon name="flecha" [size]="13" /> {{ v.fuera | numero }} diaria(s) fuera del rango entrarán.</p>
   }
-  <!-- Un día con menos rutas que chutes deja libres los del final (en «Ambos» los ocupa el otro día). -->
+  <!-- Un día con menos rutas que chutes deja libres los que quedan fuera del bloque usado (en «Ambos» los ocupa el otro día). -->
   @for (d of v.cortos; track d.etiqueta) {
   <p class="eje__nota"><ui-icon name="calendario" [size]="13" /> {{ d.etiqueta }}: {{ d.rutas | numero }} ruta(s) para
-    {{ v.chutesUtiles | numero }} chutes · {{ d.libres | numero }} libre(s) ese día, al final del tramo.</p>
+    {{ v.chutesUtiles | numero }} chutes · {{ d.libres | numero }} libre(s) ese día; los usados quedan juntos.</p>
   }
   @if (chutesBuff().size > 0) {
-  <p class="eje__nota"><span class="mz-buff">BUFF</span> {{ chutesBuff().size }} chute(s) reciben primero la más pesada.</p>
+  <p class="eje__nota"><span class="mz-buff">BUFF</span> {{ chutesBuff().size }} chute(s) se llenan primero con las rutas más pesadas de su grupo, hasta el promedio.</p>
   }
   }
   <div modal-footer class="modal-foot">

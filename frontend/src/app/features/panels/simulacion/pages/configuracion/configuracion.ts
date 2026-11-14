@@ -41,6 +41,7 @@ import {
   CargaSimulacion,
   ConfiguracionSimulacion,
   ConfiguracionSimulacionRequest,
+  PredeterminadosSimulacion,
   RutaSimulacion,
   VistaBalanceo,
   rutaEnBalanceo,
@@ -70,6 +71,7 @@ import {
   etiquetaRegistro,
   coloresGrupos,
   formatearEntero,
+  formatearNumero,
   formatearHoras,
   nombreRegistroSugerido,
   redondearArriba,
@@ -1027,6 +1029,7 @@ export class SimulacionConfiguracion {
       this.restableciendo() ||
       this.recargando() ||
       this.rutaGuardando() !== null ||
+      this.fijando() ||
       this.rutasGuardando().size > 0,
   );
 
@@ -1040,6 +1043,90 @@ export class SimulacionConfiguracion {
   readonly equipoBloqueado = computed(
     () => (this.configs().LXV?.clusters ?? []).find((cluster) => cluster.estado === 'CERRADO') ?? null,
   );
+
+  // ---------------- Velocidad y buff predeterminados (todos los registros) ----------------
+
+  /** Velocidad y buff con que nace todo registro; null mientras llegan. */
+  readonly predeterminados = signal<PredeterminadosSimulacion | null>(null);
+  /** Bloqueados: ningún registro cambia su velocidad ni su buff hasta desbloquearlos. */
+  readonly fijados = computed(() => this.predeterminados()?.bloqueado ?? false);
+  /** Bloqueando o desbloqueando. */
+  readonly fijando = signal(false);
+
+  private cargarPredeterminados(): void {
+    this.api
+      .predeterminados()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      // Sin ellos el botón queda deshabilitado; el resto de la página funciona igual.
+      .subscribe({ next: (p) => this.predeterminados.set(p), error: () => undefined });
+  }
+
+  /**
+   * Bloquea la velocidad y el buff que se ven para todos los registros (los sin balancear los
+   * reciben ya; los nuevos nacen con ellos) o los desbloquea para cambiarlos.
+   */
+  alternarFijado(): void {
+    if (this.ocupado()) {
+      return;
+    }
+    if (this.fijados()) {
+      this.fijando.set(true);
+      this.api
+        .desbloquearPredeterminados()
+        .pipe(
+          finalize(() => this.fijando.set(false)),
+          takeUntilDestroyed(this.destroyRef),
+        )
+        .subscribe({
+          next: (p) => {
+            this.predeterminados.set(p);
+            this.notificaciones.exito(
+              'Velocidad y buff desbloqueados',
+              'Cámbialos y vuelve a bloquearlos para todos los registros.',
+            );
+          },
+          error: () => undefined,
+        });
+      return;
+    }
+    const id = this.seleccionado();
+    const velocidad = this.velocidad();
+    const buff = [...this.buffElegidos()];
+    const bloquear = () => this.api.bloquearPredeterminados(velocidad, buff);
+    this.fijando.set(true);
+    // Lo editado del registro (p. ej. un límite) se guarda antes: la recarga no lo pisa.
+    (id === null ? bloquear() : this.conCambiosGuardados(id, bloquear))
+      .pipe(
+        finalize(() => this.fijando.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: (p) => {
+          this.predeterminados.set(p);
+          this.notificaciones.exito(
+            'Velocidad y buff bloqueados',
+            `${formatearNumero(velocidad, Number.isInteger(velocidad) ? 0 : 2)} bultos/h y ${buff.length} chute(s) con buff para todos los registros. Los ya balanceados conservan los suyos.`,
+          );
+          // Si este registro estaba sin balancear, el servidor ya le aplicó los valores.
+          if (id !== null && this.seleccionado() === id) {
+            this.api
+              .configuracion(id, 'LXV')
+              .pipe(takeUntilDestroyed(this.destroyRef))
+              .subscribe({
+                next: (config) => {
+                  if (this.seleccionado() === id) {
+                    this.aplicarConfiguracion(config);
+                    this.refrescarDemas(id, 'LXV');
+                  }
+                },
+                error: () => undefined,
+              });
+          }
+        },
+        // El interceptor ya muestra el motivo del servidor.
+        error: () => undefined,
+      });
+  }
 
   // ---------------- Buff de los chutes ----------------
 
@@ -1961,6 +2048,7 @@ export class SimulacionConfiguracion {
       .subscribe();
 
     this.cargarOpciones();
+    this.cargarPredeterminados();
   }
 
   cargarOpciones(preferirId?: number): void {

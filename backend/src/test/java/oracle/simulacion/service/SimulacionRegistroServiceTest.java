@@ -22,6 +22,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -91,6 +92,21 @@ class SimulacionRegistroServiceTest {
     assertEquals(primero.datos().id(), segundo.datos().id());
     verify(archivoRepo, times(1)).saveAndFlush(any());
     verify(lotes, times(1)).insertarRutas(anyLong(), anyList(), anyMap(), anyMap());
+  }
+
+  @Test
+  void unRegistroNuevoNaceConLaVelocidadYElBuffPredeterminados() {
+    when(lotes.leerPredeterminados())
+        .thenReturn(new oracle.simulacion.model.Predeterminados(new java.math.BigDecimal("120.00"), List.of(2L), true));
+
+    subir(csv(CSV), "Semana 30");
+
+    verify(lotes)
+        .insertarConfig(
+            anyLong(), org.mockito.ArgumentMatchers.eq(new java.math.BigDecimal("120.00")), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.any());
+    verify(lotes)
+        .insertarParametrosChute(
+            anyLong(), org.mockito.ArgumentMatchers.anyCollection(), org.mockito.ArgumentMatchers.eq(0), org.mockito.ArgumentMatchers.eq(List.of(2L)));
   }
 
   @Test

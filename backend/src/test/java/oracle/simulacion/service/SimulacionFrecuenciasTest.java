@@ -1,6 +1,7 @@
 package oracle.simulacion.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -33,6 +34,7 @@ import oracle.simulacion.model.LanzamientoBalanceo;
 import oracle.simulacion.model.OperarioOla;
 import oracle.simulacion.model.OperarioOlaId;
 import oracle.simulacion.model.ParametroChute;
+import oracle.simulacion.model.Predeterminados;
 import oracle.simulacion.model.ParametroChuteId;
 import oracle.simulacion.model.ParametroCluster;
 import oracle.simulacion.model.ParametroClusterId;
@@ -444,6 +446,250 @@ class SimulacionFrecuenciasTest {
     assertTrue(resultado.mensaje().contains("buff"), resultado.mensaje());
   }
 
+  /** Diarias de CL1 ya balanceadas en CHUTE 1 → 3; L-X-V y M-J-S pendientes; buff donde se pida. */
+  private void prepararBuff(boolean buff1, boolean buff2, boolean buff3) {
+    ParametroCluster dia = parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_RUTAS);
+    dia.setChuteDesdeId(1L);
+    dia.setChuteHastaId(3L);
+    preparar(
+        List.of(
+            dia,
+            parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE)),
+        List.of(base(1L, buff1), base(2L, buff2), base(3L, buff3)),
+        List.of());
+  }
+
+  @Test
+  void elBuffSeLlenaConLasRutasMasPesadasHastaElPromedio() {
+    prepararBuff(false, false, true);
+    String[] bultos = {"500", "450", "400", "300", "250", "200", "150", "150", "100", "100", "50", "50"};
+    List<RutaProyeccion> rutas = new java.util.ArrayList<>();
+    for (int i = 0; i < bultos.length; i++) {
+      rutas.add(ruta((long) i + 1, i % 2 == 0 ? 1L : 2L, bultos[i], "LXV"));
+    }
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL1)).thenReturn(rutas);
+
+    BalanceoResponse resultado =
+        servicio.balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.RUTAS, null).datos();
+
+    // Promedio 900 (2.700 / 3): 500 + 450 = 950 cabe con la tolerancia; la de 400 ya no.
+    assertEquals(3L, rutas.get(0).getChuteId(), "la de 500 va al buff");
+    assertEquals(3L, rutas.get(1).getChuteId(), "la de 450 va al buff");
+    assertTrue(rutas.get(2).getChuteId() != 3L, "la de 400 ya no cabe en el buff");
+    BigDecimal enBuff =
+        rutas.stream()
+            .filter((r) -> r.getChuteId() == 3L)
+            .map(RutaProyeccion::getTotalBultos)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+    assertEquals(0, new BigDecimal("950").compareTo(enBuff), "el buff solo tiene las dos más pesadas");
+    assertTrue(resultado.mensaje().contains("2 ruta(s) pesada(s) a chutes con buff"), resultado.mensaje());
+  }
+
+  @Test
+  void elBuffVaPrimeroYNingunChuteDelTramoQuedaVacio() {
+    prepararBuff(false, false, true);
+    // Todo en CHUTE 1 y la más pesada fuera del tramo (CHUTE 5): el buff la toma directo.
+    RutaProyeccion fuera = ruta(1L, 5L, "800", "LXV");
+    List<RutaProyeccion> rutas =
+        List.of(fuera, ruta(2L, 1L, "300", "LXV"), ruta(3L, 1L, "250", "LXV"), ruta(4L, 1L, "200", "LXV"));
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL1)).thenReturn(rutas);
+
+    BalanceoResponse resultado =
+        servicio.balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.RUTAS, null).datos();
+
+    assertEquals(3L, fuera.getChuteId(), "la más pesada, aunque esté fuera, va al buff");
+    for (Long chute : List.of(1L, 2L, 3L)) {
+      assertTrue(rutas.stream().anyMatch((r) -> r.getChuteId().equals(chute)), "CHUTE " + chute + " sin rutas");
+    }
+    assertTrue(resultado.mensaje().contains("1 desde chutes fuera del rango"), resultado.mensaje());
+    assertTrue(resultado.mensaje().contains("1 ruta(s) pesada(s) a chutes con buff"), resultado.mensaje());
+  }
+
+  @Test
+  void entreDosBuffNoQuedanHuecos() {
+    // Como CL4 M-J-S: buff en el 2.º y el último chute del tramo y menos rutas que chutes.
+    ParametroCluster dia = parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_RUTAS);
+    dia.setChuteDesdeId(1L);
+    dia.setChuteHastaId(5L);
+    preparar(
+        List.of(
+            dia,
+            parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE)),
+        List.of(base(1L, false), base(2L, true), base(3L, false), base(4L, false), base(5L, true)),
+        List.of());
+    RutaProyeccion r1000 = ruta(1L, 1L, "1000", "LXV");
+    RutaProyeccion r800 = ruta(2L, 1L, "800", "LXV");
+    RutaProyeccion r300 = ruta(3L, 1L, "300", "LXV");
+    RutaProyeccion r200 = ruta(4L, 1L, "200", "LXV");
+    List<RutaProyeccion> rutas = List.of(r1000, r800, r300, r200);
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL1)).thenReturn(rutas);
+
+    BalanceoResponse resultado =
+        servicio.balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.RUTAS, null).datos();
+
+    assertEquals(2L, r1000.getChuteId(), "la más pesada al primer buff");
+    assertEquals(5L, r800.getChuteId(), "la segunda al otro buff");
+    // Las otras dos llenan el 3 y el 4 (entre los buff); el libre es el 1, fuera del bloque.
+    assertEquals(Set.of(3L, 4L), Set.of(r300.getChuteId(), r200.getChuteId()));
+    assertTrue(resultado.mensaje().contains("1 chute(s) quedan libres"), resultado.mensaje());
+  }
+
+  /** Chutes 15 → 29 del registro real (19, 20 y 21 bloqueados): buff en el 18 y el 25. */
+  private static final List<Long> TRAMO_REAL = List.of(15L, 16L, 17L, 18L, 22L, 23L, 24L, 25L, 26L, 27L, 28L, 29L);
+
+  /** Rango de las diarias 15 → 29, ya balanceadas; el día pendiente. Devuelve la carga por chute. */
+  private Map<Long, BigDecimal> balancearReal(Balanceo dia, List<RutaProyeccion> rutas) {
+    ParametroCluster diarias = parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_RUTAS);
+    diarias.setChuteDesdeId(15L);
+    diarias.setChuteHastaId(29L);
+    preparar(
+        List.of(
+            diarias,
+            parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE)),
+        TRAMO_REAL.stream().map((id) -> base(id, id == 18L || id == 25L)).toList(),
+        List.of());
+    when(chuteRepo.findAllById(any()))
+        .thenReturn(TRAMO_REAL.stream().map((id) -> chute(id, String.valueOf(id))).toList());
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL1)).thenReturn(rutas);
+    servicio.balancear(10L, dia, CL1, FaseBalanceo.RUTAS, null);
+    Map<Long, BigDecimal> carga = new java.util.TreeMap<>();
+    rutas.forEach((r) -> carga.merge(r.getChuteId(), r.getTotalBultos(), BigDecimal::add));
+    return carga;
+  }
+
+  @Test
+  void datoRealCl4LxvLlenaElTramoSinHuecos() {
+    // CL4 L-X-V tal como está hoy (pendiente): 10 rutas para 12 chutes, la de 1.246,69 en el 28.
+    String[][] datos = {
+      {"15", "350.72"}, {"17", "614.59"}, {"18", "445.72"}, {"24", "1054.35"}, {"25", "628.32"},
+      {"26", "565.08"}, {"27", "134.79"}, {"27", "149.96"}, {"27", "59.16"}, {"28", "1246.69"}
+    };
+    List<RutaProyeccion> rutas = new ArrayList<>();
+    for (int i = 0; i < datos.length; i++) {
+      rutas.add(ruta(i + 1L, Long.valueOf(datos[i][0]), datos[i][1], "LXV"));
+    }
+
+    Map<Long, BigDecimal> carga = balancearReal(Balanceo.LXV, rutas);
+
+    assertEquals(18L, rutas.get(9).getChuteId(), "1.246,69 al primer buff");
+    assertEquals(25L, rutas.get(3).getChuteId(), "1.054,35 al segundo buff");
+    // 10 rutas: 10 chutes con una ruta cada uno, en bloque; solo 28 y 29 libres.
+    assertEquals(List.of(15L, 16L, 17L, 18L, 22L, 23L, 24L, 25L, 26L, 27L), List.copyOf(carga.keySet()), carga.toString());
+  }
+
+  @Test
+  void datoRealCl4MjsUsaUnBloqueContinuoEntreLosBuff() {
+    String[][] datos = {{"16", "405.58"}, {"17", "559.99"}, {"18", "1172.81"}, {"27", "638.58"}, {"29", "920.74"}};
+    List<RutaProyeccion> rutas = new ArrayList<>();
+    for (int i = 0; i < datos.length; i++) {
+      rutas.add(ruta(i + 1L, Long.valueOf(datos[i][0]), datos[i][1], "MJS"));
+    }
+
+    Map<Long, BigDecimal> carga = balancearReal(Balanceo.MJS, rutas);
+
+    assertEquals(18L, rutas.get(2).getChuteId(), "1.172,81 al primer buff");
+    assertEquals(25L, rutas.get(4).getChuteId(), "920,74 al segundo buff");
+    // 5 rutas para 12 chutes: se usan 5 seguidos (18 → 25), ninguno vacío entre ellos.
+    assertEquals(List.of(18L, 22L, 23L, 24L, 25L), List.copyOf(carga.keySet()), carga.toString());
+  }
+
+  @Test
+  void laNivelacionIntercambiaRutasCuandoMoverUnaSolaNoAlcanza() {
+    prepararBuff(false, false, false);
+    // Como CL1 grupo 1: ninguna ruta del chute más cargado pesa menos que la diferencia, así que
+    // mover una sola no mejora (antes quedaba en 454,50 · 336,68 · 329,33: 33 %).
+    List<RutaProyeccion> rutas =
+        List.of(
+            ruta(1L, 1L, "262.83", "LXV"),
+            ruta(2L, 1L, "191.67", "LXV"),
+            ruta(3L, 2L, "171.31", "LXV"),
+            ruta(4L, 2L, "165.37", "LXV"),
+            ruta(5L, 3L, "200.34", "LXV"),
+            ruta(6L, 3L, "128.99", "LXV"));
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL1)).thenReturn(rutas);
+
+    servicio.balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.RUTAS, null);
+
+    Map<Long, BigDecimal> carga = new java.util.HashMap<>();
+    rutas.forEach((r) -> carga.merge(r.getChuteId(), r.getTotalBultos(), BigDecimal::add));
+    BigDecimal mayor = carga.values().stream().max(BigDecimal::compareTo).orElseThrow();
+    BigDecimal menor = carga.values().stream().min(BigDecimal::compareTo).orElseThrow();
+    // Promedio 373,50: queda dentro de la tolerancia del 10 % (≤ 37,35 bultos de diferencia).
+    assertEquals(3, carga.size(), "los tres chutes con rutas");
+    assertTrue(mayor.subtract(menor).compareTo(new BigDecimal("37.35")) <= 0, carga.toString());
+  }
+
+  @Test
+  void conMasChutesConBuffQueRutasElBuffSobranteQuedaLibreNoVacio() {
+    prepararBuff(false, true, true);
+    RutaProyeccion unica = ruta(1L, 1L, "300", "LXV");
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL1)).thenReturn(List.of(unica));
+
+    BalanceoResponse resultado =
+        servicio.balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.RUTAS, null).datos();
+
+    assertEquals(2L, unica.getChuteId(), "va al primer buff del tramo");
+    // CHUTE 3 (buff) y CHUTE 1 no tienen ruta para ese día: salen del tramo en vez de quedar vacíos.
+    assertTrue(resultado.mensaje().contains("2 chute(s) quedan libres"), resultado.mensaje());
+  }
+
+  @Test
+  void conPocasRutasElBuffNoSeRecortaYRecibeLaMasPesada() {
+    prepararBuff(false, false, true);
+    // Una sola ruta para tres chutes: antes se quedaba en CHUTE 1 y el buff (al final) quedaba libre.
+    RutaProyeccion unica = ruta(1L, 1L, "300", "LXV");
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL1)).thenReturn(List.of(unica));
+
+    BalanceoResponse resultado =
+        servicio.balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.RUTAS, null).datos();
+
+    assertEquals(3L, unica.getChuteId(), "el buff nunca queda libre: recibe la ruta más pesada");
+    assertTrue(resultado.mensaje().contains("buff"), resultado.mensaje());
+  }
+
+  @Test
+  void dosChutesConBuffSeTurnanLasRutasMasPesadas() {
+    prepararBuff(false, true, true);
+    RutaProyeccion r600 = ruta(1L, 1L, "600", "LXV");
+    RutaProyeccion r500 = ruta(2L, 1L, "500", "LXV");
+    RutaProyeccion r400 = ruta(3L, 1L, "400", "LXV");
+    List<RutaProyeccion> rutas =
+        List.of(r600, r500, r400, ruta(4L, 1L, "100", "LXV"), ruta(5L, 1L, "100", "LXV"), ruta(6L, 1L, "100", "LXV"));
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL1)).thenReturn(rutas);
+
+    servicio.balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.RUTAS, null);
+
+    // Promedio 600: la de 600 al primer buff, la de 500 al segundo; la de 400 no cabe en ninguno.
+    assertEquals(2L, r600.getChuteId());
+    assertEquals(3L, r500.getChuteId());
+    assertEquals(1L, r400.getChuteId());
+  }
+
+  @Test
+  void elBuffSoloRecibeLasRutasDelGrupoCuyoTramoLoIncluye() {
+    prepararBuff(false, true, false);
+    // Tramos de las diarias: A en CHUTE 1 → 2 (con el buff), B solo en CHUTE 3.
+    when(lotes.grupos(10L))
+        .thenReturn(List.of(new GrupoGuardado(CL1, "A", 1, 1L, 2L), new GrupoGuardado(CL1, "B", 2, 3L, 3L)));
+    RutaProyeccion a100 = ruta(1L, 1L, "100", "LXV");
+    RutaProyeccion a50 = ruta(2L, 1L, "50", "LXV");
+    RutaProyeccion b900 = ruta(3L, 3L, "900", "LXV");
+    RutaProyeccion b800 = ruta(4L, 3L, "800", "LXV");
+    b900.setGrupo("B");
+    b800.setGrupo("B");
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL1)).thenReturn(List.of(a100, a50, b900, b800));
+
+    servicio.balancear(10L, Balanceo.LXV, CL1, FaseBalanceo.RUTAS, null);
+
+    // Las de B pesan más, pero el buff está en el tramo de A: B no sale de su tramo.
+    assertEquals(2L, a100.getChuteId(), "la más pesada de A va al buff");
+    assertEquals(3L, b900.getChuteId());
+    assertEquals(3L, b800.getChuteId());
+  }
+
   @Test
   void elBuffSoloSeDefineAntesDeBalancearLasDiarias() {
     preparar(
@@ -469,6 +715,67 @@ class SimulacionFrecuenciasTest {
                         List.of(new ChuteOperariosRequest(1L, 0, true)))));
 
     assertTrue(error.getMessage().contains("buff"), error.getMessage());
+  }
+
+
+  @Test
+  void conLosPredeterminadosBloqueadosNoSeCambiaLaVelocidadNiElBuff() {
+    preparar(
+        List.of(
+            parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE)),
+        List.of(base(1L, false)),
+        List.of());
+    when(lotes.leerPredeterminados())
+        .thenReturn(new Predeterminados(new BigDecimal("100"), List.of(), true));
+
+    ConflictoException velocidad =
+        assertThrows(
+            ConflictoException.class,
+            () ->
+                servicio.guardar(
+                    10L,
+                    Balanceo.LXV,
+                    new ConfiguracionActualizarRequest(new BigDecimal("120"), null, null, null, List.of())));
+    ConflictoException buff =
+        assertThrows(
+            ConflictoException.class,
+            () ->
+                servicio.guardar(
+                    10L,
+                    Balanceo.LXV,
+                    new ConfiguracionActualizarRequest(
+                        new BigDecimal("100"), null, null, null, List.of(new ChuteOperariosRequest(1L, 0, true)))));
+
+    assertTrue(velocidad.getMessage().contains("bloqueados"), velocidad.getMessage());
+    assertTrue(buff.getMessage().contains("bloqueados"), buff.getMessage());
+    verify(parametroChuteRepo, never()).save(any(ParametroChute.class));
+  }
+
+  @Test
+  void conLosPredeterminadosBloqueadosLoDemasSiSeGuarda() {
+    preparar(
+        List.of(
+            parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE)),
+        List.of(base(1L, false)),
+        List.of());
+    when(lotes.leerPredeterminados())
+        .thenReturn(new Predeterminados(new BigDecimal("100"), List.of(), true));
+
+    // Misma velocidad y mismo buff: el máximo por chute sí cambia.
+    ConfiguracionSimulacionResponse cfg =
+        servicio
+            .guardar(
+                10L,
+                Balanceo.LXV,
+                new ConfiguracionActualizarRequest(
+                    new BigDecimal("100.00"), null, 5, null, List.of(new ChuteOperariosRequest(1L, 0, false))))
+            .datos();
+
+    assertFalse(cfg.chutes().get(0).buff());
   }
 
   @Test

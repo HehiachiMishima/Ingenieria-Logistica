@@ -35,6 +35,30 @@
     color: var(--text-3);
   }
 
+  /* Candado de velocidad y buff: solo el botón, a la altura de los campos. */
+  &__fijar {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: flex-end;
+  }
+
+  &__candado {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    white-space: nowrap;
+
+    ui-icon {
+      flex: none;
+    }
+  }
+
+  /* Bloqueados: el botón (ahora «Desbloquear») toma el acento, como el candado de los campos. */
+  &__candado--activo {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
   /* Inputs un poco más bajos para que todo se vea más compacto */
   .ui-input {
     height: 38px;
@@ -66,6 +90,12 @@
 
     &__campo {
       flex: 1 1 100%; /* En celular, 1 campo por fila */
+    }
+
+    &__fijar,
+    &__candado {
+      flex: 1 1 100%;
+      justify-content: center;
     }
 
     &__acciones .ui-btn {

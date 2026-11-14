@@ -83,15 +83,130 @@ public class SimulacionLotesRepository {
 
   /** Los operarios iniciales son la base de cada chute hasta que el usuario la cambie. */
   public void insertarParametrosChute(Long archivoId, Collection<Long> chuteIds, int operarios) {
+    insertarParametrosChute(archivoId, chuteIds, operarios, java.util.Set.of());
+  }
+
+  /** Los chutes del registro; los de {@code buff} nacen con buff (los predeterminados). */
+  public void insertarParametrosChute(
+      Long archivoId, Collection<Long> chuteIds, int operarios, Collection<Long> buff) {
     jdbc.batchUpdate(
-        "INSERT INTO parametros_chutes (archivo_id, chute_id, operarios) VALUES (?, ?, ?)",
+        "INSERT INTO parametros_chutes (archivo_id, chute_id, operarios, buff) VALUES (?, ?, ?, ?)",
         new ArrayList<>(chuteIds),
         LOTE,
         (ps, chuteId) -> {
           ps.setLong(1, archivoId);
           ps.setLong(2, chuteId);
           ps.setInt(3, operarios);
+          ps.setBoolean(4, buff.contains(chuteId));
         });
+  }
+
+  // ---------------- Predeterminados (velocidad y buff de todos los registros) ----------------
+
+  /** Registros sin balancear: ningún cluster salió de PENDIENTE en ningún balanceo. */
+  private static final String SIN_BALANCEAR =
+      "NOT EXISTS (SELECT 1 FROM parametros_clusters p"
+          + " WHERE p.archivo_id = %s AND p.estado <> 'PENDIENTE')";
+
+  /**
+   * La fila de predeterminados; null si la base aún no la tiene. Si falta la tabla (backend
+   * desplegado antes de correr migracion-predeterminados.sql), avisa y sigue con los de siempre:
+   * cargar un registro no se cae por eso.
+   */
+  public oracle.simulacion.model.Predeterminados leerPredeterminados() {
+    try {
+      return consultarPredeterminados();
+    } catch (org.springframework.jdbc.BadSqlGrammarException e) {
+      org.slf4j.LoggerFactory.getLogger(SimulacionLotesRepository.class)
+          .warn("Falta simulacion.predeterminados: corre backend/migracion-predeterminados.sql ({})", e.getMessage());
+      return null;
+    }
+  }
+
+  private oracle.simulacion.model.Predeterminados consultarPredeterminados() {
+    return jdbc.query(
+        "SELECT velocidad_base, chutes_buff, bloqueado FROM predeterminados WHERE id = 1",
+        rs -> {
+          if (!rs.next()) {
+            return null;
+          }
+          Long[] buff = (Long[]) rs.getArray(2).getArray();
+          return new oracle.simulacion.model.Predeterminados(
+              rs.getBigDecimal(1), List.of(buff), rs.getBoolean(3));
+        });
+  }
+
+  /** Guarda velocidad, buff y bloqueo (crea la fila si falta). */
+  public void guardarPredeterminados(BigDecimal velocidad, Collection<Long> buff, boolean bloqueado) {
+    Long[] ids = buff.toArray(Long[]::new);
+    jdbc.update(
+        conexion -> {
+          var ps =
+              conexion.prepareStatement(
+                  "INSERT INTO predeterminados (id, velocidad_base, chutes_buff, bloqueado)"
+                      + " VALUES (1, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET"
+                      + " velocidad_base = EXCLUDED.velocidad_base,"
+                      + " chutes_buff = EXCLUDED.chutes_buff, bloqueado = EXCLUDED.bloqueado");
+          ps.setBigDecimal(1, velocidad);
+          ps.setArray(2, conexion.createArrayOf("bigint", ids));
+          ps.setBoolean(3, bloqueado);
+          return ps;
+        });
+  }
+
+  /** Abre los predeterminados para cambiarlos (conserva los valores). */
+  public void desbloquearPredeterminados() {
+    jdbc.update(
+        "INSERT INTO predeterminados (id, bloqueado) VALUES (1, FALSE)"
+            + " ON CONFLICT (id) DO UPDATE SET bloqueado = FALSE");
+  }
+
+  /**
+   * Lleva velocidad y buff a los registros sin balancear (los ya balanceados conservan los suyos:
+   * el buff ya decidió dónde quedaron sus rutas y la velocidad, sus operarios). Tres sentencias
+   * en lote, sin recorrer registros. Devuelve cuántos registros recibieron los valores.
+   */
+  public int aplicarPredeterminados(BigDecimal velocidad, Collection<Long> buff) {
+    Long[] ids = buff.toArray(Long[]::new);
+    // Se bloquean los registros sin balancear (en orden, sin abrazos mortales): un balanceo que
+    // empieza a la vez espera; si termina antes, su registro ya no cuenta como sin balancear.
+    jdbc.query(
+        "SELECT a.id FROM archivos_excel a WHERE "
+            + SIN_BALANCEAR.formatted("a.id")
+            + " ORDER BY a.id FOR UPDATE",
+        (rs) -> null);
+    int registros =
+        jdbc.update(
+            "UPDATE simulacion_config c SET velocidad_base = ? WHERE "
+                + SIN_BALANCEAR.formatted("c.archivo_id"),
+            velocidad);
+    // Buff: los elegidos (con su fila aunque el registro no la tuviera)…
+    jdbc.update(
+        conexion -> {
+          var ps =
+              conexion.prepareStatement(
+                  "INSERT INTO parametros_chutes (archivo_id, chute_id, operarios, buff)"
+                      + " SELECT c.archivo_id, b.chute_id, 0, TRUE"
+                      + " FROM simulacion_config c CROSS JOIN unnest(?::bigint[]) AS b(chute_id)"
+                      + " WHERE "
+                      + SIN_BALANCEAR.formatted("c.archivo_id")
+                      + " ON CONFLICT (archivo_id, chute_id) DO UPDATE SET buff = TRUE"
+                      + " WHERE parametros_chutes.buff = FALSE");
+          ps.setArray(1, conexion.createArrayOf("bigint", ids));
+          return ps;
+        });
+    // …y los demás, sin buff.
+    jdbc.update(
+        conexion -> {
+          var ps =
+              conexion.prepareStatement(
+                  "UPDATE parametros_chutes pc SET buff = FALSE"
+                      + " WHERE pc.buff AND NOT (pc.chute_id = ANY (?)) AND "
+                      + SIN_BALANCEAR.formatted("pc.archivo_id"));
+          ps.setArray(1, conexion.createArrayOf("bigint", ids));
+          return ps;
+        });
+    return registros;
   }
 
   /**

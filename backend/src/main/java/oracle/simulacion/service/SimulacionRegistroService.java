@@ -33,7 +33,7 @@ import oracle.common.support.Filtros;
 import oracle.common.support.Trazas;
 import oracle.simulacion.model.ArchivoExcel;
 import oracle.simulacion.model.ParametroChute;
-import oracle.simulacion.model.SimulacionConfig;
+import oracle.simulacion.model.Predeterminados;
 import oracle.simulacion.repository.ArchivoExcelRepository;
 import oracle.simulacion.repository.SimulacionLotesRepository;
 import oracle.simulacion.request.RegistroActualizarRequest;
@@ -420,13 +420,16 @@ public class SimulacionRegistroService {
     Map<String, Long> chutes =
         lotes.asegurarChutes(rutas.stream().map(SimulacionExcel.FilaRuta::chute).toList());
 
-    lotes.insertarConfig(archivoId, SimulacionConfig.VELOCIDAD_INICIAL, chutes.size(), actor);
+    // Nace con la velocidad y el buff predeterminados (los de siempre si no hay).
+    Predeterminados predeterminados = SimulacionPredeterminadosService.actuales(lotes);
+    lotes.insertarConfig(archivoId, predeterminados.velocidad(), chutes.size(), actor);
     lotes.insertarParametrosCluster(archivoId, clusters.values());
     // El registro tiene todos los chutes del plano (sin bloqueados), aunque el
     // Excel no los traiga: se ven vacíos y se pueden usar al mover o balancear.
     java.util.Set<Long> delRegistro = new java.util.LinkedHashSet<>(chutes.values());
     delRegistro.addAll(plano.idsVisibles());
-    lotes.insertarParametrosChute(archivoId, delRegistro, ParametroChute.OPERARIOS_INICIALES);
+    lotes.insertarParametrosChute(
+        archivoId, delRegistro, ParametroChute.OPERARIOS_INICIALES, predeterminados.chutesBuff());
     lotes.insertarRutas(archivoId, rutas, clusters, chutes);
     return guardado;
   }

@@ -14,6 +14,7 @@ import {
   HistorialRegistroSimulacion,
   HistorialSimulacion,
   PaginaRutas,
+  PredeterminadosSimulacion,
   RegistroSimulacionActualizarRequest,
   RutasDashboardFiltros,
   RutasDashboardSimulacion,
@@ -129,6 +130,24 @@ export class SimulacionApi {
       `/simulacion/registros/${id}/clusters/${clusterId}/balanceo/vista`,
       { desde, hasta, balanceo },
     );
+  }
+
+  /** Velocidad y chutes con buff de todos los registros, y si están bloqueados. */
+  predeterminados(): Observable<PredeterminadosSimulacion> {
+    return this.api.get<PredeterminadosSimulacion>('/simulacion/predeterminados');
+  }
+
+  /** Fija velocidad y buff para todos los registros (también los sin balancear) y los bloquea. */
+  bloquearPredeterminados(velocidad: number, chutesBuff: readonly number[]): Observable<PredeterminadosSimulacion> {
+    return this.api.put<PredeterminadosSimulacion>('/simulacion/predeterminados/bloquear', {
+      velocidad,
+      chutesBuff,
+    });
+  }
+
+  /** Abre velocidad y buff para cambiarlos (los valores se conservan). */
+  desbloquearPredeterminados(): Observable<PredeterminadosSimulacion> {
+    return this.api.put<PredeterminadosSimulacion>('/simulacion/predeterminados/desbloquear', {});
   }
 
   /** Mueve una ruta a otro chute de su mismo cluster (movimiento manual). */

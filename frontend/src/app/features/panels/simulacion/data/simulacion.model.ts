@@ -517,3 +517,14 @@ export interface RutasDashboardSimulacion {
   resumen: ResumenRutasSimulacion;
   rutas: Pagina<RutaSimulacion>;
 }
+
+/**
+ * Velocidad y chutes con buff con que nace todo registro. Bloqueados, ningún registro los cambia:
+ * se desbloquean (para todos), se cambian y se vuelven a bloquear.
+ */
+export interface PredeterminadosSimulacion {
+  velocidad: number | string;
+  /** Ids del catálogo de chutes (el mismo en todos los registros). */
+  chutesBuff: number[];
+  bloqueado: boolean;
+}
