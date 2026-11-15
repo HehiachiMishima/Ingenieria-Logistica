@@ -15,14 +15,12 @@ import { descargarArchivo } from '../../../../core/utils/archivo.util';
 import { Notificaciones } from '../../../../core/services/notificaciones';
 import { Icon } from '../../../../shared/ui/icon/icon';
 import { SimulacionApi } from '../data/simulacion.api';
-import { DIAS_BALANCEO, DiaBalanceo } from '../data/simulacion.model';
-type Formato = 'EXCEL' | 'HTML' | 'PDF';
+type Formato = 'EXCEL' | 'PDF';
 
 /**
- * Botón «Exportar» de la simulación: el Excel (un solo archivo con los dos días y su selector de
- * frecuencia), el reporte interactivo en HTML (con su filtro) o el PDF ejecutivo con los días que
- * tienen rutas (se abre en otra pestaña, listo para imprimir). Se habilita cuando la simulación terminó (todos
- * los clusters cerrados).
+ * Botón «Exportar» de la simulación: la distribución de rutas por cluster y chute en Excel o en PDF
+ * (el mismo diseño; el PDF se abre en otra pestaña, listo para imprimir). Se habilita cuando la
+ * simulación terminó (todos los clusters cerrados).
  */
 @Component({
   selector: 'app-simulacion-exportar',
@@ -54,21 +52,14 @@ type Formato = 'EXCEL' | 'HTML' | 'PDF';
             <span class="exp__icono exp__icono--excel"><ui-icon name="analisis" [size]="18" /></span>
             <span class="exp__texto">
               <strong>Excel</strong>
-              <small>Los dos días, con selector de frecuencia</small>
-            </span>
-          </button>
-          <button type="button" role="menuitem" class="exp__item" (click)="exportar('HTML')">
-            <span class="exp__icono exp__icono--html"><ui-icon name="ver" [size]="18" /></span>
-            <span class="exp__texto">
-              <strong>Reporte interactivo (HTML)</strong>
-              <small>Con filtro de frecuencia; se abre en el navegador</small>
+              <small>Distribución por cluster y chute</small>
             </span>
           </button>
           <button type="button" role="menuitem" class="exp__item" (click)="exportar('PDF')">
             <span class="exp__icono exp__icono--pdf"><ui-icon name="dashboard" [size]="18" /></span>
             <span class="exp__texto">
-              <strong>PDF ejecutivo</strong>
-              <small>Los dos días y el resumen total, en horizontal</small>
+              <strong>PDF</strong>
+              <small>El mismo diseño, listo para imprimir (A3)</small>
             </span>
           </button>
         </div>
@@ -125,7 +116,6 @@ type Formato = 'EXCEL' | 'HTML' | 'PDF';
     }
     .exp__icono--excel { color: var(--success); background: var(--success-soft); }
     .exp__icono--pdf { color: var(--danger); background: var(--danger-soft); }
-    .exp__icono--html { color: var(--accent); background: var(--accent-soft); }
     .exp__texto { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
     .exp__texto strong { font-size: var(--fs-sm); }
     .exp__texto small { font-size: var(--fs-xs); color: var(--text-3); }
@@ -145,9 +135,6 @@ export class SimulacionExportar {
   readonly registroNombre = input('');
   /** La simulación terminó: todos los clusters cerrados. */
   readonly listo = input(false);
-  /** Días con rutas en el registro: el reporte (HTML y PDF) lleva solo esos. */
-  readonly dias = input<readonly DiaBalanceo[]>(DIAS_BALANCEO);
-
   readonly abierto = signal(false);
   readonly generando = signal<Formato | null>(null);
 
@@ -203,20 +190,10 @@ export class SimulacionExportar {
     if (!id || this.generando() !== null) {
       return;
     }
-    if (formato !== 'EXCEL') {
-      // El reporte se arma en otra pestaña (recupera la sesión con la cookie). Lleva los días con
-      // rutas: el PDF abre el diálogo de impresión y el HTML se descarga con su filtro.
-      const dias = DIAS_BALANCEO.filter((d) => this.dias().includes(d));
-      const conRutas = dias.length > 0 ? dias : DIAS_BALANCEO;
+    if (formato === 'PDF') {
+      // El PDF se arma en otra pestaña (recupera la sesión con la cookie) y abre la impresión.
       const url = this.router.serializeUrl(
-        this.router.createUrlTree(['/simulacion/reporte'], {
-          queryParams: {
-            registro: id,
-            vista: conRutas.length > 1 ? 'AMBOS' : conRutas[0],
-            dias: conRutas.join(','),
-            ...(formato === 'HTML' ? { formato: 'html' } : {}),
-          },
-        }),
+        this.router.createUrlTree(['/simulacion/reporte'], { queryParams: { registro: id } }),
       );
       window.open(url, '_blank', 'noopener');
       return;
@@ -231,7 +208,7 @@ export class SimulacionExportar {
       // Los errores los avisa el interceptor global.
       .subscribe((archivo) => {
         descargarArchivo(archivo, nombreArchivo(this.registroNombre()));
-        this.notificaciones.exito('Excel generado', 'Los dos días en un archivo, con selector de frecuencia.');
+        this.notificaciones.exito('Excel generado', 'Distribución de rutas por cluster y chute.');
       });
   }
 }

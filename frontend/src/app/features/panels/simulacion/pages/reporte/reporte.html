@@ -1,597 +1,136 @@
-<!-- data-vista: lo que muestra el filtro. Cada bloque dice en qué vistas aparece (data-vistas). -->
-<div class="rep" [attr.data-vista]="datos() ? vista() : null">
-  <!-- Barra de acciones: solo en pantalla, no se imprime. -->
-  <div class="rep-barra">
-    <div class="rep-barra__texto">
-      <ui-icon name="dashboard" [size]="18" />
-      <span>Reporte ejecutivo · filtra la frecuencia e imprime o guarda como PDF.</span>
-    </div>
-    @if (datos()) {
-    <!-- Filtro de frecuencia: solo cambia lo que se ve (y lo que se imprime). -->
-    <div class="rep-filtros" role="group" aria-label="Frecuencia del reporte">
-      @for (o of opciones(); track o.vista) {
-      <button type="button" class="rep-filtro" [attr.data-vista-boton]="o.vista" [attr.aria-pressed]="vista() === o.vista"
-        [disabled]="!o.habilitada" [title]="o.titulo" (click)="cambiarVista(o.vista)">{{ o.etiqueta }}</button>
-      }
-    </div>
-    }
-    <div class="rep-barra__acciones">
-      <button type="button" class="ui-btn ui-btn--secondary" data-html-quitar (click)="cerrar()">Cerrar</button>
-      <button type="button" class="ui-btn ui-btn--secondary" data-html-quitar [disabled]="!datos()"
-        (click)="descargarHtml()">
-        <ui-icon name="descargar" [size]="16" /> HTML
+<main class="dist">
+  <!-- Solo en pantalla: imprimir (o guardar como PDF) y cerrar la pestaña. -->
+  <div class="dist__barra">
+    <span class="dist__barra-texto">Distribución de rutas · A3 horizontal</span>
+    <div class="dist__acciones">
+      <button type="button" class="dist__boton dist__boton--primario" (click)="imprimir()" [disabled]="!datos()">
+        Imprimir / guardar PDF
       </button>
-      <button type="button" class="ui-btn ui-btn--primary" data-accion="imprimir" [disabled]="!datos()"
-        (click)="imprimir()">
-        <ui-icon name="descargar" [size]="16" /> Imprimir / Guardar PDF
-      </button>
+      <button type="button" class="dist__boton" (click)="cerrar()">Cerrar</button>
     </div>
   </div>
-
-  @if (descargado()) {
-  <p class="rep-estado rep-estado--ok" role="status" data-html-quitar>
-    <ui-icon name="check" [size]="18" /> Reporte interactivo descargado. Ábrelo en el navegador; ya puedes cerrar esta pestaña.
-  </p>
-  }
 
   @if (error(); as mensaje) {
-  <div class="rep-estado rep-estado--error" role="alert">
-    <ui-icon name="alerta" [size]="20" /> {{ mensaje }}
-  </div>
+    <p class="dist__estado dist__estado--error" role="alert">{{ mensaje }}</p>
   } @else if (!datos()) {
-  <div class="rep-estado"><span class="ui-spinner"></span> Preparando el reporte…</div>
-  } @else if (base(); as cfg) {
-  @let a = ambos();
-  <!-- ============ Página 1: portada, índice, indicadores y resultado por ola ============ -->
-  <section class="rep-hoja" id="resumen">
-    <header class="rep-portada">
-      <div class="rep-portada__marca">
-        <span class="rep-portada__kicker">
-          Simulación · Reporte ejecutivo · Balanceo
-          @for (v of vistasDia(); track v.dia) {
-          <span [attr.data-vistas]="v.dia">{{ v.etiqueta }}</span>
+    <p class="dist__estado" aria-live="polite">Preparando la distribución…</p>
+  }
+
+  @if (datos(); as d) {
+    <!-- El lienzo desplaza en pantallas angostas; la hoja conserva su ancho de impresión. -->
+    <div class="dist__lienzo">
+      <article class="dist__hoja">
+        <header class="dist__encabezado">
+          <img class="dist__logo" src="FarmaciasPeruanasName.jpg" alt="Farmacias Peruanas" width="154" height="60" />
+          <div class="dist__titulos">
+            <h1>Distribución de rutas por cluster y chute</h1>
+            <p>
+              {{ d.registro }} · {{ d.clusters.length }} cluster(s) · {{ d.chutes.length }} chutes · Diarias, L-X-V y
+              M-J-S en un solo bloque por cluster
+            </p>
+          </div>
+          <div class="dist__marca">
+            <strong>ATLAS</strong>
+            <span>Plataforma de Ingeniería Logística</span>
+            <small>Generado {{ generado() }}</small>
+          </div>
+        </header>
+
+        <section class="dist__kpis" aria-label="Indicadores">
+          @for (k of indicadores(); track k.etiqueta) {
+            <div class="dist__kpi {{ k.clase }}">
+              <span>{{ k.etiqueta }}</span>
+              <strong>{{ formatearEntero(k.valor) }}</strong>
+            </div>
           }
-          @if (a) {
-          <span data-vistas="AMBOS">{{ a.etiquetas.join(' y ') }}</span>
-          }
-        </span>
-        <h1 class="rep-portada__titulo">{{ cfg.archivo.nombreRegistro }}</h1>
-        <p class="rep-portada__meta">
-          {{ estadoRegistro() }} ·
-          @for (v of vistasDia(); track v.dia) {
-          <span [attr.data-vistas]="v.dia">{{ formatearEntero(v.rutas) }} rutas de {{ v.etiqueta }}</span>
-          }
-          @if (a) {
-          <span data-vistas="AMBOS">{{ formatearEntero(a.rutas) }} rutas (las diarias, una vez)</span>
-          }
-          · {{ formatearEntero(cfg.archivo.chutes) }} chutes · velocidad
-          {{ formatearEntero(cfg.velocidadBase) }} bultos/h por operario ·
-          {{ cfg.operariosPorChute ? 'máx. ' + cfg.operariosPorChute + ' por chute' : 'sin tope por chute' }}
+        </section>
+
+        <p class="dist__leyenda">
+          <b>Frecuencia de cada ruta:</b>
+          <span class="dist__ruta--diaria">■ Diaria</span> (sale los dos días)
+          <span class="dist__ruta--lxv">■ L-X-V</span>
+          <span class="dist__ruta--mjs">■ M-J-S</span>
+          <span class="dist__leyenda-sep">Cabecera roja = chute con buff · Columna gris = bloqueado</span>
         </p>
-      </div>
-      <div class="rep-portada__fecha">
-        <span>Generado</span>
-        <strong>{{ generado.toLocaleString('es-PE', { dateStyle: 'medium', timeStyle: 'short' }) }}</strong>
-      </div>
-    </header>
 
-    <!-- Índice: enlaces internos (también en el PDF guardado desde Chrome). -->
-    <nav class="rep-indice" aria-label="Índice del reporte">
-      @for (s of secciones; track s.id; let n = $index) {
-      <a class="rep-indice__item" [attr.href]="enlace(s.id)" [attr.data-ancla]="s.id" (click)="irA($event, s.id)"
-        [attr.data-vistas]="s.id === 'total' && a ? 'AMBOS' : null">
-        <span class="rep-indice__numero">{{ n + 1 }}</span>{{ s.titulo }}
-      </a>
-      }
-    </nav>
-
-    @if (!finalizado()) {
-    <p class="rep-aviso"><ui-icon name="alerta" [size]="14" /> La simulación aún no termina: los datos son parciales.</p>
-    }
-
-    @for (v of vistasDia(); track v.dia) {
-    <div class="rep-vista" [attr.data-vistas]="v.dia">
-      <ng-container [ngTemplateOutlet]="tplResumenDia" [ngTemplateOutletContext]="{ $implicit: v }" />
-    </div>
-    }
-
-    @if (a) {
-    <!-- Ambos: cada indicador con su valor en cada día, lado a lado. -->
-    <div class="rep-vista" data-vistas="AMBOS">
-      <h2 class="rep-titulo"><ui-icon name="dashboard" [size]="16" /> Indicadores por día</h2>
-      <div class="rep-tabla-wrap">
-        <table class="rep-tabla rep-ambos">
-          <thead>
-            <tr>
-              <th class="rep-izq">Indicador</th>
-              @for (e of a.etiquetas; track e) {
-              <th class="rep-izq"><span class="rep-dia">{{ e }}</span></th>
-              }
-            </tr>
-          </thead>
-          <tbody>
-            @for (k of a.indicadores; track k.etiqueta) {
-            <tr>
-              <td class="rep-izq">
-                <span class="rep-ambos__indicador" [style.--k]="k.color"><ui-icon [name]="k.icono" [size]="14" />{{ k.etiqueta }}</span>
-              </td>
-              @for (val of k.valores; track $index) {
-              <td class="rep-izq"><strong class="rep-ambos__valor">{{ val.valor }}</strong><small class="rep-ambos__detalle">{{ val.detalle }}</small></td>
-              }
-            </tr>
-            }
-          </tbody>
-        </table>
-      </div>
-
-      <h2 class="rep-titulo"><ui-icon name="analisis" [size]="16" /> Resultado por ola</h2>
-      <div class="rep-tabla-wrap">
-        <table class="rep-tabla rep-ambos">
-          <thead>
-            <tr>
-              <th rowspan="2">Ola</th>
-              <th rowspan="2" class="rep-izq">Cluster</th>
-              <th rowspan="2">Operarios</th>
-              @for (e of a.etiquetas; track e) {
-              <th colspan="5" class="rep-cuadro__grupo"><span class="rep-dia">{{ e }}</span></th>
-              }
-            </tr>
-            <tr>
-              @for (e of a.etiquetas; track e) {
-              <th>Rutas</th>
-              <th>Bultos</th>
-              <th>Cierre</th>
-              <th>Uso</th>
-              <th>Cumple</th>
-              }
-            </tr>
-          </thead>
-          <tbody>
-            @for (o of a.olas; track o.id) {
-            <tr>
-              <td>{{ o.ola }}</td>
-              <td class="rep-izq"><span class="rep-cluster" [style.--c]="o.color">{{ o.nombre }}</span></td>
-              <td>{{ o.operarios ?? '—' }}</td>
-              @for (x of o.porDia; track $index) {
-              @if (x) {
-              <td>{{ formatearEntero(x.rutas) }}</td>
-              <td>{{ formatearEntero(x.bultos) }}</td>
-              <td><strong>{{ x.conseguido }}</strong><small class="rep-ambos__de">de {{ x.establecido }}</small></td>
-              <td>{{ x.uso === null ? '—' : x.uso + ' %' }}</td>
-              <td><ng-container [ngTemplateOutlet]="tplCumple" [ngTemplateOutletContext]="{ $implicit: x.cumple }" /></td>
-              } @else {
-              <td colspan="5">—</td>
-              }
-              }
-            </tr>
-            }
-          </tbody>
-        </table>
-      </div>
-
-      <h2 class="rep-titulo"><ui-icon name="info" [size]="16" /> Conclusiones</h2>
-      <div class="rep-ambos__conclusiones">
-        @for (c of a.conclusiones; track c.etiqueta) {
-        <div>
-          <span class="rep-dia">{{ c.etiqueta }}</span>
-          <ul class="rep-conclusiones">
-            @for (frase of c.frases; track frase) {
-            <li>{{ frase }}</li>
-            }
-          </ul>
-        </div>
+        @if (d.clusters.length === 0) {
+          <p class="dist__estado">El registro no tiene rutas para mostrar.</p>
         }
-      </div>
-    </div>
-    }
-  </section>
 
-  <!-- ============ Página 2: cierre de cada ola, por día ============ -->
-  <section class="rep-hoja rep-hoja--nueva" id="cierres">
-    @for (v of vistasDia(); track v.dia) {
-    <div class="rep-vista" [attr.data-vistas]="v.dia + ' AMBOS'">
-      <h2 class="rep-titulo"><ui-icon name="reloj" [size]="16" /> Cierre de cada ola: establecido vs. conseguido
-        <span class="rep-dia">{{ v.etiqueta }}</span></h2>
-      <div class="rep-grafico">
-        @if (v.hayCierres) {
-        <ui-comparativo [datos]="v.graficoCierres" [formato]="formatoHoras" etiquetaAntes="Cierre establecido"
-          etiquetaDespues="Cierre conseguido" color="var(--violet)" [altura]="210" [anchoGrupo]="110" />
-        } @else {
-        <p class="rep-grafico__vacio">
-          <ui-icon name="info" [size]="16" /> Define el límite de cada cluster y asigna sus operarios para comparar el
-          cierre establecido con el conseguido.
-        </p>
-        }
-      </div>
-
-      <!-- Antes (proyección del Excel) vs. después: solo si el Excel trae dotación base;
-           si no, el «antes» es el cierre establecido del gráfico de arriba. -->
-      @if (v.hayTiemposAntes) {
-      <h2 class="rep-titulo"><ui-icon name="reloj" [size]="16" /> Tiempo de cada ola: proyección vs. balanceado
-        <span class="rep-dia">{{ v.etiqueta }}</span></h2>
-      <div class="rep-grafico">
-        <ui-comparativo [datos]="v.graficoTiempos" [formato]="formatoHoras" etiquetaAntes="Proyección del Excel"
-          etiquetaDespues="Después del balanceo" color="var(--accent)" [altura]="210" [anchoGrupo]="110" />
-      </div>
-      }
-    </div>
-    }
-  </section>
-
-  <!-- ============ Página 3: comparativos, por día ============ -->
-  <section class="rep-hoja rep-hoja--nueva" id="comparativos">
-    @for (v of vistasDia(); track v.dia) {
-    <div class="rep-vista" [attr.data-vistas]="v.dia + ' AMBOS'">
-      <h2 class="rep-titulo"><ui-icon name="analisis" [size]="16" /> Comparativo de clusters: antes vs. después
-        <span class="rep-dia">{{ v.etiqueta }}</span></h2>
-      <p class="rep-nota">«Antes» es la carga del Excel; «después», la de hoy (incluye las rutas cambiadas de cluster).</p>
-      <div class="rep-grafico">
-        <ui-comparativo [datos]="v.graficoClusters" [formato]="formatoEntero" etiquetaAntes="Bultos antes"
-          etiquetaDespues="Bultos después" color="var(--accent)" [altura]="190" [anchoGrupo]="110" />
-      </div>
-      <ng-container [ngTemplateOutlet]="tplCuadro" [ngTemplateOutletContext]="{
-          $implicit: v.cuadroClusters.filas, total: v.cuadroClusters.total, primera: 'Cluster', traspasos: true }" />
-
-      <h2 class="rep-titulo"><ui-icon name="paquete" [size]="16" /> Bultos por chute (todos los clusters): antes vs. después
-        <span class="rep-dia">{{ v.etiqueta }}</span></h2>
-      @for (g of v.graficosBultos; track $index) {
-      <div class="rep-grafico">
-        <ui-comparativo [datos]="g.grupos" [formato]="formatoEntero" etiquetaAntes="Antes" etiquetaDespues="Después"
-          color="var(--success)" [altura]="190" [anchoGrupo]="g.ancho" />
-      </div>
-      }
-    </div>
-    }
-  </section>
-
-  <!-- ============ Página 4: configuración, cada cluster con sus días uno debajo del otro ============ -->
-  <section class="rep-hoja rep-hoja--nueva" id="configuracion">
-    <h2 class="rep-titulo rep-titulo--grande">
-      <app-icono-sim class="rep-ico" nombre="bultos" [tamano]="null" />
-      Configuración: rutas por cluster y chute
-    </h2>
-    <!-- Cómo leer cada ruta: igual que en la pantalla de Configuración. -->
-    <div class="rep-leyenda">
-      <span class="rep-leyenda__item">
-        <span class="rep-cf-ruta rep-cf-ruta--muestra" style="--g: #7c3aed">
-          <span class="rep-cf-ruta__pestana">1</span>
-          <span class="rep-cf-ruta__cuerpo">
-            <span class="rep-cf-ruta__codigo">RUTA</span>
-            <span class="rep-cf-ruta__bultos"><ng-container [ngTemplateOutlet]="tplCaja" /><span>45</span></span>
-          </span>
-          <span class="rep-cf-ruta__frec" data-marca="D">D</span>
-        </span>
-        Grupo · bultos · frecuencia
-      </span>
-      <span class="rep-leyenda__item"><span class="rep-cf-movida"></span> Movida</span>
-      <span class="rep-leyenda__item">
-        <span class="rep-sem rep-sem--alto">Alto</span>
-        <span class="rep-sem rep-sem--medio">Medio</span>
-        <span class="rep-sem rep-sem--bajo">Bajo</span>
-      </span>
-    </div>
-
-    @for (c of configuracion(); track c.id) {
-    <!-- Solo los días con rutas del cluster; en el filtro, la tarjeta aparece en sus días y en Ambos. -->
-    <article class="rep-cf" [attr.data-vistas]="c.vistas">
-      @for (s of c.secciones; track s.dia) {
-      <div class="rep-cf__dia" [attr.data-vistas]="s.dia + ' AMBOS'">
-        @for (t of s.tramos; track $index) {
-        <div class="rep-cf__scroll">
-          <table class="rep-cf__tabla" [style.--chutes]="t.chutes.length">
+        @for (c of clusters(); track c.id) {
+          <table class="dist__bloque">
+            <colgroup>
+              <col class="dist__col-rotulo" />
+              @for (ch of d.chutes; track $index) {
+                <col [class.dist__col-bloq]="ch.bloqueado" />
+              }
+            </colgroup>
             <thead>
               <tr>
-                <th class="rep-cf__esquina"><span class="rep-sr">Cluster</span></th>
-                @for (ch of t.chutes; track ch.id) {
-                <th>{{ ch.etiqueta }}</th>
+                <th scope="col" class="dist__cluster">{{ c.nombre }}</th>
+                @for (ch of d.chutes; track $index) {
+                  <th scope="col" class="dist__chute" [class.dist__chute--buff]="ch.buff" [class.dist__chute--bloq]="ch.bloqueado">
+                    {{ ch.bloqueado ? 'BLOQ.' : etiquetaChute(ch.nombre) }}
+                  </th>
                 }
               </tr>
             </thead>
             <tbody>
-              @for (fila of t.filas; track $index; let primera = $first) {
-              <tr>
-                @if (primera) {
-                <td class="rep-cf__panel" [attr.rowspan]="t.filas.length">
-                  <ng-container [ngTemplateOutlet]="tplPanel" [ngTemplateOutletContext]="{ $implicit: c, s: s }" />
-                </td>
-                }
-                @for (celda of fila; track $index) {
-                <td class="rep-cf__celda">
-                  @if (celda) {
-                  <span class="rep-cf-ruta" [class.rep-cf-ruta--movida]="celda.movida" [style.--g]="celda.color"
-                    [title]="celda.titulo">
-                    @if (celda.grupo !== null) {
-                    <span class="rep-cf-ruta__pestana">{{ celda.grupo }}</span>
-                    }
-                    <span class="rep-cf-ruta__cuerpo">
-                      <span class="rep-cf-ruta__codigo">{{ celda.codigo }}</span>
-                      <span class="rep-cf-ruta__bultos"><ng-container [ngTemplateOutlet]="tplCaja" /><span>{{ celda.bultos }}</span></span>
-                    </span>
-                    <span class="rep-cf-ruta__frec" [attr.data-marca]="celda.marca">{{ celda.marca }}</span>
-                  </span>
-                  }
-                </td>
-                }
-              </tr>
-              }
-              @for (total of t.totales; track total.clave) {
-              <tr class="rep-cf__total">
-                <th scope="row">
-                  <app-icono-sim class="rep-ico" [nombre]="total.clave" [tamano]="null" />
-                  {{ total.etiqueta }}
+              <tr class="dist__fila-rutas">
+                <th scope="row" class="dist__resumen">
+                  <strong>{{ c.rutas }} {{ c.rutas === 1 ? 'ruta' : 'rutas' }}</strong>
+                  <small>{{ c.detalle[0] }}</small>
+                  <small>{{ c.detalle[1] }}</small>
                 </th>
-                @for (celda of total.celdas; track $index) {
-                <td [class]="celda.tono ? 'rep-sem rep-sem--' + celda.tono : ''">
-                  {{ celda.valor > 0 ? formatearEntero(celda.valor) : '' }}
-                </td>
+                @for (x of c.celdas; track $index) {
+                  <td class="dist__celda" [class.dist__celda--buff]="x.buff" [class.dist__celda--bloq]="x.bloqueado"
+                    [class.dist__celda--vacia]="!x.bloqueado && x.rutas.length === 0">
+                    @if (!x.bloqueado) {
+                      @for (r of x.rutas; track $index) {
+                        <span class="dist__ruta {{ r.clase }}">{{ r.codigo }}</span>
+                      } @empty {
+                        —
+                      }
+                    }
+                  </td>
                 }
               </tr>
-              }
+              <tr class="dist__total">
+                <th scope="row" class="dist__total-rotulo dist__ruta--lxv">
+                  Bultos L-X-V <small>{{ formatearEntero(c.bultosLxv) }}</small>
+                </th>
+                @for (x of c.celdas; track $index) {
+                  <td [class.dist__celda--bloq]="x.bloqueado" [class.dist__guion]="!x.bloqueado && x.lxv === null"
+                    [style.background]="x.fondoLxv">
+                    @if (!x.bloqueado) {
+                      {{ x.lxv === null ? '—' : formatearEntero(x.lxv) }}
+                    }
+                  </td>
+                }
+              </tr>
+              <tr class="dist__total">
+                <th scope="row" class="dist__total-rotulo dist__ruta--mjs">
+                  Bultos M-J-S <small>{{ formatearEntero(c.bultosMjs) }}</small>
+                </th>
+                @for (x of c.celdas; track $index) {
+                  <td [class.dist__celda--bloq]="x.bloqueado" [class.dist__guion]="!x.bloqueado && x.mjs === null"
+                    [style.background]="x.fondoMjs">
+                    @if (!x.bloqueado) {
+                      {{ x.mjs === null ? '—' : formatearEntero(x.mjs) }}
+                    }
+                  </td>
+                }
+              </tr>
             </tbody>
           </table>
-        </div>
         }
-      </div>
-      }
-    </article>
-    }
-  </section>
 
-  <!-- ============ Página 5: resumen total, los días sumados ============ -->
-  @if (resumenTotal(); as r) {
-  <section class="rep-hoja rep-hoja--nueva" id="total" [attr.data-vistas]="a ? 'AMBOS' : null">
-    <h2 class="rep-titulo rep-titulo--grande">
-      <app-icono-sim class="rep-ico" nombre="unidades" [tamano]="null" />
-      Resumen total <span class="rep-dia">{{ etiquetaDias() }}</span>
-    </h2>
-    <div class="rep-tt-kpis">
-      @for (k of r.indicadores; track k.clave) {
-      <div class="rep-tt-kpi" [attr.data-concepto]="k.clave">
-        <span class="rep-tt-kpi__cabeza">
-          <span class="rep-tt-kpi__icono">
-            <app-icono-sim class="rep-ico" [nombre]="k.clave" [tamano]="null" />
-          </span>
-          <span class="rep-tt-kpi__etiqueta">{{ k.etiqueta }}</span>
-        </span>
-        <strong class="rep-tt-kpi__valor">{{ formatearEntero(k.valor) }}</strong>
-      </div>
-      }
+        <p class="dist__nota">
+          Cada celda muestra solo los números de ruta; el color indica su frecuencia. Una diaria sale una sola vez y
+          trabaja los dos días. Las filas de bultos suman por chute la carga de cada día (diarias + rutas de ese día),
+          redondeada al entero.
+        </p>
+      </article>
     </div>
-
-    <h3 class="rep-titulo">Totales por chute</h3>
-    <div class="rep-cf">
-    @for (t of r.tramos; track $index) {
-    <div class="rep-cf__scroll">
-      <table class="rep-cf__tabla rep-tt-chutes" [style.--chutes]="t.chutes.length">
-        <thead>
-          <tr>
-            <th class="rep-cf__esquina">Concepto</th>
-            @for (ch of t.chutes; track ch.id) {
-            <th>{{ ch.etiqueta }}</th>
-            }
-            @if (t.ultimo) {
-            <th class="rep-tt-total">Total</th>
-            }
-          </tr>
-        </thead>
-        <tbody>
-          @for (f of t.filas; track f.clave) {
-          <tr class="rep-cf__total">
-            <th scope="row">
-              <app-icono-sim class="rep-ico" [nombre]="f.clave" [tamano]="null" />
-              {{ f.etiqueta }}
-            </th>
-            @for (celda of f.celdas; track $index) {
-            <td [class]="celda.tono ? 'rep-sem rep-sem--' + celda.tono : ''">
-              {{ celda.valor > 0 ? formatearEntero(celda.valor) : '' }}
-            </td>
-            }
-            @if (t.ultimo) {
-            <td class="rep-tt-total">{{ formatearEntero(f.total) }}</td>
-            }
-          </tr>
-          }
-        </tbody>
-      </table>
-    </div>
-    }
-    </div>
-
-    <h3 class="rep-titulo">Totales por cluster</h3>
-    <div class="rep-tabla-wrap">
-      <table class="rep-tabla rep-tt-clusters">
-        <thead>
-          <tr>
-            <th class="rep-izq">Cluster</th>
-            @for (k of r.indicadores; track k.clave) {
-            <th>{{ k.etiqueta.slice(6) }}</th>
-            }
-          </tr>
-        </thead>
-        <tbody>
-          @for (c of r.clusters; track c.id) {
-          <tr>
-            <td class="rep-izq"><span class="rep-cluster" [style.--c]="c.color">{{ c.nombre }}</span></td>
-            @for (v of c.valores; track $index) {
-            <td>
-              <span class="rep-tt-valor">
-                <strong>{{ formatearEntero(v.valor) }}</strong>
-                <span class="rep-tt-peso">
-                  <span class="rep-tt-barra" aria-hidden="true"><i [style.width.%]="v.porcentaje" [style.background]="c.color"></i></span>
-                  <small>{{ v.porcentaje }} %</small>
-                </span>
-              </span>
-            </td>
-            }
-          </tr>
-          }
-        </tbody>
-        <tfoot>
-          <tr>
-            <td class="rep-izq">Total</td>
-            @for (t of r.totales; track $index) {
-            <td>{{ formatearEntero(t) }}</td>
-            }
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-  </section>
   }
-  }
-</div>
-
-<!-- Un día: indicadores, resultado por ola y conclusiones. -->
-<ng-template #tplResumenDia let-v>
-  <div class="rep-kpis">
-    @for (k of v.indicadores; track k.etiqueta) {
-    <ui-kpi [etiqueta]="k.etiqueta" [valor]="k.valor" [detalle]="k.detalle" [icono]="k.icono" [color]="k.color" />
-    }
-  </div>
-
-  <h2 class="rep-titulo"><ui-icon name="analisis" [size]="16" /> Resultado por ola <span class="rep-dia">{{ v.etiqueta }}</span></h2>
-  <div class="rep-tabla-wrap">
-    <table class="rep-tabla">
-      <thead>
-        <tr>
-          <th>Ola</th>
-          <th class="rep-izq">Cluster</th>
-          <th>Operarios</th>
-          <th>Chutes</th>
-          <th>Rutas</th>
-          <th>Bultos</th>
-          <th>Cierre establecido</th>
-          <th>Cierre conseguido</th>
-          <th>Uso</th>
-          <th>Dif. bultos</th>
-          <th>Cumple</th>
-        </tr>
-      </thead>
-      <tbody>
-        @for (o of v.olas; track o.id) {
-        <tr>
-          <td>{{ o.ola }}</td>
-          <td class="rep-izq"><span class="rep-cluster" [style.--c]="o.color">{{ o.nombre }}</span></td>
-          <td>{{ o.operarios ?? '—' }}</td>
-          <td>{{ o.chutes }}</td>
-          <td>{{ formatearEntero(o.rutas) }}</td>
-          <td>{{ formatearEntero(o.bultos) }}</td>
-          <td>{{ o.establecido }}</td>
-          <td class="rep-fuerte">{{ o.conseguido }}</td>
-          <td>{{ o.uso === null ? '—' : o.uso + ' %' }}</td>
-          <td>{{ o.dispersion === null ? '—' : o.dispersion + ' %' }}</td>
-          <td><ng-container [ngTemplateOutlet]="tplCumple" [ngTemplateOutletContext]="{ $implicit: o.cumple }" /></td>
-        </tr>
-        }
-      </tbody>
-    </table>
-  </div>
-
-  <h2 class="rep-titulo"><ui-icon name="info" [size]="16" /> Conclusiones</h2>
-  <ul class="rep-conclusiones">
-    @for (frase of v.conclusiones; track frase) {
-    <li>{{ frase }}</li>
-    }
-  </ul>
-</ng-template>
-
-<ng-template #tplCumple let-cumple>
-  @if (cumple === null) {
-  —
-  } @else {
-  <span class="rep-pill" [class.rep-pill--ok]="cumple" [class.rep-pill--mal]="!cumple">{{ cumple ? 'Sí' : 'No' }}</span>
-  }
-</ng-template>
-
-<!-- Cuadro ejecutivo antes vs. después: las cinco métricas (como el dashboard). -->
-<ng-template #tplCuadro let-filas let-total="total" let-primera="primera" let-traspasos="traspasos">
-  <div class="rep-tabla-wrap">
-    <table class="rep-tabla rep-cuadro">
-      <thead>
-        <tr>
-          <th rowspan="2" class="rep-izq">{{ primera }}</th>
-          @for (m of metricas; track m.id) {
-          <th colspan="2" class="rep-cuadro__grupo">{{ m.nombre }}</th>
-          }
-          @if (traspasos) {
-          <th rowspan="2">Entraron</th>
-          <th rowspan="2">Salieron</th>
-          }
-        </tr>
-        <tr>
-          @for (m of metricas; track m.id) {
-          <th>Antes</th>
-          <th>Después</th>
-          }
-        </tr>
-      </thead>
-      <tbody>
-        @for (f of filas; track f.etiqueta) {
-        <tr>
-          <td class="rep-izq">
-            @if (f.color) {
-            <span class="rep-cluster" [style.--c]="f.color">{{ f.etiqueta }}</span>
-            } @else {
-            <strong>{{ f.etiqueta }}</strong>
-            }
-          </td>
-          @for (c of f.celdas; track $index) {
-          <td class="rep-cuadro__antes">{{ formatearEntero(c.antes) }}</td>
-          <td>
-            <strong>{{ formatearEntero(c.despues) }}</strong>
-            <small class="rep-delta" [class.rep-delta--sube]="c.sube === true"
-              [class.rep-delta--baja]="c.sube === false">{{ c.variacion }}</small>
-          </td>
-          }
-          @if (traspasos) {
-          <td class="rep-delta--sube">{{ f.entraron ? '+' + f.entraron : '—' }}</td>
-          <td class="rep-delta--baja">{{ f.salieron ? '−' + f.salieron : '—' }}</td>
-          }
-        </tr>
-        }
-      </tbody>
-      @if (total) {
-      <tfoot>
-        <tr>
-          <td class="rep-izq"><strong>Total</strong></td>
-          @for (c of total.celdas; track $index) {
-          <td class="rep-cuadro__antes">{{ formatearEntero(c.antes) }}</td>
-          <td><strong>{{ formatearEntero(c.despues) }}</strong></td>
-          }
-          @if (traspasos) {
-          <td></td>
-          <td></td>
-          }
-        </tr>
-      </tfoot>
-      }
-    </table>
-  </div>
-</ng-template>
-
-<!-- Panel de un cluster en un día (como el de Configuración, sin botones). -->
-<ng-template #tplPanel let-c let-s="s">
-  <div class="rep-cf-panel">
-    <span class="rep-cluster" [style.--c]="c.color">{{ c.nombre }}</span>
-    <span class="rep-cf-panel__dia" [attr.data-dia]="s.dia">{{ s.etiqueta }}</span>
-    @if (s.ola; as o) {
-    <span class="rep-cf-panel__dato"><strong>{{ formatearEntero(o.rutas) }}</strong> rutas ·
-      <strong>{{ formatearEntero(o.bultos) }}</strong> bultos</span>
-    <span class="rep-cf-panel__dato">Cierre {{ o.establecido }} → <strong>{{ o.conseguido }}</strong>
-      @if (o.cumple !== null) {
-      <span [class]="o.cumple ? 'rep-cf-panel__ok' : 'rep-cf-panel__mal'">{{ o.cumple ? '✓' : '✗' }}</span>
-      }
-    </span>
-    }
-  </div>
-</ng-template>
-
-<!-- Caja de bultos de cada ruta de la cuadrícula: en la plantilla, no como componente (miles de rutas). -->
-<ng-template #tplCaja>
-  <svg class="rep-caja" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-    <path class="rep-caja__tapa" d="M8 1.5 14.5 4.5 8 7.5 1.5 4.5Z" />
-    <path class="rep-caja__frente" d="M1.5 4.5 8 7.5V14.5L1.5 11.5Z" />
-    <path class="rep-caja__lado" d="M8 7.5 14.5 4.5V11.5L8 14.5Z" />
-    <path class="rep-caja__cinta" d="M4.75 3 11.25 6V13" />
-  </svg>
-</ng-template>
+</main>

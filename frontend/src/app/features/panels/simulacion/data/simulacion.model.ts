@@ -535,3 +535,44 @@ export interface PredeterminadosSimulacion {
   chutesBuff: number[];
   bloqueado: boolean;
 }
+
+/** Chute del plano en la distribución; los bloqueados no tienen id. */
+export interface ChuteDistribucion {
+  id: number | null;
+  nombre: string;
+  buff: boolean;
+  bloqueado: boolean;
+}
+
+/** Un chute con rutas del cluster: sus rutas (diarias, L-X-V, M-J-S) y los bultos de cada día. */
+export interface CeldaDistribucion {
+  chuteId: number | null;
+  rutas: { codigo: string; frecuencia: FrecuenciaRuta }[];
+  bultosLxv: number;
+  bultosMjs: number;
+}
+
+export interface ClusterDistribucion {
+  id: number;
+  nombre: string;
+  rutas: number;
+  diarias: number;
+  lxv: number;
+  mjs: number;
+  bultosLxv: number;
+  bultosMjs: number;
+  celdas: CeldaDistribucion[];
+}
+
+/**
+ * Distribución de rutas por cluster y chute: lo que exportan el Excel y el PDF. Un bloque por
+ * cluster con todos los chutes del plano y los bultos de cada día.
+ */
+export interface DistribucionSimulacion {
+  registro: string;
+  /** ISO-8601 (UTC). */
+  generado: string;
+  chutes: ChuteDistribucion[];
+  clusters: ClusterDistribucion[];
+  totales: { clusters: number; rutas: number; chutesEnUso: number; bultosLxv: number; bultosMjs: number };
+}

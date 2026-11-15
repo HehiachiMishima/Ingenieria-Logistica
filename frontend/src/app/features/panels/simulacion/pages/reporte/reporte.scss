@@ -1,656 +1,398 @@
-@use 'breakpoints' as bp;
+// Distribución de rutas por cluster y chute: documento para imprimir (A3 horizontal), con la misma
+// paleta que el Excel (Atlas / Farmacias Peruanas). Siempre claro: es un documento, no la app.
 
-/*
- * Reporte ejecutivo (ViewEncapsulation.None: todo va bajo .rep / rep-*).
- * En pantalla es una hoja centrada; al imprimir, A4 apaisado con colores
- * exactos y cortes de página entre secciones.
- */
 @page {
-  size: A4 landscape;
-  margin: 10mm;
+  size: A3 landscape;
+  margin: 8mm;
 }
 
-.rep {
-  --rep-ancho: 1120px;
+.dist {
+  --d-navy: #0b1f3a;
+  --d-navy-2: #13294b;
+  --d-rojo: #e11d2e;
+  --d-rojo-borde: #b4121f;
+  --d-rojo-suave: #fff4f5;
+  --d-azul: #1d63ed;
+  --d-ambar: #b45309;
+  --d-tinta: #0f172a;
+  --d-gris: #64748b;
+  --d-gris-claro: #94a3b8;
+  --d-superficie: #f5f7fb;
+  --d-borde: #d5dde8;
+  --d-bloq: #e2e8f0;
+  --d-navy-suave: #e8edf4;
+  --d-guion: #cbd5e1;
+
+  color-scheme: light;
   min-height: 100dvh;
-  padding: 0 clamp(var(--space-3), 3vw, var(--space-6)) var(--space-8);
-  background: var(--bg, var(--surface-2));
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
+  background: #e9edf3;
+  color: var(--d-tinta);
+  font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
 
-/* ---------- Barra de acciones (solo pantalla) ---------- */
-.rep-barra {
+// ---------------- Barra (solo pantalla) ----------------
+
+.dist__barra {
   position: sticky;
   top: 0;
-  z-index: var(--z-sticky);
+  z-index: 2;
   display: flex;
   flex-wrap: wrap;
+  gap: 8px 16px;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
-  max-width: var(--rep-ancho);
-  margin: 0 auto var(--space-4);
-  padding: var(--space-3) 0;
-  background: inherit;
-  border-bottom: 1px solid var(--border);
-
-  &__texto {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-width: 0;
-    font-size: var(--fs-sm);
-    color: var(--text-2);
-  }
-
-  &__acciones {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-  }
-
-  @include bp.down(sm) {
-    /* En el celular la barra (texto, filtro y acciones) ocupa más de un tercio: no se queda fija. */
-    position: static;
-
-    &__acciones {
-      flex: 1 1 100%;
-
-      .ui-btn {
-        flex: 1 1 auto;
-      }
-    }
-  }
+  padding: 10px 16px;
+  background: var(--d-navy);
+  color: #ffffff;
 }
 
-.rep-estado {
+.dist__barra-texto {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.dist__acciones {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  max-width: var(--rep-ancho);
-  margin: var(--space-8) auto;
-  padding: var(--space-6);
-  color: var(--text-2);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-
-  &--error {
-    color: var(--danger);
-    background: var(--danger-soft);
-  }
-
-  &--ok {
-    color: var(--success);
-    background: var(--success-soft);
-  }
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-/* ---------- Filtro de frecuencia (solo pantalla) ---------- */
-/*
- * Cada bloque dice en qué vistas aparece (data-vistas="LXV AMBOS"). Sin data-vista en la raíz
- * (cargando) se ve todo; el HTML descargado guarda la suya, así sin JavaScript también filtra.
- */
-.rep[data-vista='LXV'] [data-vistas]:not([data-vistas~='LXV']),
-.rep[data-vista='MJS'] [data-vistas]:not([data-vistas~='MJS']),
-.rep[data-vista='AMBOS'] [data-vistas]:not([data-vistas~='AMBOS']) {
-  display: none !important;
-}
-
-.rep-filtros {
-  display: inline-grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 2px;
-  padding: 2px;
-  min-width: 0;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-}
-
-.rep-filtro {
-  min-width: 0;
-  min-height: 32px;
-  padding: 0 var(--space-3);
-  overflow: hidden;
-  border: 0;
+.dist__boton {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid rgb(255 255 255 / 0.35);
   border-radius: 6px;
   background: transparent;
-  color: var(--text-2);
-  font: inherit;
-  font-size: var(--fs-sm);
-  font-weight: 700;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  color: #ffffff;
+  font: 700 13px Arial, Helvetica, sans-serif;
   cursor: pointer;
 
-  &:hover:not(:disabled):not([aria-pressed='true']) {
-    color: var(--text);
-    background: var(--surface-2);
-  }
-
-  &[aria-pressed='true'] {
-    color: #fff;
-    background: var(--accent);
-  }
-
   &:disabled {
-    cursor: not-allowed;
-    opacity: 0.45;
+    opacity: 0.6;
+    cursor: default;
   }
 
   &:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
+    outline: 2px solid #ffffff;
+    outline-offset: 2px;
   }
 }
 
-/* ---------- Índice (enlaces internos, también en el PDF) ---------- */
-.rep-indice {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-bottom: var(--space-4);
-
-  &__item {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-width: 0;
-    padding: 4px var(--space-3) 4px 4px;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    background: var(--surface-2);
-    color: var(--text);
-    font-size: var(--fs-sm);
-    font-weight: 700;
-    text-decoration: none;
-
-    &:hover {
-      border-color: var(--accent);
-      color: var(--accent);
-    }
-
-    &:focus-visible {
-      outline: 2px solid var(--accent);
-      outline-offset: 2px;
-    }
-  }
-
-  &__numero {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: var(--accent);
-    color: #fff;
-    font-size: 0.7rem;
-    font-weight: 800;
-  }
+.dist__boton--primario {
+  border-color: var(--d-rojo);
+  background: var(--d-rojo);
 }
 
-/* Día de un bloque (L-X-V, M-J-S): chip junto al título. */
-.rep-dia {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: var(--fs-xs);
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
+.dist__estado {
+  margin: 24px 16px;
+  font-size: 14px;
+  color: var(--d-gris);
 }
 
-/* Dos días en una hoja: un día termina y empieza el otro con aire. */
-.rep-vista + .rep-vista {
-  margin-top: var(--space-5);
+.dist__estado--error {
+  color: var(--d-rojo);
 }
 
-/* ---------- Ambos: los dos días lado a lado ---------- */
-.rep-ambos {
-  &__indicador {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-weight: 700;
+// ---------------- Hoja ----------------
 
-    ui-icon {
-      flex: none;
-      color: var(--k, var(--accent));
-    }
-  }
-
-  &__valor {
-    display: block;
-    font-size: var(--fs-base);
-  }
-
-  &__detalle,
-  &__de {
-    display: block;
-    font-size: var(--fs-xs);
-    font-weight: 500;
-    color: var(--text-3);
-  }
-
-  &__conclusiones {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
-    gap: var(--space-4);
-
-    .rep-conclusiones {
-      margin-top: var(--space-2);
-    }
-  }
-}
-
-
-/* ---------- Hoja ---------- */
-.rep-hoja {
-  max-width: var(--rep-ancho);
-  margin: 0 auto var(--space-5);
-  padding: clamp(var(--space-4), 3vw, var(--space-6));
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-sm);
-}
-
-.rep-portada {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding-bottom: var(--space-4);
-  margin-bottom: var(--space-4);
-  border-bottom: 3px solid var(--brand, var(--accent));
-
-  &__marca {
-    min-width: 0;
-    flex: 1 1 420px;
-  }
-
-  &__kicker {
-    font-size: 0.7rem;
-    font-weight: 800;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--brand, var(--accent));
-  }
-
-  &__titulo {
-    margin: var(--space-1) 0;
-    font-family: var(--font-display);
-    font-size: clamp(1.4rem, 2.6vw, 2rem);
-    font-weight: 800;
-    letter-spacing: -0.02em;
-    overflow-wrap: anywhere;
-  }
-
-  &__meta {
-    margin: 0;
-    font-size: var(--fs-sm);
-    color: var(--text-2);
-  }
-
-  &__fecha {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    text-align: right;
-    font-size: var(--fs-xs);
-    color: var(--text-3);
-
-    /* Cuando baja debajo del título, se alinea con él. */
-    @include bp.down(md) {
-      align-items: flex-start;
-      text-align: left;
-    }
-
-    strong {
-      font-size: var(--fs-sm);
-      color: var(--text);
-    }
-  }
-}
-
-.rep-aviso {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0 0 var(--space-4);
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--fs-sm);
-  color: var(--warning);
-  background: var(--warning-soft, var(--surface-2));
-  border-radius: var(--radius-sm);
-}
-
-/* Seis indicadores en 3 columnas (2 en tablet, 1 en celular): las etiquetas no se cortan. */
-.rep-kpis {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-3);
-  margin-bottom: var(--space-5);
-
-  @include bp.down(md) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  @include bp.down(sm) {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.rep-titulo {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  margin: var(--space-5) 0 var(--space-3);
-  font-size: var(--fs-base);
-  font-weight: 800;
-  color: var(--text);
-
-  &--grande {
-    margin-top: 0;
-    font-size: var(--fs-lg);
-  }
-}
-
-/* ---------- Tabla de olas ---------- */
-.rep-tabla-wrap {
+// La hoja conserva el ancho de impresión; en pantallas angostas desplaza el lienzo, no la página.
+.dist__lienzo {
   overflow-x: auto;
+  padding: 16px;
 }
 
-.rep-tabla {
+.dist__hoja {
+  box-sizing: border-box;
+  width: 1560px;
+  margin: 0 auto;
+  padding: 20px 24px 16px;
+  background: #ffffff;
+  box-shadow: 0 2px 12px rgb(15 23 42 / 0.12);
+}
+
+.dist__encabezado {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 20px;
+  align-items: center;
+  padding-bottom: 10px;
+  border-bottom: 3px solid var(--d-rojo);
+}
+
+.dist__logo {
+  display: block;
+  width: 154px;
+  height: auto;
+}
+
+.dist__titulos {
+  min-width: 0;
+
+  h1 {
+    margin: 0;
+    color: var(--d-navy);
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+    text-transform: uppercase;
+  }
+
+  p {
+    margin: 4px 0 0;
+    color: var(--d-gris);
+    font-size: 12px;
+  }
+}
+
+.dist__marca {
+  display: grid;
+  justify-items: end;
+  line-height: 1.15;
+
+  strong {
+    color: var(--d-rojo);
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+  }
+
+  span {
+    color: var(--d-navy);
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  small {
+    margin-top: 4px;
+    color: var(--d-gris-claro);
+    font-size: 10px;
+  }
+}
+
+.dist__kpis {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0 10px;
+}
+
+.dist__kpi {
+  display: grid;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px solid var(--d-borde);
+  background: var(--d-superficie);
+  text-align: center;
+
+  span {
+    color: var(--d-gris);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  strong {
+    color: var(--d-navy);
+    font-size: 24px;
+    font-weight: 800;
+  }
+}
+
+.dist__kpi--lxv strong {
+  color: var(--d-azul);
+}
+
+.dist__kpi--mjs strong {
+  color: var(--d-ambar);
+}
+
+.dist__leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0 0 10px;
+  color: var(--d-gris);
+  font-size: 11px;
+
+  span:not(.dist__leyenda-sep) {
+    font-weight: 700;
+  }
+}
+
+.dist__ruta--diaria {
+  color: var(--d-tinta);
+}
+
+.dist__ruta--lxv {
+  color: var(--d-azul);
+}
+
+.dist__ruta--mjs {
+  color: var(--d-ambar);
+}
+
+// ---------------- Bloque de un cluster ----------------
+
+.dist__bloque {
   width: 100%;
+  margin: 0 0 14px;
   border-collapse: collapse;
-  font-size: var(--fs-sm);
+  table-layout: fixed;
+  break-inside: avoid;
+  page-break-inside: avoid;
 
   th,
   td {
-    padding: 7px 10px;
-    text-align: right;
-    white-space: nowrap;
-    border-bottom: 1px solid var(--border);
-  }
-
-  thead th {
-    font-size: 0.68rem;
-    font-weight: 800;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--table-head-fg, #fff);
-    background: var(--table-head-bg, #0f1e3d);
-  }
-
-  .rep-izq {
-    text-align: left;
-  }
-
-  .rep-fuerte {
-    font-weight: 800;
-  }
-}
-
-.rep-cluster {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 800;
-
-  &::before {
-    content: '';
-    width: 10px;
-    height: 10px;
-    border-radius: 3px;
-    background: var(--c, var(--accent));
-  }
-
-  &--general::before {
-    background: var(--text);
-  }
-}
-
-.rep-pill {
-  display: inline-block;
-  padding: 1px 10px;
-  border-radius: 999px;
-  font-weight: 800;
-
-  &--ok {
-    color: var(--success);
-    background: var(--success-soft);
-  }
-
-  &--mal {
-    color: var(--danger);
-    background: var(--danger-soft);
-  }
-}
-
-/* Cuadro ejecutivo antes vs. después: «antes» atenuado, «después» en negrita con su variación. */
-.rep-cuadro {
-  margin-bottom: var(--space-4);
-
-  thead th {
+    padding: 3px 2px;
+    border: 1px solid var(--d-borde);
     text-align: center;
-  }
-
-  &__grupo {
-    border-left: 1px solid rgba(255, 255, 255, 0.18);
-  }
-
-  &__antes {
-    color: var(--text-3);
-  }
-
-  tfoot td {
-    font-weight: 800;
-    background: var(--surface-2);
-    border-top: 2px solid var(--border-strong, var(--border));
+    vertical-align: middle;
   }
 }
 
-.rep-delta {
-  display: block;
-  font-size: 0.64rem;
+.dist__col-rotulo {
+  width: 120px;
+}
+
+.dist__col-bloq {
+  width: 26px;
+}
+
+.dist__cluster {
+  border-color: var(--d-navy-2);
+  background: var(--d-navy);
+  color: #ffffff;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.dist__chute {
+  overflow: hidden;
+  border-color: var(--d-navy-2);
+  background: var(--d-navy);
+  color: #ffffff;
+  font-size: 8.5px;
   font-weight: 700;
-  color: var(--text-3);
+  white-space: nowrap;
+  text-overflow: clip;
+}
 
-  &--sube {
-    color: var(--info, var(--accent));
+.dist__chute--buff {
+  border-color: var(--d-rojo-borde);
+  background: var(--d-rojo);
+}
+
+.dist__chute--bloq {
+  background: var(--d-guion);
+  color: var(--d-gris);
+  font-size: 7px;
+}
+
+.dist__resumen {
+  background: var(--d-navy-suave);
+  color: var(--d-navy);
+  font-weight: 400;
+
+  strong {
+    display: block;
+    font-size: 12px;
   }
 
-  &--baja {
-    color: var(--warning);
+  small {
+    display: block;
+    color: var(--d-gris);
+    font-size: 9px;
+    white-space: nowrap;
   }
 }
 
-.rep-nota {
-  margin: calc(var(--space-2) * -1) 0 var(--space-3);
-  font-size: var(--fs-xs);
-  color: var(--text-3);
+.dist__celda {
+  height: 48px;
+  background: #ffffff;
 }
 
-.rep-bloque--comparativo {
-  overflow: visible;
-  break-inside: avoid;
+.dist__celda--buff {
+  border-color: #f3b9bf;
+  background: var(--d-rojo-suave);
 }
 
-.rep-bloque__grafico {
-  padding: var(--space-3) var(--space-3) 0;
+.dist__celda--vacia {
+  background: var(--d-superficie);
+  color: var(--d-guion);
 }
 
-.rep-bloque--comparativo .rep-tabla-wrap {
-  padding: 0 var(--space-3);
+.dist__celda--bloq {
+  background: var(--d-bloq);
 }
 
-.rep-conclusiones {
-  margin: 0;
-  padding-left: var(--space-5);
-  font-size: var(--fs-sm);
-  line-height: 1.6;
-  color: var(--text-2);
+.dist__ruta {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
 }
 
-/* ---------- Gráficos ---------- */
-.rep-grafico {
-  min-width: 0;
-  margin-bottom: var(--space-4);
-  break-inside: avoid;
-
-  &__vacio {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    margin: 0;
-    padding: var(--space-5);
-    font-size: var(--fs-sm);
-    color: var(--text-3);
-    background: var(--surface-2);
-    border: 1px dashed var(--border);
-    border-radius: var(--radius);
-  }
+.dist__total td {
+  font-size: 11px;
+  font-weight: 700;
 }
 
-/* ---------- Cuadrículas ---------- */
-.rep-leyenda {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0 0 var(--space-4);
-  font-size: var(--fs-xs);
-  color: var(--text-2);
+td.dist__guion {
+  color: var(--d-guion);
+  font-weight: 400;
+}
 
-  .rep-sem {
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-weight: 800;
+.dist__total-rotulo {
+  background: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: left !important;
+  text-transform: uppercase;
+
+  small {
+    margin-left: 4px;
+    color: var(--d-gris);
+    font-weight: 400;
   }
 }
 
-.rep-caja {
-  flex: none;
-  width: 10px;
-  height: 10px;
-  overflow: visible;
-
-  path {
-    stroke: #6b4220;
-    stroke-width: 0.8;
-    stroke-linejoin: round;
-  }
-
-  &__tapa {
-    fill: #e8b97a;
-  }
-
-  &__frente {
-    fill: #c8894a;
-  }
-
-  &__lado {
-    fill: #a9692f;
-  }
-
-  path.rep-caja__cinta {
-    fill: none;
-    stroke: #f6e2b3;
-    stroke-width: 1.5;
-    stroke-linecap: round;
-  }
+.dist__nota {
+  margin: 6px 0 0;
+  color: var(--d-gris);
+  font-size: 10px;
 }
 
+// ---------------- Impresión ----------------
 
-.rep-sem {
-  &--bajo,
-  &--medio,
-  &--alto {
-    color: color-mix(in srgb, var(--sem) 78%, var(--text));
-    background: color-mix(in srgb, var(--sem) 20%, var(--surface));
-  }
-
-  &--bajo {
-    --sem: var(--warning);
-  }
-
-  &--medio {
-    --sem: var(--success);
-  }
-
-  &--alto {
-    --sem: var(--danger);
-  }
-}
-
-.rep-pie {
-  max-width: var(--rep-ancho);
-  margin: 0 auto;
-  font-size: var(--fs-xs);
-  text-align: center;
-  color: var(--text-3);
-}
-
-/* ---------- Impresión ---------- */
 @media print {
-  .rep {
-    padding: 0;
-    background: #fff;
+  html,
+  body {
+    background: #ffffff !important;
   }
 
-  .rep-barra {
+  .dist {
+    min-height: 0;
+    background: #ffffff;
+  }
+
+  .dist__barra,
+  .dist__estado {
     display: none;
   }
 
-  .rep-hoja {
-    max-width: none;
+  .dist__lienzo {
+    overflow: visible;
+    padding: 0;
+  }
+
+  .dist__hoja {
+    width: auto;
     margin: 0;
     padding: 0;
-    border: 0;
     box-shadow: none;
-  }
-
-  .rep-hoja--nueva {
-    break-before: page;
-  }
-
-  .rep-tabla-wrap {
-    overflow: visible;
-  }
-
-  /* En la hoja, la tabla de olas se ajusta al ancho útil (277 mm). */
-  .rep-tabla {
-    font-size: 0.74rem;
-
-    th,
-    td {
-      padding: 5px 6px;
-    }
-
-    thead th {
-      white-space: normal;
-    }
-  }
-
-  .rep-tabla tr,
-  .rep-kpis {
-    break-inside: avoid;
-  }
-
-  .rep-pie {
-    margin-top: var(--space-3);
   }
 }

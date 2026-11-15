@@ -10,6 +10,7 @@ import {
   ConfiguracionSimulacion,
   ConfiguracionSimulacionRequest,
   DashboardSimulacion,
+  DistribucionSimulacion,
   FaseBalanceo,
   HistorialRegistroSimulacion,
   HistorialSimulacion,
@@ -18,7 +19,6 @@ import {
   RegistroSimulacionActualizarRequest,
   RutasDashboardFiltros,
   RutasDashboardSimulacion,
-  RutaSimulacion,
   RutasSimulacionFiltros,
   VistaBalanceo,
 } from './simulacion.model';
@@ -79,9 +79,9 @@ export class SimulacionApi {
     });
   }
 
-  /** Todas las rutas del registro de una vez (reporte): una sola lectura en el servidor. */
-  todasLasRutas(id: number): Observable<RutaSimulacion[]> {
-    return this.api.get<RutaSimulacion[]>(`/simulacion/registros/${id}/rutas/todas`);
+  /** Distribución de rutas por cluster y chute (lo que imprime el PDF; el Excel lleva lo mismo). */
+  distribucion(id: number): Observable<DistribucionSimulacion> {
+    return this.api.get<DistribucionSimulacion>(`/simulacion/registros/${id}/distribucion`);
   }
 
   /** Velocidad, máximo por chute, buff y límites de horas (valen para los tres balanceos). */
@@ -282,10 +282,7 @@ export class SimulacionApi {
     );
   }
 
-  /**
-   * Excel de la simulación: un solo archivo con los dos días (lo mismo que el PDF) y un selector
-   * de frecuencia dentro del libro.
-   */
+  /** Excel de la simulación: la distribución de rutas por cluster y chute (igual que el PDF). */
   exportarExcel(id: number): Observable<Blob> {
     return this.api.getArchivo(`/simulacion/registros/${id}/exportar`);
   }

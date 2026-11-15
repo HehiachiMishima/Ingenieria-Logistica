@@ -24,6 +24,7 @@ import oracle.simulacion.request.RegistroActualizarRequest;
 import oracle.simulacion.response.ArchivoSimulacionResponse;
 import oracle.simulacion.response.BalanceoResponse;
 import oracle.simulacion.response.ComparativoLanzamientoResponse;
+import oracle.simulacion.response.DistribucionResponse;
 import oracle.simulacion.response.ConfiguracionSimulacionResponse;
 import oracle.simulacion.response.DashboardSimulacionResponse;
 import oracle.simulacion.response.HistorialRegistroResponse;
@@ -336,9 +337,19 @@ public class SimulacionController {
   }
 
   /**
-   * Excel de la simulación (un solo archivo con los dos días): lo mismo que el PDF ejecutivo
-   * (resumen, tiempos y comparativos, configuración) con un selector de frecuencia dentro del
-   * libro. {@code balanceo} se acepta por compatibilidad y se ignora. Solo lee.
+   * Distribución de rutas por cluster y chute: lo que imprime el PDF (el Excel lleva lo mismo). Un
+   * bloque por cluster con las rutas de las tres frecuencias y los bultos de cada día. Solo lee.
+   */
+  @GetMapping("/{id}/distribucion")
+  @PreAuthorize("hasAuthority('VER_DASHBOARD_SIMULACION')")
+  public ApiResponse<DistribucionResponse> distribucion(@PathVariable Long id) {
+    return ApiResponse.ok("Distribución de rutas.", reporte.distribucion(id));
+  }
+
+  /**
+   * Excel de la simulación: la hoja «Distribución» (un bloque por cluster, con las rutas de las
+   * tres frecuencias y los bultos de cada día). {@code balanceo} se acepta por compatibilidad y se
+   * ignora. Solo lee.
    */
   @GetMapping("/{id}/exportar")
   @PreAuthorize("hasAuthority('VER_DASHBOARD_SIMULACION')")

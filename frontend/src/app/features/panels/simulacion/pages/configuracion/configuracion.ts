@@ -334,17 +334,6 @@ export class SimulacionConfiguracion {
   });
   /** Vista de cada cluster (por id); sin elegir, L-X-V. */
   readonly vistas = signal<Readonly<Record<number, VistaCluster>>>({});
-  /** Días con carga en el registro (algún cluster con rutas propias o diarias): el menú Exportar. */
-  readonly diasConRutas = computed<readonly DiaBalanceo[]>(() => {
-    const clusters = this.configs().LXV?.clusters ?? [];
-    return DIAS_BALANCEO.filter((b) =>
-      clusters.some((c) => {
-        const rutas = rutasPorFrecuencia(c.avance);
-        return rutas.dia > 0 || (b === 'LXV' ? rutas.lxv : rutas.mjs) > 0;
-      }),
-    );
-  });
-
   /** Vista de cada cluster: la elegida si su frecuencia tiene rutas; si no, la primera con rutas. */
   readonly vistasEfectivas = computed<Readonly<Record<number, VistaCluster>>>(() => {
     const elegidas = this.vistas();
