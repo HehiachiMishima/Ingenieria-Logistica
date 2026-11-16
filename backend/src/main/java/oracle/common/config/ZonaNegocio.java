@@ -3,6 +3,7 @@ package oracle.common.config;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,6 +32,11 @@ public class ZonaNegocio {
     /** Inicio (00:00 del negocio) de un dia, como instante UTC. */
     public Instant inicioDelDia(LocalDate dia) {
         return dia.atStartOfDay(zona).toInstant();
+    }
+
+    /** Fecha y hora del negocio de un instante UTC. */
+    public LocalDateTime enNegocio(Instant instante) {
+        return LocalDateTime.ofInstant(instante, zona);
     }
 
     /** Dia del negocio al que corresponde un instante UTC. */

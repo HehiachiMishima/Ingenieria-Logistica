@@ -56,3 +56,103 @@
     grid-template-columns: 1fr;
   }
 }
+
+// ---------------- Abiertas / cerradas ----------------
+
+// Título de bloque del formulario (Inicio / Fin) a todo el ancho.
+.bloque-titulo {
+  margin-top: var(--space-1);
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+
+  &__nota {
+    margin-left: var(--space-2);
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--text-3);
+  }
+}
+
+.resumen-fin {
+  min-height: 1.4em;
+
+  &__texto {
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    color: var(--success);
+
+    &--abierta {
+      color: var(--warning);
+    }
+  }
+}
+
+// Antigüedad de una abierta: verde < 1 h · ámbar 1–4 h · rojo > 4 h.
+.fila-abierta {
+  --edad: var(--success);
+
+  &--media {
+    --edad: var(--warning);
+  }
+  &--antigua {
+    --edad: var(--danger);
+  }
+
+  > td:first-child {
+    box-shadow: inset 3px 0 0 var(--edad);
+  }
+
+  .edad {
+    font-weight: 700;
+    color: var(--edad);
+  }
+
+  .estado--abierta {
+    color: var(--edad);
+    background: color-mix(in srgb, var(--edad) 12%, var(--surface));
+    border-color: color-mix(in srgb, var(--edad) 26%, var(--border));
+  }
+}
+
+.estado {
+  white-space: nowrap;
+}
+
+// Punto que late: la abierta «tiene vida». Sin animación si el usuario la reduce.
+.estado__pulso {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulso-abierta 1.8s ease-out infinite;
+}
+
+@keyframes pulso-abierta {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 55%, transparent);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .estado__pulso {
+    animation: none;
+  }
+}
+
+.btn-cerrar {
+  white-space: nowrap;
+}
+
+.cierre-hint {
+  margin-bottom: var(--space-3);
+}

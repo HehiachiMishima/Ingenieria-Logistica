@@ -22,6 +22,9 @@ public record IncidenciaCrearRequest(
         @NotBlank(message = "La descripción es obligatoria.")
         @Size(max = 255, message = "La descripción no debe superar 255 caracteres.") String descripcion,
         @NotNull(message = "La hora de inicio es obligatoria.") LocalTime horaInicio,
-        @NotNull(message = "La hora de fin es obligatoria.") LocalTime horaFin,
-        @NotNull(message = "La fecha es obligatoria.") LocalDate fecha) {
+        /** Opcional: sin hora de fin la incidencia queda abierta. */
+        LocalTime horaFin,
+        @NotNull(message = "La fecha es obligatoria.") LocalDate fecha,
+        /** Opcional: si falta y hay hora de fin, se deduce (fin < inicio = día siguiente). */
+        LocalDate fechaFin) {
 }

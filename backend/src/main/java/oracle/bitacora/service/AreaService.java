@@ -1,5 +1,7 @@
 package oracle.bitacora.service;
 
+import org.springframework.data.domain.Sort;
+import oracle.bitacora.repository.ConteoEnUso;
 import oracle.common.config.Transacciones;
 
 import oracle.common.support.ActorActual;
@@ -29,6 +31,9 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 public class AreaService {
 
+    /** Orden estable del listado (antes era el que devolviera la base): usa idx_data_*_creado_en. */
+    private static final Sort ORDEN_LISTADO = Sort.by("creadoEn").and(Sort.by("id"));
+
     private final CatalogoBitacora catalogo;
     private final Transacciones transacciones;
 
@@ -46,7 +51,7 @@ public class AreaService {
 
     public ApiResponse<List<AreaResponse>> listar() {
         List<AreaResponse> datos = Trazas.medir(log, "AreaService.listar", () -> transacciones.consultar(() -> {
-            List<AreaResponse> lista = dataAreaRepository.findAll(Listas.limitado()).stream()
+            List<AreaResponse> lista = dataAreaRepository.findAll(Listas.limitado(ORDEN_LISTADO)).stream()
                     .map(AreaResponse::of).toList();
             Listas.avisarSiCorto(log, lista.size(), "AreaService.listar");
             return lista;
@@ -99,7 +104,7 @@ public class AreaService {
                 throw new ConflictoException(
                         "No se puede eliminar el area '" + area.getArea() + "': tiene "
                                 + responsables + " responsable(s) e "
-                                + incidencias + " incidencia(s) registrada(s).");
+                                + ConteoEnUso.texto(incidencias) + " incidencia(s) registrada(s).");
             }
             dataAreaRepository.delete(area);
             catalogo.registrarCambio();
@@ -169,7 +174,7 @@ public class AreaService {
                     if (incidencias > 0) {
                         throw new ConflictoException(
                                 "No se puede eliminar el responsable '" + responsable.getResponsable() + "': tiene "
-                                        + incidencias + " incidencia(s) registrada(s).");
+                                        + ConteoEnUso.texto(incidencias) + " incidencia(s) registrada(s).");
                     }
                     dataResponsableRepository.delete(responsable);
                     catalogo.registrarCambio();

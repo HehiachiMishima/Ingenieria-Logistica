@@ -133,6 +133,14 @@ se instala con `backend/postgresql.sql` y los `.sql` no entran en la imagen.
 | 2 | **Arrancar el backend una vez** | Crea el usuario semilla `USER_ADMIN` con BCrypt y le asigna `USER_ROL`. |
 | 3 | `datos.sql` *(opcional)* | 53 incidencias de ejemplo de Bitácora. Re-ejecutable (omite tickets existentes). |
 
+Si la base **ya estaba instalada** antes de los tickets abiertos, aplicar en este orden
+(ambos re-ejecutables y sin `-1`, porque crean índices `CONCURRENTLY`):
+
+| Archivo | Cuándo | Notas |
+| --- | --- | --- |
+| `migracion_tickets_abiertos.sql` | Con el backend **detenido** | Agrega `cerrado_en` (fin opcional = abierta), sus reglas y el índice de abiertas; rellena las existentes como cerradas. |
+| `migracion_bitacora_indices.sql` | Con el backend encendido | Índices de reincidencias y de responsable + fechas. |
+
 ```bash
 psql "host=<host> port=5432 dbname=<base> user=<usuario> sslmode=require" -v ON_ERROR_STOP=1 -f backend/postgresql.sql
 ```

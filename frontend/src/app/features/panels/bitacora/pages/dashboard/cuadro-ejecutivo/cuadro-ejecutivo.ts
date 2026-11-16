@@ -101,7 +101,7 @@ type Detalle =
                                   <strong class="ce__dur">{{ duracion(c.segundos) }}</strong>
                                 </div>
                                 <div class="ce__caso-meta">
-                                  <span>{{ fecha(c.fecha) }} · {{ hora(c.horaInicio) }} → {{ hora(c.horaFin) }}</span>
+                                  <span>{{ fecha(c.fecha) }} {{ hora(c.horaInicio) }} → {{ c.fechaFin !== c.fecha ? fecha(c.fechaFin) + ' ' : '' }}{{ hora(c.horaFin) }}</span>
                                   <span>{{ c.centro }} · {{ c.responsable }}</span>
                                   <span class="ce__mini" [attr.aria-label]="pctDeHoras(c.segundos, f.segundos) + ' de las horas del sistema'">
                                     <span [style.width.%]="anchoDe(c.segundos, f.segundos)"></span>

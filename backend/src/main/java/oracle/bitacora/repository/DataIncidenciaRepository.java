@@ -17,6 +17,8 @@ public interface DataIncidenciaRepository extends JpaRepository<DataIncidencia, 
     long countByIdDataSistema(Long idDataSistema);
 
     /** Registros de bitácora que referencian este tipo de incidencia (FK RESTRICT). */
-    @Query(value = "SELECT COUNT(*) FROM incidencias WHERE id_data_incidencia = :id", nativeQuery = true)
+    // Con tope (ConteoEnUso.TOPE): basta saber si esta en uso, no se cuentan millones de filas.
+    @Query(value = "SELECT COUNT(*) FROM (SELECT 1 FROM incidencias WHERE id_data_incidencia = :id LIMIT "
+            + ConteoEnUso.TOPE + ") x", nativeQuery = true)
     long contarIncidencias(@Param("id") Long id);
 }

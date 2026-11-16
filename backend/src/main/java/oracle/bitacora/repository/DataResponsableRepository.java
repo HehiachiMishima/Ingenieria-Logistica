@@ -17,6 +17,8 @@ public interface DataResponsableRepository extends JpaRepository<DataResponsable
     long countByIdDataArea(Long idDataArea);
 
     /** Registros de bitácora que referencian este responsable (FK RESTRICT). */
-    @Query(value = "SELECT COUNT(*) FROM incidencias WHERE id_data_responsable = :id", nativeQuery = true)
+    // Con tope (ConteoEnUso.TOPE): basta saber si esta en uso, no se cuentan millones de filas.
+    @Query(value = "SELECT COUNT(*) FROM (SELECT 1 FROM incidencias WHERE id_data_responsable = :id LIMIT "
+            + ConteoEnUso.TOPE + ") x", nativeQuery = true)
     long contarIncidencias(@Param("id") Long id);
 }

@@ -1,5 +1,7 @@
 package oracle.bitacora.service;
 
+import org.springframework.data.domain.Sort;
+import oracle.bitacora.repository.ConteoEnUso;
 import oracle.common.config.Transacciones;
 
 import oracle.common.support.ActorActual;
@@ -24,6 +26,9 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 public class CentroService {
 
+    /** Orden estable del listado (antes era el que devolviera la base): usa idx_data_*_creado_en. */
+    private static final Sort ORDEN_LISTADO = Sort.by("creadoEn").and(Sort.by("id"));
+
     private final CatalogoBitacora catalogo;
     private final Transacciones transacciones;
 
@@ -38,7 +43,7 @@ public class CentroService {
 
     public ApiResponse<List<CentroResponse>> listar() {
         List<CentroResponse> datos = Trazas.medir(log, "CentroService.listar", () -> transacciones.consultar(() -> {
-            List<CentroResponse> lista = dataCentroRepository.findAll(Listas.limitado()).stream()
+            List<CentroResponse> lista = dataCentroRepository.findAll(Listas.limitado(ORDEN_LISTADO)).stream()
                     .map(CentroResponse::of).toList();
             Listas.avisarSiCorto(log, lista.size(), "CentroService.listar");
             return lista;
@@ -89,7 +94,7 @@ public class CentroService {
             if (incidencias > 0) {
                 throw new ConflictoException(
                         "No se puede eliminar el centro '" + centro.getCentro() + "': tiene "
-                                + incidencias + " incidencia(s) registrada(s).");
+                                + ConteoEnUso.texto(incidencias) + " incidencia(s) registrada(s).");
             }
             dataCentroRepository.delete(centro);
             catalogo.registrarCambio();

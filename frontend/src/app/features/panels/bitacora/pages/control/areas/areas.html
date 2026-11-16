@@ -116,7 +116,7 @@
         formControlName="area"
         placeholder="SISTEMAS, LOGÍSTICA…"
       />
-      @if (campoInvalido('area')) { <span class="ui-error">El nombre es obligatorio.</span> }
+      <app-pie-campo [control]="formulario.controls.area" obligatorio="El nombre es obligatorio." [max]="maxNombre" />
     </div>
   </form>
 
@@ -176,7 +176,7 @@
           formControlName="responsable"
           placeholder="Nombre del responsable"
         />
-        @if (campoHijoInvalido()) { <span class="ui-error">El responsable es obligatorio.</span> }
+        <app-pie-campo [control]="hijoFormulario.controls.responsable" obligatorio="El responsable es obligatorio." [max]="maxNombre" />
       </div>
       <div class="child-actions">
         <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm" (click)="cerrarHijoForm()">Cancelar</button>

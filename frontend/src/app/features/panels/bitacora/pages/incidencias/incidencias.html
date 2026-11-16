@@ -125,6 +125,18 @@
       </div>
     </div>
   </section>
+
+  <section class="filtro-seccion">
+    <h3 class="filtro-seccion__titulo"><ui-icon name="reloj" [size]="15" /> Estado</h3>
+    <div class="ui-field">
+      <label class="ui-label" for="incidencias-estado">Estado</label>
+      <select id="incidencias-estado" class="ui-select" [value]="filtroEstado() ?? ''" (change)="setFiltroEstado($event)">
+        <option value="">Todas</option>
+        <option value="ABIERTA">Abiertas</option>
+        <option value="CERRADA">Cerradas</option>
+      </select>
+    </div>
+  </section>
 </ui-panel-filtros>
 
 <div class="table-card" [class.table-card--refrescando]="refrescando()">
@@ -156,19 +168,19 @@
             <th>Tipo</th>
             <th>Área</th>
             <th>Responsable</th>
-            <th>Inicio</th>
-            <th>Fin</th>
-            <th>Solución</th>
-            <th>Creado en</th>
+            <th>Fecha inicio</th>
+            <th>Hora inicio</th>
+            <th>Fecha fin</th>
+            <th>Hora fin</th>
+            <th>Duración</th>
+            <th>Estado</th>
             <th>Creado por</th>
-            <th>Actualizado</th>
-            <th>Actualizado por</th>
             <th class="col-actions">Acciones</th>
           </tr>
         </thead>
         <tbody>
           @for (incidencia of items(); track incidencia.id) {
-            <tr>
+            <tr [class]="incidencia.estado === 'ABIERTA' ? 'fila-abierta fila-abierta--' + nivelAbierta(incidencia) : ''">
               <td><span class="ui-table__primary u-mono">{{ incidencia.ticket }}</span></td>
               <td>
                 <span class="cell-sub u-muted" [title]="incidencia.descripcion">
@@ -180,15 +192,36 @@
               <td class="u-muted">{{ incidencia.tipoIncidencia ?? '—' }}</td>
               <td class="u-muted">{{ incidencia.area ?? '—' }}</td>
               <td class="u-muted">{{ incidencia.responsable ?? '—' }}</td>
+              <td class="u-mono">{{ fechaCorta(fechaInicio(incidencia)) }}</td>
               <td class="u-mono">{{ hhmm(incidencia.horaInicio) }}</td>
-              <td class="u-mono">{{ hhmm(incidencia.horaFin) }}</td>
-              <td class="u-mono">{{ duracionHhmm(incidencia.tiempoSolucionSeg) }}</td>
-              <td class="u-muted">{{ incidencia.creadoEn | date: 'dd/MM/yyyy' }}</td>
+              <td class="u-mono" [class.u-muted]="incidencia.estado === 'ABIERTA'">{{ fechaCorta(fechaFin(incidencia)) }}</td>
+              <td class="u-mono" [class.u-muted]="incidencia.estado === 'ABIERTA'">{{ hhmm(incidencia.horaFin) }}</td>
+              @if (incidencia.estado === 'ABIERTA') {
+                <td class="u-mono edad" [title]="'Abierta hace ' + edadAbierta(incidencia)">{{ edadAbierta(incidencia) }}</td>
+              } @else {
+                <td class="u-mono">{{ duracionHhmm(incidencia.tiempoSolucionSeg) }}</td>
+              }
+              <td>
+                @if (incidencia.estado === 'ABIERTA') {
+                  <span class="ui-badge estado estado--abierta"><span class="estado__pulso" aria-hidden="true"></span>Abierta</span>
+                } @else {
+                  <span class="ui-badge ui-badge--success estado">Cerrada</span>
+                }
+              </td>
               <td class="u-muted">{{ incidencia.creadoPor | actorLabel }}</td>
-              <td class="u-muted">{{ incidencia.actualizadoEn ? (incidencia.actualizadoEn | date: 'dd/MM/yyyy HH:mm') : '—' }}</td>
-              <td class="u-muted">{{ incidencia.actualizadoPor | actorLabel }}</td>
               <td>
                 <div class="row-actions">
+                  @if (incidencia.estado === 'ABIERTA') {
+                    <button
+                      *hasPermiso="permisos.MODIFICAR_INCIDENCIAS"
+                      type="button"
+                      class="ui-btn ui-btn--secondary ui-btn--sm btn-cerrar"
+                      title="Registrar el fin de la incidencia"
+                      (click)="abrirCierre(incidencia)"
+                    >
+                      Cerrar
+                    </button>
+                  }
                   <button
                     *hasPermiso="permisos.VER_INCIDENCIAS"
                     type="button"
@@ -300,7 +333,7 @@
         formControlName="ticket"
         placeholder="INC-000123"
       />
-      @if (campoInvalido('ticket')) { <span class="ui-error">El ticket es obligatorio (máx. 59).</span> }
+      <app-pie-campo [control]="formulario.controls.ticket" obligatorio="El ticket es obligatorio." [max]="maxTicket" />
     </div>
 
     <div class="ui-field">
@@ -347,43 +380,67 @@
         formControlName="descripcion"
         placeholder="Detalle del problema y su solución…"
       ></textarea>
-      @if (campoInvalido('descripcion')) {
-        <span class="ui-error">La descripción es obligatoria (máx. 255).</span>
-      }
-    </div>
-
-    <div class="ui-field">
-      <label class="ui-label">Hora de inicio <span class="ui-required">*</span></label>
-      <input
-        type="time"
-        class="ui-input"
-        [class.ui-input--invalid]="campoInvalido('horaInicio')"
-        formControlName="horaInicio"
+      <app-pie-campo
+        [control]="formulario.controls.descripcion"
+        obligatorio="La descripción es obligatoria."
+        [max]="maxDescripcion"
       />
-      @if (campoInvalido('horaInicio')) { <span class="ui-error">La hora de inicio es obligatoria.</span> }
     </div>
 
+    <p class="bloque-titulo ui-field--full">Inicio</p>
     <div class="ui-field">
-      <label class="ui-label">Hora de fin<span class="ui-required">*</span></label>
+      <label class="ui-label" for="inc-fecha">Fecha de inicio <span class="ui-required">*</span></label>
       <input
-        type="time"
-        class="ui-input"
-        [class.ui-input--invalid]="campoInvalido('horaFin')"
-        formControlName="horaFin"
-      />
-      @if (campoInvalido('horaFin')) { <span class="ui-error">La hora de fin es obligatoria.</span> }
-    </div>
-
-    <div class="ui-field">
-      <label class="ui-label">Fecha <span class="ui-required">*</span></label>
-      <input
+        id="inc-fecha"
         type="date"
         class="ui-input"
-        [class.ui-input--invalid]="campoInvalido('fecha')"
+        [class.ui-input--invalid]="errorInicio('fecha') !== null"
         formControlName="fecha"
       />
-      <span class="hint">Se combina con la hora de inicio.</span>
-      @if (campoInvalido('fecha')) { <span class="ui-error">La fecha es obligatoria.</span> }
+      @if (errorInicio('fecha'); as error) { <span class="ui-error">{{ error }}</span> }
+    </div>
+
+    <div class="ui-field">
+      <label class="ui-label" for="inc-hora-inicio">Hora de inicio <span class="ui-required">*</span></label>
+      <input
+        id="inc-hora-inicio"
+        type="time"
+        class="ui-input"
+        [class.ui-input--invalid]="errorInicio('horaInicio') !== null"
+        formControlName="horaInicio"
+      />
+      @if (errorInicio('horaInicio'); as error) { <span class="ui-error">{{ error }}</span> }
+    </div>
+
+    <p class="bloque-titulo ui-field--full">Fin <span class="bloque-titulo__nota">opcional: vacío = abierta</span></p>
+    <div class="ui-field">
+      <label class="ui-label" for="inc-fecha-fin">Fecha de fin</label>
+      <input
+        id="inc-fecha-fin"
+        type="date"
+        class="ui-input"
+        [class.ui-input--invalid]="errorFin() !== null"
+        formControlName="fechaFin"
+      />
+    </div>
+
+    <div class="ui-field">
+      <label class="ui-label" for="inc-hora-fin">Hora de fin</label>
+      <input
+        id="inc-hora-fin"
+        type="time"
+        class="ui-input"
+        [class.ui-input--invalid]="errorFin() !== null"
+        formControlName="horaFin"
+      />
+    </div>
+
+    <div class="ui-field--full resumen-fin" aria-live="polite">
+      @if (errorFin(); as error) {
+        <span class="ui-error">{{ error }}</span>
+      } @else if (resumenFin(); as r) {
+        <span class="resumen-fin__texto" [class.resumen-fin__texto--abierta]="r.abierta">{{ r.texto }}</span>
+      }
     </div>
   </form>
 
@@ -434,34 +491,28 @@
         <span class="detalle__valor">{{ incidencia.responsable ?? '—' }}</span>
       </div>
       <div class="detalle__item">
-        <span class="detalle__label">Hora de inicio</span>
-        <span class="detalle__valor u-mono">{{ hhmm(incidencia.horaInicio) }}</span>
+        <span class="detalle__label">Estado</span>
+        <span class="detalle__valor">{{ etiquetaEstado[incidencia.estado] }}</span>
       </div>
       <div class="detalle__item">
-        <span class="detalle__label">Hora de fin</span>
-        <span class="detalle__valor u-mono">{{ hhmm(incidencia.horaFin) }}</span>
+        <span class="detalle__label">Inicio</span>
+        <span class="detalle__valor u-mono">{{ fechaCorta(fechaInicio(incidencia)) }} · {{ hhmm(incidencia.horaInicio) }}</span>
       </div>
       <div class="detalle__item">
-        <span class="detalle__label">Tiempo de solución</span>
-        <span class="detalle__valor u-mono">{{ duracionHhmm(incidencia.tiempoSolucionSeg) }}</span>
-      </div>
-      <div class="detalle__item">
-        <span class="detalle__label">Creado</span>
-        <span class="detalle__valor">{{ incidencia.creadoEn | date: 'dd/MM/yyyy HH:mm' }}</span>
-      </div>
-      <div class="detalle__item">
-        <span class="detalle__label">Creado por</span>
-        <span class="detalle__valor">{{ incidencia.creadoPor | actorLabel }}</span>
-      </div>
-      <div class="detalle__item">
-        <span class="detalle__label">Actualizado por</span>
-        <span class="detalle__valor">{{ incidencia.actualizadoPor | actorLabel }}</span>
-      </div>
-      <div class="detalle__item">
-        <span class="detalle__label">Actualizado</span>
-        <span class="detalle__valor">
-          {{ incidencia.actualizadoEn ? (incidencia.actualizadoEn | date: 'dd/MM/yyyy HH:mm') : '—' }}
+        <span class="detalle__label">Fin</span>
+        <span class="detalle__valor u-mono">
+          {{ incidencia.estado === 'ABIERTA' ? '—' : fechaCorta(fechaFin(incidencia)) + ' · ' + hhmm(incidencia.horaFin) }}
         </span>
+      </div>
+      <div class="detalle__item">
+        <span class="detalle__label">{{ incidencia.estado === 'ABIERTA' ? 'Abierta hace' : 'Duración' }}</span>
+        <span class="detalle__valor u-mono">
+          {{ incidencia.estado === 'ABIERTA' ? edadAbierta(incidencia) : duracionHhmm(incidencia.tiempoSolucionSeg) }}
+        </span>
+      </div>
+      <div class="detalle__item">
+        <span class="detalle__label">Registrado por</span>
+        <span class="detalle__valor">{{ incidencia.creadoPor | actorLabel }}</span>
       </div>
     </div>
   }
@@ -492,6 +543,51 @@
     <button type="button" class="ui-btn ui-btn--danger" (click)="eliminar()" [disabled]="eliminando()">
       @if (eliminando()) { <span class="ui-spinner" style="width:16px;height:16px"></span> }
       Eliminar
+    </button>
+  </div>
+</ui-modal>
+
+<ui-modal
+  [abierto]="cierreAbierto()"
+  ancho="sm"
+  [compacto]="true"
+  titulo="Cerrar incidencia"
+  [subtitulo]="aCerrar()?.ticket ?? ''"
+  (cerrar)="cierreAbierto.set(false)"
+>
+  @if (aCerrar(); as incidencia) {
+    <p class="hint cierre-hint">
+      Abierta desde el {{ fechaCorta(fechaInicio(incidencia)) }} a las {{ hhmm(incidencia.horaInicio) }}
+      (hace {{ edadAbierta(incidencia) }}).
+    </p>
+    <div class="grid-form">
+      <div class="ui-field">
+        <label class="ui-label" for="cierre-fecha">Fecha de fin <span class="ui-required">*</span></label>
+        <input
+          id="cierre-fecha"
+          type="date"
+          class="ui-input"
+          [value]="cierreFecha()"
+          (change)="cierreFecha.set($any($event.target).value)"
+        />
+      </div>
+      <div class="ui-field">
+        <label class="ui-label" for="cierre-hora">Hora de fin <span class="ui-required">*</span></label>
+        <input
+          id="cierre-hora"
+          type="time"
+          class="ui-input"
+          [value]="cierreHora()"
+          (change)="cierreHora.set($any($event.target).value)"
+        />
+      </div>
+    </div>
+  }
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="cierreAbierto.set(false)">Cancelar</button>
+    <button type="button" class="ui-btn ui-btn--primary" (click)="confirmarCierre()" [disabled]="cerrando()">
+      @if (cerrando()) { <span class="ui-spinner" style="width:16px;height:16px"></span> }
+      Cerrar incidencia
     </button>
   </div>
 </ui-modal>

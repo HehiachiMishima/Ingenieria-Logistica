@@ -19,7 +19,9 @@ public record FiltroIncidencia(
         Long tipo,
         LocalDate desde,
         LocalDate hasta,
-        String texto) {
+        String texto,
+        /** Abierta / cerrada; null = todas. */
+        EstadoIncidencia estado) {
 
     /** Largo maximo del texto de busqueda: frena patrones LIKE enormes. */
     public static final int MAX_TEXTO = 100;

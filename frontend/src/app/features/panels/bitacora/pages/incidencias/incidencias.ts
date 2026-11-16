@@ -1,15 +1,16 @@
-import { DatePipe } from '@angular/common';
+import { formatDate } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
-  LOCALE_ID,
   computed,
   inject,
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ActivatedRoute } from '@angular/router';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Subject, concatMap, debounceTime, finalize, from, map } from 'rxjs';
+import { Subject, concatMap, debounceTime, finalize, from, map, merge } from 'rxjs';
+import { CONFIG } from '../../../../../core/config/configuracion';
 import { PERMISOS } from '../../../../../core/config/permisos';
 import { mensajeDeError } from '../../../../../core/errors/error.util';
 import { exportarCsv } from '../../../../../core/utils/csv.util';
@@ -26,6 +27,8 @@ import {
 } from '../../data/bitacora.model';
 import { AreasApi } from '../../data/areas.api';
 import { BitacoraCatalogos } from '../../state/bitacora-catalogos';
+import { PieCampo, textoRequerido } from '../../ui/pie-campo';
+import { EntradaCompleta } from '../../ui/entrada-completa';
 import { DirectorioUsuarios } from '../../../../../core/services/directorio-usuarios';
 import { IncidenciasApi } from '../../data/incidencias.api';
 import { Notificaciones } from '../../../../../core/services/notificaciones';
@@ -45,7 +48,31 @@ import {
 import { FiltrosActivos } from '../../../../../shared/ui/panel-filtros/filtros-activos';
 import { PanelFiltros } from '../../../../../shared/ui/panel-filtros/panel-filtros';
 import { RangoFechas, RangoRapido } from '../../../../../shared/ui/panel-filtros/rango-rapido';
-import { CABECERAS_EXPORT, filaExportacion, hhmm, normalizarHora } from './incidencias.logica';
+import {
+  ETIQUETA_ESTADO,
+  antiguedad,
+  edad,
+  estadoDeEvento,
+  filtroEstado,
+  relojPorMinuto,
+  segundosDesde,
+} from '../../data/estado-incidencia';
+import {
+  CABECERAS_EXPORT,
+  fechaCorta,
+  fechaFin,
+  fechaInicio,
+  filaExportacion,
+  finCoherente,
+  hhmm,
+  normalizarHora,
+  segundosEntre,
+  sugerirFechaFin,
+} from './incidencias.logica';
+
+/** Largos de la base: ticket VARCHAR(59), descripción VARCHAR(255). */
+const MAX_TICKET = 59;
+const MAX_DESCRIPCION = 255;
 
 type CampoFormulario =
   | 'idDataCentro'
@@ -57,14 +84,14 @@ type CampoFormulario =
   | 'descripcion'
   | 'horaInicio'
   | 'horaFin'
-  | 'fecha';
+  | 'fecha'
+  | 'fechaFin';
 
 @Component({
   selector: 'app-bitacora-incidencias',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     ReactiveFormsModule,
-    DatePipe,
     ActorLabelPipe,
     Icon,
     Modal,
@@ -75,6 +102,8 @@ type CampoFormulario =
     PanelFiltros,
     FiltrosActivos,
     RangoRapido,
+    PieCampo,
+    EntradaCompleta,
   ],
   templateUrl: './incidencias.html',
   styleUrl: './incidencias.scss',
@@ -87,9 +116,11 @@ export class Incidencias {
   private readonly areasApi = inject(AreasApi);
   private readonly notificaciones = inject(Notificaciones);
   private readonly directorio = inject(DirectorioUsuarios);
-  private readonly locale = inject(LOCALE_ID);
+  private readonly ruta = inject(ActivatedRoute);
 
   readonly permisos = PERMISOS;
+  readonly maxTicket = MAX_TICKET;
+  readonly maxDescripcion = MAX_DESCRIPCION;
 
   readonly pagina = signal(1);
   readonly porPagina = signal(10);
@@ -129,6 +160,7 @@ export class Incidencias {
     ),
     desde: filtroFecha('Desde'),
     hasta: filtroFecha('Hasta'),
+    estado: filtroEstado(),
   });
   readonly filtroCentro = this.panelFiltros.valores.centro;
   readonly filtroSistema = this.panelFiltros.valores.sistema;
@@ -136,6 +168,7 @@ export class Incidencias {
   readonly filtroResponsable = this.panelFiltros.valores.responsable;
   readonly filtroDesde = this.panelFiltros.valores.desde;
   readonly filtroHasta = this.panelFiltros.valores.hasta;
+  readonly filtroEstado = this.panelFiltros.valores.estado;
   readonly filtrosAbierto = this.panelFiltros.abierto;
   /** Filtros del panel aplicados, como chips removibles. */
   readonly chips = this.panelFiltros.chips;
@@ -169,18 +202,23 @@ export class Incidencias {
   private tipoPendiente: number | null = null;
   private responsablePendiente: number | null = null;
 
-  readonly formulario = this.fb.group({
-    idDataCentro: this.fb.control<number | null>(null, Validators.required),
-    idDataSistema: this.fb.control<number | null>(null, Validators.required),
-    idDataIncidencia: this.fb.control<number | null>(null, Validators.required),
-    ticket: this.fb.nonNullable.control('', [Validators.required, Validators.maxLength(59)]),
-    idDataArea: this.fb.control<number | null>(null, Validators.required),
-    idDataResponsable: this.fb.control<number | null>(null, Validators.required),
-    descripcion: this.fb.nonNullable.control('', [Validators.required, Validators.maxLength(255)]),
-    horaInicio: this.fb.nonNullable.control('', Validators.required),
-    horaFin: this.fb.nonNullable.control('', Validators.required),
-    fecha: this.fb.nonNullable.control('', Validators.required),
-  });
+  readonly formulario = this.fb.group(
+    {
+      idDataCentro: this.fb.control<number | null>(null, Validators.required),
+      idDataSistema: this.fb.control<number | null>(null, Validators.required),
+      idDataIncidencia: this.fb.control<number | null>(null, Validators.required),
+      ticket: this.fb.nonNullable.control('', textoRequerido(MAX_TICKET)),
+      idDataArea: this.fb.control<number | null>(null, Validators.required),
+      idDataResponsable: this.fb.control<number | null>(null, Validators.required),
+      descripcion: this.fb.nonNullable.control('', textoRequerido(MAX_DESCRIPCION)),
+      horaInicio: this.fb.nonNullable.control('', Validators.required),
+      fecha: this.fb.nonNullable.control('', Validators.required),
+      // Fin opcional (vacío = abierta); el grupo exige fecha y hora juntas y fin >= inicio.
+      horaFin: this.fb.nonNullable.control(''),
+      fechaFin: this.fb.nonNullable.control(''),
+    },
+    { validators: finCoherente },
+  );
 
   readonly eliminarAbierto = signal(false);
   readonly aEliminar = signal<Incidencia | null>(null);
@@ -190,9 +228,28 @@ export class Incidencias {
   readonly aVer = signal<Incidencia | null>(null);
   readonly exportando = signal(false);
 
+  /** Cierre rápido de una abierta: fecha y hora de fin (por defecto, ahora). */
+  readonly cierreAbierto = signal(false);
+  readonly aCerrar = signal<Incidencia | null>(null);
+  readonly cerrando = signal(false);
+  readonly cierreFecha = signal('');
+  readonly cierreHora = signal('');
+
+  /** Avanza cada minuto: la antigüedad de las abiertas se actualiza sola. */
+  readonly ahora = relojPorMinuto();
+  readonly etiquetaEstado = ETIQUETA_ESTADO;
+  readonly fechaCorta = fechaCorta;
+  readonly fechaInicio = fechaInicio;
+  readonly fechaFin = fechaFin;
+
   constructor() {
     this.directorio.cargar();
     this.cargarCatalogos();
+    // «Abiertas ahora» del dashboard abre el listado con ?estado=ABIERTA.
+    const estado = this.ruta.snapshot.queryParamMap.get('estado');
+    if (estado === 'ABIERTA' || estado === 'CERRADA') {
+      this.filtroEstado.set(estado);
+    }
     this.cargar();
 
     this.busqueda$.pipe(debounceTime(300), takeUntilDestroyed()).subscribe((valor) => {
@@ -205,8 +262,22 @@ export class Incidencias {
       this.cargarDesde(1);
     });
 
-    const { idDataSistema, idDataIncidencia, idDataArea, idDataResponsable } =
+    const { idDataSistema, idDataIncidencia, idDataArea, idDataResponsable, fecha, horaInicio, horaFin, fechaFin } =
       this.formulario.controls;
+    // Fecha de fin sugerida (la del inicio, o el día siguiente si la hora de fin
+    // es menor): se recalcula con CADA cambio de fecha u horas mientras la
+    // persona no la elija a mano. Antes solo se sugería una vez y, si luego se
+    // corregía el inicio, el fin quedaba en otro día (duraciones de días).
+    merge(fecha.valueChanges, horaInicio.valueChanges, horaFin.valueChanges)
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.sugerirFin());
+    // Solo los cambios de la persona emiten aquí (la sugerencia usa emitEvent: false).
+    fechaFin.valueChanges.pipe(takeUntilDestroyed()).subscribe((dia) => {
+      this.fechaFinManual = !!dia;
+      if (!dia) {
+        this.sugerirFin();
+      }
+    });
     idDataSistema.valueChanges.pipe(takeUntilDestroyed()).subscribe((sistemaId) => {
       const seleccion = this.tipoPendiente;
       this.tipoPendiente = null;
@@ -251,7 +322,123 @@ export class Incidencias {
       desde: this.filtroDesde(),
       hasta: this.filtroHasta(),
       texto: this.filtroBusqueda(),
+      estado: this.filtroEstado(),
     };
+  }
+
+  setFiltroEstado(evento: Event): void {
+    this.filtroEstado.set(estadoDeEvento(evento));
+    this.cargarDesde(1);
+  }
+
+  /** Segundos que lleva abierta (avanza con el reloj por minuto). */
+  segundosAbierta(incidencia: Incidencia): number {
+    return segundosDesde(incidencia.creadoEn, this.ahora());
+  }
+
+  edadAbierta(incidencia: Incidencia): string {
+    return edad(this.segundosAbierta(incidencia));
+  }
+
+  nivelAbierta(incidencia: Incidencia): string {
+    return antiguedad(this.segundosAbierta(incidencia));
+  }
+
+  /** Mensaje del bloque de fin (fecha y hora juntas, fin no anterior al inicio). */
+  /** true cuando la persona eligió la fecha de fin: desde ahí ya no se recalcula sola. */
+  private fechaFinManual = false;
+
+  /** Recalcula la fecha de fin sugerida (vacía si no hay hora de fin), salvo que sea manual. */
+  private sugerirFin(): void {
+    if (this.fechaFinManual) {
+      return;
+    }
+    const v = this.formulario.getRawValue();
+    const sugerida = v.horaFin ? sugerirFechaFin(v.fecha, v.horaInicio, v.horaFin) : '';
+    if (sugerida !== v.fechaFin) {
+      this.formulario.controls.fechaFin.setValue(sugerida, { emitEvent: false });
+    }
+  }
+
+  /** Mensaje de fecha u hora de inicio: incompleta (a medio escribir) u obligatoria. */
+  errorInicio(campo: 'fecha' | 'horaInicio'): string | null {
+    const control = this.formulario.controls[campo];
+    if (control.hasError('incompleta')) {
+      return campo === 'fecha'
+        ? 'La fecha de inicio está incompleta: completa día, mes y año.'
+        : 'La hora de inicio está incompleta: completa hora, minutos y a. m./p. m.';
+    }
+    if (!control.touched || control.valid) {
+      return null;
+    }
+    return campo === 'fecha' ? 'La fecha de inicio es obligatoria.' : 'La hora de inicio es obligatoria.';
+  }
+
+  errorFin(): string | null {
+    const f = this.formulario;
+    // A medio escribir: el navegador deja el valor vacío y parecería «abierta».
+    if (f.controls.horaFin.hasError('incompleta')) {
+      return 'La hora de fin está incompleta: completa hora, minutos y a. m./p. m.';
+    }
+    if (f.controls.fechaFin.hasError('incompleta')) {
+      return 'La fecha de fin está incompleta: completa día, mes y año.';
+    }
+    const { horaFin, fechaFin } = f.controls;
+    const tocado = horaFin.touched || fechaFin.touched || horaFin.dirty || fechaFin.dirty;
+    if (!tocado) {
+      return null;
+    }
+    if (f.hasError('finIncompleto')) {
+      return 'Indica fecha y hora de fin, o deja ambas vacías para dejarla abierta.';
+    }
+    return f.hasError('finAnterior') ? 'El fin no puede ser anterior al inicio.' : null;
+  }
+
+  /** Resumen en vivo bajo las fechas: duración si está cerrada o aviso de abierta. */
+  resumenFin(): { abierta: boolean; texto: string } | null {
+    const v = this.formulario.getRawValue();
+    const c = this.formulario.controls;
+    if (c.horaFin.hasError('incompleta') || c.fechaFin.hasError('incompleta')) {
+      return null;
+    }
+    if (!v.horaFin && !v.fechaFin) {
+      return { abierta: true, texto: 'Sin fin: se registrará como abierta.' };
+    }
+    const segundos = segundosEntre(v.fecha, v.horaInicio, v.fechaFin, v.horaFin);
+    return segundos === null || segundos < 0
+      ? null
+      : { abierta: false, texto: `Duración: ${edad(segundos)} · se registrará como cerrada.` };
+  }
+
+  abrirCierre(incidencia: Incidencia): void {
+    this.aCerrar.set(incidencia);
+    this.cierreFecha.set(hoy());
+    this.cierreHora.set(formatDate(Date.now(), 'HH:mm', 'en-US', CONFIG.zonaHoraria));
+    this.cierreAbierto.set(true);
+  }
+
+  confirmarCierre(): void {
+    const incidencia = this.aCerrar();
+    if (!incidencia || this.cerrando()) {
+      return;
+    }
+    if (!this.cierreFecha() || !this.cierreHora()) {
+      this.notificaciones.error('Falta el fin', 'Indica la fecha y la hora de fin.');
+      return;
+    }
+    this.cerrando.set(true);
+    this.incidenciasApi
+      .cerrar(incidencia.id, { fechaFin: this.cierreFecha(), horaFin: normalizarHora(this.cierreHora()) })
+      .pipe(finalize(() => this.cerrando.set(false)))
+      .subscribe({
+        next: (cerrada) => {
+          this.notificaciones.exito('Cerrada', `Incidencia ${cerrada.ticket} cerrada.`);
+          this.cierreAbierto.set(false);
+          this.aCerrar.set(null);
+          this.cargar();
+        },
+        error: (err: unknown) => this.notificaciones.error('No se pudo cerrar', mensajeDeError(err)),
+      });
   }
 
   /** Formateadores de la plantilla: duración en segundos y hora → «HH:MM». */
@@ -269,7 +456,7 @@ export class Incidencias {
         // Nombres de quien creó o editó: se piden los que falten antes de armar el CSV.
         concatMap((lista) =>
           from(
-            this.directorio.resolver(new Set(lista.flatMap((i) => [i.creadoPor, i.actualizadoPor]))),
+            this.directorio.resolver(new Set(lista.map((i) => i.creadoPor))),
           ).pipe(map(() => lista)),
         ),
         finalize(() => this.exportando.set(false)),
@@ -277,7 +464,7 @@ export class Incidencias {
       .subscribe({
         next: (lista) => {
           const filas = lista.map((incidencia) =>
-            filaExportacion(incidencia, this.locale, (id) => this.directorio.etiqueta(id)),
+            filaExportacion(incidencia, (id) => this.directorio.etiqueta(id)),
           );
           exportarCsv(`incidencias_${hoy()}.csv`, CABECERAS_EXPORT, filas);
           this.notificaciones.exito(
@@ -369,6 +556,7 @@ export class Incidencias {
 
   abrirCrear(): void {
     this.editando.set(null);
+    this.fechaFinManual = false;
     this.tipoPendiente = null;
     this.responsablePendiente = null;
     this.formTipos.set([]);
@@ -384,6 +572,7 @@ export class Incidencias {
       horaInicio: '',
       horaFin: '',
       fecha: hoy(),
+      fechaFin: '',
     });
     this.formAbierto.set(true);
   }
@@ -403,9 +592,13 @@ export class Incidencias {
       idDataResponsable: incidencia.idDataResponsable,
       descripcion: incidencia.descripcion,
       horaInicio: hhmm(incidencia.horaInicio),
-      horaFin: hhmm(incidencia.horaFin),
+      horaFin: incidencia.horaFin ? hhmm(incidencia.horaFin) : '',
       fecha: diaDeInstante(incidencia.creadoEn),
+      fechaFin: fechaFin(incidencia) ?? '',
     });
+    // Un fin guardado en otro día que el sugerido es elección de la persona: se respeta.
+    const v = this.formulario.getRawValue();
+    this.fechaFinManual = !!v.fechaFin && v.fechaFin !== sugerirFechaFin(v.fecha, v.horaInicio, v.horaFin);
     this.formAbierto.set(true);
   }
 
@@ -430,19 +623,20 @@ export class Incidencias {
       idDataCentro: valores.idDataCentro!,
       idDataSistema: valores.idDataSistema!,
       idDataIncidencia: valores.idDataIncidencia!,
-      ticket: valores.ticket,
+      ticket: valores.ticket.trim(),
       idDataArea: valores.idDataArea!,
       idDataResponsable: valores.idDataResponsable!,
-      descripcion: valores.descripcion,
+      descripcion: valores.descripcion.trim(),
       horaInicio: normalizarHora(valores.horaInicio),
-      horaFin: normalizarHora(valores.horaFin),
+      horaFin: valores.horaFin ? normalizarHora(valores.horaFin) : null,
       fecha: valores.fecha,
+      fechaFin: valores.fechaFin || null,
     };
 
     const editando = this.editando();
     this.guardando.set(true);
     const peticion$ = editando
-      ? this.incidenciasApi.actualizar(editando.id, peticion)
+      ? this.incidenciasApi.actualizar(editando.id, { ...peticion, version: editando.version })
       : this.incidenciasApi.crear(peticion);
 
     peticion$.pipe(finalize(() => this.guardando.set(false))).subscribe({

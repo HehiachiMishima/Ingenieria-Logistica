@@ -107,7 +107,7 @@
         formControlName="centro"
         placeholder="CD PUNTA NEGRA"
       />
-      @if (campoInvalido('centro')) { <span class="ui-error">El nombre es obligatorio.</span> }
+      <app-pie-campo [control]="formulario.controls.centro" obligatorio="El nombre es obligatorio." [max]="maxNombre" />
     </div>
   </form>
 

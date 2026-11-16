@@ -2,6 +2,7 @@ import { Service, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { AnaliticaBitacora, CasoLargo } from './analitica.model';
 import {
+  CerrarIncidenciaRequest,
   Incidencia,
   IncidenciaActualizarRequest,
   IncidenciaCrearRequest,
@@ -49,6 +50,11 @@ export class IncidenciasApi {
 
   actualizar(id: number, peticion: IncidenciaActualizarRequest): Observable<Incidencia> {
     return this.api.put<Incidencia>(`/incidencias/${id}`, peticion);
+  }
+
+  /** Cierra una incidencia abierta con la fecha y hora de fin indicadas. */
+  cerrar(id: number, peticion: CerrarIncidenciaRequest): Observable<Incidencia> {
+    return this.api.post<Incidencia>(`/incidencias/${id}/cerrar`, peticion);
   }
 
   eliminar(id: number): Observable<void> {

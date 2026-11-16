@@ -1,53 +1,51 @@
 package oracle.bitacora.repository;
 
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
+import oracle.bitacora.repository.CondicionesIncidencia.Condicion;
+import oracle.bitacora.repository.CondicionesIncidencia.Desde;
+import oracle.bitacora.repository.CondicionesIncidencia.Estado;
+import oracle.bitacora.repository.CondicionesIncidencia.Hasta;
+import oracle.bitacora.repository.CondicionesIncidencia.Igual;
+import oracle.bitacora.repository.CondicionesIncidencia.Texto;
+import oracle.bitacora.request.EstadoIncidencia;
 import oracle.bitacora.request.FiltroIncidencia;
 import oracle.common.config.ZonaNegocio;
 import oracle.common.support.CondicionSql;
-import oracle.common.support.Filtros;
 
-/** WHERE dinamico de la tabla {@code incidencias} (alias {@code i}) a partir del filtro. */
+/**
+ * WHERE dinamico de la tabla {@code incidencias} (alias {@code i}) a partir del
+ * filtro. Traduce las condiciones de {@link CondicionesIncidencia}, las mismas
+ * que usa el listado: la analitica y la lista nunca filtran distinto.
+ */
 final class CondicionIncidencia {
 
     /** Los dias del filtro son dias del negocio; se comparan como instantes UTC. */
     static CondicionSql de(FiltroIncidencia filtro, ZonaNegocio zona) {
         List<String> condiciones = new ArrayList<>();
         List<Object> args = new ArrayList<>();
-        if (filtro != null) {
-            if (filtro.centro() != null) {
-                condiciones.add("i.id_data_centro = ?");
-                args.add(filtro.centro());
-            }
-            if (filtro.sistema() != null) {
-                condiciones.add("i.id_data_sistema = ?");
-                args.add(filtro.sistema());
-            }
-            if (filtro.area() != null) {
-                condiciones.add("i.id_data_area = ?");
-                args.add(filtro.area());
-            }
-            if (filtro.responsable() != null) {
-                condiciones.add("i.id_data_responsable = ?");
-                args.add(filtro.responsable());
-            }
-            if (filtro.tipo() != null) {
-                condiciones.add("i.id_data_incidencia = ?");
-                args.add(filtro.tipo());
-            }
-            if (filtro.desde() != null) {
-                condiciones.add("i.creado_en >= ?");
-                args.add(zona.inicioDelDiaSql(filtro.desde()));
-            }
-            if (filtro.hasta() != null) {
-                condiciones.add("i.creado_en < ?");
-                args.add(zona.inicioDelDiaSql(filtro.hasta().plusDays(1)));
-            }
-            if (filtro.texto() != null && !filtro.texto().isBlank()) {
-                condiciones.add("(LOWER(i.ticket) LIKE ? OR LOWER(i.descripcion) LIKE ?)");
-                String patron = "%" + Filtros.escaparLike(filtro.texto().trim().toLowerCase()) + "%";
-                args.add(patron);
-                args.add(patron);
+        for (Condicion c : CondicionesIncidencia.de(filtro, zona)) {
+            switch (c) {
+                case Igual igual -> {
+                    condiciones.add(igual.columna() + " = ?");
+                    args.add(igual.valor());
+                }
+                case Desde desde -> {
+                    condiciones.add("i.creado_en >= ?");
+                    args.add(Timestamp.from(desde.instante()));
+                }
+                case Hasta hasta -> {
+                    condiciones.add("i.creado_en < ?");
+                    args.add(Timestamp.from(hasta.instante()));
+                }
+                case Texto texto -> {
+                    condiciones.add("(LOWER(i.ticket) LIKE ? ESCAPE '\\' OR LOWER(i.descripcion) LIKE ? ESCAPE '\\')");
+                    args.add(texto.patron());
+                    args.add(texto.patron());
+                }
+                case Estado estado -> condiciones.add(estado.estado() == EstadoIncidencia.ABIERTA
+                        ? "i.cerrado_en IS NULL" : "i.cerrado_en IS NOT NULL");
             }
         }
         String where = condiciones.isEmpty() ? "" : "WHERE " + String.join(" AND ", condiciones);

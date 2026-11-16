@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.Instant;
 import java.time.LocalTime;
 import lombok.Getter;
 import lombok.Setter;
@@ -58,9 +59,14 @@ public class Incidencia extends Auditable {
     @Column(name = "hora_inicio", nullable = false)
     private LocalTime horaInicio;
 
-    @Column(name = "hora_fin", nullable = false)
+    /** Null mientras la incidencia está abierta. */
+    @Column(name = "hora_fin")
     private LocalTime horaFin;
  
     @Column(name = "tiempo_solucion_seg")
     private Integer tiempoSolucionSeg;
+
+    /** Fecha + hora de fin (instante UTC); null = abierta. */
+    @Column(name = "cerrado_en")
+    private Instant cerradoEn;
 }

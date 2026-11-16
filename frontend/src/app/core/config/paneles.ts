@@ -23,7 +23,7 @@ export interface PanelDef {
 
 export const PANEL_ADMIN: PanelDef = {
   id: 'admin',
-  nombre: 'Administración',
+  nombre: 'Control de accesos',
   descripcion: 'Gobierno de identidades, accesos y trazabilidad del sistema.',
   icono: 'shield',
   ruta: '/admin',
@@ -67,7 +67,7 @@ export const PANEL_ADMIN: PanelDef = {
 
 export const PANEL_BITACORA: PanelDef = {
   id: 'bitacora',
-  nombre: 'Bitácora',
+  nombre: 'Bitácora de incidencias',
   descripcion: 'Registro de incidencias, catálogos de control y métricas operativas.',
   icono: 'bitacora',
   ruta: '/bitacora',
@@ -103,7 +103,7 @@ export const PANEL_BITACORA: PanelDef = {
 
 export const PANEL_SIMULACION: PanelDef = {
   id: 'simulacion',
-  nombre: 'Simulación',
+  nombre: 'Simulación Supply Chain',
   descripcion: 'Proyección de rutas, balanceo por chutes y análisis de tiempos.',
   icono: 'engranaje',
   ruta: '/simulacion',

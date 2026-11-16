@@ -25,7 +25,7 @@ export function tarjetasBitacora(k: AnaliticaBitacora['kpis'] | null): TarjetaKp
       valor: k ? duracion(k.mttrSegundos) : '—',
       icono: 'reloj',
       color: 'var(--accent)',
-      detalle: k ? `MTTR de ${entero(k.resueltas)} resueltas` : '',
+      detalle: k ? `MTTR de ${entero(k.resueltas)} cerradas` : '',
       variacion: null,
     },
     {
@@ -33,7 +33,7 @@ export function tarjetasBitacora(k: AnaliticaBitacora['kpis'] | null): TarjetaKp
       valor: k ? entero(Math.round(k.segundosSolucion / 3600)) + ' h' : '—',
       icono: 'activity',
       color: 'var(--violet)',
-      detalle: 'Suma de tiempos de solución',
+      detalle: 'Solo incidencias cerradas',
       variacion: null,
     },
     {

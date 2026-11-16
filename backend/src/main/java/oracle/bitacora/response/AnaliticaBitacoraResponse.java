@@ -1,5 +1,6 @@
 package oracle.bitacora.response;
 
+import java.time.Instant;
 import java.util.List;
 import oracle.common.response.CeldaMatriz;
 
@@ -12,7 +13,30 @@ public record AnaliticaBitacoraResponse(
         List<Tipo> tipos,
         List<CeldaMatriz> centroSistema,
         List<FilaEjecutiva> ejecutivo,
-        Reincidencia reincidencia) {
+        Reincidencia reincidencia,
+        /** Abiertas ahora: se calcula en cada peticion (no se cachea, depende de la hora). */
+        Abiertas abiertas) {
+
+    /** Misma analitica con el bloque de abiertas recien calculado. */
+    public AnaliticaBitacoraResponse conAbiertas(Abiertas actuales) {
+        return new AnaliticaBitacoraResponse(kpis, sistemas, centros, areas, tipos, centroSistema, ejecutivo,
+                reincidencia, actuales);
+    }
+
+    /**
+     * Incidencias abiertas del filtro por antiguedad (calculada contra now() en
+     * la base) y la mas antigua; el cliente hace avanzar su antiguedad.
+     */
+    public record Abiertas(
+            long total,
+            long menosDeUnaHora,
+            long deUnaACuatroHoras,
+            long masDeCuatroHoras,
+            Instant desdeMasAntigua,
+            String ticketMasAntiguo) {
+
+        public static final Abiertas NINGUNA = new Abiertas(0, 0, 0, 0, null, null);
+    }
 
     /**
      * @param totalPeriodoAnterior total del periodo inmediatamente anterior de igual

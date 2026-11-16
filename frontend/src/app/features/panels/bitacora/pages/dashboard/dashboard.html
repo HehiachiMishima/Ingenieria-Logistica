@@ -86,6 +86,18 @@
     </div>
     <p class="filtro-nota">Con un rango completo, el total se compara con el periodo anterior de igual duración.</p>
   </section>
+
+  <section class="filtro-seccion">
+    <h3 class="filtro-seccion__titulo"><ui-icon name="reloj" [size]="15" /> Estado</h3>
+    <div class="ui-field">
+      <label class="ui-label" for="dashboard-estado">Estado</label>
+      <select id="dashboard-estado" class="ui-select" [value]="filtroEstado() ?? ''" (change)="setFiltroEstado($event)">
+        <option value="">Todas</option>
+        <option value="ABIERTA">Abiertas</option>
+        <option value="CERRADA">Cerradas</option>
+      </select>
+    </div>
+  </section>
 </ui-panel-filtros>
 
 @if (error() && !datos()) {
@@ -102,6 +114,7 @@
   <ui-kpi [etiqueta]="t.etiqueta" [valor]="t.valor" [icono]="t.icono" [color]="t.color" [detalle]="t.detalle"
     [variacion]="t.variacion" [cargando]="cargando() && !datos()" />
   }
+  <app-kpi-abiertas [datos]="abiertas()" [cargando]="cargando() && !datos()" />
 </section>
 
 @if (!cargando() && datos() && !hayDatos()) {
@@ -128,8 +141,8 @@
     <header class="dash-card__head">
       <div class="dash-card__titulos">
         <h2 class="dash-card__titulo"><ui-icon name="analisis" [size]="18" /> ¿Dónde se van las horas y qué casos las explican?</h2>
-        <p class="dash-card__sub">Cuadro ejecutivo por sistema: la celda remarcada es el pico de cada columna. Haz clic en un
-          sistema para ver sus casos más largos.</p>
+        <p class="dash-card__sub">Cuadro ejecutivo por sistema: la celda remarcada es el pico de cada columna. Casos incluye
+          abiertas; horas y MTTR solo cerradas. Haz clic en un sistema para ver sus casos más largos.</p>
       </div>
     </header>
     <div class="dash-card__body">

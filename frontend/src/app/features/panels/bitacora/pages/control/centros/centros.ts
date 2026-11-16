@@ -1,6 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { PERMISOS } from '../../../../../../core/config/permisos';
 import { DirectorioUsuarios } from '../../../../../../core/services/directorio-usuarios';
 import { Notificaciones } from '../../../../../../core/services/notificaciones';
@@ -16,6 +16,7 @@ import { Paginador } from '../../../../../../shared/ui/paginador/paginador';
 import { Centro } from '../../../data/bitacora.model';
 import { CentrosApi } from '../../../data/centros.api';
 import { BitacoraCatalogos } from '../../../state/bitacora-catalogos';
+import { MAX_NOMBRE, PieCampo, textoRequerido } from '../../../ui/pie-campo';
 
 @Component({
   selector: 'app-bitacora-centros',
@@ -30,6 +31,7 @@ import { BitacoraCatalogos } from '../../../state/bitacora-catalogos';
     HasPermiso,
     ColumnasRedimensionables,
     Paginador,
+    PieCampo,
   ],
   templateUrl: './centros.html',
   styleUrl: './centros.scss',
@@ -42,6 +44,7 @@ export class Centros {
   private readonly directorio = inject(DirectorioUsuarios);
 
   readonly permisos = PERMISOS;
+  readonly maxNombre = MAX_NOMBRE;
 
   private readonly listado = new ListadoLocal<Centro>(
     () => this.centrosApi.listar(),
@@ -65,7 +68,7 @@ export class Centros {
   readonly eliminando = this.edicion.eliminando;
 
   readonly formulario = this.fb.nonNullable.group({
-    centro: ['', [Validators.required, Validators.maxLength(50)]],
+    centro: ['', textoRequerido(MAX_NOMBRE)],
   });
 
   constructor() {
@@ -115,7 +118,7 @@ export class Centros {
 
     const valores = this.formulario.getRawValue();
     const editando = this.editando();
-    const peticion = { centro: valores.centro };
+    const peticion = { centro: valores.centro.trim() };
     const peticion$ = editando
       ? this.centrosApi.actualizar(editando.id, peticion)
       : this.centrosApi.crear(peticion);

@@ -12,6 +12,8 @@ public interface DataAreaRepository extends JpaRepository<DataArea, Long> {
     boolean existsByAreaAndIdNot(String area, Long id);
 
     /** Registros en la tabla de bitácora que referencian esta área (FK RESTRICT). */
-    @Query(value = "SELECT COUNT(*) FROM incidencias WHERE id_data_area = :id", nativeQuery = true)
+    // Con tope (ConteoEnUso.TOPE): basta saber si esta en uso, no se cuentan millones de filas.
+    @Query(value = "SELECT COUNT(*) FROM (SELECT 1 FROM incidencias WHERE id_data_area = :id LIMIT "
+            + ConteoEnUso.TOPE + ") x", nativeQuery = true)
     long contarIncidencias(@Param("id") Long id);
 }

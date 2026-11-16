@@ -1,6 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { PERMISOS } from '../../../../../../core/config/permisos';
 import { DirectorioUsuarios } from '../../../../../../core/services/directorio-usuarios';
 import { Notificaciones } from '../../../../../../core/services/notificaciones';
@@ -17,6 +17,7 @@ import { Paginador } from '../../../../../../shared/ui/paginador/paginador';
 import { AreasApi } from '../../../data/areas.api';
 import { Area, Responsable } from '../../../data/bitacora.model';
 import { BitacoraCatalogos } from '../../../state/bitacora-catalogos';
+import { MAX_NOMBRE, PieCampo, textoRequerido } from '../../../ui/pie-campo';
 
 @Component({
   selector: 'app-bitacora-areas',
@@ -31,6 +32,7 @@ import { BitacoraCatalogos } from '../../../state/bitacora-catalogos';
     HasPermiso,
     ColumnasRedimensionables,
     Paginador,
+    PieCampo,
   ],
   templateUrl: './areas.html',
   styleUrl: './areas.scss',
@@ -43,6 +45,7 @@ export class Areas {
   private readonly directorio = inject(DirectorioUsuarios);
 
   readonly permisos = PERMISOS;
+  readonly maxNombre = MAX_NOMBRE;
 
   private readonly listado = new ListadoLocal<Area>(
     () => this.areasApi.listar(),
@@ -66,7 +69,7 @@ export class Areas {
   readonly eliminando = this.edicion.eliminando;
 
   readonly formulario = this.fb.nonNullable.group({
-    area: ['', [Validators.required, Validators.maxLength(50)]],
+    area: ['', textoRequerido(MAX_NOMBRE)],
   });
 
   readonly hijosAbierto = signal(false);
@@ -88,7 +91,7 @@ export class Areas {
   readonly hijoEliminando = this.edicionHijo.eliminando;
 
   readonly hijoFormulario = this.fb.nonNullable.group({
-    responsable: ['', [Validators.required, Validators.maxLength(50)]],
+    responsable: ['', textoRequerido(MAX_NOMBRE)],
   });
 
   constructor() {
@@ -138,7 +141,7 @@ export class Areas {
 
     const valores = this.formulario.getRawValue();
     const editando = this.editando();
-    const peticion = { area: valores.area };
+    const peticion = { area: valores.area.trim() };
     const peticion$ = editando
       ? this.areasApi.actualizar(editando.id, peticion)
       : this.areasApi.crear(peticion);
@@ -214,7 +217,7 @@ export class Areas {
 
     const valores = this.hijoFormulario.getRawValue();
     const editando = this.hijoEditando();
-    const peticion = { responsable: valores.responsable };
+    const peticion = { responsable: valores.responsable.trim() };
     const peticion$ = editando
       ? this.areasApi.actualizarResponsable(area.id, editando.id, peticion)
       : this.areasApi.crearResponsable(area.id, peticion);

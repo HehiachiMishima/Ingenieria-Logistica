@@ -1,12 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import {
-  AbstractControl,
-  FormBuilder,
-  ReactiveFormsModule,
-  ValidationErrors,
-  Validators,
-} from '@angular/forms';
+import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { PERMISOS } from '../../../../../../core/config/permisos';
 import { DirectorioUsuarios } from '../../../../../../core/services/directorio-usuarios';
 import { Notificaciones } from '../../../../../../core/services/notificaciones';
@@ -23,15 +17,7 @@ import { Paginador } from '../../../../../../shared/ui/paginador/paginador';
 import { Sistema, TipoIncidencia } from '../../../data/bitacora.model';
 import { SistemasApi } from '../../../data/sistemas.api';
 import { BitacoraCatalogos } from '../../../state/bitacora-catalogos';
-
-/** Largo máximo de los nombres (VARCHAR(50) en la base). */
-export const MAX_NOMBRE = 50;
-
-/** Rechaza un texto hecho solo de espacios (el backend lo guarda recortado). */
-function sinSoloEspacios(control: AbstractControl<string>): ValidationErrors | null {
-  const valor = control.value ?? '';
-  return valor.length > 0 && valor.trim().length === 0 ? { soloEspacios: true } : null;
-}
+import { MAX_NOMBRE, PieCampo, textoRequerido } from '../../../ui/pie-campo';
 
 @Component({
   selector: 'app-bitacora-sistemas',
@@ -46,6 +32,7 @@ function sinSoloEspacios(control: AbstractControl<string>): ValidationErrors | n
     HasPermiso,
     ColumnasRedimensionables,
     Paginador,
+    PieCampo,
   ],
   templateUrl: './sistemas.html',
   styleUrl: './sistemas.scss',
@@ -82,7 +69,7 @@ export class Sistemas {
   readonly eliminando = this.edicion.eliminando;
 
   readonly formulario = this.fb.nonNullable.group({
-    sistema: ['', [Validators.required, sinSoloEspacios, Validators.maxLength(MAX_NOMBRE)]],
+    sistema: ['', textoRequerido(MAX_NOMBRE)],
   });
 
   readonly tiposAbierto = signal(false);
@@ -104,7 +91,7 @@ export class Sistemas {
   readonly tipoEliminando = this.edicionTipo.eliminando;
 
   readonly tipoFormulario = this.fb.nonNullable.group({
-    incidencia: ['', [Validators.required, sinSoloEspacios, Validators.maxLength(MAX_NOMBRE)]],
+    incidencia: ['', textoRequerido(MAX_NOMBRE)],
   });
 
   constructor() {
@@ -216,30 +203,6 @@ export class Sistemas {
   campoTipoInvalido(): boolean {
     const control = this.tipoFormulario.controls.incidencia;
     return control.touched && control.invalid;
-  }
-
-  /** Mensaje del campo según el motivo real (vacío o demasiado largo); null si es válido o no se tocó. */
-  errorDe(campo: 'sistema' | 'incidencia'): string | null {
-    const control =
-      campo === 'sistema' ? this.formulario.controls.sistema : this.tipoFormulario.controls.incidencia;
-    if (!control.touched || control.valid) {
-      return null;
-    }
-    const etiqueta = campo === 'sistema' ? 'El nombre' : 'El tipo';
-    if (control.hasError('required') || control.hasError('soloEspacios')) {
-      return `${etiqueta} es obligatorio.`;
-    }
-    if (control.hasError('maxlength')) {
-      return `Máximo ${MAX_NOMBRE} caracteres (tiene ${control.value.length}).`;
-    }
-    return `${etiqueta} no es válido.`;
-  }
-
-  largoDe(campo: 'sistema' | 'incidencia'): number {
-    return (campo === 'sistema'
-      ? this.formulario.controls.sistema.value
-      : this.tipoFormulario.controls.incidencia.value
-    ).length;
   }
 
   guardarTipo(): void {

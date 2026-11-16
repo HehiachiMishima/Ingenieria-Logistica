@@ -116,12 +116,7 @@
         formControlName="sistema"
         placeholder="SAP, CORREO, IMPRESORAS…"
       />
-      <div class="campo-pie">
-        @if (errorDe('sistema'); as error) { <span class="ui-error">{{ error }}</span> }
-        <span class="campo-contador" [class.campo-contador--excedido]="largoDe('sistema') > maxNombre">
-          {{ largoDe('sistema') }}/{{ maxNombre }}
-        </span>
-      </div>
+      <app-pie-campo [control]="formulario.controls.sistema" obligatorio="El nombre es obligatorio." [max]="maxNombre" />
     </div>
   </form>
 
@@ -181,12 +176,7 @@
           formControlName="incidencia"
           placeholder="SIN CONEXIÓN, LENTITUD…"
         />
-        <div class="campo-pie">
-          @if (errorDe('incidencia'); as error) { <span class="ui-error">{{ error }}</span> }
-          <span class="campo-contador" [class.campo-contador--excedido]="largoDe('incidencia') > maxNombre">
-            {{ largoDe('incidencia') }}/{{ maxNombre }}
-          </span>
-        </div>
+        <app-pie-campo [control]="tipoFormulario.controls.incidencia" obligatorio="El tipo es obligatorio." [max]="maxNombre" />
       </div>
       <div class="child-actions">
         <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm" (click)="cerrarTipoForm()">Cancelar</button>

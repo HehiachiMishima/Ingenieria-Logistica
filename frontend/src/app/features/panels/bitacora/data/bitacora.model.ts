@@ -100,13 +100,19 @@ export interface Incidencia {
   responsable: string | null;
   descripcion: string;
   horaInicio: string;
-  horaFin: string;
-  /** Duración en segundos; null si no aplica. */
+  /** Null mientras está abierta. */
+  horaFin: string | null;
+  /** Duración en segundos; null mientras está abierta. */
   tiempoSolucionSeg: number | null;
+  /** Fecha + hora de fin (instante UTC); null = abierta. */
+  cerradoEn: string | null;
+  estado: EstadoIncidencia;
+  /** Fecha + hora de inicio (instante UTC). */
   creadoEn: string;
-  actualizadoEn: string | null;
+  /** Quién la registró. */
   creadoPor: number | null;
-  actualizadoPor: number | null;
+  /** Ficha de concurrencia: se devuelve al editar; si otra persona guardó antes, el servidor responde 409. */
+  version: string;
 }
 
 export interface IncidenciaCrearRequest {
@@ -118,11 +124,25 @@ export interface IncidenciaCrearRequest {
   idDataResponsable: number;
   descripcion: string;
   horaInicio: string;
-  horaFin: string;
+  /** Vacío (null) = la incidencia queda abierta. */
+  horaFin: string | null;
   fecha: string;
+  /** Día del fin (YYYY-MM-DD); null = abierta. */
+  fechaFin: string | null;
 }
 
-export type IncidenciaActualizarRequest = IncidenciaCrearRequest;
+/** Se deduce del fin en el servidor: sin fin = abierta. */
+export type EstadoIncidencia = 'ABIERTA' | 'CERRADA';
+
+export interface CerrarIncidenciaRequest {
+  fechaFin: string;
+  horaFin: string;
+}
+
+export interface IncidenciaActualizarRequest extends IncidenciaCrearRequest {
+  /** `version` de la incidencia tal como se leyó. */
+  version: string;
+}
 
 export interface IncidenciaFiltros {
   centro?: number | null;
@@ -133,4 +153,5 @@ export interface IncidenciaFiltros {
   desde?: string;
   hasta?: string;
   texto?: string;
+  estado?: EstadoIncidencia | null;
 }

@@ -13,5 +13,7 @@ public record CasoLargoResponse(
         LocalDate fecha,
         LocalTime horaInicio,
         LocalTime horaFin,
+        /** Dia del fin (negocio): puede ser posterior a {@code fecha}. */
+        LocalDate fechaFin,
         long segundos) {
 }

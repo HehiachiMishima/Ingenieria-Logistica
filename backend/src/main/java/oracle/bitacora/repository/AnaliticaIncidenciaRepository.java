@@ -4,6 +4,7 @@ import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import oracle.bitacora.request.FiltroIncidencia;
+import oracle.bitacora.response.AnaliticaBitacoraResponse.Abiertas;
 import oracle.bitacora.response.AnaliticaBitacoraResponse.FilaEjecutiva;
 import oracle.bitacora.response.AnaliticaBitacoraResponse.Grupo;
 import oracle.bitacora.response.AnaliticaBitacoraResponse.Kpis;
@@ -158,16 +159,42 @@ public class AnaliticaIncidenciaRepository {
     }
 
     /**
+     * Abiertas del filtro por antiguedad. Usa el indice parcial
+     * idx_incidencias_abiertas (solo las abiertas): barato aunque la tabla tenga
+     * millones de filas. Las antiguedades se miden contra now() de la base.
+     */
+    public Abiertas abiertas(FiltroIncidencia filtro) {
+        CondicionSql c = CondicionIncidencia.de(filtro, zona);
+        String where = (c.where().isEmpty() ? "WHERE " : c.where() + " AND ") + "i.cerrado_en IS NULL";
+        String sql = "SELECT COUNT(*) AS total, "
+                + "COUNT(*) FILTER (WHERE i.creado_en > now() - INTERVAL '1 hour') AS recientes, "
+                + "COUNT(*) FILTER (WHERE i.creado_en <= now() - INTERVAL '1 hour' "
+                + "AND i.creado_en > now() - INTERVAL '4 hours') AS medias, "
+                + "COUNT(*) FILTER (WHERE i.creado_en <= now() - INTERVAL '4 hours') AS antiguas "
+                + "FROM incidencias i " + where;
+        long[] n = jdbc.queryForObject(sql, (rs, f) -> new long[] {rs.getLong("total"), rs.getLong("recientes"),
+                rs.getLong("medias"), rs.getLong("antiguas")}, c.argumentos());
+        if (n == null || n[0] == 0) {
+            return Abiertas.NINGUNA;
+        }
+        List<Abiertas> mas = jdbc.query("SELECT i.creado_en, i.ticket FROM incidencias i " + where
+                + " ORDER BY i.creado_en, i.id LIMIT 1",
+                (rs, f) -> new Abiertas(n[0], n[1], n[2], n[3], rs.getTimestamp("creado_en").toInstant(),
+                        rs.getString("ticket")), c.argumentos());
+        return mas.isEmpty() ? new Abiertas(n[0], n[1], n[2], n[3], null, null) : mas.get(0);
+    }
+
+    /**
      * Incidencias resueltas mas largas del filtro (ORDER BY duracion LIMIT n):
      * PostgreSQL usa top-N heapsort sobre las filas del filtro, sin ordenar todo.
      */
     public List<CasoLargoResponse> casosMasLargos(FiltroIncidencia filtro, int limite) {
         CondicionSql c = CondicionIncidencia.de(filtro, zona);
         String where = c.where().isEmpty() ? "WHERE " : c.where() + " AND ";
-        String sql = "SELECT a.ticket, a.descripcion, a.creado_en, a.hora_inicio, a.hora_fin, a.segundos, "
+        String sql = "SELECT a.ticket, a.descripcion, a.creado_en, a.cerrado_en, a.hora_inicio, a.hora_fin, a.segundos, "
                 + "COALESCE(t.incidencia, '—') AS tipo, COALESCE(ce.centro, '—') AS centro, "
                 + "COALESCE(r.responsable, '—') AS responsable "
-                + "FROM (SELECT i.id, i.ticket, i.descripcion, i.creado_en, i.hora_inicio, i.hora_fin, "
+                + "FROM (SELECT i.id, i.ticket, i.descripcion, i.creado_en, i.cerrado_en, i.hora_inicio, i.hora_fin, "
                 + "i.tiempo_solucion_seg AS segundos, i.id_data_incidencia, i.id_data_centro, i.id_data_responsable "
                 + "FROM incidencias i " + where + "i.tiempo_solucion_seg IS NOT NULL "
                 + "ORDER BY i.tiempo_solucion_seg DESC, i.id DESC LIMIT ?) a "
@@ -182,6 +209,7 @@ public class AnaliticaIncidenciaRepository {
                 rs.getString("descripcion"), rs.getString("tipo"), rs.getString("centro"),
                 rs.getString("responsable"), zona.dia(rs.getTimestamp("creado_en").toInstant()),
                 rs.getObject("hora_inicio", LocalTime.class), rs.getObject("hora_fin", LocalTime.class),
+                zona.dia(rs.getTimestamp("cerrado_en").toInstant()),
                 rs.getLong("segundos")), args);
     }
 
@@ -205,6 +233,6 @@ public class AnaliticaIncidenciaRepository {
             return null;
         }
         return new FiltroIncidencia(f.centro(), f.sistema(), f.area(), f.responsable(), f.tipo(),
-                previo.desde(), previo.hasta(), f.texto());
+                previo.desde(), previo.hasta(), f.texto(), f.estado());
     }
 }

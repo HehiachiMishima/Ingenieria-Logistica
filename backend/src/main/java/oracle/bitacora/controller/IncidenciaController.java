@@ -8,6 +8,8 @@ import java.io.IOException;
 import java.time.LocalDate;
 import java.util.List;
 import oracle.bitacora.response.CasoLargoResponse;
+import oracle.bitacora.request.CerrarIncidenciaRequest;
+import oracle.bitacora.request.EstadoIncidencia;
 import oracle.bitacora.request.FiltroIncidencia;
 import oracle.bitacora.request.IncidenciaActualizarRequest;
 import oracle.bitacora.request.IncidenciaCrearRequest;
@@ -50,10 +52,11 @@ public class IncidenciaController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
             @RequestParam(required = false) String texto,
+            @RequestParam(required = false) EstadoIncidencia estado,
             @RequestParam(defaultValue = "1") int pagina,
             @RequestParam(defaultValue = "10") int tamano) {
         return incidenciaService.listar(
-                new FiltroIncidencia(centro, sistema, area, responsable, tipo, desde, hasta, texto),
+                new FiltroIncidencia(centro, sistema, area, responsable, tipo, desde, hasta, texto, estado),
                 pagina, tamano);
     }
 
@@ -77,10 +80,11 @@ public class IncidenciaController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
             @RequestParam(required = false) String texto,
+            @RequestParam(required = false) EstadoIncidencia estado,
             HttpServletResponse respuesta) throws IOException {
         respuesta.setContentType(MediaType.APPLICATION_JSON_VALUE);
         incidenciaService.exportarEnFlujo(
-                        new FiltroIncidencia(centro, sistema, area, responsable, tipo, desde, hasta, texto))
+                        new FiltroIncidencia(centro, sistema, area, responsable, tipo, desde, hasta, texto, estado))
                 .writeTo(respuesta.getOutputStream());
     }
 
@@ -95,9 +99,10 @@ public class IncidenciaController {
             @RequestParam(required = false) Long tipo,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
-            @RequestParam(required = false) String texto) {
+            @RequestParam(required = false) String texto,
+            @RequestParam(required = false) EstadoIncidencia estado) {
         return incidenciaService.analitica(
-                new FiltroIncidencia(centro, sistema, area, responsable, tipo, desde, hasta, texto));
+                new FiltroIncidencia(centro, sistema, area, responsable, tipo, desde, hasta, texto, estado));
     }
 
     /** Casos resueltos mas largos de un sistema, con los mismos filtros del dashboard. */
@@ -112,9 +117,10 @@ public class IncidenciaController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
             @RequestParam(required = false) String texto,
+            @RequestParam(required = false) EstadoIncidencia estado,
             @RequestParam(defaultValue = "3") int limite) {
         return incidenciaService.casosMasLargos(
-                new FiltroIncidencia(centro, sistema, area, responsable, tipo, desde, hasta, texto), sistema, limite);
+                new FiltroIncidencia(centro, sistema, area, responsable, tipo, desde, hasta, texto, estado), sistema, limite);
     }
 
     @PostMapping
@@ -128,6 +134,14 @@ public class IncidenciaController {
     public ApiResponse<IncidenciaResponse> actualizar(@PathVariable Long id,
             @Valid @RequestBody IncidenciaActualizarRequest peticion) {
         return incidenciaService.actualizar(id, peticion);
+    }
+
+    /** Cierra una incidencia abierta (sin cuerpo o vacio = ahora). */
+    @PostMapping("/{id}/cerrar")
+    @PreAuthorize("hasAuthority('MODIFICAR_INCIDENCIAS')")
+    public ApiResponse<IncidenciaResponse> cerrar(@PathVariable Long id,
+            @RequestBody(required = false) CerrarIncidenciaRequest peticion) {
+        return incidenciaService.cerrar(id, peticion);
     }
 
     @DeleteMapping("/{id}")

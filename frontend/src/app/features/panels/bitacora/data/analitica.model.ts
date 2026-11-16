@@ -19,6 +19,19 @@ export interface AnaliticaBitacora {
   /** Cuadro ejecutivo: una fila por sistema, ordenadas por horas. */
   ejecutivo: FilaEjecutiva[];
   reincidencia: Reincidencia;
+  /** Abiertas ahora con los filtros (se calcula en cada petición, no se cachea). */
+  abiertas: AbiertasBitacora;
+}
+
+/** Incidencias abiertas por antigüedad (calculada en el servidor al pedir la analítica). */
+export interface AbiertasBitacora {
+  total: number;
+  menosDeUnaHora: number;
+  deUnaACuatroHoras: number;
+  masDeCuatroHoras: number;
+  /** Inicio (instante UTC) de la abierta más antigua; null si no hay. */
+  desdeMasAntigua: string | null;
+  ticketMasAntiguo: string | null;
 }
 
 export interface FilaEjecutiva {
@@ -50,6 +63,8 @@ export interface CasoLargo {
   fecha: string;
   horaInicio: string;
   horaFin: string;
+  /** Día del fin (YYYY-MM-DD): puede ser posterior a `fecha`. */
+  fechaFin: string;
   segundos: number;
 }
 

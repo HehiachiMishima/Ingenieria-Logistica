@@ -3,6 +3,7 @@ package oracle.bitacora.service;
 import oracle.bitacora.repository.AnaliticaIncidenciaRepository;
 import oracle.bitacora.repository.ReferenciasIncidenciaRepository;
 import oracle.bitacora.response.AnaliticaBitacoraResponse;
+import oracle.bitacora.response.AnaliticaBitacoraResponse.Abiertas;
 import oracle.bitacora.response.AnaliticaBitacoraResponse.FilaEjecutiva;
 import oracle.bitacora.response.AnaliticaBitacoraResponse.Grupo;
 import oracle.bitacora.response.AnaliticaBitacoraResponse.Kpis;
@@ -11,7 +12,13 @@ import oracle.bitacora.response.AnaliticaBitacoraResponse.Tipo;
 import oracle.bitacora.response.CasoLargoResponse;
 import oracle.common.response.CeldaMatriz;
 import oracle.common.config.ZonaNegocio;
-import oracle.common.support.Filtros;
+import oracle.bitacora.repository.CondicionesIncidencia;
+import oracle.bitacora.repository.CondicionesIncidencia.Condicion;
+import oracle.bitacora.repository.CondicionesIncidencia.Desde;
+import oracle.bitacora.repository.CondicionesIncidencia.Estado;
+import oracle.bitacora.repository.CondicionesIncidencia.Hasta;
+import oracle.bitacora.repository.CondicionesIncidencia.Igual;
+import oracle.bitacora.repository.CondicionesIncidencia.Texto;
 import oracle.common.support.CursorRecientes;
 import oracle.common.support.EjecutorAnalitica;
 
@@ -23,7 +30,13 @@ import oracle.common.support.Trazas;
 
 import jakarta.persistence.criteria.Predicate;
 import tools.jackson.databind.ObjectMapper;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.temporal.ChronoUnit;
+import oracle.bitacora.request.CerrarIncidenciaRequest;
+import oracle.common.exception.ConflictoException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -34,6 +47,7 @@ import oracle.common.exception.SolicitudInvalidaException;
 import oracle.common.exception.RecursoNoEncontradoException;
 import oracle.bitacora.model.Incidencia;
 import oracle.bitacora.repository.IncidenciaRepository;
+import oracle.bitacora.request.EstadoIncidencia;
 import oracle.bitacora.request.FiltroIncidencia;
 import oracle.bitacora.request.IncidenciaActualizarRequest;
 import oracle.bitacora.request.IncidenciaCrearRequest;
@@ -157,8 +171,10 @@ public class IncidenciaService {
      */
     public ApiResponse<AnaliticaBitacoraResponse> analitica(FiltroIncidencia filtro) {
         String clave = ESPACIO_CACHE + ":analitica:" + filtro;
+        // Lo agregado se cachea por filtro; las abiertas dependen de la hora: siempre frescas.
         AnaliticaBitacoraResponse datos = Trazas.medir(log, "IncidenciaService.analitica", () ->
-                cacheRespuestas.obtener(clave, () -> calcularAnalitica(filtro)));
+                cacheRespuestas.obtener(clave, () -> calcularAnalitica(filtro))
+                        .conAbiertas(analiticaRepository.abiertas(filtro)));
         return ApiResponse.ok("Analitica calculada.", datos);
     }
 
@@ -176,7 +192,7 @@ public class IncidenciaService {
             return new AnaliticaBitacoraResponse(
                     lote.esperar(kpis), gruposDeSistemas(filas), lote.esperar(centros),
                     lote.esperar(areas), lote.esperar(tipos), lote.esperar(centroSistema),
-                    filas, lote.esperar(reincidencia));
+                    filas, lote.esperar(reincidencia), Abiertas.NINGUNA);
         }
     }
 
@@ -201,7 +217,7 @@ public class IncidenciaService {
             throw new SolicitudInvalidaException("El limite debe estar entre 1 y " + MAX_CASOS_LARGOS + ".");
         }
         FiltroIncidencia delSistema = new FiltroIncidencia(filtro.centro(), sistema, filtro.area(),
-                filtro.responsable(), filtro.tipo(), filtro.desde(), filtro.hasta(), filtro.texto());
+                filtro.responsable(), filtro.tipo(), filtro.desde(), filtro.hasta(), filtro.texto(), filtro.estado());
         String clave = ESPACIO_CACHE + ":casos-largos:" + limite + ":" + delSistema;
         List<CasoLargoResponse> casos = Trazas.medir(log, "IncidenciaService.casosMasLargos", () ->
                 cacheRespuestas.obtener(clave, () -> analiticaRepository.casosMasLargos(delSistema, limite)));
@@ -216,10 +232,10 @@ public class IncidenciaService {
 
             Incidencia incidencia = new Incidencia();
             aplicarCampos(incidencia, peticion.idDataCentro(), peticion.idDataSistema(), peticion.idDataIncidencia(),
-                    peticion.ticket(), peticion.idDataArea(), peticion.idDataResponsable(), peticion.descripcion(),
-                    peticion.horaInicio(), peticion.horaFin());
+                    peticion.ticket(), peticion.idDataArea(), peticion.idDataResponsable(), peticion.descripcion());
             Auditoria.alCrear(incidencia, actor);
-            incidencia.setCreadoEn(zonaNegocio.instante(peticion.fecha(), peticion.horaInicio()));
+            fijarVersion(incidencia);
+            aplicarFechas(incidencia, peticion.fecha(), peticion.horaInicio(), peticion.fechaFin(), peticion.horaFin());
             incidenciaRepository.save(incidencia);
             invalidarCacheAlConfirmar();
 
@@ -230,19 +246,48 @@ public class IncidenciaService {
     public ApiResponse<IncidenciaResponse> actualizar(Long id, IncidenciaActualizarRequest peticion) {
         Long actor = ActorActual.id();
         return Trazas.medir(log, "IncidenciaService.actualizar id=" + id, () -> transacciones.ejecutar(() -> {
-            Incidencia incidencia = obtenerIncidencia(id);
+            // Bloquea la fila: una edicion simultanea espera y luego ve la version nueva.
+            Incidencia incidencia = bloquearIncidencia(id);
+            exigirVersion(incidencia, peticion.version());
             validarReferencias(peticion.idDataCentro(), peticion.idDataSistema(), peticion.idDataIncidencia(),
                     peticion.idDataArea(), peticion.idDataResponsable(), peticion.ticket(), id);
 
             aplicarCampos(incidencia, peticion.idDataCentro(), peticion.idDataSistema(), peticion.idDataIncidencia(),
-                    peticion.ticket(), peticion.idDataArea(), peticion.idDataResponsable(), peticion.descripcion(),
-                    peticion.horaInicio(), peticion.horaFin());
-            Auditoria.alActualizar(incidencia, actor);
-            incidencia.setCreadoEn(zonaNegocio.instante(peticion.fecha(), peticion.horaInicio()));
+                    peticion.ticket(), peticion.idDataArea(), peticion.idDataResponsable(), peticion.descripcion());
+            auditarCambio(incidencia, actor);
+            aplicarFechas(incidencia, peticion.fecha(), peticion.horaInicio(), peticion.fechaFin(), peticion.horaFin());
             incidenciaRepository.save(incidencia);
             invalidarCacheAlConfirmar();
 
             return ApiResponse.ok("Incidencia actualizada.", resolver(incidencia));
+        }));
+    }
+
+    /**
+     * Cierra una incidencia abierta con la fecha y hora de fin indicadas (o
+     * ahora, en hora del negocio, si no se indican).
+     */
+    public ApiResponse<IncidenciaResponse> cerrar(Long id, CerrarIncidenciaRequest peticion) {
+        Long actor = ActorActual.id();
+        return Trazas.medir(log, "IncidenciaService.cerrar id=" + id, () -> transacciones.ejecutar(() -> {
+            // Bloquea la fila: de dos cierres simultaneos, el segundo espera y ve que ya esta cerrada.
+            Incidencia incidencia = bloquearIncidencia(id);
+            if (incidencia.getCerradoEn() != null) {
+                throw new ConflictoException("La incidencia ya está cerrada.");
+            }
+            LocalDate fechaFin = peticion == null ? null : peticion.fechaFin();
+            LocalTime horaFin = peticion == null ? null : peticion.horaFin();
+            if (fechaFin == null && horaFin == null) {
+                LocalDateTime ahora = zonaNegocio.enNegocio(Instant.now()).truncatedTo(ChronoUnit.MINUTES);
+                fechaFin = ahora.toLocalDate();
+                horaFin = ahora.toLocalTime();
+            }
+            aplicarFechas(incidencia, zonaNegocio.dia(incidencia.getCreadoEn()), incidencia.getHoraInicio(),
+                    fechaFin, horaFin);
+            auditarCambio(incidencia, actor);
+            incidenciaRepository.save(incidencia);
+            invalidarCacheAlConfirmar();
+            return ApiResponse.ok("Incidencia cerrada.", resolver(incidencia));
         }));
     }
 
@@ -268,38 +313,21 @@ public class IncidenciaService {
      * del negocio.
      */
     private Specification<Incidencia> especificacion(FiltroIncidencia filtro) {
+        // Mismas condiciones que el WHERE SQL de la analitica (CondicionesIncidencia).
+        List<Condicion> lista = CondicionesIncidencia.de(filtro, zonaNegocio);
         return (root, query, cb) -> {
             List<Predicate> condiciones = new ArrayList<>();
-            if (filtro != null) {
-                if (filtro.centro() != null) {
-                    condiciones.add(cb.equal(root.get("idDataCentro"), filtro.centro()));
-                }
-                if (filtro.sistema() != null) {
-                    condiciones.add(cb.equal(root.get("idDataSistema"), filtro.sistema()));
-                }
-                if (filtro.area() != null) {
-                    condiciones.add(cb.equal(root.get("idDataArea"), filtro.area()));
-                }
-                if (filtro.responsable() != null) {
-                    condiciones.add(cb.equal(root.get("idDataResponsable"), filtro.responsable()));
-                }
-                if (filtro.tipo() != null) {
-                    condiciones.add(cb.equal(root.get("idDataIncidencia"), filtro.tipo()));
-                }
-                if (filtro.desde() != null) {
-                    condiciones.add(cb.greaterThanOrEqualTo(root.get("creadoEn"),
-                            zonaNegocio.inicioDelDia(filtro.desde())));
-                }
-                if (filtro.hasta() != null) {
-                    condiciones.add(cb.lessThan(root.get("creadoEn"),
-                            zonaNegocio.inicioDelDia(filtro.hasta().plusDays(1))));
-                }
-                if (filtro.texto() != null && !filtro.texto().isBlank()) {
-                    String patron = "%" + Filtros.escaparLike(filtro.texto().trim().toLowerCase()) + "%";
-                    condiciones.add(cb.or(
-                            cb.like(cb.lower(root.get("ticket")), patron, '\\'),
-                            cb.like(cb.lower(root.get("descripcion")), patron, '\\')));
-                }
+            for (Condicion c : lista) {
+                condiciones.add(switch (c) {
+                    case Igual igual -> cb.equal(root.get(igual.atributo()), igual.valor());
+                    case Desde desde -> cb.greaterThanOrEqualTo(root.get("creadoEn"), desde.instante());
+                    case Hasta hasta -> cb.lessThan(root.get("creadoEn"), hasta.instante());
+                    case Texto texto -> cb.or(
+                            cb.like(cb.lower(root.get("ticket")), texto.patron(), '\\'),
+                            cb.like(cb.lower(root.get("descripcion")), texto.patron(), '\\'));
+                    case Estado estado -> estado.estado() == EstadoIncidencia.ABIERTA
+                            ? cb.isNull(root.get("cerradoEn")) : cb.isNotNull(root.get("cerradoEn"));
+                });
             }
             return condiciones.isEmpty() ? cb.conjunction() : cb.and(condiciones.toArray(new Predicate[0]));
         };
@@ -342,8 +370,38 @@ public class IncidenciaService {
                 .orElseThrow(() -> new RecursoNoEncontradoException("No existe la incidencia con id " + id + "."));
     }
 
+    /** Lee la incidencia con SELECT ... FOR UPDATE (dentro de la transaccion). */
+    private Incidencia bloquearIncidencia(Long id) {
+        return incidenciaRepository.bloquear(id)
+                .orElseThrow(() -> new RecursoNoEncontradoException("No existe la incidencia con id " + id + "."));
+    }
+
+    /**
+     * Concurrencia optimista sobre actualizado_en (la ficha {@code version} de la
+     * respuesta): si otra persona guardo despues de que el cliente leyo, 409.
+     */
+    private static void exigirVersion(Incidencia incidencia, Instant version) {
+        if (!incidencia.getActualizadoEn().equals(version)) {
+            throw new ConflictoException("Otra persona modificó esta incidencia mientras la editaba. "
+                    + "Recargue la lista para ver sus cambios y vuelva a editarla.");
+        }
+    }
+
+    private static void auditarCambio(Incidencia incidencia, Long actor) {
+        Auditoria.alActualizar(incidencia, actor);
+        fijarVersion(incidencia);
+    }
+
+    /**
+     * PostgreSQL guarda microsegundos (redondeando): se trunca antes de guardar
+     * para que la ficha que recibe el cliente sea identica a la guardada.
+     */
+    private static void fijarVersion(Incidencia incidencia) {
+        incidencia.setActualizadoEn(incidencia.getActualizadoEn().truncatedTo(ChronoUnit.MICROS));
+    }
+
     private void aplicarCampos(Incidencia incidencia, Long idCentro, Long idSistema, Long idTipo, String ticket,
-            Long idArea, Long idResponsable, String descripcion, LocalTime horaInicio, LocalTime horaFin) {
+            Long idArea, Long idResponsable, String descripcion) {
         incidencia.setIdDataCentro(idCentro);
         incidencia.setIdDataSistema(idSistema);
         incidencia.setIdDataIncidencia(idTipo);
@@ -351,9 +409,24 @@ public class IncidenciaService {
         incidencia.setIdDataArea(idArea);
         incidencia.setIdDataResponsable(idResponsable);
         incidencia.setDescripcion(descripcion.trim());
+    }
+
+    /**
+     * Inicio y fin en hora del negocio -> instantes UTC, duracion y estado.
+     * Sin hora de fin la incidencia queda abierta (fin, hora de fin y duracion nulos).
+     * Debe ir despues de Auditoria (fija creado_en = inicio).
+     */
+    private void aplicarFechas(Incidencia incidencia, LocalDate fecha, LocalTime horaInicio,
+            LocalDate fechaFin, LocalTime horaFin) {
+        Instant inicio = zonaNegocio.instante(fecha, horaInicio);
+        LocalDate diaFin = CierreIncidencia.fechaFin(fecha, horaInicio, fechaFin, horaFin);
+        Instant fin = diaFin == null ? null : zonaNegocio.instante(diaFin, horaFin);
+        CierreIncidencia.Cierre cierre = CierreIncidencia.calcular(inicio, fin, Instant.now());
         incidencia.setHoraInicio(horaInicio);
-        incidencia.setHoraFin(horaFin);
-        incidencia.setTiempoSolucionSeg(TiempoSolucion.segundos(horaInicio, horaFin));
+        incidencia.setHoraFin(cierre.abierta() ? null : horaFin);
+        incidencia.setCreadoEn(inicio);
+        incidencia.setCerradoEn(cierre.cerradoEn());
+        incidencia.setTiempoSolucionSeg(cierre.segundos());
     }
 
     /**

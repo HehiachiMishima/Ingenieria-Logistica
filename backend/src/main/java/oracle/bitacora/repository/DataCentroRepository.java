@@ -12,6 +12,8 @@ public interface DataCentroRepository extends JpaRepository<DataCentro, Long> {
     boolean existsByCentroAndIdNot(String centro, Long id);
 
     /** Registros en la tabla de bitácora que referencian este centro (FK RESTRICT). */
-    @Query(value = "SELECT COUNT(*) FROM incidencias WHERE id_data_centro = :id", nativeQuery = true)
+    // Con tope (ConteoEnUso.TOPE): basta saber si esta en uso, no se cuentan millones de filas.
+    @Query(value = "SELECT COUNT(*) FROM (SELECT 1 FROM incidencias WHERE id_data_centro = :id LIMIT "
+            + ConteoEnUso.TOPE + ") x", nativeQuery = true)
     long contarIncidencias(@Param("id") Long id);
 }

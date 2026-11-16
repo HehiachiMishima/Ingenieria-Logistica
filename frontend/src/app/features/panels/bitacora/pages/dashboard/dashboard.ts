@@ -29,6 +29,8 @@ import { RangoFechas, RangoRapido } from '../../../../../shared/ui/panel-filtros
 import { bulletMttr, gruposConMttr, rankingTipos, tarjetasBitacora } from './dashboard.logica';
 import { CuadroEjecutivo } from './cuadro-ejecutivo/cuadro-ejecutivo';
 import { Reincidencias } from './reincidencias/reincidencias';
+import { KpiAbiertas } from './kpi-abiertas/kpi-abiertas';
+import { estadoDeEvento, filtroEstado } from '../../data/estado-incidencia';
 
 /**
  * Dashboard Bitácora: sistemas y tipos de incidencia.
@@ -43,6 +45,7 @@ import { Reincidencias } from './reincidencias/reincidencias';
   imports: [
     BulletChart,
     CuadroEjecutivo,
+    KpiAbiertas,
     Reincidencias,
     EmptyState,
     Heatmap,
@@ -99,6 +102,7 @@ export class DashboardBitacora {
     ),
     desde: filtroFecha('Desde'),
     hasta: filtroFecha('Hasta'),
+    estado: filtroEstado(),
   });
   readonly filtroCentro = this.panelFiltros.valores.centro;
   readonly filtroSistema = this.panelFiltros.valores.sistema;
@@ -106,6 +110,7 @@ export class DashboardBitacora {
   readonly filtroResponsable = this.panelFiltros.valores.responsable;
   readonly filtroDesde = this.panelFiltros.valores.desde;
   readonly filtroHasta = this.panelFiltros.valores.hasta;
+  readonly filtroEstado = this.panelFiltros.valores.estado;
   readonly filtrosAbierto = this.panelFiltros.abierto;
   /** Filtros del panel aplicados, como chips removibles. */
   readonly chips = this.panelFiltros.chips;
@@ -142,6 +147,7 @@ export class DashboardBitacora {
   /** Cuadro ejecutivo por sistema y reincidencias (mismo filtro que el resto). */
   readonly ejecutivo = computed(() => this.datos()?.ejecutivo ?? []);
   readonly reincidencia = computed(() => this.datos()?.reincidencia ?? null);
+  readonly abiertas = computed(() => this.datos()?.abiertas ?? null);
 
   readonly mttrGeneral = computed(() => this.kpis()?.mttrSegundos ?? 0);
   readonly mttrGeneralTexto = computed(() => duracion(this.mttrGeneral()));
@@ -167,7 +173,13 @@ export class DashboardBitacora {
       responsable: this.filtroResponsable(),
       desde: this.filtroDesde(),
       hasta: this.filtroHasta(),
+      estado: this.filtroEstado(),
     };
+  }
+
+  setFiltroEstado(evento: Event): void {
+    this.filtroEstado.set(estadoDeEvento(evento));
+    this.cargar();
   }
 
   alternarFiltros(): void {
