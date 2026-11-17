@@ -13,14 +13,25 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import { mensajeDeError } from '../../../../../core/errors/error.util';
 import { SimulacionApi } from '../../data/simulacion.api';
-import { DistribucionSimulacion, FrecuenciaRuta } from '../../data/simulacion.model';
+import { DistribucionSimulacion, FrecuenciaRuta, RutaDistribucion } from '../../data/simulacion.model';
 import { formatearEntero } from '../../simulacion-formato';
 
-/** Una celda ya lista para dibujar: rutas con su clase de color y los bultos de cada día. */
+/** Una ficha lista para dibujar: grupo con su color, código, bultos y pestaña de frecuencia. */
+interface FichaVista {
+  codigo: string;
+  grupo: string | null;
+  color: string;
+  bultos: string;
+  letra: string;
+  clase: string;
+  titulo: string;
+}
+
+/** Una celda ya lista para dibujar: sus fichas y los bultos de cada día. */
 interface CeldaVista {
   bloqueado: boolean;
   buff: boolean;
-  rutas: { codigo: string; clase: string }[];
+  rutas: FichaVista[];
   lxv: number | null;
   mjs: number | null;
   fondoLxv: string | null;
@@ -44,6 +55,39 @@ const CLASE: Record<FrecuenciaRuta, string> = {
   MJS: 'dist__ruta--mjs',
 };
 
+/** Letra de la pestaña de frecuencia (como la planilla) y su nombre para el title. */
+const FRECUENCIA: Record<FrecuenciaRuta, { letra: string; nombre: string }> = {
+  DIARIA: { letra: 'D', nombre: 'Diaria' },
+  LXV: { letra: 'L', nombre: 'L-X-V' },
+  MJS: { letra: 'M', nombre: 'M-J-S' },
+};
+
+/** Pestaña de una ruta sin grupo: gris neutro. */
+const SIN_GRUPO = '#94a3b8';
+
+// Anchos de la hoja (px): la columna de rótulos, un chute bloqueado y un chute con fichas (una
+// ficha en una línea necesita ~112 px). Al imprimir, la hoja se ajusta al ancho de la página A3.
+const ANCHO_ROTULO = 120;
+const ANCHO_BLOQUEADO = 26;
+const ANCHO_CHUTE = 116;
+const ANCHO_MINIMO = 1200;
+/** Ancho útil de A3 horizontal con márgenes de 8 mm (404 mm a 96 ppp), con holgura. */
+const ANCHO_IMPRIMIBLE = 1520;
+
+function ficha(r: RutaDistribucion): FichaVista {
+  const f = FRECUENCIA[r.frecuencia];
+  const bultos = formatearEntero(r.bultos);
+  return {
+    codigo: r.codigo,
+    grupo: r.grupo,
+    color: r.color ?? SIN_GRUPO,
+    bultos,
+    letra: f.letra,
+    clase: CLASE[r.frecuencia],
+    titulo: `Ruta ${r.codigo} · ${r.grupo !== null ? `grupo ${r.grupo} · ` : ''}${bultos} bultos · ${f.nombre}`,
+  };
+}
+
 /** Escala de color de la fila de bultos (como el Excel): blanco → el tono del día. */
 function fondo(valor: number | null, maximo: number, tono: string): string | null {
   if (valor === null || maximo <= 0) {
@@ -54,8 +98,9 @@ function fondo(valor: number | null, maximo: number, tono: string): string | nul
 
 /**
  * Distribución de rutas por cluster y chute para imprimir o guardar como PDF (A3 horizontal): el
- * mismo diseño que el Excel. Un bloque por cluster con todos los chutes; cada celda lleva los
- * números de ruta con el color de su frecuencia y, abajo, los bultos de cada día. Al cargar abre
+ * mismo diseño que el Excel, con la banda ATLAS. Un bloque por cluster con todos los chutes; cada
+ * ruta es una ficha como la de la planilla (grupo, código, bultos y frecuencia) y, abajo, los
+ * bultos de cada día. Al cargar abre
  * el diálogo de impresión (salvo con ?imprimir=no).
  */
 @Component({
@@ -109,10 +154,31 @@ export class SimulacionReporteEjecutivo {
   }
 
   private async imprimirAlCargar(): Promise<void> {
-    const logo = document.querySelector<HTMLImageElement>('.dist__logo');
-    await logo?.decode().catch(() => undefined);
+    // Logo de Farmacias Peruanas y marca ATLAS: que salgan en la primera impresión.
+    const imagenes = [...document.querySelectorAll<HTMLImageElement>('.dist__hoja img')];
+    await Promise.all(imagenes.map((img) => img.decode().catch(() => undefined)));
     this.imprimir();
   }
+
+  /**
+   * Ancho de la hoja en pantalla (desplaza el lienzo si no cabe) y, al imprimir, el ancho y la
+   * escala para que todos los chutes entren en el ancho de la página, como el Excel.
+   */
+  readonly hoja = computed(() => {
+    const d = this.datos();
+    const bloqueados = d?.chutes.filter((c) => c.bloqueado).length ?? 0;
+    const libres = (d?.chutes.length ?? 0) - bloqueados;
+    const ancho = Math.max(
+      ANCHO_MINIMO,
+      ANCHO_ROTULO + bloqueados * ANCHO_BLOQUEADO + libres * ANCHO_CHUTE + 48,
+    );
+    const impresion = Math.max(ancho, ANCHO_IMPRIMIBLE);
+    return {
+      ancho: `${ancho}px`,
+      impresion: `${impresion}px`,
+      escala: String(Math.round((ANCHO_IMPRIMIBLE / impresion) * 1000) / 1000),
+    };
+  });
 
   /** «CHUTE 15» aunque el catálogo lo guarde como «15». */
   etiquetaChute(nombre: string): string {
@@ -164,7 +230,7 @@ export class SimulacionReporteEjecutivo {
         return {
           bloqueado: ch.bloqueado,
           buff: ch.buff,
-          rutas: rutas.map((r) => ({ codigo: r.codigo, clase: CLASE[r.frecuencia] })),
+          rutas: rutas.map(ficha),
           lxv: x && trabajaLxv ? x.bultosLxv : null,
           mjs: x && trabajaMjs ? x.bultosMjs : null,
           fondoLxv: null,

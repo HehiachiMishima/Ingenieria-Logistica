@@ -9,13 +9,16 @@ import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import oracle.simulacion.response.ArchivoSimulacionResponse;
 import oracle.simulacion.response.ChuteParametroResponse;
 import oracle.simulacion.response.ClusterParametroResponse;
 import oracle.simulacion.response.ConfiguracionSimulacionResponse;
 import oracle.simulacion.response.DistribucionResponse;
 import oracle.simulacion.response.RutaSimulacionResponse;
+import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.Row;
@@ -44,11 +47,12 @@ class SimulacionReporteTest {
     DistribucionResponse.Celda chute1 = cl1.celdas().getFirst();
     // Diarias primero, después L-X-V y M-J-S.
     assertEquals(
-        List.of(
-            new DistribucionResponse.Ruta("2028", "DIARIA"),
-            new DistribucionResponse.Ruta("3001", "LXV"),
-            new DistribucionResponse.Ruta("4001", "MJS")),
-        chute1.rutas());
+        List.of("2028 DIARIA", "3001 LXV", "4001 MJS"),
+        chute1.rutas().stream().map((r) -> r.codigo() + " " + r.frecuencia()).toList());
+    DistribucionResponse.Ruta diaria = chute1.rutas().getFirst();
+    assertEquals("A", diaria.grupo());
+    assertEquals("#7c3aed", diaria.color(), "primer grupo del cluster: primer color de la paleta");
+    assertEquals(0, new BigDecimal("99.10").compareTo(diaria.bultos()));
   }
 
   @Test
@@ -92,15 +96,48 @@ class SimulacionReporteTest {
   }
 
   @Test
-  void cadaRutaLlevaElColorDeSuFrecuencia() throws Exception {
+  void cadaRutaEsUnaFichaConSuGrupoSuFrecuenciaYSusBultos() throws Exception {
     try (XSSFWorkbook libro = abrir()) {
-      XSSFCell celda = buscar(libro.getSheet("Distribución"), "2028\n3001\n4001");
-      assertNotNull(celda, "las tres rutas apiladas en la celda del chute 1");
-      XSSFRichTextString texto = celda.getRichStringCellValue();
+      Sheet hoja = libro.getSheet("Distribución");
+      // 99,10 bultos se muestran hacia arriba, como en la pantalla.
+      XSSFCell diaria = buscar(hoja, "A  2028   ■ 100   D");
+      assertNotNull(diaria, textos(hoja).toString());
+      XSSFRichTextString texto = diaria.getRichStringCellValue();
+      assertEquals("FF7C3AED", color(texto, "A"), "número del grupo con su color");
       assertEquals("FF" + DistribucionExcel.TINTA, color(texto, "2028"));
-      assertEquals("FF" + DistribucionExcel.AZUL, color(texto, "3001"));
-      assertEquals("FF" + DistribucionExcel.AMBAR, color(texto, "4001"));
+      assertEquals("FF" + DistribucionExcel.CAFE, color(texto, " 100"));
+      assertEquals("FF" + DistribucionExcel.TINTA, color(texto, "D"));
+      // Borde izquierdo grueso del color del grupo, como la pestaña de la ficha.
+      assertEquals(BorderStyle.THICK, diaria.getCellStyle().getBorderLeft());
+      assertEquals("FF7C3AED", diaria.getCellStyle().getLeftBorderXSSFColor().getARGBHex());
+
+      XSSFCell lxv = buscar(hoja, "A  3001   ■ 20   L");
+      XSSFCell mjs = buscar(hoja, "A  4001   ■ 31   M");
+      assertNotNull(lxv);
+      assertNotNull(mjs);
+      assertEquals("FF" + DistribucionExcel.AZUL, color(lxv.getRichStringCellValue(), "3001"));
+      assertEquals("FF" + DistribucionExcel.AMBAR, color(mjs.getRichStringCellValue(), "4001"));
+      // Las tres fichas del chute 1 van una debajo de otra en su columna.
+      assertEquals(diaria.getColumnIndex(), mjs.getColumnIndex());
+      assertEquals(diaria.getRowIndex() + 2, mjs.getRowIndex());
     }
+  }
+
+  @Test
+  void losGruposTomanLaPaletaEnOrdenNatural() {
+    List<RutaSimulacionResponse> rutas = new ArrayList<>();
+    rutas.add(ruta(1L, "3001", 1L, "10", "LXV", "10"));
+    rutas.add(ruta(2L, "3002", 1L, "10", "LXV", "2"));
+    rutas.add(ruta(3L, "3003", 2L, "10", "LXV", null));
+    DistribucionResponse d = SimulacionReporte.armar(configuracion(), rutas, Instant.now());
+
+    Map<String, DistribucionResponse.Ruta> porCodigo = new HashMap<>();
+    d.clusters().getFirst().celdas().forEach((c) -> c.rutas().forEach((r) -> porCodigo.put(r.codigo(), r)));
+    assertEquals("#7c3aed", porCodigo.get("3002").color(), "el grupo 2 va antes que el 10");
+    assertEquals("#0891b2", porCodigo.get("3001").color());
+    assertNull(porCodigo.get("3003").grupo(), "sin grupo no lleva color");
+    assertNull(porCodigo.get("3003").color());
+    assertEquals("3003   ■ 10   L", DistribucionExcel.textoFicha(porCodigo.get("3003")));
   }
 
   @Test
@@ -118,14 +155,20 @@ class SimulacionReporteTest {
   }
 
   @Test
-  void conLogoElEncabezadoLoLleva() throws Exception {
-    byte[] logo;
-    try (var entrada = getClass().getClassLoader().getResourceAsStream("reporte/fp-logo.jpg")) {
-      assertNotNull(entrada, "el logo está en los recursos");
-      logo = entrada.readAllBytes();
+  void elEncabezadoLlevaElLogoYLaMarcaAtlas() throws Exception {
+    var marcas = new DistribucionExcel.Marcas(recurso("reporte/fp-logo.jpg"), recurso("reporte/atlas-marca.png"));
+    try (XSSFWorkbook libro =
+        new XSSFWorkbook(new ByteArrayInputStream(DistribucionExcel.escribir(distribucion(), marcas)))) {
+      assertEquals(2, libro.getAllPictures().size());
+      // La fecha va en la banda ATLAS (si hay chutes suficientes) o tras el subtítulo.
+      assertTrue(textos(libro.getSheet("Distribución")).stream().anyMatch((t) -> t.contains("Generado 14/11/2026 10:00")));
     }
-    try (XSSFWorkbook libro = new XSSFWorkbook(new ByteArrayInputStream(DistribucionExcel.escribir(distribucion(), logo)))) {
-      assertEquals(1, libro.getAllPictures().size());
+  }
+
+  private byte[] recurso(String ruta) throws Exception {
+    try (var entrada = getClass().getClassLoader().getResourceAsStream(ruta)) {
+      assertNotNull(entrada, ruta + " está en los recursos");
+      return entrada.readAllBytes();
     }
   }
 
@@ -155,7 +198,8 @@ class SimulacionReporteTest {
   }
 
   private static XSSFWorkbook abrir() throws Exception {
-    return new XSSFWorkbook(new ByteArrayInputStream(DistribucionExcel.escribir(distribucion(), null)));
+    return new XSSFWorkbook(
+        new ByteArrayInputStream(DistribucionExcel.escribir(distribucion(), DistribucionExcel.Marcas.NINGUNA)));
   }
 
   private static ConfiguracionSimulacionResponse configuracion() {
@@ -185,8 +229,13 @@ class SimulacionReporteTest {
   }
 
   private static RutaSimulacionResponse ruta(Long id, String codigo, Long chute, String bultos, String frecuencia) {
+    return ruta(id, codigo, chute, bultos, frecuencia, "A");
+  }
+
+  private static RutaSimulacionResponse ruta(
+      Long id, String codigo, Long chute, String bultos, String frecuencia, String grupo) {
     return new RutaSimulacionResponse(id, chute, String.valueOf(chute), chute, String.valueOf(chute), 1L, "CL1", 1L,
-        "CL1", false, codigo, "B2C", new BigDecimal(bultos), CIEN, BigDecimal.TEN, 4, "A", frecuencia, false);
+        "CL1", false, codigo, "B2C", new BigDecimal(bultos), CIEN, BigDecimal.TEN, 4, grupo, frecuencia, false);
   }
 
   private static List<String> textos(Sheet hoja) {

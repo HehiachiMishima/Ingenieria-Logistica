@@ -544,10 +544,22 @@ export interface ChuteDistribucion {
   bloqueado: boolean;
 }
 
+/**
+ * Una ruta en su celda, como la ficha de la planilla: código, frecuencia, su grupo con el color de
+ * la cuadrícula (#rrggbb; null sin grupo) y sus bultos.
+ */
+export interface RutaDistribucion {
+  codigo: string;
+  frecuencia: FrecuenciaRuta;
+  grupo: string | null;
+  color: string | null;
+  bultos: number;
+}
+
 /** Un chute con rutas del cluster: sus rutas (diarias, L-X-V, M-J-S) y los bultos de cada día. */
 export interface CeldaDistribucion {
   chuteId: number | null;
-  rutas: { codigo: string; frecuencia: FrecuenciaRuta }[];
+  rutas: RutaDistribucion[];
   bultosLxv: number;
   bultosMjs: number;
 }

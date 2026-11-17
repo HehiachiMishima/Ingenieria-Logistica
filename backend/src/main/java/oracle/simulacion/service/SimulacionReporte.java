@@ -40,7 +40,12 @@ public class SimulacionReporte {
   static final String LXV = "LXV";
   static final String MJS = "MJS";
   private static final List<String> FRECUENCIAS = List.of(DIARIA, LXV, MJS);
-  private static final String LOGO = "reporte/fp-logo.jpg";
+  /** Colores de los grupos de un cluster en orden natural: los mismos de la cuadrícula (PALETA_GRUPOS). */
+  static final List<String> PALETA_GRUPOS =
+      List.of("#7c3aed", "#0891b2", "#db2777", "#4f46e5", "#0d9488", "#c2410c", "#9333ea", "#0369a1");
+  private static final String LOGO_FP = "reporte/fp-logo.jpg";
+  /** Isotipo, wordmark ATLAS (como el del login) y subtítulo en una sola imagen. */
+  private static final String ATLAS_MARCA = "reporte/atlas-marca.png";
 
   private final SimulacionConfiguracionService servicio;
 
@@ -57,7 +62,9 @@ public class SimulacionReporte {
 
   /** El Excel de la distribución. */
   public byte[] excel(Long archivoId) {
-    return DistribucionExcel.escribir(distribucion(archivoId), logo());
+    return DistribucionExcel.escribir(
+        distribucion(archivoId),
+        new DistribucionExcel.Marcas(recurso(LOGO_FP), recurso(ATLAS_MARCA)));
   }
 
   /** «simulacion-proyeccion-enero.xlsx». */
@@ -72,12 +79,12 @@ public class SimulacionReporte {
     return "simulacion-" + (base.isEmpty() ? archivoId : base) + ".xlsx";
   }
 
-  /** Logo de Farmacias Peruanas para el encabezado; null si no está en el classpath. */
-  private static byte[] logo() {
-    try (InputStream entrada = SimulacionReporte.class.getClassLoader().getResourceAsStream(LOGO)) {
+  /** Imagen del encabezado (logo de Farmacias Peruanas o marca ATLAS); null si no está. */
+  private static byte[] recurso(String ruta) {
+    try (InputStream entrada = SimulacionReporte.class.getClassLoader().getResourceAsStream(ruta)) {
       return entrada == null ? null : entrada.readAllBytes();
     } catch (IOException error) {
-      throw new UncheckedIOException("No se pudo leer el logo del reporte.", error);
+      throw new UncheckedIOException("No se pudo leer " + ruta + ".", error);
     }
   }
 
@@ -128,6 +135,7 @@ public class SimulacionReporte {
       }
       Map<Long, List<RutaSimulacionResponse>> porChute = new HashMap<>();
       suyas.forEach((r) -> porChute.computeIfAbsent(r.chuteId(), (k) -> new ArrayList<>()).add(r));
+      Map<String, String> colores = coloresGrupos(c, suyas);
       List<DistribucionResponse.Celda> celdas = new ArrayList<>();
       BigDecimal clusterLxv = BigDecimal.ZERO;
       BigDecimal clusterMjs = BigDecimal.ZERO;
@@ -153,7 +161,9 @@ public class SimulacionReporte {
             mjs = mjs.add(b);
           }
           porFrecuencia[FRECUENCIAS.indexOf(f)]++;
-          lista.add(new DistribucionResponse.Ruta(r.codigoRuta(), f));
+          String grupo = r.grupo() == null || r.grupo().isBlank() ? null : r.grupo();
+          lista.add(
+              new DistribucionResponse.Ruta(r.codigoRuta(), f, grupo, grupo == null ? null : colores.get(grupo), b));
         }
         celdas.add(new DistribucionResponse.Celda(chuteId, List.copyOf(lista), entero(lxv), entero(mjs)));
         clusterLxv = clusterLxv.add(lxv);
@@ -183,6 +193,25 @@ public class SimulacionReporte {
         List.copyOf(chutes),
         List.copyOf(clusters),
         new DistribucionResponse.Totales(clusters.size(), totalRutas, enUso.size(), entero(totalLxv), entero(totalMjs)));
+  }
+
+  /**
+   * Color de cada grupo del cluster, en orden natural, como la cuadrícula: los grupos de la
+   * configuración y, si falta alguno, los de sus rutas.
+   */
+  private static Map<String, String> coloresGrupos(ClusterParametroResponse c, List<RutaSimulacionResponse> rutas) {
+    Set<String> nombres = new HashSet<>();
+    if (c.grupos() != null) {
+      c.grupos().forEach((g) -> nombres.add(g.nombre()));
+    }
+    rutas.stream().map(RutaSimulacionResponse::grupo).filter((g) -> g != null && !g.isBlank()).forEach(nombres::add);
+    List<String> orden = new ArrayList<>(nombres);
+    orden.sort(SimulacionConfiguracionService::compararNatural);
+    Map<String, String> colores = new HashMap<>();
+    for (int i = 0; i < orden.size(); i++) {
+      colores.put(orden.get(i), PALETA_GRUPOS.get(i % PALETA_GRUPOS.size()));
+    }
+    return colores;
   }
 
   private static long entero(BigDecimal valor) {

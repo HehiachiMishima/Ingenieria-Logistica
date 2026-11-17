@@ -19,7 +19,8 @@
   @if (datos(); as d) {
     <!-- El lienzo desplaza en pantallas angostas; la hoja conserva su ancho de impresión. -->
     <div class="dist__lienzo">
-      <article class="dist__hoja">
+      <article class="dist__hoja" [style.--d-ancho]="hoja().ancho" [style.--d-ancho-impresion]="hoja().impresion"
+        [style.--d-escala]="hoja().escala">
         <header class="dist__encabezado">
           <img class="dist__logo" src="FarmaciasPeruanasName.jpg" alt="Farmacias Peruanas" width="154" height="60" />
           <div class="dist__titulos">
@@ -29,12 +30,19 @@
               M-J-S en un solo bloque por cluster
             </p>
           </div>
-          <div class="dist__marca">
-            <strong>ATLAS</strong>
-            <span>Plataforma de Ingeniería Logística</span>
-            <small>Generado {{ generado() }}</small>
-          </div>
         </header>
+
+        <!-- Banda ATLAS: línea roja, isotipo, wordmark como el del login, subtítulo y fecha, línea dorada. -->
+        <div class="dist__banda">
+          <div class="dist__atlas">
+            <img class="dist__atlas-iso" src="marca/atlas-logo-192.png" alt="" width="50" height="50" />
+            <div class="dist__atlas-texto">
+              <img class="dist__atlas-wordmark" src="marca/atlas-wordmark.png" alt="Atlas" width="168" height="46" />
+              <span class="dist__atlas-sub">Plataforma de ingeniería logística</span>
+            </div>
+          </div>
+          <span class="dist__fecha">Generado {{ generado() }}</span>
+        </div>
 
         <section class="dist__kpis" aria-label="Indicadores">
           @for (k of indicadores(); track k.etiqueta) {
@@ -45,13 +53,20 @@
           }
         </section>
 
-        <p class="dist__leyenda">
-          <b>Frecuencia de cada ruta:</b>
-          <span class="dist__ruta--diaria">■ Diaria</span> (sale los dos días)
-          <span class="dist__ruta--lxv">■ L-X-V</span>
-          <span class="dist__ruta--mjs">■ M-J-S</span>
+        <div class="dist__leyenda">
+          <b>Ficha de cada ruta:</b>
+          <span class="dist__ficha dist__ficha--muestra" aria-hidden="true">
+            <span class="dist__ficha-grupo" style="background: #7c3aed">1</span>
+            <span class="dist__ficha-codigo dist__ruta--lxv">3013</span>
+            <span class="dist__ficha-bultos"><i></i>465</span>
+            <span class="dist__ficha-frecuencia dist__ficha-frecuencia--l">L</span>
+          </span>
+          <span>grupo (con su color) · número de ruta con el color de su frecuencia · bultos · frecuencia:</span>
+          <span><b class="dist__ruta--diaria">D</b> diaria (sale los dos días)</span>
+          <span><b class="dist__ruta--lxv">L</b> L-X-V</span>
+          <span><b class="dist__ruta--mjs">M</b> M-J-S</span>
           <span class="dist__leyenda-sep">Cabecera roja = chute con buff · Columna gris = bloqueado</span>
-        </p>
+        </div>
 
         @if (d.clusters.length === 0) {
           <p class="dist__estado">El registro no tiene rutas para mostrar.</p>
@@ -62,7 +77,7 @@
             <colgroup>
               <col class="dist__col-rotulo" />
               @for (ch of d.chutes; track $index) {
-                <col [class.dist__col-bloq]="ch.bloqueado" />
+                <col [class.dist__col-bloq]="ch.bloqueado" [class.dist__col-chute]="!ch.bloqueado" />
               }
             </colgroup>
             <thead>
@@ -87,7 +102,14 @@
                     [class.dist__celda--vacia]="!x.bloqueado && x.rutas.length === 0">
                     @if (!x.bloqueado) {
                       @for (r of x.rutas; track $index) {
-                        <span class="dist__ruta {{ r.clase }}">{{ r.codigo }}</span>
+                        <span class="dist__ficha" [title]="r.titulo">
+                          <span class="dist__ficha-grupo" [style.background]="r.color">{{ r.grupo }}</span>
+                          <span class="dist__ficha-codigo {{ r.clase }}">{{ r.codigo }}</span>
+                          <span class="dist__ficha-bultos"><i aria-hidden="true"></i>{{ r.bultos }}</span>
+                          <span class="dist__ficha-frecuencia dist__ficha-frecuencia--{{ r.letra.toLowerCase() }}">
+                            {{ r.letra }}
+                          </span>
+                        </span>
                       } @empty {
                         —
                       }
@@ -126,9 +148,10 @@
         }
 
         <p class="dist__nota">
-          Cada celda muestra solo los números de ruta; el color indica su frecuencia. Una diaria sale una sola vez y
-          trabaja los dos días. Las filas de bultos suman por chute la carga de cada día (diarias + rutas de ese día),
-          redondeada al entero.
+          Cada ficha muestra el grupo (número sobre su color), el número de ruta con el color de su frecuencia, sus
+          bultos redondeados hacia arriba y la letra de la frecuencia (D diaria, L L-X-V, M M-J-S). Una diaria sale una
+          sola vez y trabaja los dos días. Las filas de bultos suman por chute la carga de cada día (diarias + rutas de
+          ese día), redondeada al entero.
         </p>
       </article>
     </div>

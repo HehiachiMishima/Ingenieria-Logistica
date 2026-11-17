@@ -22,6 +22,11 @@
   --d-bloq: #e2e8f0;
   --d-navy-suave: #e8edf4;
   --d-guion: #cbd5e1;
+  --d-oro: #f7c400;
+  --d-cafe: #7a4a1c;
+  --d-cafe-suave: #f6ecdf;
+  --d-kraft: #c8894a;
+  --d-borde-ficha: #e2e8f0;
 
   color-scheme: light;
   min-height: 100dvh;
@@ -106,7 +111,7 @@
 
 .dist__hoja {
   box-sizing: border-box;
-  width: 1560px;
+  width: var(--d-ancho, 1560px);
   margin: 0 auto;
   padding: 20px 24px 16px;
   background: #ffffff;
@@ -115,11 +120,10 @@
 
 .dist__encabezado {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 20px;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 22px;
   align-items: center;
-  padding-bottom: 10px;
-  border-bottom: 3px solid var(--d-rojo);
+  padding-bottom: 12px;
 }
 
 .dist__logo {
@@ -147,30 +151,57 @@
   }
 }
 
-.dist__marca {
+// Banda ATLAS: línea roja arriba, dorada abajo, como el login.
+.dist__banda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-top: 3px solid var(--d-rojo);
+  border-bottom: 3px solid var(--d-oro);
+}
+
+.dist__atlas {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+
+.dist__atlas-iso {
+  display: block;
+  flex: none;
+  width: 50px;
+  height: 50px;
+}
+
+.dist__atlas-texto {
   display: grid;
-  justify-items: end;
-  line-height: 1.15;
+  gap: 3px;
+  min-width: 0;
+}
 
-  strong {
-    color: var(--d-rojo);
-    font-size: 26px;
-    font-weight: 800;
-    letter-spacing: 0.04em;
-  }
+// El wordmark es la imagen del login (T completa, roja y dorada, con relieve): no se deforma.
+.dist__atlas-wordmark {
+  display: block;
+  width: auto;
+  height: 46px;
+}
 
-  span {
-    color: var(--d-navy);
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: uppercase;
-  }
+.dist__atlas-sub {
+  color: #0f1217;
+  font-family: -apple-system, 'SF Pro Text', system-ui, 'Segoe UI', Arial, sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 
-  small {
-    margin-top: 4px;
-    color: var(--d-gris-claro);
-    font-size: 10px;
-  }
+.dist__fecha {
+  color: var(--d-gris);
+  font-size: 11px;
 }
 
 .dist__kpis {
@@ -213,14 +244,11 @@
 .dist__leyenda {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 14px;
+  gap: 4px 12px;
+  align-items: center;
   margin: 0 0 10px;
   color: var(--d-gris);
   font-size: 11px;
-
-  span:not(.dist__leyenda-sep) {
-    font-weight: 700;
-  }
 }
 
 .dist__ruta--diaria {
@@ -256,6 +284,10 @@
 
 .dist__col-rotulo {
   width: 120px;
+}
+
+.dist__col-chute {
+  width: 116px;
 }
 
 .dist__col-bloq {
@@ -312,7 +344,13 @@
 
 .dist__celda {
   height: 48px;
+  padding: 2px !important;
   background: #ffffff;
+  vertical-align: top !important;
+}
+
+.dist__celda--vacia {
+  vertical-align: middle !important;
 }
 
 .dist__celda--buff {
@@ -329,11 +367,92 @@
   background: var(--d-bloq);
 }
 
-.dist__ruta {
-  display: block;
+// Ficha de una ruta, como la de la planilla: pestaña del grupo, código, bultos y pestaña de la
+// frecuencia.
+.dist__ficha {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  height: 22px;
+  margin: 2px 0;
+  overflow: hidden;
+  border: 1px solid var(--d-borde-ficha);
+  border-radius: 5px;
+  background: #ffffff;
+  text-align: left;
+}
+
+.dist__ficha--muestra {
+  display: inline-flex;
+  width: 112px;
+  margin: 0;
+}
+
+.dist__ficha-grupo,
+.dist__ficha-frecuencia {
+  display: flex;
+  flex: none;
+  align-items: center;
+  align-self: stretch;
+  justify-content: center;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.dist__ficha-grupo {
+  min-width: 14px;
+  padding: 0 2px;
+  box-sizing: border-box;
+  font-size: 9px;
+}
+
+.dist__ficha-codigo {
+  min-width: 0;
+  overflow: hidden;
   font-size: 11px;
   font-weight: 700;
-  line-height: 1.35;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dist__ficha-bultos {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  align-items: center;
+  margin-left: auto;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--d-cafe-suave);
+  color: var(--d-cafe);
+  font-size: 9.5px;
+  font-weight: 700;
+  white-space: nowrap;
+
+  // Caja de bultos (kraft), como el ícono de la planilla.
+  i {
+    width: 8px;
+    height: 6px;
+    border-radius: 1px;
+    background: var(--d-kraft);
+  }
+}
+
+.dist__ficha-frecuencia {
+  width: 13px;
+  font-size: 8px;
+}
+
+.dist__ficha-frecuencia--d {
+  background: var(--d-tinta);
+}
+
+.dist__ficha-frecuencia--l {
+  background: var(--d-azul);
+}
+
+.dist__ficha-frecuencia--m {
+  background: var(--d-ambar);
 }
 
 .dist__total td {
@@ -389,10 +508,12 @@ td.dist__guion {
     padding: 0;
   }
 
+  // Todos los chutes al ancho de la página (como el Excel): ancho natural y escala.
   .dist__hoja {
-    width: auto;
+    width: var(--d-ancho-impresion, auto);
     margin: 0;
     padding: 0;
     box-shadow: none;
+    zoom: var(--d-escala, 1);
   }
 }
