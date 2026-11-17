@@ -4,45 +4,25 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Simulación de despacho</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
-    rel="stylesheet">
+  <title>Rampas 15–33</title>
   <style>
     :root {
       color-scheme: light;
-      --ink: #0B1220;
-      --ink-2: #334155;
-      --muted: #64748B;
-      --faint: #94A3B8;
-      --bg: #EEF1F5;
-      --card: #FFFFFF;
-      --line: #E3E8EF;
-      --line-2: #CFD6E0;
-      --navy: #0F1E36;
-      --navy-2: #1A2C4E;
-      --rojo: #D2141C;
-      --rojo-2: #A50E14;
-      --rojo-suave: #FDECEC;
-      --rojo-borde: #F5B8BB;
-      --amarillo: #F5C518;
-      --c1: #2563EB;
-      --c2: #7C3AED;
-      --c3: #EA580C;
-      --c0: #94A3B8;
-      --ok: #16A34A;
-      --ok-suave: #DCFCE7;
-      --piso: #E8ECF1;
-      --sombra: 0 1px 2px rgba(15, 30, 54, .06), 0 8px 22px -12px rgba(15, 30, 54, .22);
+      /* Colores tomados del FORMATO.xlsx (tema de Office) */
+      --paleta: #A6CAEC;
+      /* Texto 2, +75 % */
+      --linea: #4E95D9;
+      /* Texto 2, +50 % */
+      --rampa: #F2AA84;
+      /* Énfasis 2, +40 % */
+      --fondo: #FFFFFF;
+      --tinta: #0E2841;
+      --suave: #5B6B7C;
+      --borde: #E3E8EE;
     }
 
     * {
       box-sizing: border-box
-    }
-
-    [hidden] {
-      display: none !important
     }
 
     html,
@@ -52,1350 +32,98 @@
     }
 
     body {
-      background: var(--bg);
-      color: var(--ink);
+      background: var(--fondo);
+      color: var(--tinta);
+      font: 14px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      font: 14px/1.4 Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-      -webkit-font-smoothing: antialiased
     }
 
-    button,
-    input,
-    select {
-      font: inherit;
-      color: inherit
-    }
-
-    button:focus-visible,
-    input:focus-visible,
-    select:focus-visible,
-    label[role=button]:focus-visible {
-      outline: 2px solid var(--c1);
-      outline-offset: 2px
-    }
-
-    svg.i {
-      width: 16px;
-      height: 16px;
-      flex: 0 0 auto
-    }
-
-    /* ===== barra superior ===== */
-    .appbar {
+    /* ---------- barra superior ---------- */
+    header {
       flex: 0 0 auto;
       display: flex;
       align-items: center;
-      gap: 10px 18px;
+      gap: 12px 20px;
       flex-wrap: wrap;
-      padding: 10px 18px;
-      background: linear-gradient(180deg, var(--navy-2), var(--navy));
-      color: #fff
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--borde);
     }
 
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      min-width: 0
-    }
-
-    .tile {
-      width: 40px;
-      height: 40px;
-      border-radius: 6px;
-      background: linear-gradient(180deg, #E3232B, var(--rojo-2));
-      border: 2px solid #D7DCE2;
-      display: grid;
-      place-items: center;
-      font-weight: 900;
-      font-size: 12px;
-      letter-spacing: .06em;
-      box-shadow: 0 0 0 1px rgba(0, 0, 0, .35), 0 0 14px rgba(96, 165, 250, .35)
-    }
-
-    .brand .eyebrow {
-      font-size: 10.5px;
-      font-weight: 700;
-      letter-spacing: .16em;
-      text-transform: uppercase;
-      color: #9FB0CC
-    }
-
-    .brand h1 {
-      margin: 1px 0 0;
-      font-size: 18px;
-      font-weight: 800;
-      letter-spacing: -.01em;
-      line-height: 1.15
-    }
-
-    .estado-lock {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      height: 24px;
-      padding: 0 10px;
-      border-radius: 999px;
-      background: rgba(245, 197, 24, .16);
-      color: #FCD34D;
-      font-size: 11.5px;
-      font-weight: 700
-    }
-
-    .acts {
-      margin-left: auto;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap
-    }
-
-    .ab-btn {
-      height: 34px;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 0 13px;
-      border-radius: 8px;
-      cursor: pointer;
-      border: 1px solid rgba(255, 255, 255, .18);
-      background: rgba(255, 255, 255, .06);
-      color: #fff;
-      font-weight: 600;
-      font-size: 13px;
-      white-space: nowrap
-    }
-
-    .ab-btn:hover {
-      background: rgba(255, 255, 255, .14)
-    }
-
-    .ab-btn.primario {
-      background: var(--rojo);
-      border-color: var(--rojo)
-    }
-
-    .ab-btn.primario:hover {
-      background: #E0222A
-    }
-
-    .ab-btn[aria-pressed="true"] {
-      background: #fff;
-      color: var(--navy);
-      border-color: #fff
-    }
-
-    /* ===== indicadores ===== */
-    .kpis {
-      flex: 0 0 auto;
-      display: grid;
-      grid-template-columns: repeat(6, minmax(150px, 1fr));
-      gap: 10px;
-      padding: 12px 16px 10px;
-      overflow-x: auto
-    }
-
-    .kpi {
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 9px 13px;
-      box-shadow: var(--sombra);
-      min-width: 0
-    }
-
-    .kpi .k-l {
-      font-size: 10.5px;
-      font-weight: 700;
-      letter-spacing: .12em;
-      text-transform: uppercase;
-      color: var(--muted);
-      white-space: nowrap
-    }
-
-    .kpi .k-v {
-      font-size: 22px;
-      font-weight: 800;
-      letter-spacing: -.02em;
-      line-height: 1.2;
-      font-variant-numeric: tabular-nums;
-      white-space: nowrap
-    }
-
-    .kpi .k-v small {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--muted);
-      letter-spacing: 0
-    }
-
-    .kpi .k-s {
-      font-size: 11.5px;
-      color: var(--muted);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis
-    }
-
-    .kpi .k-s.mal {
-      color: var(--rojo);
-      font-weight: 700
-    }
-
-    .kpi .k-bar {
-      height: 4px;
-      border-radius: 2px;
-      background: #EDF1F6;
-      margin-top: 6px;
-      overflow: hidden
-    }
-
-    .kpi .k-bar i {
-      display: block;
-      height: 100%;
-      background: var(--navy)
-    }
-
-    .kpi .k-bar i.ok {
-      background: var(--ok)
-    }
-
-    .kpi .cls {
-      display: flex;
-      gap: 10px;
-      margin-top: 2px
-    }
-
-    .kpi .cls span {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      font-size: 13px;
-      font-weight: 800;
-      font-variant-numeric: tabular-nums
-    }
-
-    .kpi .cls i {
-      width: 9px;
-      height: 9px;
-      border-radius: 2px;
-      display: inline-block
-    }
-
-    /* ===== cuerpo ===== */
-    #viewPlano {
-      flex: 1 1 auto;
-      min-height: 0;
-      display: flex;
-      flex-direction: column
-    }
-
-    .cuerpo {
-      flex: 1 1 auto;
-      min-height: 0;
-      display: flex;
-      gap: 12px;
-      padding: 0 16px 14px;
-      position: relative
-    }
-
-    .plano-card {
-      flex: 1 1 auto;
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      box-shadow: var(--sombra);
-      overflow: hidden
-    }
-
-    .toolbar {
-      flex: 0 0 auto;
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 8px 10px;
-      padding: 9px 14px;
-      border-bottom: 1px solid var(--line)
-    }
-
-    .t-lbl {
-      font-size: 10.5px;
-      font-weight: 800;
-      letter-spacing: .14em;
-      text-transform: uppercase;
-      color: var(--muted)
-    }
-
-    .chip {
-      height: 30px;
-      padding: 0 12px;
-      border-radius: 7px;
-      border: 1px solid var(--line-2);
-      background: #fff;
-      cursor: pointer;
-      font-weight: 700;
-      font-size: 12.5px;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-variant-numeric: tabular-nums;
-      color: var(--ink-2)
-    }
-
-    .chip:hover {
-      background: #F4F6F9
-    }
-
-    .chip svg {
-      width: 13px;
-      height: 13px;
-      transition: transform .2s;
-      color: var(--faint)
-    }
-
-    .chip[aria-pressed="true"] {
-      background: var(--rojo);
-      border-color: var(--rojo);
-      color: #fff
-    }
-
-    .chip[aria-pressed="true"] svg {
-      transform: rotate(90deg);
-      color: #fff
-    }
-
-    .t-nota {
-      font-size: 12.5px;
-      color: var(--faint)
-    }
-
-    .t-der {
-      margin-left: auto;
-      display: flex;
-      gap: 6px
-    }
-
-    .tb-btn {
-      height: 30px;
-      padding: 0 10px;
-      border-radius: 7px;
-      border: 0;
-      background: transparent;
-      color: var(--muted);
-      font-weight: 600;
-      font-size: 12.5px;
-      cursor: pointer
-    }
-
-    .tb-btn:hover {
-      background: #F4F6F9;
-      color: var(--ink)
-    }
-
-    .envio-tb {
-      height: 30px;
-      flex: 0 0 auto;
-      font-size: 12.5px;
-      padding: 0 12px
-    }
-
-    @media (min-width:1500px) {
-      .envio-tb {
-        display: none
-      }
-    }
-
-    .sc-wrap {
-      position: relative;
-      flex: 1 1 auto;
-      min-height: 0;
-      display: flex;
-      flex-direction: column
-    }
-
-    .sc {
-      flex: 1 1 auto;
-      min-height: 0;
-      overflow: auto;
-      position: relative;
-      background: var(--piso);
-      outline: none;
-      overscroll-behavior: contain
-    }
-
-    .sc.arrastrando {
-      cursor: grabbing
-    }
-
-    .lienzo {
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-end;
-      min-height: 100%;
-      user-select: none;
-      -webkit-user-select: none
-    }
-
-    .aviso {
-      position: absolute;
-      top: 14px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 6;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      height: 34px;
-      padding: 0 14px;
-      border-radius: 999px;
-      border: 0;
-      background: var(--navy);
-      color: #fff;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      box-shadow: 0 8px 20px -8px rgba(15, 30, 54, .6);
-      white-space: nowrap
-    }
-
-    .leyenda {
-      flex: 0 0 auto;
-      display: flex;
-      align-items: center;
-      gap: 8px 16px;
-      flex-wrap: wrap;
-      padding: 8px 14px;
-      border-top: 1px solid var(--line);
-      font-size: 11.5px;
-      color: var(--muted)
-    }
-
-    .leyenda span {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      white-space: nowrap
-    }
-
-    .lg {
-      width: 14px;
-      height: 14px;
-      border-radius: 3px;
-      display: inline-block
-    }
-
-    .lg.libre {
-      border: 1.5px dashed var(--c1);
-      background: rgba(37, 99, 235, .06)
-    }
-
-    .lg.pal {
-      background: #F2C230;
-      border: 1px solid #C9950C
-    }
-
-    .lg.curso {
-      background: var(--navy)
-    }
-
-    .lg.ok {
-      background: #15803D
-    }
-
-    .leyenda .sep {
-      width: 1px;
-      height: 14px;
-      background: var(--line)
-    }
-
-    /* ===== panel de simulación ===== */
-    .panel {
-      flex: 0 0 340px;
-      display: flex;
-      flex-direction: column;
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      box-shadow: var(--sombra);
-      overflow: hidden;
-      min-height: 0
-    }
-
-    .panel-h {
-      flex: 0 0 auto;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 12px 16px;
-      border-bottom: 1px solid var(--line)
-    }
-
-    .panel-h h2 {
+    header h1 {
+      font-size: 16px;
+      font-weight: 650;
       margin: 0;
-      font-size: 15px;
-      font-weight: 800
-    }
-
-    .panel-h::before {
-      content: "";
-      width: 4px;
-      height: 18px;
-      border-radius: 2px;
-      background: var(--rojo)
-    }
-
-    .panel-h .x {
-      margin-left: auto;
-      width: 30px;
-      height: 30px;
-      border: 0;
-      border-radius: 7px;
-      background: transparent;
-      cursor: pointer;
-      color: var(--muted)
-    }
-
-    .panel-h .x:hover {
-      background: #F4F6F9
-    }
-
-    .panel-b {
-      flex: 1 1 auto;
-      overflow-y: auto;
-      min-height: 0
-    }
-
-    .p-sec {
-      padding: 14px 16px;
-      border-bottom: 1px solid var(--line)
-    }
-
-    .p-sec:last-child {
-      border-bottom: 0
-    }
-
-    .p-sec h3 {
-      margin: 0 0 10px;
-      font-size: 10.5px;
-      font-weight: 800;
-      letter-spacing: .14em;
-      text-transform: uppercase;
-      color: var(--muted);
-      display: flex;
-      align-items: center;
-      gap: 8px
-    }
-
-    .p-sec h3 small {
-      margin-left: auto;
-      text-transform: none;
-      letter-spacing: 0;
-      font-weight: 600;
-      color: var(--faint);
-      font-size: 11.5px
-    }
-
-    .pasos {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      margin-bottom: 10px
-    }
-
-    .paso {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 8px 10px;
-      border: 1px solid var(--line);
-      border-radius: 9px;
-      background: #FAFBFC
-    }
-
-    .paso .n {
-      width: 24px;
-      height: 24px;
-      border-radius: 50%;
-      display: grid;
-      place-items: center;
-      font-size: 11px;
-      font-weight: 800;
-      background: #E6EBF1;
-      color: var(--muted);
-      flex: 0 0 auto
-    }
-
-    .paso .t {
-      flex: 1;
-      min-width: 0
-    }
-
-    .paso .t b {
-      display: block;
-      font-size: 13px
-    }
-
-    .paso .t span {
-      font-size: 11.5px;
-      color: var(--muted);
-      font-variant-numeric: tabular-nums
-    }
-
-    .paso .e {
-      font-size: 10.5px;
-      font-weight: 800;
-      letter-spacing: .06em;
-      text-transform: uppercase;
-      color: var(--faint)
-    }
-
-    .paso.hecho {
-      background: var(--ok-suave);
-      border-color: #A7E3BA
-    }
-
-    .paso.hecho .n {
-      background: var(--ok);
-      color: #fff
-    }
-
-    .paso.hecho .e {
-      color: #15803D
-    }
-
-    .paso.sig {
-      border-color: var(--navy);
-      box-shadow: 0 0 0 2px rgba(15, 30, 54, .08);
-      background: #fff
-    }
-
-    .paso.sig .n {
-      background: var(--navy);
-      color: #fff
-    }
-
-    .paso.sig .e {
-      color: var(--navy)
-    }
-
-    .acciones {
-      display: flex;
-      gap: 8px
-    }
-
-    .btn {
-      height: 36px;
-      padding: 0 14px;
-      border-radius: 8px;
-      border: 1px solid var(--line-2);
-      background: #fff;
-      font-weight: 700;
-      font-size: 13px;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      white-space: nowrap
-    }
-
-    .btn:hover:not(:disabled) {
-      background: #F4F6F9
-    }
-
-    .btn:disabled {
-      opacity: .45;
-      cursor: not-allowed
-    }
-
-    .btn.primario {
-      background: var(--navy);
-      border-color: var(--navy);
-      color: #fff;
-      flex: 1
-    }
-
-    .btn.primario:hover:not(:disabled) {
-      background: var(--navy-2)
-    }
-
-    .alerta {
-      margin-top: 10px;
-      padding: 8px 10px;
-      border-radius: 8px;
-      background: var(--rojo-suave);
-      border: 1px solid var(--rojo-borde);
-      color: #9B1C1C;
-      font-size: 12px;
-      font-weight: 600
-    }
-
-    .seg {
-      display: flex;
-      padding: 3px;
-      border-radius: 9px;
-      background: #EEF1F5;
-      gap: 3px;
-      margin-bottom: 8px
-    }
-
-    .seg button {
-      flex: 1;
-      height: 30px;
-      border: 0;
-      border-radius: 7px;
-      background: transparent;
-      cursor: pointer;
-      font-weight: 700;
-      font-size: 12.5px;
-      color: var(--muted)
-    }
-
-    .seg button[aria-pressed="true"] {
-      background: #fff;
-      color: var(--ink);
-      box-shadow: 0 1px 2px rgba(15, 30, 54, .15)
-    }
-
-    .buscar {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      height: 36px;
-      padding: 0 11px;
-      border: 1px solid var(--line-2);
-      border-radius: 8px;
-      background: #fff
-    }
-
-    .buscar:focus-within {
-      border-color: var(--c1);
-      box-shadow: 0 0 0 3px rgba(37, 99, 235, .12)
-    }
-
-    .buscar svg {
-      color: var(--faint)
-    }
-
-    .buscar input {
-      flex: 1;
-      min-width: 0;
-      border: 0;
-      outline: none;
-      background: transparent;
-      font-size: 13px
-    }
-
-    .ayuda {
-      font-size: 11.5px;
-      color: var(--faint);
-      margin: 6px 0 8px
-    }
-
-    .asg-lista {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      max-height: 300px;
-      overflow-y: auto;
-      padding-right: 2px
-    }
-
-    .asg {
-      display: grid;
-      grid-template-columns: auto 1fr auto;
-      grid-template-areas: "l t v" "b b b";
-      align-items: center;
-      gap: 7px 10px;
-      padding: 8px 9px;
-      border: 1px solid var(--line);
-      border-radius: 9px;
-      background: #fff
-    }
-
-    .asg .letrero {
-      grid-area: l
-    }
-
-    .asg .t {
-      grid-area: t
-    }
-
-    .asg .ver {
-      grid-area: v
-    }
-
-    .asg .cl4 {
-      grid-area: b
-    }
-
-    .asg .cl4 button {
-      flex: 1
-    }
-
-    .asg.foco {
-      border-color: var(--navy);
-      box-shadow: 0 0 0 2px rgba(15, 30, 54, .1)
-    }
-
-    .letrero {
-      min-width: 34px;
-      height: 28px;
-      padding: 0 6px;
-      border-radius: 4px;
-      background: linear-gradient(180deg, #E3232B, var(--rojo-2));
-      color: #fff;
-      font-weight: 900;
-      font-size: 13px;
-      display: grid;
-      place-items: center;
-      border: 1.5px solid #D7DCE2;
-      box-shadow: 0 0 0 1px rgba(0, 0, 0, .25);
-      flex: 0 0 auto;
-      font-variant-numeric: tabular-nums
-    }
-
-    .asg .t {
-      flex: 1;
-      min-width: 0
-    }
-
-    .asg .t b {
-      display: block;
-      font-size: 12.5px
-    }
-
-    .asg .t span {
-      font-size: 11px;
-      color: var(--muted)
-    }
-
-    .asg .ver {
-      width: 26px;
-      height: 26px;
-      border: 0;
-      border-radius: 6px;
-      background: transparent;
-      color: var(--muted);
-      cursor: pointer;
-      display: grid;
-      place-items: center
-    }
-
-    .asg .ver:hover {
-      background: #F4F6F9;
-      color: var(--ink)
-    }
-
-    .cl4 {
-      display: flex;
-      gap: 3px
-    }
-
-    .cl4 button {
-      width: 30px;
-      height: 26px;
-      border-radius: 6px;
-      border: 1px solid var(--line-2);
-      background: #fff;
-      cursor: pointer;
-      font-size: 11px;
-      font-weight: 800;
-      color: var(--muted)
-    }
-
-    .cl4 button:hover:not(:disabled) {
-      border-color: var(--ink-2);
-      color: var(--ink)
-    }
-
-    .cl4 button:disabled {
-      cursor: not-allowed;
-      opacity: .55
-    }
-
-    .cl4 button[aria-pressed="true"][data-c="1"] {
-      background: var(--c1);
-      border-color: var(--c1);
-      color: #fff
-    }
-
-    .cl4 button[aria-pressed="true"][data-c="2"] {
-      background: var(--c2);
-      border-color: var(--c2);
-      color: #fff
-    }
-
-    .cl4 button[aria-pressed="true"][data-c="3"] {
-      background: var(--c3);
-      border-color: var(--c3);
-      color: #fff
-    }
-
-    .cl4 button[aria-pressed="true"][data-c="0"] {
-      background: #64748B;
-      border-color: #64748B;
-      color: #fff
-    }
-
-    .resumen-cl {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      margin-top: 10px
-    }
-
-    .resumen-cl div {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 12px;
-      color: var(--ink-2)
-    }
-
-    .resumen-cl i {
-      width: 10px;
-      height: 10px;
-      border-radius: 2px;
-      flex: 0 0 auto
-    }
-
-    .resumen-cl span {
-      margin-left: auto;
-      color: var(--muted);
-      font-variant-numeric: tabular-nums
-    }
-
-    .resumen-cl .mal {
-      color: var(--rojo);
-      font-weight: 700
-    }
-
-    .bloqueo {
-      font-size: 12px;
-      color: #92400E;
-      background: #FEF3C7;
-      border: 1px solid #FCD34D;
-      border-radius: 8px;
-      padding: 7px 10px;
-      margin-bottom: 8px;
-      font-weight: 600
-    }
-
-    .f-row {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      flex-wrap: wrap;
-      margin-top: 8px
-    }
-
-    .rango {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      height: 32px;
-      padding: 0 10px;
-      border: 1px solid var(--line-2);
-      border-radius: 8px;
-      font-size: 12px;
-      color: var(--muted);
-      font-weight: 600
-    }
-
-    .rango input {
-      width: 44px;
-      border: 0;
-      outline: none;
-      background: transparent;
-      text-align: center;
-      font-weight: 700;
-      font-size: 12.5px;
-      font-variant-numeric: tabular-nums;
-      color: var(--ink)
-    }
-
-    .clis {
-      display: flex;
-      gap: 4px
-    }
-
-    .cli {
-      height: 32px;
-      padding: 0 11px;
-      border-radius: 8px;
-      border: 1px solid var(--line-2);
-      background: #fff;
-      cursor: pointer;
-      font-weight: 700;
-      font-size: 12px;
-      color: var(--muted)
-    }
-
-    .cli[aria-pressed="true"] {
-      color: #fff
-    }
-
-    .cli[aria-pressed="true"][data-cl="0"] {
-      background: var(--navy);
-      border-color: var(--navy)
-    }
-
-    .cli[aria-pressed="true"][data-cl="1"] {
-      background: var(--c1);
-      border-color: var(--c1)
-    }
-
-    .cli[aria-pressed="true"][data-cl="2"] {
-      background: var(--c2);
-      border-color: var(--c2)
-    }
-
-    .cli[aria-pressed="true"][data-cl="3"] {
-      background: var(--c3);
-      border-color: var(--c3)
-    }
-
-    .f-res {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-top: 8px;
-      font-size: 12px;
-      color: var(--muted)
-    }
-
-    .f-res b {
-      color: var(--ink)
-    }
-
-    .f-res .tb-btn {
-      margin-left: auto;
-      height: 26px
-    }
-
-    /* ===== plano: pasillos ===== */
-    .banda {
-      position: relative;
-      flex: 0 0 auto
-    }
-
-    .banda-t {
-      position: relative;
-      height: 40px;
-      border-top: 1px solid var(--line);
-      background: #fff
-    }
-
-    .banda:first-child .banda-t {
-      border-top: 0
-    }
-
-    .banda-t .lbl {
-      position: sticky;
-      left: 0;
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      height: 100%;
-      padding: 0 16px;
-      font-weight: 800;
-      font-size: 13.5px;
-      background: linear-gradient(90deg, #fff 85%, rgba(255, 255, 255, 0));
-      z-index: 1
-    }
-
-    .banda-t .lbl span {
-      font-weight: 500;
-      font-size: 12px;
-      color: var(--muted)
-    }
-
-    .senal {
-      position: absolute;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #fff;
-      font-weight: 900;
-      letter-spacing: .14em;
-      background: linear-gradient(180deg, #E3232B, var(--rojo-2));
-      border: 2px solid #D7DCE2;
-      border-radius: 4px;
-      box-shadow: 0 0 0 1px rgba(0, 0, 0, .28), 0 4px 10px -5px rgba(0, 0, 0, .45);
-      overflow: hidden;
-      white-space: nowrap
-    }
-
-    .banda-t .senal {
-      top: 50%;
-      transform: translateY(-50%);
-      height: 26px;
-      font-size: 11px
-    }
-
-    .senal.v span {
-      writing-mode: vertical-rl;
-      transform: rotate(180deg)
-    }
-
-    .banda-b {
-      position: relative
-    }
-
-    .banda-b>* {
-      position: absolute
-    }
-
-    .numeros {
-      position: sticky !important;
-      top: 0;
-      z-index: 2;
-      height: 0
-    }
-
-    .numeros>* {
-      position: absolute
-    }
-
-    .num {
-      display: grid;
-      place-items: center;
-      color: #fff;
-      font-weight: 900;
-      font-variant-numeric: tabular-nums;
-      cursor: pointer;
-      background: linear-gradient(180deg, #E3232B, var(--rojo-2));
-      border: 2px solid #D7DCE2;
-      border-radius: 4px;
-      box-shadow: 0 0 0 1px rgba(0, 0, 0, .28), 0 4px 10px -5px rgba(0, 0, 0, .45);
-      transition: transform .15s
-    }
-
-    .num::after {
-      content: "";
-      position: absolute;
-      left: 3px;
-      right: 3px;
-      bottom: 2px;
-      height: 3px;
-      border-radius: 2px;
-      background: var(--k, #94A3B8)
-    }
-
-    .num:hover,
-    .num.on {
-      transform: scale(1.08)
-    }
-
-    .viga {
-      background: #F59E0B;
-      border-radius: 2px;
-      opacity: .85
-    }
-
-    /* posiciones */
-    .slot {
-      border: 1.5px dashed rgba(148, 163, 184, .7);
-      background: rgba(148, 163, 184, .06);
-      transition: background .12s, border-color .12s, opacity .15s, box-shadow .12s
-    }
-
-    .slot.k1 {
-      border-color: rgba(37, 99, 235, .5);
-      background: rgba(37, 99, 235, .05)
-    }
-
-    .slot.k2 {
-      border-color: rgba(124, 58, 237, .5);
-      background: rgba(124, 58, 237, .05)
-    }
-
-    .slot.k3 {
-      border-color: rgba(234, 88, 12, .55);
-      background: rgba(234, 88, 12, .05)
-    }
-
-    .slot.k0 {
-      opacity: .5
-    }
-
-    .slot.on.k1 {
-      background: rgba(37, 99, 235, .14);
-      border-style: solid
-    }
-
-    .slot.on.k2 {
-      background: rgba(124, 58, 237, .14);
-      border-style: solid
-    }
-
-    .slot.on.k3 {
-      background: rgba(234, 88, 12, .14);
-      border-style: solid
-    }
-
-    .slot.on.k0 {
-      background: rgba(148, 163, 184, .18)
-    }
-
-    .slot.flash {
-      animation: flash 1.6s ease-out
-    }
-
-    @keyframes flash {
-
-      0%,
-      40% {
-        box-shadow: 0 0 0 4px rgba(210, 20, 28, .55)
-      }
-
-      100% {
-        box-shadow: 0 0 0 0 rgba(210, 20, 28, 0)
-      }
-    }
-
-    .slot.filtrado {
-      opacity: .12
-    }
-
-    .slot.vacio-dim {
-      opacity: .3
-    }
-
-    .slot.ocupado {
-      border: 0;
-      background: transparent
-    }
-
-    .slot .pal {
-      position: absolute;
-      inset: 3%;
-      border-radius: inherit;
-      background-color: #F2C230;
-      background-image: linear-gradient(rgba(140, 95, 0, .32) 2px, transparent 2px), linear-gradient(90deg, rgba(140, 95, 0, .32) 2px, transparent 2px);
-      background-size: 20% 20%;
-      background-position: center;
-      border: 1px solid #C9950C;
-      box-shadow: inset 0 0 0 3px rgba(255, 255, 255, .25), 0 3px 6px -2px rgba(15, 30, 54, .35)
-    }
-
-    .slot .tk {
-      position: absolute;
-      left: 7%;
-      right: 7%;
-      bottom: 7%;
-      background: rgba(15, 30, 54, .93);
-      color: #fff;
-      border-radius: 5px;
-      padding: 3px 5px 4px;
-      font-size: var(--fs, 10px);
-      line-height: 1.2;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, .28)
-    }
-
-    .slot .tk.mini {
-      padding: 2px;
-      left: 12%;
-      right: 12%
-    }
-
-    .slot .tk.mini .tk-bar {
-      margin: 0
-    }
-
-    .tk-1 {
-      display: flex;
-      justify-content: space-between;
-      gap: 4px;
-      font-weight: 600;
-      opacity: .8;
-      font-variant-numeric: tabular-nums
-    }
-
-    .tk-1 b {
-      font-weight: 800;
-      opacity: 1
-    }
-
-    .tk-l {
-      font-weight: 800;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
       letter-spacing: .01em
     }
 
-    .tk-bar {
-      height: 3px;
-      background: rgba(255, 255, 255, .22);
-      border-radius: 2px;
-      margin-top: 3px;
-      overflow: hidden
+    header .sub {
+      color: var(--suave);
+      font-size: 13px
     }
 
-    .tk-bar i {
-      display: block;
-      height: 100%;
-      background: #60A5FA
+    header .sub b {
+      color: var(--tinta);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums
     }
 
-    .slot.pendiente .tk {
-      background: rgba(71, 85, 105, .9)
+    .zoom {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 4px
     }
 
-    .slot.completado {
-      box-shadow: 0 0 0 2px var(--ok)
+    .zoom button {
+      font: inherit;
+      font-size: 13px;
+      min-width: 32px;
+      height: 30px;
+      padding: 0 10px;
+      border: 1px solid var(--borde);
+      background: #fff;
+      color: var(--tinta);
+      border-radius: 6px;
+      cursor: pointer;
     }
 
-    .slot.completado .tk {
-      background: #15803D
+    .zoom button:hover {
+      background: #F3F6F9
     }
 
-    .slot.completado .tk-bar i {
-      background: #BBF7D0
+    .zoom button:focus-visible {
+      outline: 2px solid var(--linea);
+      outline-offset: 1px
     }
 
-    .slot .okb {
-      position: absolute;
-      top: 6%;
-      right: 6%;
-      width: calc(var(--fs, 10px) * 1.7);
-      height: calc(var(--fs, 10px) * 1.7);
-      border-radius: 50%;
-      background: var(--ok);
-      color: #fff;
-      display: grid;
-      place-items: center;
-      font-weight: 900;
-      font-size: var(--fs, 10px);
-      box-shadow: 0 0 0 2px #fff
+    .zoom output {
+      min-width: 46px;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+      color: var(--suave);
+      font-size: 13px
     }
 
-    /* ===== plano: andén ===== */
-    .anden {
-      background: var(--piso);
-      flex: 0 0 auto
+    /* ---------- patio con scroll horizontal ---------- */
+    .patio {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      overscroll-behavior-x: contain;
+      padding: 8px 0;
+      outline: none;
     }
 
-    .anden.fijo {
-      position: sticky;
-      bottom: 0;
-      z-index: 4
-    }
-
-    .anden.conCanales {
-      border-top: 1px solid var(--line)
+    .patio:focus-visible {
+      box-shadow: inset 0 0 0 2px var(--linea)
     }
 
     .pista {
       display: flex;
-      width: max-content
+      width: max-content;
+      position: relative
     }
 
     .rampa {
@@ -1407,140 +135,27 @@
       position: absolute
     }
 
-    .rampa.sin-cluster .puerta {
-      filter: grayscale(.6) brightness(1.05);
-      opacity: .75
+    .caja {
+      background: var(--rampa);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: "Aptos Narrow", "Arial Narrow", "Roboto Condensed", "Helvetica Neue", Arial, sans-serif;
+      color: #000;
+      font-weight: 500;
+      letter-spacing: .02em;
+      white-space: nowrap;
     }
 
     .linea {
-      border-left: 1px dashed #BAC4D0
+      background-repeat: repeat-y
     }
 
-    .puerta {
-      border-radius: 8px;
-      overflow: hidden;
-      background-color: #98A2AD;
-      background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, .22) 0 1.5px, transparent 1.5px 8px),
-        repeating-linear-gradient(-45deg, rgba(0, 0, 0, .12) 0 1.5px, transparent 1.5px 8px),
-        linear-gradient(180deg, #BCC5CF, #8893A0);
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45), 0 8px 16px -10px rgba(15, 30, 54, .6);
-      transition: box-shadow .12s
+    .paleta {
+      background: var(--paleta)
     }
 
-    .puerta::before,
-    .puerta::after {
-      content: "";
-      position: absolute;
-      top: 0;
-      bottom: 0;
-      width: 6%;
-      background: var(--amarillo);
-      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .18)
-    }
-
-    .puerta::before {
-      left: 0
-    }
-
-    .puerta::after {
-      right: 0
-    }
-
-    .rampa.on .puerta {
-      box-shadow: 0 0 0 3px var(--k, #2563EB), 0 10px 20px -10px rgba(15, 30, 54, .7)
-    }
-
-    .placa {
-      position: absolute;
-      left: 17%;
-      right: 17%;
-      top: 9%;
-      height: 54%;
-      display: grid;
-      place-items: center;
-      color: #fff;
-      font-weight: 900;
-      cursor: pointer;
-      background: linear-gradient(180deg, #E3232B, var(--rojo-2));
-      border: 2px solid #D7DCE2;
-      border-radius: 4px;
-      box-shadow: 0 0 0 1px rgba(0, 0, 0, .3), 0 5px 10px -5px rgba(0, 0, 0, .6), 0 0 16px rgba(96, 165, 250, .35);
-      font-variant-numeric: tabular-nums;
-      letter-spacing: -.02em;
-      line-height: 1
-    }
-
-    .placa:hover {
-      filter: brightness(1.08)
-    }
-
-    .placa .kt {
-      position: absolute;
-      top: -2px;
-      right: -2px;
-      padding: 2px 6px;
-      border-radius: 0 4px 0 6px;
-      font-size: 10px;
-      font-weight: 800;
-      letter-spacing: .06em;
-      color: #fff;
-      background: var(--k, #94A3B8)
-    }
-
-    .placa .pin {
-      position: absolute;
-      top: 3px;
-      left: 4px;
-      width: 12px;
-      height: 12px;
-      opacity: .85
-    }
-
-    .pal-input {
-      position: absolute;
-      left: 50%;
-      transform: translateX(-50%);
-      bottom: 8%;
-      width: 70px;
-      height: 22px;
-      border-radius: 5px;
-      border: 1px solid rgba(15, 30, 54, .25);
-      background: rgba(255, 255, 255, .92);
-      color: var(--ink);
-      text-align: center;
-      font-weight: 800;
-      font-size: 11.5px;
-      font-variant-numeric: tabular-nums;
-      outline: none;
-      -moz-appearance: textfield;
-      appearance: textfield
-    }
-
-    .pal-input::-webkit-outer-spin-button,
-    .pal-input::-webkit-inner-spin-button {
-      -webkit-appearance: none;
-      margin: 0
-    }
-
-    .pal-input:focus {
-      box-shadow: 0 0 0 2px var(--c1)
-    }
-
-    .pal-input:disabled {
-      opacity: .6;
-      cursor: not-allowed
-    }
-
-    .pal-input.chico {
-      height: 16px;
-      width: 46px;
-      font-size: 9.5px
-    }
-
-    .mascara {
-      background: var(--piso)
-    }
-
+    /* rampas fijas: primera a la izquierda, última a la derecha */
     .fija {
       position: sticky;
       z-index: 5;
@@ -1549,1815 +164,220 @@
 
     .fija.izq {
       left: 0;
-      background: var(--piso)
+      background: var(--fondo)
     }
 
     .fija.der {
       right: 0
     }
 
+    .mascara {
+      background: var(--fondo)
+    }
+
     .fija.izq.sombra {
-      filter: drop-shadow(6px 0 6px rgba(15, 30, 54, .22))
+      filter: drop-shadow(5px 0 5px rgba(14, 40, 65, .18))
     }
 
     .fija.der.sombra {
-      filter: drop-shadow(-6px 0 6px rgba(15, 30, 54, .22))
+      filter: drop-shadow(-5px 0 5px rgba(14, 40, 65, .18))
     }
 
-    /* ===== ventana rápida de cluster ===== */
-    .pop {
-      position: fixed;
-      z-index: 50;
-      width: 250px;
-      background: #fff;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 12px;
-      box-shadow: 0 18px 40px -12px rgba(15, 30, 54, .45)
-    }
-
-    .pop-h {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 10px
-    }
-
-    .pop-h b {
-      display: block;
-      font-size: 14px
-    }
-
-    .pop-h small {
-      font-size: 11.5px;
-      color: var(--muted)
-    }
-
-    .pop .cl4 button {
-      flex: 1;
-      width: auto;
-      height: 32px;
-      font-size: 12px
-    }
-
-    .pop .cl4 {
-      gap: 4px
-    }
-
-    .pop .pie {
-      display: flex;
-      justify-content: space-between;
-      margin-top: 10px;
-      font-size: 11.5px;
-      color: var(--faint)
-    }
-
-    /* ===== configuración (vista aparte) ===== */
-    #viewConfig {
-      flex: 1 1 auto;
-      display: flex;
-      flex-direction: column;
-      min-height: 0;
-      overflow: hidden
-    }
-
-    .cfg-top {
-      flex: 0 0 auto;
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      padding: 12px 20px;
-      background: #fff;
-      border-bottom: 1px solid var(--line)
-    }
-
-    .cfg-top h1 {
-      margin: 0;
-      font-size: 17px;
-      font-weight: 800
-    }
-
-    .cfg-top .btn-volver {
-      height: 34px;
-      padding: 0 14px;
-      border-radius: 8px;
-      border: 1px solid var(--line-2);
-      background: #fff;
-      cursor: pointer;
-      font-weight: 700;
-      font-size: 13px
-    }
-
-    .cfg-top .btn-volver:hover {
-      background: #F4F6F9
-    }
-
-    .cfg-top .cfg-estado {
-      margin-left: auto;
-      font-size: 12.5px;
-      color: var(--muted)
-    }
-
-    .cfg-tabs-nav {
-      flex: 0 0 auto;
-      display: flex;
-      gap: 2px;
-      padding: 0 20px;
-      background: #fff;
-      border-bottom: 1px solid var(--line)
-    }
-
-    .cfg-tabs-nav button {
-      padding: 11px 16px;
-      border: 0;
-      background: transparent;
-      color: var(--muted);
-      font-weight: 700;
-      font-size: 13px;
-      cursor: pointer;
-      border-bottom: 2px solid transparent;
-      margin-bottom: -1px
-    }
-
-    .cfg-tabs-nav button:hover {
-      color: var(--ink)
-    }
-
-    .cfg-tabs-nav button.active {
-      color: var(--ink);
-      border-bottom-color: var(--rojo)
-    }
-
-    .cfg-content {
-      flex: 1 1 auto;
-      overflow-y: auto;
-      padding: 20px;
-      min-height: 0;
-      max-width: 1200px;
-      width: 100%;
-      margin: 0 auto
-    }
-
-    .cfg-section {
-      margin-bottom: 24px
-    }
-
-    .cfg-section h2 {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: .14em;
-      color: var(--muted);
-      margin: 0 0 10px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--line);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      flex-wrap: wrap
-    }
-
-    .cfg-section h2 small {
-      font-weight: 500;
-      text-transform: none;
-      letter-spacing: 0;
-      font-size: 11.5px;
-      color: var(--faint)
-    }
-
-    .cfg-card {
-      background: #fff;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 16px;
-      box-shadow: var(--sombra)
-    }
-
-    .cfg-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 12px;
-      flex-wrap: wrap
-    }
-
-    .cfg-row:last-child {
-      margin-bottom: 0
-    }
-
-    .cfg-row label {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 13px;
-      font-weight: 600
-    }
-
-    .cfg-row input[type="number"] {
-      height: 34px;
-      padding: 0 10px;
-      border: 1px solid var(--line-2);
-      border-radius: 7px;
-      background: #fff;
-      width: 90px;
-      text-align: right;
-      font-variant-numeric: tabular-nums
-    }
-
-    .cfg-row input:disabled {
-      background: #EEF1F5;
-      color: var(--muted);
-      cursor: not-allowed
-    }
-
-    .alert-box {
-      padding: 10px 12px;
-      border-radius: 8px;
-      background: var(--rojo-suave);
-      border: 1px solid var(--rojo-borde);
-      color: #9B1C1C;
-      font-size: 12.5px;
-      font-weight: 600;
-      margin-bottom: 12px
-    }
-
-    .info-box {
-      padding: 10px 12px;
-      border-radius: 8px;
-      background: #EEF3F9;
-      border: 1px solid var(--line);
-      color: var(--navy);
-      font-size: 12.5px;
-      font-weight: 600;
-      margin-bottom: 12px
-    }
-
-    .btn-accion {
-      height: 34px;
-      padding: 0 16px;
-      border-radius: 8px;
-      border: 1px solid var(--line-2);
-      background: #fff;
-      cursor: pointer;
-      font-weight: 700;
-      font-size: 13px;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px
-    }
-
-    .btn-accion:hover:not(:disabled) {
-      background: #F4F6F9
-    }
-
-    .btn-accion:disabled {
-      opacity: .45;
-      cursor: not-allowed
-    }
-
-    .btn-accion.primario {
-      background: var(--navy);
-      color: #fff;
-      border-color: var(--navy)
-    }
-
-    .btn-accion.primario:hover:not(:disabled) {
-      background: var(--navy-2)
-    }
-
-    .btn-accion.peligro {
-      border-color: var(--rojo-borde);
-      background: var(--rojo-suave);
-      color: var(--rojo)
-    }
-
-    .btn-row {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-top: 10px
-    }
-
-    .filtro-box {
-      background: #F8FAFC;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 10px;
-      margin-bottom: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px
-    }
-
-    .filtro-linea {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-      font-size: 12.5px;
-      color: var(--muted);
-      font-weight: 600
-    }
-
-    .filtro-linea label {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px
-    }
-
-    .filtro-linea input,
-    .filtro-linea select {
-      height: 30px;
-      padding: 0 8px;
-      border: 1px solid var(--line-2);
-      border-radius: 6px;
-      background: #fff;
-      font-size: 12.5px;
-      font-weight: 600
-    }
-
-    .filtro-linea input[type="number"] {
-      width: 60px;
-      text-align: center
-    }
-
-    .filtro-linea .btn-accion {
-      height: 30px;
-      padding: 0 12px;
-      font-size: 12px
-    }
-
-    .slots-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
-      gap: 6px
-    }
-
-    .slot-btn {
-      aspect-ratio: 1;
-      min-height: 54px;
-      border-radius: 8px;
-      border: 2px solid transparent;
-      cursor: pointer;
-      font-weight: 800;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 2px;
-      padding: 0;
-      background: #fff;
-      transition: transform .08s, box-shadow .12s
-    }
-
-    .slot-btn:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 10px -4px rgba(15, 30, 54, .25)
-    }
-
-    .slot-btn .n {
-      font-size: 16px;
-      line-height: 1;
-      font-variant-numeric: tabular-nums
-    }
-
-    .slot-btn .c {
-      font-size: 9.5px;
-      font-weight: 800;
-      letter-spacing: .06em;
-      opacity: .9
-    }
-
-    .slot-btn[data-cl="1"] {
-      background: var(--c1);
-      border-color: var(--c1);
-      color: #fff
-    }
-
-    .slot-btn[data-cl="2"] {
-      background: var(--c2);
-      border-color: var(--c2);
-      color: #fff
-    }
-
-    .slot-btn[data-cl="3"] {
-      background: var(--c3);
-      border-color: var(--c3);
-      color: #fff
-    }
-
-    .slot-btn[data-cl="0"] {
-      background: #F1F5F9;
-      border-color: var(--line-2);
-      color: var(--faint);
-      border-style: dashed
-    }
-
-    .slot-btn.dim {
-      opacity: .25;
-      pointer-events: none
-    }
-
-    .orden-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 10px
-    }
-
-    .orden-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 12px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #FAFBFC
-    }
-
-    .orden-item .badge {
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      color: #fff;
-      display: grid;
-      place-items: center;
-      font-size: 11px;
-      font-weight: 800;
-      flex: 0 0 auto
-    }
-
-    .badge[data-cl="1"] {
-      background: var(--c1)
-    }
-
-    .badge[data-cl="2"] {
-      background: var(--c2)
-    }
-
-    .badge[data-cl="3"] {
-      background: var(--c3)
-    }
-
-    .orden-item select {
-      flex: 1;
-      height: 32px;
-      border: 1px solid var(--line-2);
-      border-radius: 6px;
-      background: #fff;
-      font-size: 12.5px;
-      font-weight: 600;
-      padding: 0 8px
-    }
-
-    .resumen {
-      background: #fff;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 14px;
-      font-size: 13px;
-      line-height: 1.6;
-      box-shadow: var(--sombra)
-    }
-
-    .resumen .cl-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 8px
-    }
-
-    .resumen .cl-row:last-child {
-      margin-bottom: 0
-    }
-
-    .resumen .cl-badge {
-      width: 30px;
-      height: 30px;
-      border-radius: 50%;
-      display: grid;
-      place-items: center;
-      font-size: 11px;
-      font-weight: 800;
-      color: #fff;
-      flex: 0 0 auto
-    }
-
-    .resumen .cl-badge.c1 {
-      background: var(--c1)
-    }
-
-    .resumen .cl-badge.c2 {
-      background: var(--c2)
-    }
-
-    .resumen .cl-badge.c3 {
-      background: var(--c3)
-    }
-
-    .resumen .cl-badge.c0 {
-      background: #E2E8F0;
-      color: var(--muted)
-    }
-
-    .resumen .info {
-      flex: 1;
-      min-width: 0
-    }
-
-    .resumen .info .meta {
-      font-size: 12px;
-      color: var(--muted)
-    }
-
-    .resumen .info .err {
-      color: #9B1C1C;
-      font-weight: 700
-    }
-
-    .paletas-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-      gap: 8px
-    }
-
-    .paletas-grid .item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 10px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #FAFBFC
-    }
-
-    .paletas-grid .item span {
-      font-weight: 700;
-      font-size: 12.5px;
-      flex: 1
-    }
-
-    .paletas-grid .item input {
-      width: 56px;
-      height: 28px;
-      border: 1px solid var(--line-2);
-      border-radius: 6px;
-      padding: 0 6px;
-      text-align: right;
-      font-weight: 700
-    }
-
-    /* ===== pantallas más chicas ===== */
-    @media (max-width:1499px) {
-      .panel {
-        position: absolute;
-        top: 0;
-        right: 16px;
-        bottom: 14px;
-        z-index: 20;
-        width: 340px;
-        box-shadow: 0 20px 50px -15px rgba(15, 30, 54, .5)
-      }
-    }
-
-    @media (max-width:760px) {
-      .appbar {
+    @media (max-width:560px) {
+      header {
         padding: 8px 12px
       }
 
-      .ab-btn .txt {
-        display: none
-      }
-
-      .kpis {
-        padding: 10px 12px;
-        grid-template-columns: repeat(6, 150px)
-      }
-
-      .cuerpo {
-        padding: 0 10px 10px
-      }
-
-      .panel {
-        right: 10px;
-        left: 10px;
-        width: auto
-      }
-
-      .leyenda {
-        display: none
-      }
-
-      .t-nota {
-        display: none
+      header .sub {
+        flex-basis: 100%;
+        order: 3
       }
     }
   </style>
 </head>
 
 <body>
-
-  <header class="appbar">
-    <div class="brand">
-      <div class="tile">STA</div>
-      <div>
-        <div class="eyebrow">Operación · Despacho</div>
-        <h1>Simulación de despacho</h1>
-      </div>
+  <header>
+    <h1 id="titulo">Rampas</h1>
+    <span class="sub" id="sub"></span>
+    <div class="zoom" role="group" aria-label="Zoom">
+      <button type="button" id="zMenos" aria-label="Alejar">−</button>
+      <output id="zVal">100 %</output>
+      <button type="button" id="zMas" aria-label="Acercar">+</button>
+      <button type="button" id="zAjustar">Ajustar</button>
     </div>
-    <span class="estado-lock" id="estadoLock" hidden>
-      <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
-        stroke-linejoin="round">
-        <rect x="4" y="11" width="16" height="10" rx="2" />
-        <path d="M8 11V7a4 4 0 0 1 8 0v4" />
-      </svg>
-      Configuración bloqueada
-    </span>
-    <nav class="acts">
-      <label for="fileInput" class="ab-btn primario" role="button" tabindex="0" id="importBtn">
-        <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
-          stroke-linejoin="round">
-          <path d="M12 3v12" />
-          <path d="m7 10 5 5 5-5" />
-          <path d="M5 21h14" />
-        </svg>
-        <span class="txt">Importar Excel</span>
-      </label>
-      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" hidden>
-      <button type="button" class="ab-btn" id="btnConfig">
-        <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-          stroke-linejoin="round">
-          <circle cx="12" cy="12" r="3" />
-          <path
-            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-        </svg>
-        <span class="txt">Configuración</span>
-      </button>
-      <button type="button" class="ab-btn" id="cfgLock">
-        <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
-          stroke-linejoin="round">
-          <rect x="4" y="11" width="16" height="10" rx="2" />
-          <path d="M8 11V7a4 4 0 0 1 8 0v4" />
-        </svg>
-        <span class="txt" id="cfgLockTxt">Bloquear</span>
-      </button>
-      <button type="button" class="ab-btn" id="btnPanel" aria-pressed="true">
-        <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
-          stroke-linejoin="round">
-          <rect x="3" y="4" width="18" height="16" rx="2" />
-          <path d="M15 4v16" />
-        </svg>
-        <span class="txt">Panel de simulación</span>
-      </button>
-    </nav>
   </header>
 
-  <div id="viewPlano">
-    <section class="kpis" id="kpis" aria-label="Indicadores"></section>
-    <div class="cuerpo" id="cuerpo">
-      <div class="plano-card">
-        <div class="toolbar" role="group" aria-label="Bloques de pasillos">
-          <span class="t-lbl">Pasillos</span>
-          <span id="chips"></span>
-          <span class="t-nota" id="nota">Ocultos · elige un bloque para verlo</span>
-          <span class="t-der">
-            <button class="tb-btn" type="button" id="irAnden" hidden>Ir al andén ↓</button>
-            <button class="tb-btn" type="button" id="cerrarTodo" hidden>Ocultar pasillos</button>
-            <button class="btn primario envio-tb" type="button" id="btnEnvioTb">Recibir envío 1</button>
-          </span>
-        </div>
-        <div class="sc-wrap">
-          <div class="sc" id="sc" tabindex="0" aria-label="Plano de rampas y pasillos"></div>
-          <button class="aviso" type="button" id="aviso" hidden>← Los pasillos están sobre las rampas 15–21</button>
-        </div>
-        <div class="leyenda">
-          <span><i class="lg libre"></i>Posición libre (borde = cluster)</span>
-          <span><i class="lg pal"></i>Pallet asignado</span>
-          <span><i class="lg curso"></i>En curso</span>
-          <span><i class="lg ok"></i>Completado</span>
-          <i class="sep"></i>
-          <span><i class="lg" style="background:var(--c1)"></i>C1</span>
-          <span><i class="lg" style="background:var(--c2)"></i>C2</span>
-          <span><i class="lg" style="background:var(--c3)"></i>C3</span>
-          <span><i class="lg" style="background:var(--c0)"></i>Sin cluster</span>
-        </div>
-      </div>
+  <main class="patio" id="patio" tabindex="0" aria-label="Esquema de rampas y paletas">
+    <div class="pista" id="pista"></div>
+  </main>
 
-      <aside class="panel" id="panel" aria-label="Panel de simulación">
-        <div class="panel-h">
-          <h2>Panel de simulación</h2>
-          <button type="button" class="x" id="cerrarPanel" aria-label="Cerrar panel">✕</button>
-        </div>
-        <div class="panel-b">
-          <section class="p-sec">
-            <h3>Envíos <small id="capacidad"></small></h3>
-            <div class="pasos" id="enviosList"></div>
-            <div class="acciones">
-              <button type="button" class="btn primario" id="btnEnvio">Recibir envío 1</button>
-              <button type="button" class="btn" id="btnReset">Reiniciar</button>
-            </div>
-            <div class="alerta" id="alertaEnvios" hidden></div>
-          </section>
-
-          <section class="p-sec" id="secAsignar">
-            <h3>Asignar cluster <small>uno por uno</small></h3>
-            <div class="bloqueo" id="asgBloqueo" hidden>Configuración bloqueada · desbloquéala arriba para asignar.
-            </div>
-            <div class="seg" role="group" aria-label="Tipo">
-              <button type="button" data-t="pasillo" aria-pressed="true">Pasillos</button>
-              <button type="button" data-t="rampa" aria-pressed="false">Rampas</button>
-            </div>
-            <label class="buscar">
-              <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="7" />
-                <path d="m20 20-3.5-3.5" />
-              </svg>
-              <input type="search" id="asgBuscar" placeholder="Buscar pasillo…" autocomplete="off" inputmode="numeric">
-            </label>
-            <div class="ayuda">Ej.: 7 · 7, 12 · 7-12. También puedes hacer clic en un letrero del plano.</div>
-            <div class="asg-lista" id="asgLista"></div>
-            <div class="resumen-cl" id="asgResumen"></div>
-          </section>
-
-          <section class="p-sec">
-            <h3>Filtros</h3>
-            <label class="buscar">
-              <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="7" />
-                <path d="m20 20-3.5-3.5" />
-              </svg>
-              <input type="search" id="buscarLocal" placeholder="Buscar local o ruta…" autocomplete="off">
-            </label>
-            <div class="f-row">
-              <span class="rango" title="Rango de rampa o pasillo">Ubic.
-                <input type="number" id="filtroUbicDesde" placeholder="—" min="0" max="99"> →
-                <input type="number" id="filtroUbicHasta" placeholder="—" min="0" max="99">
-              </span>
-              <div class="clis">
-                <button type="button" class="cli" data-cl="0" aria-pressed="true">Todos</button>
-                <button type="button" class="cli" data-cl="1" aria-pressed="false">C1</button>
-                <button type="button" class="cli" data-cl="2" aria-pressed="false">C2</button>
-                <button type="button" class="cli" data-cl="3" aria-pressed="false">C3</button>
-              </div>
-            </div>
-            <div class="f-res" id="fRes" hidden><span id="contadorFiltro"></span><button type="button" class="tb-btn"
-                id="limpiarFiltro">Limpiar</button></div>
-          </section>
-        </div>
-      </aside>
-    </div>
-  </div>
-
-  <div id="viewConfig" hidden>
-    <header class="cfg-top">
-      <button type="button" class="btn-volver" id="btnVolver">← Volver al plano</button>
-      <h1>Configuración</h1>
-      <span class="cfg-estado" id="cfgEstado"></span>
-    </header>
-    <nav class="cfg-tabs-nav" role="tablist">
-      <button data-tab="layout" class="active" role="tab">Layout</button>
-      <button data-tab="operacion" role="tab">Operación</button>
-      <button data-tab="defaults" role="tab">Defaults</button>
-    </nav>
-    <div class="cfg-content" id="cfgContent"></div>
-  </div>
-
-  <div class="pop" id="pop" hidden role="dialog" aria-label="Asignar cluster"></div>
-
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>
-    /* ===== Geometría ===== */
-    const XL = { "storage": { "w": 3316, "h": 8094.67, "pallets": [[2916, 4937.33, 160, 152.0, 12, 0], [566, 1324.0, 160, 152.0, 19, 1], [1052, 4124.0, 160, 152.0, 8, 1], [726, 5425.33, 160, 152.0, 8, 0], [726, 1324.0, 160, 152.0, 20, 0], [1052, 2398.67, 160, 152.0, 14, 1], [1212, 2398.67, 160, 152.0, 15, 0], [3156, 2561.33, 160, 152.0, 18, 1], [2264, 6153.33, 160, 152.0, 4, 1], [566, 6153.33, 160, 152.0, 1, 1], [1538, 185.33, 160, 152.0, 21, 1], [2264, 7454.67, 160, 152.0, 4, 1], [1052, 3374.67, 160, 152.0, 14, 1], [1538, 4449.33, 160, 152.0, 9, 1], [3156, 2724.0, 160, 152.0, 18, 1], [2264, 1649.33, 160, 152.0, 22, 1], [1538, 7780.0, 160, 152.0, 3, 1], [240, 2073.33, 160, 152.0, 13, 0], [2916, 6804.0, 160, 152.0, 6, 0], [1944, 673.33, 160, 152.0, 22, 0], [240, 7780.0, 160, 152.0, 1, 0], [2430, 1486.67, 160, 152.0, 23, 0], [2916, 2561.33, 160, 152.0, 18, 0], [2750, 5588.0, 160, 152.0, 11, 1], [726, 3049.33, 160, 152.0, 14, 0], [2750, 3862.67, 160, 152.0, 17, 1], [1944, 2724.0, 160, 152.0, 16, 0], [1052, 6316.0, 160, 152.0, 2, 1], [240, 6804.0, 160, 152.0, 1, 0], [566, 3212.0, 160, 152.0, 13, 1], [566, 5100.0, 160, 152.0, 7, 1], [1052, 7129.33, 160, 152.0, 2, 1], [2750, 6641.33, 160, 152.0, 5, 1], [1538, 5588.0, 160, 152.0, 9, 1], [3156, 4449.33, 160, 152.0, 12, 1], [1052, 7617.33, 160, 152.0, 2, 1], [2430, 7292.0, 160, 152.0, 5, 0], [1944, 5262.67, 160, 152.0, 10, 0], [1052, 998.67, 160, 152.0, 20, 1], [1212, 998.67, 160, 152.0, 21, 0], [1538, 2073.33, 160, 152.0, 15, 1], [1538, 6641.33, 160, 152.0, 3, 1], [2264, 2561.33, 160, 152.0, 16, 1], [2916, 1812.0, 160, 152.0, 24, 0], [3156, 836.0, 160, 152.0, 24, 1], [1538, 7942.67, 160, 152.0, 3, 1], [2916, 2236.0, 160, 152.0, 18, 0], [566, 1486.67, 160, 152.0, 19, 1], [726, 6153.33, 160, 152.0, 2, 0], [1052, 2561.33, 160, 152.0, 14, 1], [2750, 3537.33, 160, 152.0, 17, 1], [2430, 348.0, 160, 152.0, 23, 0], [2264, 7292.0, 160, 152.0, 4, 1], [726, 7454.67, 160, 152.0, 2, 0], [1944, 4612.0, 160, 152.0, 10, 0], [566, 1649.33, 160, 152.0, 19, 1], [726, 1649.33, 160, 152.0, 20, 0], [3156, 2886.67, 160, 152.0, 18, 1], [1212, 673.33, 160, 152.0, 21, 0], [1944, 3700.0, 160, 152.0, 16, 0], [1052, 7292.0, 160, 152.0, 2, 1], [2264, 6316.0, 160, 152.0, 4, 1], [1538, 6804.0, 160, 152.0, 3, 1], [2264, 7780.0, 160, 152.0, 4, 1], [2264, 4286.67, 160, 152.0, 10, 1], [1944, 3862.67, 160, 152.0, 16, 0], [2430, 4937.33, 160, 152.0, 11, 0], [2916, 6966.67, 160, 152.0, 6, 0], [566, 673.33, 160, 152.0, 19, 1], [1212, 5100.0, 160, 152.0, 9, 0], [2264, 185.33, 160, 152.0, 22, 1], [240, 7942.67, 160, 152.0, 1, 0], [2264, 7617.33, 160, 152.0, 4, 1], [2430, 5750.67, 160, 152.0, 11, 0], [2430, 22.67, 160, 152.0, 23, 0], [726, 3212.0, 160, 152.0, 14, 0], [1212, 1161.33, 160, 152.0, 21, 0], [240, 6966.67, 160, 152.0, 1, 0], [1212, 6641.33, 160, 152.0, 3, 0], [566, 3374.67, 160, 152.0, 13, 1], [3156, 1324.0, 160, 152.0, 24, 1], [240, 510.67, 160, 152.0, 19, 0], [566, 5262.67, 160, 152.0, 7, 1], [2750, 1324.0, 160, 152.0, 23, 1], [2430, 1812.0, 160, 152.0, 23, 0], [1944, 3049.33, 160, 152.0, 16, 0], [2430, 4124.0, 160, 152.0, 11, 0], [2750, 6966.67, 160, 152.0, 5, 1], [1944, 5588.0, 160, 152.0, 10, 0], [1944, 1486.67, 160, 152.0, 22, 0], [3156, 4612.0, 160, 152.0, 12, 1], [2430, 3374.67, 160, 152.0, 17, 0], [1538, 2236.0, 160, 152.0, 15, 1], [1538, 6966.67, 160, 152.0, 3, 1], [1212, 3537.33, 160, 152.0, 15, 0], [2916, 2398.67, 160, 152.0, 18, 0], [566, 7129.33, 160, 152.0, 1, 1], [2264, 2886.67, 160, 152.0, 16, 1], [1052, 3700.0, 160, 152.0, 14, 1], [1212, 5750.67, 160, 152.0, 9, 0], [240, 5913.33, 160, 152.0, 7, 0], [566, 1812.0, 160, 152.0, 19, 1], [3156, 3212.0, 160, 152.0, 18, 1], [1052, 2886.67, 160, 152.0, 14, 1], [240, 2398.67, 160, 152.0, 13, 0], [2916, 7129.33, 160, 152.0, 6, 0], [566, 185.33, 160, 152.0, 19, 1], [726, 185.33, 160, 152.0, 20, 0], [1052, 4937.33, 160, 152.0, 8, 1], [3156, 348.0, 160, 152.0, 24, 1], [2750, 5913.33, 160, 152.0, 11, 1], [1944, 1161.33, 160, 152.0, 22, 0], [1944, 6641.33, 160, 152.0, 4, 0], [3156, 2236.0, 160, 152.0, 18, 1], [1212, 5262.67, 160, 152.0, 9, 0], [1052, 22.67, 160, 152.0, 20, 1], [1212, 22.67, 160, 152.0, 21, 0], [2916, 7617.33, 160, 152.0, 6, 0], [3156, 4774.67, 160, 152.0, 12, 1], [2264, 510.67, 160, 152.0, 22, 1], [1944, 6804.0, 160, 152.0, 4, 0], [2430, 5262.67, 160, 152.0, 11, 0], [1052, 1324.0, 160, 152.0, 20, 1], [1212, 1324.0, 160, 152.0, 21, 0], [3156, 5588.0, 160, 152.0, 12, 1], [240, 4774.67, 160, 152.0, 7, 0], [3156, 1486.67, 160, 152.0, 24, 1], [2430, 5100.0, 160, 152.0, 11, 0], [2430, 4286.67, 160, 152.0, 11, 0], [1052, 348.0, 160, 152.0, 20, 1], [240, 836.0, 160, 152.0, 19, 0], [566, 5588.0, 160, 152.0, 7, 1], [1538, 5262.67, 160, 152.0, 9, 1], [2750, 1649.33, 160, 152.0, 23, 1], [726, 5588.0, 160, 152.0, 8, 0], [1944, 5750.67, 160, 152.0, 10, 0], [1052, 4612.0, 160, 152.0, 8, 1], [2264, 2073.33, 160, 152.0, 16, 1], [1212, 2886.67, 160, 152.0, 15, 0], [566, 6641.33, 160, 152.0, 1, 1], [2430, 673.33, 160, 152.0, 23, 0], [1212, 3700.0, 160, 152.0, 15, 0], [726, 6641.33, 160, 152.0, 2, 0], [3156, 4124.0, 160, 152.0, 12, 1], [1944, 1812.0, 160, 152.0, 22, 0], [2264, 7942.67, 160, 152.0, 4, 1], [240, 4124.0, 160, 152.0, 7, 0], [2916, 2724.0, 160, 152.0, 18, 0], [3156, 3374.67, 160, 152.0, 18, 1], [240, 2561.33, 160, 152.0, 13, 0], [1538, 7129.33, 160, 152.0, 3, 1], [2916, 4612.0, 160, 152.0, 12, 0], [566, 3862.67, 160, 152.0, 13, 1], [2916, 7292.0, 160, 152.0, 6, 0], [1538, 998.67, 160, 152.0, 21, 1], [1212, 5913.33, 160, 152.0, 9, 0], [726, 4449.33, 160, 152.0, 8, 0], [566, 1161.33, 160, 152.0, 19, 1], [1052, 2236.0, 160, 152.0, 14, 1], [726, 3537.33, 160, 152.0, 14, 0], [2430, 2398.67, 160, 152.0, 17, 0], [240, 7292.0, 160, 152.0, 1, 0], [1538, 4124.0, 160, 152.0, 9, 1], [1212, 3049.33, 160, 152.0, 15, 0], [726, 510.67, 160, 152.0, 20, 0], [3156, 4937.33, 160, 152.0, 12, 1], [1944, 6966.67, 160, 152.0, 4, 0], [1052, 1486.67, 160, 152.0, 20, 1], [1212, 6153.33, 160, 152.0, 3, 0], [1538, 2561.33, 160, 152.0, 15, 1], [3156, 7129.33, 160, 152.0, 6, 1], [240, 6316.0, 160, 152.0, 1, 0], [1538, 3374.67, 160, 152.0, 15, 1], [2916, 348.0, 160, 152.0, 24, 0], [3156, 5100.0, 160, 152.0, 12, 1], [3156, 998.67, 160, 152.0, 24, 1], [240, 185.33, 160, 152.0, 19, 0], [240, 7617.33, 160, 152.0, 1, 0], [1212, 1649.33, 160, 152.0, 21, 0], [240, 5100.0, 160, 152.0, 7, 0], [3156, 1812.0, 160, 152.0, 24, 1], [240, 998.67, 160, 152.0, 19, 0], [2430, 5425.33, 160, 152.0, 11, 0], [726, 2073.33, 160, 152.0, 14, 0], [566, 5750.67, 160, 152.0, 7, 1], [2750, 1812.0, 160, 152.0, 23, 1], [2750, 3700.0, 160, 152.0, 17, 1], [2750, 6316.0, 160, 152.0, 5, 1], [2264, 3212.0, 160, 152.0, 16, 1], [1052, 673.33, 160, 152.0, 20, 1], [2750, 185.33, 160, 152.0, 23, 1], [2430, 836.0, 160, 152.0, 23, 0], [726, 7942.67, 160, 152.0, 2, 0], [2750, 7617.33, 160, 152.0, 5, 1], [1944, 5100.0, 160, 152.0, 10, 0], [2916, 5750.67, 160, 152.0, 12, 0], [1212, 3212.0, 160, 152.0, 15, 0], [1944, 5913.33, 160, 152.0, 10, 0], [2264, 2236.0, 160, 152.0, 16, 1], [1538, 7617.33, 160, 152.0, 3, 1], [726, 6966.67, 160, 152.0, 2, 0], [2264, 4449.33, 160, 152.0, 10, 1], [1052, 5262.67, 160, 152.0, 8, 1], [1538, 7292.0, 160, 152.0, 3, 1], [3156, 6153.33, 160, 152.0, 6, 1], [3156, 673.33, 160, 152.0, 24, 1], [2430, 3049.33, 160, 152.0, 17, 0], [2916, 4124.0, 160, 152.0, 12, 0], [2750, 2561.33, 160, 152.0, 17, 1], [1944, 6153.33, 160, 152.0, 4, 0], [3156, 6316.0, 160, 152.0, 6, 1], [2264, 836.0, 160, 152.0, 22, 1], [1538, 4286.67, 160, 152.0, 9, 1], [1944, 7454.67, 160, 152.0, 4, 0], [2916, 1486.67, 160, 152.0, 24, 0], [1944, 1649.33, 160, 152.0, 22, 0], [3156, 6641.33, 160, 152.0, 6, 1], [2430, 2724.0, 160, 152.0, 17, 0], [1944, 3537.33, 160, 152.0, 16, 0], [2430, 4612.0, 160, 152.0, 11, 0], [2750, 2886.67, 160, 152.0, 17, 1], [240, 22.67, 160, 152.0, 19, 0], [2916, 510.67, 160, 152.0, 24, 0], [3156, 5262.67, 160, 152.0, 12, 1], [726, 5913.33, 160, 152.0, 8, 0], [240, 4449.33, 160, 152.0, 7, 0], [2264, 4124.0, 160, 152.0, 10, 1], [2264, 2398.67, 160, 152.0, 16, 1], [1052, 1812.0, 160, 152.0, 20, 1], [1212, 1812.0, 160, 152.0, 21, 0], [1538, 2886.67, 160, 152.0, 15, 1], [726, 2398.67, 160, 152.0, 14, 0], [2430, 5588.0, 160, 152.0, 11, 0], [1212, 6316.0, 160, 152.0, 3, 0], [2430, 3862.67, 160, 152.0, 17, 0], [566, 3049.33, 160, 152.0, 13, 1], [1538, 2724.0, 160, 152.0, 15, 1], [1212, 185.33, 160, 152.0, 21, 0], [1538, 4937.33, 160, 152.0, 9, 1], [2750, 7942.67, 160, 152.0, 5, 1], [1212, 7617.33, 160, 152.0, 3, 0], [1052, 836.0, 160, 152.0, 20, 1], [2264, 5262.67, 160, 152.0, 10, 1], [240, 348.0, 160, 152.0, 19, 0], [2750, 7780.0, 160, 152.0, 5, 1], [1538, 22.67, 160, 152.0, 21, 1], [3156, 3700.0, 160, 152.0, 18, 1], [240, 2886.67, 160, 152.0, 13, 0], [1212, 3374.67, 160, 152.0, 15, 0], [2750, 510.67, 160, 152.0, 23, 1], [726, 4774.67, 160, 152.0, 8, 0], [1944, 5425.33, 160, 152.0, 10, 0], [1944, 7942.67, 160, 152.0, 4, 0], [2430, 3212.0, 160, 152.0, 17, 0], [2916, 4286.67, 160, 152.0, 12, 0], [1538, 348.0, 160, 152.0, 21, 1], [2264, 7129.33, 160, 152.0, 4, 1], [1052, 5588.0, 160, 152.0, 8, 1], [3156, 6478.67, 160, 152.0, 6, 1], [1212, 5588.0, 160, 152.0, 9, 0], [2264, 998.67, 160, 152.0, 22, 1], [240, 4937.33, 160, 152.0, 7, 0], [2264, 4612.0, 160, 152.0, 10, 1], [1538, 4612.0, 160, 152.0, 9, 1], [566, 7454.67, 160, 152.0, 1, 1], [2750, 2073.33, 160, 152.0, 17, 1], [2916, 6153.33, 160, 152.0, 6, 0], [1538, 3862.67, 160, 152.0, 15, 1], [726, 4124.0, 160, 152.0, 8, 0], [240, 1324.0, 160, 152.0, 19, 0], [1944, 7780.0, 160, 152.0, 4, 0], [2750, 4937.33, 160, 152.0, 11, 1], [1944, 185.33, 160, 152.0, 22, 0], [566, 2561.33, 160, 152.0, 13, 1], [2750, 22.67, 160, 152.0, 23, 1], [726, 2561.33, 160, 152.0, 14, 0], [1052, 3862.67, 160, 152.0, 14, 1], [2430, 1161.33, 160, 152.0, 23, 0], [1212, 4449.33, 160, 152.0, 9, 0], [3156, 5425.33, 160, 152.0, 12, 1], [240, 4612.0, 160, 152.0, 7, 0], [2430, 1324.0, 160, 152.0, 23, 0], [1538, 3049.33, 160, 152.0, 15, 1], [2264, 4774.67, 160, 152.0, 10, 1], [2750, 6804.0, 160, 152.0, 5, 1], [3156, 3862.67, 160, 152.0, 18, 1], [2916, 5100.0, 160, 152.0, 12, 0], [240, 673.33, 160, 152.0, 19, 0], [2264, 5588.0, 160, 152.0, 10, 1], [1538, 1486.67, 160, 152.0, 21, 1], [726, 4937.33, 160, 152.0, 8, 0], [2916, 5262.67, 160, 152.0, 12, 0], [566, 6316.0, 160, 152.0, 1, 1], [726, 6316.0, 160, 152.0, 2, 0], [1052, 2724.0, 160, 152.0, 14, 1], [1944, 6478.67, 160, 152.0, 4, 0], [240, 3212.0, 160, 152.0, 13, 0], [1052, 3537.33, 160, 152.0, 14, 1], [726, 7617.33, 160, 152.0, 2, 0], [1538, 510.67, 160, 152.0, 21, 1], [726, 998.67, 160, 152.0, 20, 0], [566, 7292.0, 160, 152.0, 1, 1], [1052, 5750.67, 160, 152.0, 8, 1], [1212, 2073.33, 160, 152.0, 15, 0], [1538, 4774.67, 160, 152.0, 9, 1], [3156, 3049.33, 160, 152.0, 18, 1], [240, 2236.0, 160, 152.0, 13, 0], [1538, 673.33, 160, 152.0, 21, 1], [2916, 836.0, 160, 152.0, 24, 0], [1212, 7942.67, 160, 152.0, 3, 0], [566, 4286.67, 160, 152.0, 7, 1], [726, 4286.67, 160, 152.0, 8, 0], [240, 1486.67, 160, 152.0, 19, 0], [2430, 5913.33, 160, 152.0, 11, 0], [2750, 2236.0, 160, 152.0, 17, 1], [2916, 2886.67, 160, 152.0, 18, 0], [2750, 4449.33, 160, 152.0, 11, 1], [240, 7129.33, 160, 152.0, 1, 0], [1052, 1161.33, 160, 152.0, 20, 1], [566, 348.0, 160, 152.0, 19, 1], [566, 5425.33, 160, 152.0, 7, 1], [1944, 510.67, 160, 152.0, 22, 0], [1212, 5425.33, 160, 152.0, 9, 0], [1538, 2398.67, 160, 152.0, 15, 1], [2430, 6153.33, 160, 152.0, 5, 0], [726, 2886.67, 160, 152.0, 14, 0], [2264, 2724.0, 160, 152.0, 16, 1], [1538, 3212.0, 160, 152.0, 15, 1], [2430, 7454.67, 160, 152.0, 5, 0], [3156, 7454.67, 160, 152.0, 6, 1], [2264, 4937.33, 160, 152.0, 10, 1], [3156, 1161.33, 160, 152.0, 24, 1], [2430, 1649.33, 160, 152.0, 23, 0], [3156, 1649.33, 160, 152.0, 24, 1], [1944, 2073.33, 160, 152.0, 16, 0], [2430, 3537.33, 160, 152.0, 17, 0], [2264, 22.67, 160, 152.0, 22, 1], [566, 6478.67, 160, 152.0, 1, 1], [240, 3374.67, 160, 152.0, 13, 0], [2750, 4124.0, 160, 152.0, 11, 1], [2264, 1324.0, 160, 152.0, 22, 1], [240, 5262.67, 160, 152.0, 7, 0], [566, 7780.0, 160, 152.0, 1, 1], [726, 7780.0, 160, 152.0, 2, 0], [2916, 5588.0, 160, 152.0, 12, 0], [2916, 3862.67, 160, 152.0, 18, 0], [1052, 3049.33, 160, 152.0, 14, 1], [2264, 348.0, 160, 152.0, 22, 1], [2750, 3374.67, 160, 152.0, 17, 1], [1944, 4286.67, 160, 152.0, 10, 0], [1538, 836.0, 160, 152.0, 21, 1], [2750, 5262.67, 160, 152.0, 11, 1], [3156, 5750.67, 160, 152.0, 12, 1], [2916, 998.67, 160, 152.0, 24, 0], [1212, 348.0, 160, 152.0, 21, 0], [1052, 5913.33, 160, 152.0, 8, 1], [2264, 3374.67, 160, 152.0, 16, 1], [2750, 2398.67, 160, 152.0, 17, 1], [566, 3537.33, 160, 152.0, 13, 1], [2916, 1161.33, 160, 152.0, 24, 0], [2264, 673.33, 160, 152.0, 22, 1], [2430, 7942.67, 160, 152.0, 5, 0], [240, 1812.0, 160, 152.0, 19, 0], [2916, 3212.0, 160, 152.0, 18, 0], [1944, 2561.33, 160, 152.0, 16, 0], [1052, 6153.33, 160, 152.0, 2, 1], [2750, 7129.33, 160, 152.0, 5, 1], [566, 4937.33, 160, 152.0, 7, 1], [2750, 998.67, 160, 152.0, 23, 1], [1052, 7454.67, 160, 152.0, 2, 1], [1212, 7454.67, 160, 152.0, 3, 0], [1052, 1649.33, 160, 152.0, 20, 1], [726, 22.67, 160, 152.0, 20, 0], [2430, 6478.67, 160, 152.0, 5, 0], [566, 2073.33, 160, 152.0, 13, 1], [1944, 7292.0, 160, 152.0, 4, 0], [2264, 3049.33, 160, 152.0, 16, 1], [2430, 3700.0, 160, 152.0, 17, 0], [2430, 6316.0, 160, 152.0, 5, 0], [2916, 4774.67, 160, 152.0, 12, 0], [1212, 4124.0, 160, 152.0, 9, 0], [2430, 185.33, 160, 152.0, 23, 0], [2750, 4286.67, 160, 152.0, 11, 1], [2264, 1486.67, 160, 152.0, 22, 1], [2430, 7617.33, 160, 152.0, 5, 0], [2264, 5100.0, 160, 152.0, 10, 1], [1538, 5100.0, 160, 152.0, 9, 1], [566, 7942.67, 160, 152.0, 1, 1], [2916, 2073.33, 160, 152.0, 18, 0], [566, 6804.0, 160, 152.0, 1, 1], [1538, 6478.67, 160, 152.0, 3, 1], [726, 6804.0, 160, 152.0, 2, 0], [1052, 3212.0, 160, 152.0, 14, 1], [2916, 22.67, 160, 152.0, 24, 0], [1052, 5100.0, 160, 152.0, 8, 1], [240, 5588.0, 160, 152.0, 7, 0], [566, 6966.67, 160, 152.0, 1, 1], [566, 4612.0, 160, 152.0, 7, 1], [1944, 4449.33, 160, 152.0, 10, 0], [240, 3537.33, 160, 152.0, 13, 0], [726, 4612.0, 160, 152.0, 8, 0], [566, 510.67, 160, 152.0, 19, 1], [240, 6641.33, 160, 152.0, 1, 0], [726, 673.33, 160, 152.0, 20, 0], [1944, 836.0, 160, 152.0, 22, 0], [726, 3862.67, 160, 152.0, 14, 0], [1212, 4937.33, 160, 152.0, 9, 0], [3156, 5913.33, 160, 152.0, 12, 1], [2750, 2724.0, 160, 152.0, 17, 1], [1212, 7129.33, 160, 152.0, 3, 0], [2916, 3374.67, 160, 152.0, 18, 0], [1538, 3537.33, 160, 152.0, 15, 1], [3156, 7780.0, 160, 152.0, 6, 1], [2750, 7292.0, 160, 152.0, 5, 1], [1538, 5750.67, 160, 152.0, 9, 1], [2430, 4774.67, 160, 152.0, 11, 0], [726, 348.0, 160, 152.0, 20, 0], [240, 1161.33, 160, 152.0, 19, 0], [566, 2236.0, 160, 152.0, 13, 1], [2750, 4774.67, 160, 152.0, 11, 1], [726, 2236.0, 160, 152.0, 14, 0], [566, 5913.33, 160, 152.0, 7, 1], [1944, 2398.67, 160, 152.0, 16, 0], [240, 3700.0, 160, 152.0, 13, 0], [1052, 4286.67, 160, 152.0, 8, 1], [1052, 185.33, 160, 152.0, 20, 1], [1212, 4286.67, 160, 152.0, 9, 0], [726, 1486.67, 160, 152.0, 20, 0], [2916, 5913.33, 160, 152.0, 12, 0], [2750, 1161.33, 160, 152.0, 23, 1], [1212, 2561.33, 160, 152.0, 15, 0], [2430, 7780.0, 160, 152.0, 5, 0], [3156, 3537.33, 160, 152.0, 18, 1], [240, 2724.0, 160, 152.0, 13, 0], [2750, 348.0, 160, 152.0, 23, 1], [1538, 1161.33, 160, 152.0, 21, 1], [2916, 3049.33, 160, 152.0, 18, 0], [2916, 1324.0, 160, 152.0, 24, 0], [2430, 510.67, 160, 152.0, 23, 0], [2264, 1812.0, 160, 152.0, 22, 1], [240, 5750.67, 160, 152.0, 7, 0], [2264, 5425.33, 160, 152.0, 10, 1], [1538, 5425.33, 160, 152.0, 9, 1], [2264, 3700.0, 160, 152.0, 16, 1], [1944, 6316.0, 160, 152.0, 4, 0], [2264, 3862.67, 160, 152.0, 16, 1], [2264, 6478.67, 160, 152.0, 4, 1], [1052, 5425.33, 160, 152.0, 8, 1], [1944, 7129.33, 160, 152.0, 4, 0], [2916, 4449.33, 160, 152.0, 12, 0], [1944, 7617.33, 160, 152.0, 4, 0], [566, 836.0, 160, 152.0, 19, 1], [726, 836.0, 160, 152.0, 20, 0], [2750, 5750.67, 160, 152.0, 11, 1], [1944, 998.67, 160, 152.0, 22, 0], [2916, 3537.33, 160, 152.0, 18, 0], [3156, 2073.33, 160, 152.0, 18, 1], [2430, 2073.33, 160, 152.0, 17, 0], [1944, 2886.67, 160, 152.0, 16, 0], [1052, 6478.67, 160, 152.0, 2, 1], [1212, 6478.67, 160, 152.0, 3, 0], [2430, 6641.33, 160, 152.0, 5, 0], [726, 3374.67, 160, 152.0, 14, 0], [1212, 7292.0, 160, 152.0, 3, 0], [726, 5262.67, 160, 152.0, 8, 0], [1052, 7780.0, 160, 152.0, 2, 1], [1538, 3700.0, 160, 152.0, 15, 1], [2916, 673.33, 160, 152.0, 24, 0], [1212, 7780.0, 160, 152.0, 3, 0], [3156, 7942.67, 160, 152.0, 6, 1], [566, 4124.0, 160, 152.0, 7, 1], [240, 5425.33, 160, 152.0, 7, 0], [3156, 6804.0, 160, 152.0, 6, 1], [566, 2398.67, 160, 152.0, 13, 1], [2916, 7454.67, 160, 152.0, 6, 0], [3156, 6966.67, 160, 152.0, 6, 1], [240, 6153.33, 160, 152.0, 1, 0], [240, 3862.67, 160, 152.0, 13, 0], [2750, 4612.0, 160, 152.0, 11, 1], [1538, 5913.33, 160, 152.0, 9, 1], [1052, 4449.33, 160, 152.0, 8, 1], [726, 7129.33, 160, 152.0, 2, 0], [1944, 4774.67, 160, 152.0, 10, 0], [2430, 6804.0, 160, 152.0, 5, 0], [1538, 1324.0, 160, 152.0, 21, 1], [3156, 185.33, 160, 152.0, 24, 1], [1052, 510.67, 160, 152.0, 20, 1], [726, 1812.0, 160, 152.0, 20, 0], [3156, 7617.33, 160, 152.0, 6, 1], [2430, 2561.33, 160, 152.0, 17, 0], [1538, 6153.33, 160, 152.0, 3, 1], [240, 3049.33, 160, 152.0, 13, 0], [1212, 2724.0, 160, 152.0, 15, 0], [726, 6478.67, 160, 152.0, 2, 0], [2916, 1649.33, 160, 152.0, 24, 0], [1538, 7454.67, 160, 152.0, 3, 1], [2264, 1161.33, 160, 152.0, 22, 1], [2264, 6641.33, 160, 152.0, 4, 1], [566, 7617.33, 160, 152.0, 1, 1], [566, 998.67, 160, 152.0, 19, 1], [1052, 2073.33, 160, 152.0, 14, 1], [2750, 3049.33, 160, 152.0, 17, 1], [2916, 3700.0, 160, 152.0, 18, 0], [2916, 6316.0, 160, 152.0, 6, 0], [1052, 6641.33, 160, 152.0, 2, 1], [2264, 6804.0, 160, 152.0, 4, 1], [2750, 1486.67, 160, 152.0, 23, 1], [2750, 5100.0, 160, 152.0, 11, 1], [1052, 7942.67, 160, 152.0, 2, 1], [1944, 1324.0, 160, 152.0, 22, 0], [1944, 3212.0, 160, 152.0, 16, 0], [1052, 6804.0, 160, 152.0, 2, 1], [1212, 6804.0, 160, 152.0, 3, 0], [2430, 2236.0, 160, 152.0, 17, 0], [2430, 6966.67, 160, 152.0, 5, 0], [2264, 3537.33, 160, 152.0, 16, 1], [2430, 4449.33, 160, 152.0, 11, 0], [1212, 4612.0, 160, 152.0, 9, 0], [1944, 348.0, 160, 152.0, 22, 0], [2264, 5750.67, 160, 152.0, 10, 1], [240, 7454.67, 160, 152.0, 1, 0], [566, 2724.0, 160, 152.0, 13, 1], [2916, 7780.0, 160, 152.0, 6, 0], [2750, 673.33, 160, 152.0, 23, 1], [2750, 6153.33, 160, 152.0, 5, 1], [726, 7292.0, 160, 152.0, 2, 0], [1212, 3862.67, 160, 152.0, 15, 0], [3156, 22.67, 160, 152.0, 24, 1], [566, 4774.67, 160, 152.0, 7, 1], [2750, 7454.67, 160, 152.0, 5, 1], [2750, 836.0, 160, 152.0, 23, 1], [1944, 4937.33, 160, 152.0, 10, 0], [726, 5100.0, 160, 152.0, 8, 0], [1944, 22.67, 160, 152.0, 22, 0], [1538, 1649.33, 160, 152.0, 21, 1], [726, 1161.33, 160, 152.0, 20, 0], [3156, 510.67, 160, 152.0, 24, 1], [1212, 2236.0, 160, 152.0, 15, 0], [566, 4449.33, 160, 152.0, 7, 1], [3156, 2398.67, 160, 152.0, 18, 1], [2916, 5425.33, 160, 152.0, 12, 0], [2430, 2886.67, 160, 152.0, 17, 0], [1538, 1812.0, 160, 152.0, 21, 1], [2916, 6641.33, 160, 152.0, 6, 0], [2916, 185.33, 160, 152.0, 24, 0], [2750, 3212.0, 160, 152.0, 17, 1], [1538, 6316.0, 160, 152.0, 3, 1], [1944, 4124.0, 160, 152.0, 10, 0], [2916, 6478.67, 160, 152.0, 6, 0], [1212, 1486.67, 160, 152.0, 21, 0], [2264, 6966.67, 160, 152.0, 4, 1], [2916, 7942.67, 160, 152.0, 6, 0], [240, 1649.33, 160, 152.0, 19, 0], [726, 2724.0, 160, 152.0, 14, 0], [1944, 3374.67, 160, 152.0, 16, 0], [3156, 7292.0, 160, 152.0, 6, 1], [1052, 6966.67, 160, 152.0, 2, 1], [240, 6478.67, 160, 152.0, 1, 0], [1212, 6966.67, 160, 152.0, 3, 0], [566, 2886.67, 160, 152.0, 13, 1], [1212, 510.67, 160, 152.0, 21, 0], [566, 3700.0, 160, 152.0, 13, 1], [726, 5750.67, 160, 152.0, 8, 0], [2750, 5425.33, 160, 152.0, 11, 1], [726, 3700.0, 160, 152.0, 14, 0], [1052, 4774.67, 160, 152.0, 8, 1], [1212, 4774.67, 160, 152.0, 9, 0], [3156, 4286.67, 160, 152.0, 12, 1], [2430, 7129.33, 160, 152.0, 5, 0], [1212, 836.0, 160, 152.0, 21, 0], [240, 4286.67, 160, 152.0, 7, 0], [2430, 998.67, 160, 152.0, 23, 0], [2264, 5913.33, 160, 152.0, 10, 1], [1944, 2236.0, 160, 152.0, 16, 0], [2750, 6478.67, 160, 152.0, 5, 1], [566, 22.67, 160, 152.0, 19, 1]], "seps": [[240, 174.67, 160, 10.67], [566, 174.67, 320, 10.67], [1052, 174.67, 320, 10.67], [1538, 174.67, 160, 10.67], [1944, 174.67, 160, 10.67], [2264, 174.67, 160, 10.67], [2430, 174.67, 160, 10.67], [2750, 174.67, 160, 10.67], [2916, 174.67, 160, 10.67], [3156, 174.67, 160, 10.67], [240, 337.33, 160, 10.67], [566, 337.33, 320, 10.67], [1052, 337.33, 320, 10.67], [1538, 337.33, 160, 10.67], [1944, 337.33, 160, 10.67], [2264, 337.33, 160, 10.67], [2430, 337.33, 160, 10.67], [2750, 337.33, 160, 10.67], [2916, 337.33, 160, 10.67], [3156, 337.33, 160, 10.67], [240, 500.0, 160, 10.67], [566, 500.0, 320, 10.67], [1052, 500.0, 320, 10.67], [1538, 500.0, 160, 10.67], [1944, 500.0, 160, 10.67], [2264, 500.0, 160, 10.67], [2430, 500.0, 160, 10.67], [2750, 500.0, 160, 10.67], [2916, 500.0, 160, 10.67], [3156, 500.0, 160, 10.67], [240, 662.67, 160, 10.67], [566, 662.67, 320, 10.67], [1052, 662.67, 320, 10.67], [1538, 662.67, 160, 10.67], [1944, 662.67, 160, 10.67], [2264, 662.67, 160, 10.67], [2430, 662.67, 160, 10.67], [2750, 662.67, 160, 10.67], [2916, 662.67, 160, 10.67], [3156, 662.67, 160, 10.67], [240, 825.33, 160, 10.67], [566, 825.33, 320, 10.67], [1052, 825.33, 320, 10.67], [1538, 825.33, 160, 10.67], [1944, 825.33, 160, 10.67], [2264, 825.33, 160, 10.67], [2430, 825.33, 160, 10.67], [2750, 825.33, 160, 10.67], [2916, 825.33, 160, 10.67], [3156, 825.33, 160, 10.67], [240, 988.0, 160, 10.67], [566, 988.0, 320, 10.67], [1052, 988.0, 320, 10.67], [1538, 988.0, 160, 10.67], [1944, 988.0, 160, 10.67], [2264, 988.0, 160, 10.67], [2430, 988.0, 160, 10.67], [2750, 988.0, 160, 10.67], [2916, 988.0, 160, 10.67], [3156, 988.0, 160, 10.67], [240, 1150.67, 160, 10.67], [566, 1150.67, 320, 10.67], [1052, 1150.67, 320, 10.67], [1538, 1150.67, 160, 10.67], [1944, 1150.67, 160, 10.67], [2264, 1150.67, 160, 10.67], [2430, 1150.67, 160, 10.67], [2750, 1150.67, 160, 10.67], [2916, 1150.67, 160, 10.67], [3156, 1150.67, 160, 10.67], [240, 1313.33, 160, 10.67], [566, 1313.33, 320, 10.67], [1052, 1313.33, 320, 10.67], [1538, 1313.33, 160, 10.67], [1944, 1313.33, 160, 10.67], [2264, 1313.33, 160, 10.67], [2430, 1313.33, 160, 10.67], [2750, 1313.33, 160, 10.67], [2916, 1313.33, 160, 10.67], [3156, 1313.33, 160, 10.67], [240, 1476.0, 160, 10.67], [566, 1476.0, 320, 10.67], [1052, 1476.0, 320, 10.67], [1538, 1476.0, 160, 10.67], [1944, 1476.0, 160, 10.67], [2264, 1476.0, 160, 10.67], [2430, 1476.0, 160, 10.67], [2750, 1476.0, 160, 10.67], [2916, 1476.0, 160, 10.67], [3156, 1476.0, 160, 10.67], [240, 1638.67, 160, 10.67], [566, 1638.67, 320, 10.67], [1052, 1638.67, 320, 10.67], [1538, 1638.67, 160, 10.67], [1944, 1638.67, 160, 10.67], [2264, 1638.67, 160, 10.67], [2430, 1638.67, 160, 10.67], [2750, 1638.67, 160, 10.67], [2916, 1638.67, 160, 10.67], [3156, 1638.67, 160, 10.67], [240, 1801.33, 160, 10.67], [566, 1801.33, 320, 10.67], [1052, 1801.33, 320, 10.67], [1538, 1801.33, 160, 10.67], [1944, 1801.33, 160, 10.67], [2264, 1801.33, 160, 10.67], [2430, 1801.33, 160, 10.67], [2750, 1801.33, 160, 10.67], [2916, 1801.33, 160, 10.67], [3156, 1801.33, 160, 10.67], [240, 2225.33, 160, 10.67], [566, 2225.33, 320, 10.67], [1052, 2225.33, 320, 10.67], [1538, 2225.33, 160, 10.67], [1944, 2225.33, 160, 10.67], [2264, 2225.33, 160, 10.67], [2430, 2225.33, 160, 10.67], [2750, 2225.33, 160, 10.67], [2916, 2225.33, 160, 10.67], [3156, 2225.33, 160, 10.67], [240, 2388.0, 160, 10.67], [566, 2388.0, 320, 10.67], [1052, 2388.0, 320, 10.67], [1538, 2388.0, 160, 10.67], [1944, 2388.0, 160, 10.67], [2264, 2388.0, 160, 10.67], [2430, 2388.0, 160, 10.67], [2750, 2388.0, 160, 10.67], [2916, 2388.0, 160, 10.67], [3156, 2388.0, 160, 10.67], [240, 2550.67, 160, 10.67], [566, 2550.67, 320, 10.67], [1052, 2550.67, 320, 10.67], [1538, 2550.67, 160, 10.67], [1944, 2550.67, 160, 10.67], [2264, 2550.67, 160, 10.67], [2430, 2550.67, 160, 10.67], [2750, 2550.67, 160, 10.67], [2916, 2550.67, 160, 10.67], [3156, 2550.67, 160, 10.67], [240, 2713.33, 160, 10.67], [566, 2713.33, 320, 10.67], [1052, 2713.33, 320, 10.67], [1538, 2713.33, 160, 10.67], [1944, 2713.33, 160, 10.67], [2264, 2713.33, 160, 10.67], [2430, 2713.33, 160, 10.67], [2750, 2713.33, 160, 10.67], [2916, 2713.33, 160, 10.67], [3156, 2713.33, 160, 10.67], [240, 2876.0, 160, 10.67], [566, 2876.0, 320, 10.67], [1052, 2876.0, 320, 10.67], [1538, 2876.0, 160, 10.67], [1944, 2876.0, 160, 10.67], [2264, 2876.0, 160, 10.67], [2430, 2876.0, 160, 10.67], [2750, 2876.0, 160, 10.67], [2916, 2876.0, 160, 10.67], [3156, 2876.0, 160, 10.67], [240, 3038.67, 160, 10.67], [566, 3038.67, 320, 10.67], [1052, 3038.67, 320, 10.67], [1538, 3038.67, 160, 10.67], [1944, 3038.67, 160, 10.67], [2264, 3038.67, 160, 10.67], [2430, 3038.67, 160, 10.67], [2750, 3038.67, 160, 10.67], [2916, 3038.67, 160, 10.67], [3156, 3038.67, 160, 10.67], [240, 3201.33, 160, 10.67], [566, 3201.33, 320, 10.67], [1052, 3201.33, 320, 10.67], [1538, 3201.33, 160, 10.67], [1944, 3201.33, 160, 10.67], [2264, 3201.33, 160, 10.67], [2430, 3201.33, 160, 10.67], [2750, 3201.33, 160, 10.67], [2916, 3201.33, 160, 10.67], [3156, 3201.33, 160, 10.67], [240, 3364.0, 160, 10.67], [566, 3364.0, 320, 10.67], [1052, 3364.0, 320, 10.67], [1538, 3364.0, 160, 10.67], [1944, 3364.0, 160, 10.67], [2264, 3364.0, 160, 10.67], [2430, 3364.0, 160, 10.67], [2750, 3364.0, 160, 10.67], [2916, 3364.0, 160, 10.67], [3156, 3364.0, 160, 10.67], [240, 3526.67, 160, 10.67], [566, 3526.67, 320, 10.67], [1052, 3526.67, 320, 10.67], [1538, 3526.67, 160, 10.67], [1944, 3526.67, 160, 10.67], [2264, 3526.67, 160, 10.67], [2430, 3526.67, 160, 10.67], [2750, 3526.67, 160, 10.67], [2916, 3526.67, 160, 10.67], [3156, 3526.67, 160, 10.67], [240, 3689.33, 160, 10.67], [566, 3689.33, 320, 10.67], [1052, 3689.33, 320, 10.67], [1538, 3689.33, 160, 10.67], [1944, 3689.33, 160, 10.67], [2264, 3689.33, 160, 10.67], [2430, 3689.33, 160, 10.67], [2750, 3689.33, 160, 10.67], [2916, 3689.33, 160, 10.67], [3156, 3689.33, 160, 10.67], [240, 3852.0, 160, 10.67], [566, 3852.0, 320, 10.67], [1052, 3852.0, 320, 10.67], [1538, 3852.0, 160, 10.67], [1944, 3852.0, 160, 10.67], [2264, 3852.0, 160, 10.67], [2430, 3852.0, 160, 10.67], [2750, 3852.0, 160, 10.67], [2916, 3852.0, 160, 10.67], [3156, 3852.0, 160, 10.67], [240, 4276.0, 160, 10.67], [566, 4276.0, 320, 10.67], [1052, 4276.0, 320, 10.67], [1538, 4276.0, 160, 10.67], [1944, 4276.0, 160, 10.67], [2264, 4276.0, 160, 10.67], [2430, 4276.0, 160, 10.67], [2750, 4276.0, 160, 10.67], [2916, 4276.0, 160, 10.67], [3156, 4276.0, 160, 10.67], [240, 4438.67, 160, 10.67], [566, 4438.67, 320, 10.67], [1052, 4438.67, 320, 10.67], [1538, 4438.67, 160, 10.67], [1944, 4438.67, 160, 10.67], [2264, 4438.67, 160, 10.67], [2430, 4438.67, 160, 10.67], [2750, 4438.67, 160, 10.67], [2916, 4438.67, 160, 10.67], [3156, 4438.67, 160, 10.67], [240, 4601.33, 160, 10.67], [566, 4601.33, 320, 10.67], [1052, 4601.33, 320, 10.67], [1538, 4601.33, 160, 10.67], [1944, 4601.33, 160, 10.67], [2264, 4601.33, 160, 10.67], [2430, 4601.33, 160, 10.67], [2750, 4601.33, 160, 10.67], [2916, 4601.33, 160, 10.67], [3156, 4601.33, 160, 10.67], [240, 4764.0, 160, 10.67], [566, 4764.0, 320, 10.67], [1052, 4764.0, 320, 10.67], [1538, 4764.0, 160, 10.67], [1944, 4764.0, 160, 10.67], [2264, 4764.0, 160, 10.67], [2430, 4764.0, 160, 10.67], [2750, 4764.0, 160, 10.67], [2916, 4764.0, 160, 10.67], [3156, 4764.0, 160, 10.67], [240, 4926.67, 160, 10.67], [566, 4926.67, 320, 10.67], [1052, 4926.67, 320, 10.67], [1538, 4926.67, 160, 10.67], [1944, 4926.67, 160, 10.67], [2264, 4926.67, 160, 10.67], [2430, 4926.67, 160, 10.67], [2750, 4926.67, 160, 10.67], [2916, 4926.67, 160, 10.67], [3156, 4926.67, 160, 10.67], [240, 5089.33, 160, 10.67], [566, 5089.33, 320, 10.67], [1052, 5089.33, 320, 10.67], [1538, 5089.33, 160, 10.67], [1944, 5089.33, 160, 10.67], [2264, 5089.33, 160, 10.67], [2430, 5089.33, 160, 10.67], [2750, 5089.33, 160, 10.67], [2916, 5089.33, 160, 10.67], [3156, 5089.33, 160, 10.67], [240, 5252.0, 160, 10.67], [566, 5252.0, 320, 10.67], [1052, 5252.0, 320, 10.67], [1538, 5252.0, 160, 10.67], [1944, 5252.0, 160, 10.67], [2264, 5252.0, 160, 10.67], [2430, 5252.0, 160, 10.67], [2750, 5252.0, 160, 10.67], [2916, 5252.0, 160, 10.67], [3156, 5252.0, 160, 10.67], [240, 5414.67, 160, 10.67], [566, 5414.67, 320, 10.67], [1052, 5414.67, 320, 10.67], [1538, 5414.67, 160, 10.67], [1944, 5414.67, 160, 10.67], [2264, 5414.67, 160, 10.67], [2430, 5414.67, 160, 10.67], [2750, 5414.67, 160, 10.67], [2916, 5414.67, 160, 10.67], [3156, 5414.67, 160, 10.67], [240, 5577.33, 160, 10.67], [566, 5577.33, 320, 10.67], [1052, 5577.33, 320, 10.67], [1538, 5577.33, 160, 10.67], [1944, 5577.33, 160, 10.67], [2264, 5577.33, 160, 10.67], [2430, 5577.33, 160, 10.67], [2750, 5577.33, 160, 10.67], [2916, 5577.33, 160, 10.67], [3156, 5577.33, 160, 10.67], [240, 5740.0, 160, 10.67], [566, 5740.0, 320, 10.67], [1052, 5740.0, 320, 10.67], [1538, 5740.0, 160, 10.67], [1944, 5740.0, 160, 10.67], [2264, 5740.0, 160, 10.67], [2430, 5740.0, 160, 10.67], [2750, 5740.0, 160, 10.67], [2916, 5740.0, 160, 10.67], [3156, 5740.0, 160, 10.67], [240, 5902.67, 160, 10.67], [566, 5902.67, 320, 10.67], [1052, 5902.67, 320, 10.67], [1538, 5902.67, 160, 10.67], [1944, 5902.67, 160, 10.67], [2264, 5902.67, 160, 10.67], [2430, 5902.67, 160, 10.67], [2750, 5902.67, 160, 10.67], [2916, 5902.67, 160, 10.67], [3156, 5902.67, 160, 10.67], [240, 6305.33, 160, 10.67], [566, 6305.33, 320, 10.67], [1052, 6305.33, 320, 10.67], [1538, 6305.33, 160, 10.67], [1944, 6305.33, 160, 10.67], [2264, 6305.33, 160, 10.67], [2430, 6305.33, 160, 10.67], [2750, 6305.33, 160, 10.67], [2916, 6305.33, 160, 10.67], [3156, 6305.33, 160, 10.67], [240, 6468.0, 160, 10.67], [566, 6468.0, 320, 10.67], [1052, 6468.0, 320, 10.67], [1538, 6468.0, 160, 10.67], [1944, 6468.0, 160, 10.67], [2264, 6468.0, 160, 10.67], [2430, 6468.0, 160, 10.67], [2750, 6468.0, 160, 10.67], [2916, 6468.0, 160, 10.67], [3156, 6468.0, 160, 10.67], [240, 6630.67, 160, 10.67], [566, 6630.67, 320, 10.67], [1052, 6630.67, 320, 10.67], [1538, 6630.67, 160, 10.67], [1944, 6630.67, 160, 10.67], [2264, 6630.67, 160, 10.67], [2430, 6630.67, 160, 10.67], [2750, 6630.67, 160, 10.67], [2916, 6630.67, 160, 10.67], [3156, 6630.67, 160, 10.67], [240, 6793.33, 160, 10.67], [566, 6793.33, 320, 10.67], [1052, 6793.33, 320, 10.67], [1538, 6793.33, 160, 10.67], [1944, 6793.33, 160, 10.67], [2264, 6793.33, 160, 10.67], [2430, 6793.33, 160, 10.67], [2750, 6793.33, 160, 10.67], [2916, 6793.33, 160, 10.67], [3156, 6793.33, 160, 10.67], [240, 6956.0, 160, 10.67], [566, 6956.0, 320, 10.67], [1052, 6956.0, 320, 10.67], [1538, 6956.0, 160, 10.67], [1944, 6956.0, 160, 10.67], [2264, 6956.0, 160, 10.67], [2430, 6956.0, 160, 10.67], [2750, 6956.0, 160, 10.67], [2916, 6956.0, 160, 10.67], [3156, 6956.0, 160, 10.67], [240, 7118.67, 160, 10.67], [566, 7118.67, 320, 10.67], [1052, 7118.67, 320, 10.67], [1538, 7118.67, 160, 10.67], [1944, 7118.67, 160, 10.67], [2264, 7118.67, 160, 10.67], [2430, 7118.67, 160, 10.67], [2750, 7118.67, 160, 10.67], [2916, 7118.67, 160, 10.67], [3156, 7118.67, 160, 10.67], [240, 7281.33, 160, 10.67], [566, 7281.33, 320, 10.67], [1052, 7281.33, 320, 10.67], [1538, 7281.33, 160, 10.67], [1944, 7281.33, 160, 10.67], [2264, 7281.33, 160, 10.67], [2430, 7281.33, 160, 10.67], [2750, 7281.33, 160, 10.67], [2916, 7281.33, 160, 10.67], [3156, 7281.33, 160, 10.67], [240, 7444.0, 160, 10.67], [566, 7444.0, 320, 10.67], [1052, 7444.0, 320, 10.67], [1538, 7444.0, 160, 10.67], [1944, 7444.0, 160, 10.67], [2264, 7444.0, 160, 10.67], [2430, 7444.0, 160, 10.67], [2750, 7444.0, 160, 10.67], [2916, 7444.0, 160, 10.67], [3156, 7444.0, 160, 10.67], [240, 7606.67, 160, 10.67], [566, 7606.67, 320, 10.67], [1052, 7606.67, 320, 10.67], [1538, 7606.67, 160, 10.67], [1944, 7606.67, 160, 10.67], [2264, 7606.67, 160, 10.67], [2430, 7606.67, 160, 10.67], [2750, 7606.67, 160, 10.67], [2916, 7606.67, 160, 10.67], [3156, 7606.67, 160, 10.67], [240, 7769.33, 160, 10.67], [566, 7769.33, 320, 10.67], [1052, 7769.33, 320, 10.67], [1538, 7769.33, 160, 10.67], [1944, 7769.33, 160, 10.67], [2264, 7769.33, 160, 10.67], [2430, 7769.33, 160, 10.67], [2750, 7769.33, 160, 10.67], [2916, 7769.33, 160, 10.67], [3156, 7769.33, 160, 10.67], [240, 7932.0, 160, 10.67], [566, 7932.0, 320, 10.67], [1052, 7932.0, 320, 10.67], [1538, 7932.0, 160, 10.67], [1944, 7932.0, 160, 10.67], [2264, 7932.0, 160, 10.67], [2430, 7932.0, 160, 10.67], [2750, 7932.0, 160, 10.67], [2916, 7932.0, 160, 10.67], [3156, 7932.0, 160, 10.67]], "nums": [[1, 400, 6130.67, 80, 66.67], [2, 886, 6130.67, 80, 66.67], [3, 1372, 6130.67, 80, 66.67], [4, 2104, 6130.67, 80, 66.67], [5, 2590, 6130.67, 80, 66.67], [6, 3076, 6130.67, 80, 66.67], [7, 400, 4101.33, 80, 66.67], [8, 886, 4101.33, 80, 66.67], [9, 1372, 4101.33, 80, 66.67], [10, 2104, 4101.33, 80, 66.67], [11, 2590, 4101.33, 80, 66.67], [12, 3076, 4101.33, 80, 66.67], [13, 400, 2050.67, 80, 66.67], [14, 886, 2050.67, 80, 66.67], [15, 1372, 2050.67, 80, 66.67], [16, 2104, 2050.67, 80, 66.67], [17, 2590, 2050.67, 80, 66.67], [18, 3076, 2050.67, 80, 66.67], [19, 400, 0.0, 80, 66.67], [20, 886, 0.0, 80, 66.67], [21, 1372, 0.0, 80, 66.67], [22, 2104, 0.0, 80, 66.67], [23, 2590, 0.0, 80, 66.67], [24, 3076, 0.0, 80, 66.67]], "pasillos": [[1698, 1986.67, 246, 64.0, 0], [1778, 825.33, 80, 336.0, 1], [1698, 6088.0, 246, 65.33, 0], [1778, 2876.0, 80, 336.0, 1], [1778, 4926.67, 80, 336.0, 1], [1698, 4037.33, 246, 64.0, 0], [1778, 6956.0, 80, 336.0, 1]], "bands": [{ "base": 19, "y0": 0.0, "y1": 1964.0 }, { "base": 13, "y0": 2050.67, "y1": 4014.67 }, { "base": 7, "y0": 4101.33, "y1": 6065.33 }, { "base": 1, "y0": 6130.67, "y1": 8094.67 }] }, "gap": 88.0, "dock": { "period": 486, "boxW": 480, "gapW": 6, "palY": [0.0, 168.0, 336.0, 504.0, 672.0], "palH": 168.0, "palX": [0, 320], "palW": 160, "boxY": 888.0, "boxH": 504.0, "h": 1392.0, "row": 24.0 } };
+    /* ================= CONFIGURACIÓN =================
+       desde / hasta : rampas a mostrar (consecutivas).
+       paletasPorRampa: se reparten mitad a cada lado de la línea.
+       La primera y la última rampa quedan fijas; las del medio se deslizan.        */
+    const CONFIG = {
+      desde: 15,
+      hasta: 33,
+      paletasPorRampa: 10,
+    };
 
-    const AND = { palW: 160, palH: 168, sepY: 36, puertaW: 480, puertaH: 150, gapW: 6 };
-    const S = XL.storage;
-    const anchoFijas = 2 * AND.puertaW + 2 * AND.palW + 2 * AND.gapW + 80;
-    const BANDAS = [...S.bands].sort((a, c) => a.y0 - c.y0);
+    /* ================= GEOMETRÍA (proporciones del Excel) =================
+       Todo se mide en "filas" (r = alto de una fila de 18 pt del Excel):
+       columna normal = 3.6 r · columna angosta = 1.3 r · borde blanco = 0.3 r
+       paleta = 2 columnas × 7 filas · rampa = 4 normales + 2 angostas × 21 filas
+       la línea punteada ocupa una columna angosta, de la fila 1 a la última.    */
+    const rampas = [];
+    for (let n = CONFIG.desde; n <= CONFIG.hasta; n++) rampas.push(n);
+    const porLado = Math.ceil(CONFIG.paletasPorRampa / 2);
+    const filasPaletas = porLado * 7;
+    const FILAS = 1 + filasPaletas + 2 + 21;          // 59 con 10 paletas
 
-    /* ===== Utils ===== */
-    const sc = document.getElementById('sc');
-    const leer = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } };
-    const escribir = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } };
-    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-    const int = v => { const n = parseInt(v, 10); return isFinite(n) ? n : 0; };
-    const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-    function el(tag, cls, parent) { const d = document.createElement(tag); if (cls) d.className = cls; if (parent) parent.appendChild(d); return d; }
-    function caja(e, x, y, w, h) {
-      e.style.left = Math.round(x) + 'px'; e.style.top = Math.round(y) + 'px';
-      e.style.width = Math.max(1, Math.round(x + w) - Math.round(x)) + 'px'; e.style.height = Math.max(1, Math.round(y + h) - Math.round(y)) + 'px';
+    const patio = document.getElementById('patio');
+    const pista = document.getElementById('pista');
+    let zoom = 1;
+
+    document.getElementById('titulo').textContent = `Rampas ${CONFIG.desde}–${CONFIG.hasta}`;
+
+    function el(cls, parent, title) {
+      const d = document.createElement('div');
+      d.className = cls; if (title) d.title = title;
+      parent.appendChild(d); return d;
     }
-    const ICON_CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>';
-    const ICON_PIN = '<svg class="pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/></svg>';
-    const ICON_VER = '<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/></svg>';
-    const clTag = cl => cl === 1 ? 'C1' : cl === 2 ? 'C2' : cl === 3 ? 'C3' : '—';
-    const COLOR_CL = { 1: '#2563EB', 2: '#7C3AED', 3: '#EA580C', 0: '#94A3B8' };
-    const clNum = cl => (cl === null || cl === undefined) ? 0 : cl;
 
-    /* ===== CONFIG (misma estructura que la versión anterior) ===== */
-    const STORAGE_KEY = 'simConfig:v3';
-
-    function defaultConfig() {
-      const rc = {}; for (let n = 15; n <= 33; n++) rc[n] = 1;
-      const pc = {}; for (let p = 1; p <= 24; p++) pc[p] = p <= 12 ? 2 : 3;
-      const paletas = {}; for (let n = 15; n <= 33; n++) paletas[n] = 5;
-      return {
-        layout: {
-          rampas: { desde: 15, hasta: 33 },
-          rampaCluster: rc,
-          pasilloCluster: pc,
-          ordenAsignacion: { 1: 'rampas_primero', 2: 'pasillos_primero', 3: 'pasillos_primero' },
-        },
-        operacion: { operarios: 6, bultosHora: 120, bloqueado: false, paletasPorRampa: paletas },
-        render: { tamanoMax: 1 },
-      };
-    }
-    function deepMerge(base, ovr) {
-      if (Array.isArray(base) || Array.isArray(ovr)) return ovr !== undefined ? ovr : base;
-      if (typeof base !== 'object' || base === null) return ovr !== undefined ? ovr : base;
-      if (typeof ovr !== 'object' || ovr === null) return base;
-      const out = { ...base };
-      for (const k in ovr) out[k] = deepMerge(base[k], ovr[k]);
-      return out;
-    }
-    function migrarA3(old) {
-      const cfg = defaultConfig();
-      if (old.operacion) cfg.operacion = { ...cfg.operacion, ...old.operacion };
-      if (old.render) cfg.render = { ...cfg.render, ...old.render };
-      if (old.layout?.rampas) cfg.layout.rampas = { ...cfg.layout.rampas, ...old.layout.rampas };
-      if (old.layout?.pasilloCluster) {
-        for (const p in old.layout.pasilloCluster) cfg.layout.pasilloCluster[p] = old.layout.pasilloCluster[p];
-      } else if (old.layout?.canales && old.layout?.clusters) {
-        for (let p = 1; p <= 24; p++) cfg.layout.pasilloCluster[p] = null;
-        for (const cl of [2, 3]) {
-          const a = old.layout.clusters[cl];
-          if (a?.tipo === 'canal') {
-            for (const cid of a.canales || []) {
-              const c = old.layout.canales[cid];
-              if (c?.pasillos) for (const p of c.pasillos) cfg.layout.pasilloCluster[p] = cl;
-            }
-          }
-        }
+    /* construir la estructura una sola vez */
+    const unidades = rampas.map((num, i) => {
+      const u = el('rampa', pista);
+      u.dataset.rampa = num;
+      const primera = i === 0, ultima = i === rampas.length - 1;
+      if (primera) u.classList.add('fija', 'izq');
+      if (ultima) u.classList.add('fija', 'der');
+      const m = {};
+      if (primera) m.vuelo = el('mascara', u);                 // tapa lo que pasa bajo sus paletas derechas
+      if (ultima) { m.arriba = el('mascara', u); m.abajo = el('mascara', u); }
+      const caja = el('caja', u, `Rampa ${num}`);
+      caja.textContent = `RAMPA ${num}`;
+      const linea = el('linea', u);
+      const pals = [];
+      for (let k = 0; k < CONFIG.paletasPorRampa; k++) {
+        const p = el('paleta', u, `Rampa ${num}`);
+        p.dataset.rampa = num; p.dataset.paleta = k + 1;
+        pals.push(p);
       }
-      cfg.layout.rampaCluster = {};
-      for (let n = cfg.layout.rampas.desde; n <= cfg.layout.rampas.hasta; n++) cfg.layout.rampaCluster[n] = 1;
-      return cfg;
-    }
-    function migrarV1() {
-      const oldOps = leer('cfgOps', null), oldBpH = leer('cfgBpH', null), oldBloq = leer('cfgBloqueado', null), oldPal = leer('cfgPaletasRampa', null);
-      if (oldOps === null && oldBpH === null && oldPal === null) return null;
-      const cfg = defaultConfig();
-      if (oldOps !== null) cfg.operacion.operarios = clamp(int(oldOps) || 6, 1, 99);
-      if (oldBpH !== null) cfg.operacion.bultosHora = clamp(int(oldBpH) || 120, 1, 9999);
-      if (oldBloq !== null) cfg.operacion.bloqueado = !!oldBloq;
-      if (oldPal) for (const n in oldPal) { const v = parseInt(oldPal[n], 10); if (isFinite(v)) cfg.operacion.paletasPorRampa[n] = clamp(v, 0, 30); }
-      return cfg;
-    }
-    function cargarConfig() {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed.layout?.rampaCluster && parsed.layout?.pasilloCluster && parsed.layout?.ordenAsignacion) return deepMerge(defaultConfig(), parsed);
-          return migrarA3(parsed);
-        }
-        const rawV2 = localStorage.getItem('simConfig:v2');
-        if (rawV2) { try { return migrarA3(JSON.parse(rawV2)); } catch (e) { } }
-        const migV1 = migrarV1();
-        if (migV1) return migV1;
-      } catch (e) { }
-      return defaultConfig();
-    }
-    const CONFIG = cargarConfig();
-    const CFG = CONFIG.operacion;
-    function guardarConfig() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(CONFIG)); } catch (e) { } }
-
-    let rampas = [];
-    function rebuildRampas() {
-      rampas = [];
-      for (let n = CONFIG.layout.rampas.desde; n <= CONFIG.layout.rampas.hasta; n++) {
-        rampas.push(n);
-        if (CONFIG.operacion.paletasPorRampa[n] === undefined) CONFIG.operacion.paletasPorRampa[n] = 5;
-      }
-      for (const k in CONFIG.operacion.paletasPorRampa) if (!rampas.includes(parseInt(k, 10))) delete CONFIG.operacion.paletasPorRampa[k];
-      for (const n of rampas) if (CONFIG.layout.rampaCluster[n] === undefined) CONFIG.layout.rampaCluster[n] = 1;
-      for (const k in CONFIG.layout.rampaCluster) if (!rampas.includes(parseInt(k, 10))) delete CONFIG.layout.rampaCluster[k];
-    }
-    rebuildRampas();
-
-    function medidasRampa(n) {
-      const pal = clamp(int(CFG.paletasPorRampa[n]) || 0, 0, 30);
-      return { b1: Math.ceil(pal / 2), b2: Math.floor(pal / 2) };
-    }
-    function alturaMaxBloques() {
-      let maxB = 1;
-      for (const n of rampas) {
-        if (CONFIG.layout.rampaCluster[n] === null) continue;
-        const { b1, b2 } = medidasRampa(n);
-        maxB = Math.max(maxB, b1, b2);
-      }
-      return maxB * AND.palH;
-    }
-    const totalPaletasAnden = () => rampas.reduce((s, n) => CONFIG.layout.rampaCluster[n] !== null ? s + (CFG.paletasPorRampa[n] || 0) : s, 0);
-
-    /* ===== Estado de la simulación ===== */
-    let vista = null;
-    let abiertas = new Set(leer('canalesAbiertos', []));
-    let filtroTexto = '', filtroCluster = 0, filtroUbicDesde = null, filtroUbicHasta = null;
-
-    const DEFAULT_DATOS = [
-      { ruta: 2001, local: "CHORRILLOS 1", cluster: 1, envios: [7, 1, 2] },
-      { ruta: 2001, local: "CHORRILLOS 2", cluster: 1, envios: [2, 2, 1] },
-      { ruta: 2001, local: "CHORRILLOS 3", cluster: 1, envios: [10, 9, 1] },
-      { ruta: 2002, local: "LURIN 1", cluster: 2, envios: [8, 1, 1] },
-      { ruta: 2002, local: "LURIN 2", cluster: 2, envios: [3, 1, 1] },
-      { ruta: 2002, local: "LURIN 3", cluster: 2, envios: [0, 2, 18] },
-    ];
-    let DATOS = leer('simDatos', null) || DEFAULT_DATOS;
-    let SIM = { envioActual: 0, pallets: [], alertas: [], sinUbicar: [] };
-
-    const SLOTS_PASILLO = (() => {
-      const m = new Map();
-      const arr = [...S.pallets].sort((a, b) => a[4] !== b[4] ? a[4] - b[4] : b[1] - a[1]);
-      for (const p of arr) { if (!m.has(p[4])) m.set(p[4], []); m.get(p[4]).push({ x: p[0], y: p[1], w: p[2], h: p[3], pasillo: p[4] }); }
-      return m;
-    })();
-
-    function construirPallets() {
-      const out = [];
-      for (const fila of DATOS) {
-        const e = [fila.envios[0] || 0, fila.envios[1] || 0, fila.envios[2] || 0];
-        const total = e[0] + e[1] + e[2];
-        if (total === 0) continue;
-        out.push({
-          id: `${fila.ruta}|${fila.local}`, ruta: fila.ruta, local: fila.local, cluster: fila.cluster,
-          envios: e, totalEsperado: total, bultosActual: 0, completado: false, ubicacion: null
-        });
-      }
-      return out;
-    }
-    function slotsDeCluster(cl) {
-      const rampasSlots = [];
-      for (const n of rampas) {
-        if (CONFIG.layout.rampaCluster[n] === cl) {
-          const { b1, b2 } = medidasRampa(n);
-          for (let k = 0; k < b1; k++) rampasSlots.push({ tipo: 'rampa', rampa: n, bloque: 1, k });
-          for (let k = 0; k < b2; k++) rampasSlots.push({ tipo: 'rampa', rampa: n, bloque: 2, k });
-        }
-      }
-      const pasillosSlots = [];
-      const psCl = [];
-      for (const ps in CONFIG.layout.pasilloCluster) if (CONFIG.layout.pasilloCluster[ps] === cl) psCl.push(parseInt(ps));
-      psCl.sort((a, b) => a - b);
-      for (const ps of psCl) if (SLOTS_PASILLO.has(ps)) for (const s of SLOTS_PASILLO.get(ps)) pasillosSlots.push({ tipo: 'pasillo', pasillo: ps, slot: s });
-      const orden = CONFIG.layout.ordenAsignacion[cl] || 'rampas_primero';
-      return orden === 'pasillos_primero' ? [...pasillosSlots, ...rampasSlots] : [...rampasSlots, ...pasillosSlots];
-    }
-    function slotsDeClusterCount(cl) {
-      let rampas_n = 0, pasillos_n = 0, slots_r = 0, slots_p = 0;
-      for (const n of rampas) if (CONFIG.layout.rampaCluster[n] === cl) { rampas_n++; const { b1, b2 } = medidasRampa(n); slots_r += b1 + b2; }
-      for (const ps in CONFIG.layout.pasilloCluster) if (CONFIG.layout.pasilloCluster[ps] === cl) {
-        pasillos_n++; if (SLOTS_PASILLO.has(parseInt(ps))) slots_p += SLOTS_PASILLO.get(parseInt(ps)).length;
-      }
-      return { rampas_n, pasillos_n, slots_r, slots_p, total_slots: slots_r + slots_p };
-    }
-    function asignarUbicaciones() {
-      SIM.alertas = []; SIM.sinUbicar = [];
-      for (const cl of [1, 2, 3]) {
-        const pallets = SIM.pallets.filter(p => p.cluster === cl);
-        const slots = slotsDeCluster(cl);
-        for (const p of pallets) p.ubicacion = null;
-        pallets.forEach((p, i) => { if (i < slots.length) p.ubicacion = slots[i]; else SIM.sinUbicar.push(p); });
-        if (pallets.length > slots.length) SIM.alertas.push(`C${cl}: ${pallets.length - slots.length} pallets sin ubicación`);
-      }
-      for (const p of SIM.pallets) {
-        if (p.ubicacion && p.ubicacion.tipo === 'pasillo') {
-          const ps = p.ubicacion.pasillo;
-          for (const bd of BANDAS) if (ps >= bd.base && ps <= bd.base + 5) { abiertas.add(bd.base); break; }
-        }
-      }
-      escribir('canalesAbiertos', [...abiertas]);
-    }
-    function aplicarEnvio(n) {
-      for (const p of SIM.pallets) {
-        p.bultosActual += (p.envios[n - 1] || 0);
-        if (p.envios.slice(0, n).reduce((s, x) => s + x, 0) >= p.totalEsperado) p.completado = true;
-      }
-      SIM.envioActual = n;
-    }
-    function resetSim() { SIM = { envioActual: 0, pallets: [], alertas: [], sinUbicar: [] }; SIM.pallets = construirPallets(); asignarUbicaciones(); }
-    function reasignarUbicaciones() { asignarUbicaciones(); }
-
-    function mapaPallets() {
-      const porRampa = new Map(), porPasillo = new Map();
-      for (const p of SIM.pallets) {
-        if (!p.ubicacion) continue;
-        if (p.ubicacion.tipo === 'rampa') porRampa.set(`${p.ubicacion.rampa}|${p.ubicacion.bloque}|${p.ubicacion.k}`, p);
-        else porPasillo.set(`${p.ubicacion.pasillo}|${p.ubicacion.slot.x}|${p.ubicacion.slot.y}`, p);
-      }
-      return { porRampa, porPasillo };
-    }
-
-    /* pallet dibujado sobre la posición: pallet amarillo + etiqueta con ruta, local y avance */
-    function pintarPalletEnSlot(slotEl, pallet, w) {
-      slotEl.dataset.local = pallet.local.toLowerCase();
-      slotEl.dataset.ruta = String(pallet.ruta);
-      slotEl.dataset.cluster = String(pallet.cluster);
-      const estado = pallet.completado ? 'completado' : (pallet.bultosActual > 0 ? 'activo' : 'pendiente');
-      slotEl.classList.add('ocupado', estado);
-      const pct = pallet.totalEsperado ? Math.min(100, Math.round(pallet.bultosActual / pallet.totalEsperado * 100)) : 0;
-      const fs = clamp(Math.round(w * 0.115), 8, 13);
-      slotEl.style.setProperty('--fs', fs + 'px');
-      slotEl.title = `Ruta ${pallet.ruta} · ${pallet.local} · C${pallet.cluster} · ${pallet.bultosActual}/${pallet.totalEsperado} bultos` + (pallet.completado ? ' · completado' : '');
-      slotEl.innerHTML = `<div class="pal"></div>` +
-        (pallet.completado && w >= 44 ? '<span class="okb">✓</span>' : '') +
-        (w < 44 ? `<div class="tk mini"><div class="tk-bar"><i style="width:${pct}%"></i></div></div>` :
-          `<div class="tk"><div class="tk-1"><span>R${esc(pallet.ruta)}</span><b>${pallet.bultosActual}/${pallet.totalEsperado}</b></div>` +
-          (w >= 56 ? `<div class="tk-l">${esc(pallet.local)}</div>` : '') +
-          `<div class="tk-bar"><i style="width:${pct}%"></i></div></div>`);
-    }
-
-    /* ===== Filtros del plano ===== */
-    function enRangoUbic(num) {
-      if (filtroUbicDesde === null && filtroUbicHasta === null) return true;
-      if (filtroUbicDesde !== null && num < filtroUbicDesde) return false;
-      if (filtroUbicHasta !== null && num > filtroUbicHasta) return false;
-      return true;
-    }
-    function aplicarFiltros() {
-      const txt = filtroTexto.toLowerCase().trim(), cl = filtroCluster;
-      const hayRango = filtroUbicDesde !== null || filtroUbicHasta !== null;
-      const activo = !!txt || cl > 0 || hayRango;
-      document.querySelectorAll('.slot').forEach(el => {
-        el.classList.remove('filtrado', 'vacio-dim');
-        if (!activo) return;
-        const tienePallet = el.dataset.local !== undefined;
-        let num = null;
-        if (el.dataset.rampa) num = parseInt(el.dataset.rampa, 10);
-        else if (el.dataset.pasillo) num = parseInt(el.dataset.pasillo, 10);
-        if (!tienePallet) {
-          if (hayRango && num !== null && !enRangoUbic(num)) el.classList.add('filtrado');
-          else el.classList.add('vacio-dim');
-          return;
-        }
-        const matchTxt = !txt || el.dataset.local.includes(txt) || el.dataset.ruta.includes(txt);
-        const matchCl = !cl || parseInt(el.dataset.cluster, 10) === cl;
-        const matchUbic = !hayRango || (num !== null && enRangoUbic(num));
-        el.classList.toggle('filtrado', !(matchTxt && matchCl && matchUbic));
-      });
-      document.getElementById('fRes').hidden = !activo;
-      if (activo) document.getElementById('contadorFiltro').innerHTML = `<b>${contarCoincidencias()}</b> de ${SIM.pallets.length} pallets coinciden`;
-    }
-    function contarCoincidencias() {
-      const txt = filtroTexto.toLowerCase().trim(), cl = filtroCluster;
-      const hayRango = filtroUbicDesde !== null || filtroUbicHasta !== null;
-      let n = 0;
-      for (const p of SIM.pallets) {
-        const matchTxt = !txt || p.local.toLowerCase().includes(txt) || String(p.ruta).includes(txt);
-        const matchCl = !cl || p.cluster === cl;
-        let num = null;
-        if (p.ubicacion) num = p.ubicacion.tipo === 'rampa' ? p.ubicacion.rampa : p.ubicacion.pasillo;
-        if (matchTxt && matchCl && (!hayRango || (num !== null && enRangoUbic(num)))) n++;
-      }
-      return n;
-    }
-
-    /* ===== Bloques de pasillos ===== */
-    const chips = document.getElementById('chips');
-    [...BANDAS].sort((a, c) => a.base - c.base).forEach(bd => {
-      const b = el('button', 'chip', chips); b.type = 'button'; b.dataset.base = bd.base;
-      b.innerHTML = `${ICON_CHEV}${bd.base}–${bd.base + 5}`;
-      b.title = `Pasillos ${bd.base} a ${bd.base + 5}`;
-      b.onclick = () => {
-        if (abiertas.has(bd.base)) { abiertas.delete(bd.base); escribir('canalesAbiertos', [...abiertas]); dibujar(); }
-        else { abiertas.add(bd.base); escribir('canalesAbiertos', [...abiertas]); dibujar({ banda: bd.base }); }
-      };
-      chips.appendChild(document.createTextNode(' '));
+      return { u, num, primera, ultima, m, caja, linea, pals };
     });
-    document.getElementById('cerrarTodo').onclick = () => { abiertas.clear(); escribir('canalesAbiertos', []); dibujar({ abajo: true }); };
-    document.getElementById('irAnden').onclick = () => sc.scrollTo({ top: sc.scrollHeight, behavior: 'smooth' });
 
-    /* ===== Plano: pasillos ===== */
-    function construirBanda(bd, s, M, ancho, mapaPasillo) {
-      const n0 = bd.base, n1 = bd.base + 5;
-      const sec = el('div', 'banda'); sec.style.width = ancho + 'px';
-      const pal = S.pallets.filter(p => p[1] >= bd.y0 && p[1] < bd.y1);
-      const t = el('div', 'banda-t', sec);
-      t.innerHTML = `<span class="lbl">Pasillos ${n0}–${n1}<span>${pal.length} posiciones</span></span>`;
-      const ph = S.pasillos.find(p => !p[4] && p[1] < bd.y0 && p[1] > bd.y0 - 200);
-      if (ph) { const c = el('span', 'senal', t); c.textContent = 'PASILLO'; c.style.left = Math.round(M + ph[0] * s) + 'px'; c.style.width = Math.max(96, Math.round(ph[2] * s)) + 'px'; }
-
-      const top0 = Math.max(14, Math.round(36 * s));
-      const b = el('div', 'banda-b', sec); b.style.height = Math.round((bd.y1 - bd.y0) * s + top0 + 10) + 'px';
-      const ins = Math.max(3, Math.round(7 * s)), rad = Math.max(3, Math.round(10 * s)) + 'px';
-      const porPasillo = new Map(), columnas = new Map();
-      for (const [x, y, w, hh, pasillo] of pal) {
-        const cl = clNum(CONFIG.layout.pasilloCluster[pasillo]);
-        const p = el('div', 'slot k' + cl, b);
-        const wPx = w * s - ins;
-        caja(p, M + x * s + ins / 2, top0 + (y - bd.y0) * s + ins / 2, wPx, hh * s - ins);
-        p.style.borderRadius = rad; p.dataset.pasillo = pasillo; p.title = `Pasillo ${pasillo} · ${clTag(cl)}`;
-        const pallet = mapaPasillo.get(`${pasillo}|${x}|${y}`);
-        if (pallet) pintarPalletEnSlot(p, pallet, wPx);
-        if (!porPasillo.has(pasillo)) porPasillo.set(pasillo, []); porPasillo.get(pasillo).push(p);
-        if (!columnas.has(x)) columnas.set(x, []); columnas.get(x).push([x, y, w, hh]);
-      }
-      for (const col of columnas.values()) {                         // vigas del rack entre posiciones
-        col.sort((a, c) => a[1] - c[1]);
-        for (let i = 0; i < col.length - 1; i++) {
-          const [x, y, w, hh] = col[i], y2 = col[i + 1][1];
-          const v = el('div', 'viga', b);
-          caja(v, M + x * s + ins, top0 + ((y + hh + y2) / 2 - bd.y0) * s - 1, w * s - 2 * ins, 2);
-        }
-      }
-      for (const [x, y, w, hh] of S.pasillos.filter(p => p[4] && p[1] >= bd.y0 && p[1] < bd.y1)) {
-        const p = el('div', 'senal v', b);
-        const pw = Math.max(22, Math.round(54 * s));
-        caja(p, M + (x + w / 2) * s - pw / 2, top0 + (y - bd.y0) * s, pw, hh * s * 1.4);
-        p.innerHTML = '<span>PASILLO</span>'; p.style.fontSize = Math.max(10, Math.round(24 * s)) + 'px';
-      }
-      const fila = el('div', 'numeros', b);                         // letreros con el número de pasillo (se quedan arriba)
-      const nums = new Map();
-      for (const [n, x, y, w] of S.nums.filter(r => r[0] >= n0 && r[0] <= n1)) {
-        const cl = clNum(CONFIG.layout.pasilloCluster[n]);
-        const wd = Math.max(34, Math.round(74 * s)), hd = Math.max(26, Math.round(54 * s));
-        const c = el('div', 'num', fila);
-        caja(c, M + (x + w / 2) * s - wd / 2, 6, wd, hd);
-        c.textContent = n; c.style.fontSize = Math.round(hd * 0.5) + 'px';
-        c.style.setProperty('--k', COLOR_CL[cl]);
-        c.dataset.tipo = 'pasillo'; c.dataset.n = n; c.title = `Pasillo ${n} · ${clTag(cl)} · clic para asignar cluster`;
-        nums.set(n, c);
-      }
-      const marcar = (e, on) => {
-        const p = e.target.closest('.slot, .num'); if (!p) return;
-        const c = +(p.dataset.pasillo || p.dataset.n);
-        (porPasillo.get(c) || []).forEach(x => x.classList.toggle('on', on));
-        nums.get(c) && nums.get(c).classList.toggle('on', on);
-      };
-      b.addEventListener('pointerover', e => marcar(e, true));
-      b.addEventListener('pointerout', e => marcar(e, false));
-      return sec;
+    function px(e, l, t, w, h) {
+      e.style.left = l + 'px'; e.style.top = t + 'px';
+      e.style.width = w + 'px'; e.style.height = h + 'px';
     }
 
-    /* ===== Plano: andén ===== */
-    function construirAnden(s, mapaRampa) {
-      const M = Math.max(14, Math.round(40 * s));
-      const gap = Math.max(8, Math.round(AND.gapW * s));
-      const pw = Math.round(AND.puertaW * s), palW = Math.round(AND.palW * s);
-      const x1 = pw - palW, x2 = pw + gap;
-      const altoMax = alturaMaxBloques();
-      const yP = Math.round((altoMax + AND.sepY) * s), H = Math.round((altoMax + AND.sepY + AND.puertaH) * s);
-      const ins = Math.max(4, Math.round(10 * s)), rad = Math.max(4, Math.round(12 * s)) + 'px';
-      const altoP = AND.puertaH * s;
-      const pista = el('div', 'pista');
-      const unidades = rampas.map((n, i) => {
-        const cl = clNum(CONFIG.layout.rampaCluster[n]);
-        const { b1, b2 } = medidasRampa(n);
-        const primera = i === 0, ultima = i === rampas.length - 1;
-        const off = primera ? M : 0;
-        const ancho = off + pw + gap + (ultima ? palW + M : 0);
-        const u = el('div', 'rampa', pista); u.dataset.rampa = n;
-        u.style.width = ancho + 'px'; u.style.height = H + 'px';
-        u.style.setProperty('--k', COLOR_CL[cl]);
-        if (!cl) u.classList.add('sin-cluster');
-        if (primera) { u.classList.add('fija', 'izq'); const m = el('div', 'mascara', u); caja(m, off + x2, 0, palW, yP); }
-        if (ultima) {
-          u.classList.add('fija', 'der');
-          const m1 = el('div', 'mascara', u); caja(m1, x1 - ins / 2, 0, ancho - x1 + ins / 2, yP);
-          const m2 = el('div', 'mascara', u); caja(m2, 0, yP, ancho, H - yP);
-        }
-        const l = el('div', 'linea', u); caja(l, off + pw + Math.floor(gap / 2), 0, 1, H);
+    let G = null;
+    function maquetar() {
+      const alto = patio.clientHeight - 16 - 14;               // padding + barra de scroll
+      const ancho = patio.clientWidth;
+      const rAjuste = Math.min(alto / FILAS, ancho / 80);       // que entren las 2 fijas + algo del medio
+      const r = Math.max(4, Math.floor(rAjuste * zoom));
+      const b = 2 * Math.max(1, Math.round(r * 0.15));          // borde blanco (par para que quede nítido)
+      const n = Math.round(r * 3.6);                            // columna normal
+      const w = Math.round(r * 1.3);                            // columna angosta
+      const cajaW = 4 * n + 2 * w;                              // ancho de rampa
+      const P = cajaW + w;                                      // paso entre rampas (rampa + línea)
+      const M = r;                                              // margen lateral
+      const H = FILAS * r;
+      const topCaja = (1 + filasPaletas + 2) * r;
+      const fs = Math.max(11, Math.round(r * 0.667));
+      G = { r, b, n, w, P, M };
 
-        // rampa: plataforma de acero con bordes amarillos y letrero rojo con el número
-        const pt = el('div', 'puerta', u);
-        caja(pt, off, yP, pw, altoP);
-        const placa = el('div', 'placa', pt);
-        placa.dataset.tipo = 'rampa'; placa.dataset.n = n;
-        placa.style.fontSize = Math.max(14, Math.round(altoP * 0.36)) + 'px';
-        placa.innerHTML = `${(primera || ultima) && altoP >= 60 ? ICON_PIN : ''}<span>${n}</span>` + (altoP >= 44 ? `<span class="kt">${clTag(cl)}</span>` : '');
-        placa.title = `Rampa ${n}${primera || ultima ? ' · fija' : ''} · ${clTag(cl)} · clic para asignar cluster`;
-        const inp = el('input', 'pal-input' + (altoP < 70 ? ' chico' : ''), pt);
-        inp.type = 'number'; inp.min = 0; inp.max = 30; inp.step = 1; inp.inputMode = 'numeric';
-        inp.value = CFG.paletasPorRampa[n];
-        inp.disabled = CFG.bloqueado || !cl;
-        inp.title = `Paletas en la rampa ${n}`;
-        inp.dataset.rampa = n;
-        ['pointerover', 'pointerout', 'click', 'mousedown', 'pointerdown'].forEach(ev => inp.addEventListener(ev, e => e.stopPropagation()));
-        inp.addEventListener('change', () => {
-          if (CFG.bloqueado) return;
-          const v = clamp(int(inp.value) || 0, 0, 30);
-          inp.value = v;
-          if (v === CFG.paletasPorRampa[n]) return;
-          aplicarCambioSeguro(() => { CFG.paletasPorRampa[n] = v; });
+      const dash = `linear-gradient(to bottom, transparent ${b / 2}px, var(--linea) ${b / 2}px, var(--linea) ${r - b / 2}px, transparent ${r - b / 2}px)`;
+
+      for (const x of unidades) {
+        const off = x.primera ? M : 0;                          // la primera lleva margen a la izquierda
+        let ancho = P;
+        if (x.primera) ancho = M + P;
+        if (x.ultima) ancho = P + 2 * n + M;                   // la última incluye sus paletas derechas
+        x.u.style.width = ancho + 'px';
+        x.u.style.height = H + 'px';
+
+        px(x.caja, off + b / 2, topCaja + b / 2, cajaW - b, 21 * r - b);
+        x.caja.style.fontSize = fs + 'px';
+
+        px(x.linea, off + cajaW + b / 2, 0, w - b, H);
+        x.linea.style.backgroundImage = dash;
+        x.linea.style.backgroundSize = `100% ${r}px`;
+
+        // paletas: columna izquierda sobre el borde derecho de la rampa, columna derecha pasando la línea
+        const xIzq = off + 2 * n + 2 * w, xDer = off + P;
+        x.pals.forEach((p, k) => {
+          const lado = k < porLado ? 0 : 1, fila = lado ? k - porLado : k;
+          px(p, (lado ? xDer : xIzq) + b / 2, (1 + fila * 7) * r + b / 2, 2 * n - b, 7 * r - b);
         });
-        inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } });
 
-        [x1, x2].forEach((bx, bloque) => {
-          const cantidad = bloque === 0 ? b1 : b2;
-          for (let k = 0; k < cantidad; k++) {
-            const p = el('div', 'slot k' + cl, u);
-            const yy = yP - (k + 1) * AND.palH * s + ins / 2;
-            const wPx = palW - ins;
-            caja(p, off + bx + ins / 2, yy, wPx, AND.palH * s - ins);
-            p.style.borderRadius = rad;
-            p.dataset.rampa = n; p.dataset.bloque = bloque + 1; p.dataset.paleta = k + 1;
-            p.title = `Rampa ${n} · bloque ${bloque + 1} · posición ${k + 1}`;
-            const pallet = mapaRampa.get(`${n}|${bloque + 1}|${k}`);
-            if (pallet) pintarPalletEnSlot(p, pallet, wPx);
-          }
-        });
-        return { u, n, puerta: pt };
-      });
-      const marcar = (r, on) => { r.classList.toggle('on', on); r.querySelectorAll('.slot').forEach(x => x.classList.toggle('on', on)); };
-      pista.addEventListener('pointerover', e => { const r = e.target.closest('.rampa'); if (r) marcar(r, true); });
-      pista.addEventListener('pointerout', e => { const r = e.target.closest('.rampa'); if (r && !r.contains(e.relatedTarget)) marcar(r, false); });
-      return { pista, unidades, M };
+        if (x.m.vuelo) px(x.m.vuelo, M + P, 0, 2 * n, topCaja);
+        if (x.m.arriba) px(x.m.arriba, 2 * n + 2 * w, 0, ancho - (2 * n + 2 * w), topCaja);
+        if (x.m.abajo) px(x.m.abajo, 0, topCaja, ancho, H - topCaja);
+      }
+      document.getElementById('zVal').textContent = Math.round(zoom * 100) + ' %';
+      estado();
     }
 
-    function alDesplazar() {
-      if (!vista) return;
-      const us = vista.unidades, maxX = sc.scrollWidth - sc.clientWidth;
-      if (us.length) { us[0].u.classList.toggle('sombra', sc.scrollLeft > 1); us[us.length - 1].u.classList.toggle('sombra', sc.scrollLeft < maxX - 1); }
-      const rc = sc.getBoundingClientRect();
-      const enVista = vista.secciones.some(x => { const r = x.getBoundingClientRect(); return r.bottom > rc.top + 40 && r.top < rc.bottom - 40; });
-      document.getElementById('aviso').hidden = !(enVista && sc.scrollLeft > vista.anchoAlm - 80);
+    /* sombras de las fijas + texto con las rampas visibles */
+    const izq = unidades[0], der = unidades[unidades.length - 1];
+    function estado() {
+      const max = patio.scrollWidth - patio.clientWidth;
+      izq.u.classList.toggle('sombra', patio.scrollLeft > 1);
+      der.u.classList.toggle('sombra', patio.scrollLeft < max - 1);
+      if (!G) return;
+      const a = patio.getBoundingClientRect();
+      const limI = izq.u.getBoundingClientRect().right;
+      const limD = der.u.getBoundingClientRect().left;
+      const vis = unidades.slice(1, -1).filter(x => {
+        const c = x.caja.getBoundingClientRect();
+        return c.left >= limI - 2 && c.right <= limD + G.w + 2;
+      }).map(x => x.num);
+      const medio = vis.length ? (vis.length > 1 ? `${vis[0]}–${vis[vis.length - 1]}` : `${vis[0]}`) : '—';
+      document.getElementById('sub').innerHTML =
+        `${CONFIG.paletasPorRampa} paletas por rampa · fijas: <b>${izq.num}</b> y <b>${der.num}</b> · en pantalla: <b>${medio}</b>`;
     }
 
-    /* rueda y arrastre */
-    let ultimoArrastre = 0;
-    sc.addEventListener('wheel', e => {
+    /* rueda del mouse → desplazamiento horizontal */
+    patio.addEventListener('wheel', e => {
       if (e.ctrlKey) return;
-      if (sc.scrollHeight <= sc.clientHeight + 4 && Math.abs(e.deltaY) > Math.abs(e.deltaX)) { sc.scrollLeft += e.deltaY; e.preventDefault(); }
+      const sinVertical = patio.scrollHeight <= patio.clientHeight + 1;
+      if (sinVertical && Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        patio.scrollLeft += e.deltaY;
+        e.preventDefault();
+      }
     }, { passive: false });
-    (() => {
-      let ini = null;
-      sc.addEventListener('pointerdown', e => {
-        if (e.pointerType !== 'mouse' || e.button !== 0) return;
-        const rc = sc.getBoundingClientRect();
-        if (e.clientX - rc.left >= sc.clientWidth || e.clientY - rc.top >= sc.clientHeight) return;
-        ini = { id: e.pointerId, x: e.clientX, y: e.clientY, l: sc.scrollLeft, t: sc.scrollTop, mov: false };
-      });
-      sc.addEventListener('pointermove', e => {
-        if (!ini || e.pointerId !== ini.id) return;
-        const dx = e.clientX - ini.x, dy = e.clientY - ini.y;
-        if (!ini.mov) { if (Math.hypot(dx, dy) < 5) return; ini.mov = true; sc.classList.add('arrastrando'); try { sc.setPointerCapture(e.pointerId); } catch (err) { } }
-        sc.scrollLeft = ini.l - dx; sc.scrollTop = ini.t - dy;
-      });
-      const fin = () => { if (ini && ini.mov) ultimoArrastre = Date.now(); ini = null; sc.classList.remove('arrastrando'); };
-      sc.addEventListener('pointerup', fin); sc.addEventListener('pointercancel', fin);
-    })();
-    sc.addEventListener('scroll', alDesplazar, { passive: true });
+    patio.addEventListener('scroll', estado, { passive: true });
 
-    /* clic en un letrero del plano → ventana rápida para asignar cluster */
-    sc.addEventListener('click', e => {
-      if (Date.now() - ultimoArrastre < 250) return;
-      const t = e.target.closest('[data-tipo]');
-      if (!t) return;
-      abrirPop(t.dataset.tipo, +t.dataset.n, e.clientX, e.clientY);
+    /* teclado: Inicio / Fin / Re Pág / Av Pág recorren las rampas */
+    patio.addEventListener('keydown', e => {
+      const paso = Math.max(G ? G.P : 200, der.u.getBoundingClientRect().left - izq.u.getBoundingClientRect().right - (G ? G.P : 0));
+      const destino = {
+        Home: 0, End: patio.scrollWidth,
+        PageDown: patio.scrollLeft + paso, PageUp: patio.scrollLeft - paso
+      }[e.key];
+      if (destino === undefined || patio.scrollHeight > patio.clientHeight + 1 && (e.key === 'PageDown' || e.key === 'PageUp')) return;
+      patio.scrollTo({ left: destino, behavior: 'smooth' });
+      e.preventDefault();
     });
 
-    function dibujar(op = {}) {
-      const prevX = vista ? sc.scrollLeft / Math.max(1, sc.scrollWidth) : 0;
-      const prevTop = sc.scrollTop, prevMaxTop = sc.scrollHeight - sc.clientHeight;
-      sc.innerHTML = '';
-      const W = sc.clientWidth, Hs = sc.clientHeight;
-      const fitAlto = (Hs - 28) / (alturaMaxBloques() + AND.sepY + AND.puertaH);
-      const fitAncho = (W < 700 ? 0.72 : 0.6) * W / anchoFijas;
-      const s = Math.max(0.1, Math.min(CONFIG.render.tamanoMax, fitAlto || 1, fitAncho || 1));
-
-      const lienzo = el('div', 'lienzo', sc);
-      const mapa = mapaPallets();
-      const and = construirAnden(s, mapa.porRampa);
-      const M = and.M;
-      const anchoAlm = Math.ceil(S.w * s) + 2 * M;
-      const pistaW = and.unidades.reduce((t, x) => t + parseFloat(x.u.style.width), 0);
-      const ancho = Math.max(pistaW, abiertas.size ? anchoAlm : 0);
-      lienzo.style.width = ancho + 'px';
-      const secciones = [];
-      for (const bd of BANDAS) if (abiertas.has(bd.base)) { const sec = construirBanda(bd, s, M, ancho, mapa.porPasillo); sec.dataset.base = bd.base; lienzo.appendChild(sec); secciones.push(sec); }
-      const anden = el('div', 'anden' + (abiertas.size ? ' conCanales' : ' fijo'), lienzo);
-      anden.style.width = ancho + 'px'; anden.style.padding = '14px 0';
-      anden.appendChild(and.pista);
-      vista = { s, M, unidades: and.unidades, anchoAlm, secciones };
-
-      sc.scrollLeft = (op.inicio || op.banda) ? 0 : prevX * sc.scrollWidth;
-      const sec = op.banda && secciones.find(x => +x.dataset.base === op.banda);
-      if (sec) sc.scrollTop = sec.offsetTop;
-      else if (op.inicio || op.abajo || prevTop >= prevMaxTop - 2) sc.scrollTop = sc.scrollHeight;   // estaba abajo → sigue en el andén
-      else sc.scrollTop = prevTop;                                                                    // si no, conserva dónde estabas
-
-      document.querySelectorAll('#chips .chip').forEach(b => b.setAttribute('aria-pressed', abiertas.has(+b.dataset.base)));
-      document.getElementById('nota').hidden = abiertas.size > 0;
-      document.getElementById('irAnden').hidden = abiertas.size === 0;
-      document.getElementById('cerrarTodo').hidden = abiertas.size === 0;
-      alDesplazar();
-      aplicarFiltros();
+    /* zoom */
+    function setZoom(z) {
+      const centro = (patio.scrollLeft + patio.clientWidth / 2) / patio.scrollWidth;
+      zoom = Math.min(2.5, Math.max(0.5, Math.round(z * 10) / 10));
+      maquetar();
+      patio.scrollLeft = centro * patio.scrollWidth - patio.clientWidth / 2;
     }
-    document.getElementById('aviso').onclick = () => sc.scrollTo({ left: 0, behavior: 'smooth' });
+    document.getElementById('zMas').onclick = () => setZoom(zoom + 0.1);
+    document.getElementById('zMenos').onclick = () => setZoom(zoom - 0.1);
+    document.getElementById('zAjustar').onclick = () => setZoom(1);
 
-    /* llevar la vista a un pasillo o rampa y resaltarlo */
-    function enfocar(tipo, n) {
-      if (tipo === 'pasillo') {
-        const bd = BANDAS.find(b => n >= b.base && n <= b.base + 5);
-        if (bd && !abiertas.has(bd.base)) { abiertas.add(bd.base); escribir('canalesAbiertos', [...abiertas]); }
-        dibujar({ banda: bd ? bd.base : undefined });
-        const placa = sc.querySelector(`.num[data-n="${n}"]`);
-        if (placa) { const r = placa.getBoundingClientRect(), rc = sc.getBoundingClientRect(); sc.scrollLeft += (r.left + r.right) / 2 - (rc.left + rc.right) / 2; }
-        sc.querySelectorAll(`.slot[data-pasillo="${n}"]`).forEach(x => { x.classList.remove('flash'); void x.offsetWidth; x.classList.add('flash'); });
-      } else {
-        sc.scrollTop = sc.scrollHeight;
-        const u = vista.unidades.find(x => x.n === n);
-        if (u) {
-          const us = vista.unidades, a = us[0].u.getBoundingClientRect().right, z = us[us.length - 1].u.getBoundingClientRect().left;
-          const r = u.puerta.getBoundingClientRect();
-          if (u !== us[0] && u !== us[us.length - 1]) sc.scrollLeft += (r.left + r.right) / 2 - (a + z) / 2;
-          sc.querySelectorAll(`.slot[data-rampa="${n}"]`).forEach(x => { x.classList.remove('flash'); void x.offsetWidth; x.classList.add('flash'); });
-        }
-      }
-    }
-
-    /* ===== Indicadores ===== */
-    function renderKpis() {
-      const P = SIM.pallets, tot = P.length;
-      const ubic = P.filter(p => p.ubicacion).length, sinU = SIM.sinUbicar.length;
-      const comp = P.filter(p => p.completado).length;
-      const bTot = P.reduce((s, p) => s + p.totalEsperado, 0), bAct = P.reduce((s, p) => s + p.bultosActual, 0);
-      const thr = CFG.operarios * CFG.bultosHora;
-      const resta = thr > 0 ? (bTot - bAct) / thr * 60 : 0;
-      const sig = SIM.envioActual + 1;
-      const bSig = sig <= 3 ? DATOS.reduce((s, d) => s + (d.envios[sig - 1] || 0), 0) : 0;
-      const porCl = [1, 2, 3].map(c => P.filter(p => p.cluster === c).length);
-      const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
-      document.getElementById('kpis').innerHTML = `
-    <div class="kpi"><div class="k-l">Pallets ubicados</div><div class="k-v">${ubic}<small> / ${tot}</small></div>
-      <div class="k-s ${sinU ? 'mal' : ''}">${sinU ? `⚠ ${sinU} sin ubicación` : 'Todos con posición'}</div></div>
-    <div class="kpi"><div class="k-l">Completados</div><div class="k-v">${comp}<small> · ${pct(comp, tot)} %</small></div>
-      <div class="k-bar"><i class="ok" style="width:${pct(comp, tot)}%"></i></div></div>
-    <div class="kpi"><div class="k-l">Bultos recibidos</div><div class="k-v">${bAct.toLocaleString('es-PE')}<small> / ${bTot.toLocaleString('es-PE')}</small></div>
-      <div class="k-bar"><i style="width:${pct(bAct, bTot)}%"></i></div></div>
-    <div class="kpi"><div class="k-l">Envío</div><div class="k-v">${SIM.envioActual}<small> / 3</small></div>
-      <div class="k-s">${sig <= 3 ? `Siguiente: envío ${sig} · ${bSig} bultos` : 'Simulación completa'}</div></div>
-    <div class="kpi"><div class="k-l">Tiempo restante</div><div class="k-v">${resta.toFixed(1)}<small> min</small></div>
-      <div class="k-s">${CFG.operarios} operarios · ${thr.toLocaleString('es-PE')} bultos/h</div></div>
-    <div class="kpi"><div class="k-l">Pallets por cluster</div>
-      <div class="cls">${porCl.map((v, i) => `<span><i style="background:${COLOR_CL[i + 1]}"></i>${v}</span>`).join('')}</div>
-      <div class="k-s">${totalPaletasAnden()} posiciones en andén</div></div>`;
-    }
-
-    /* ===== Envíos ===== */
-    function renderEnvios() {
-      const lista = document.getElementById('enviosList');
-      const thr = CFG.operarios * CFG.bultosHora;
-      lista.innerHTML = '';
-      for (let n = 1; n <= 3; n++) {
-        const bultos = DATOS.reduce((s, d) => s + (d.envios[n - 1] || 0), 0);
-        const min = thr > 0 ? (bultos / thr * 60) : 0;
-        const cls = n <= SIM.envioActual ? 'hecho' : (n === SIM.envioActual + 1 ? 'sig' : '');
-        const est = n <= SIM.envioActual ? 'Recibido' : (n === SIM.envioActual + 1 ? 'Siguiente' : 'Pendiente');
-        const d = el('div', 'paso ' + cls, lista);
-        d.innerHTML = `<span class="n">${n <= SIM.envioActual ? '✓' : n}</span><div class="t"><b>Envío ${n}</b><span>${bultos.toLocaleString('es-PE')} bultos · ${min.toFixed(1)} min</span></div><span class="e">${est}</span>`;
-      }
-      document.getElementById('capacidad').textContent = `${thr.toLocaleString('es-PE')} bultos/h`;
-      const al = document.getElementById('alertaEnvios');
-      if (SIM.sinUbicar && SIM.sinUbicar.length) { al.hidden = false; al.textContent = `⚠ ${SIM.sinUbicar.length} pallet(s) sin ubicación. Asigna más pasillos o rampas a su cluster.`; }
-      else al.hidden = true;
-      const btn = document.getElementById('btnEnvio');
-      const sig = SIM.envioActual + 1;
-      btn.textContent = sig <= 3 ? `Recibir envío ${sig}` : 'Simulación completa';
-      btn.disabled = sig > 3;
-      const tb = document.getElementById('btnEnvioTb'); tb.textContent = btn.textContent; tb.disabled = btn.disabled;
-      renderKpis();
-      renderAsignar();
-    }
-    document.getElementById('btnEnvioTb').onclick = () => document.getElementById('btnEnvio').click();
-    document.getElementById('btnEnvio').onclick = () => { const sig = SIM.envioActual + 1; if (sig > 3) return; aplicarEnvio(sig); dibujar(); renderEnvios(); };
-    document.getElementById('btnReset').onclick = () => { if (!confirm('¿Reiniciar la simulación? Se pierde el avance de los envíos.')) return; resetSim(); dibujar(); renderEnvios(); };
-
-    /* ===== Asignar cluster uno por uno ===== */
-    let asgTipo = 'pasillo';
-    const asgBuscar = document.getElementById('asgBuscar');
-    document.querySelectorAll('#secAsignar .seg button').forEach(b => b.onclick = () => {
-      asgTipo = b.dataset.t;
-      document.querySelectorAll('#secAsignar .seg button').forEach(x => x.setAttribute('aria-pressed', x === b));
-      asgBuscar.placeholder = asgTipo === 'rampa' ? 'Buscar rampa…' : 'Buscar pasillo…';
-      renderAsignar();
-    });
-    asgBuscar.addEventListener('input', () => {
-      const m = asgBuscar.value.trim().match(/^([pr])/i);                      // "r20" busca rampas, "p7" pasillos
-      if (m) { const t = m[1].toLowerCase() === 'r' ? 'rampa' : 'pasillo'; if (t !== asgTipo) document.querySelector(`#secAsignar .seg button[data-t="${t}"]`).click(); }
-      renderAsignar();
-    });
-    function numerosBuscados(txt) {
-      const limpio = txt.replace(/[a-z]/gi, ' ').trim();
-      if (!limpio) return null;
-      const out = new Set();
-      for (const parte of limpio.split(/[,\s]+/)) {
-        const r = parte.match(/^(\d+)\s*-\s*(\d+)$/);
-        if (r) { const a = +r[1], b = +r[2]; for (let i = Math.min(a, b); i <= Math.max(a, b); i++) out.add(i); }
-        else if (/^\d+$/.test(parte)) out.add(+parte);
-      }
-      return out;
-    }
-    function infoItem(tipo, n) {
-      if (tipo === 'rampa') {
-        const cl = clNum(CONFIG.layout.rampaCluster[n]);
-        const pos = CFG.paletasPorRampa[n] || 0;
-        const ocup = SIM.pallets.filter(p => p.ubicacion && p.ubicacion.tipo === 'rampa' && p.ubicacion.rampa === n).length;
-        return { cl, texto: `${pos} posiciones · ${ocup} pallets` };
-      }
-      const cl = clNum(CONFIG.layout.pasilloCluster[n]);
-      const pos = (SLOTS_PASILLO.get(n) || []).length;
-      const ocup = SIM.pallets.filter(p => p.ubicacion && p.ubicacion.tipo === 'pasillo' && p.ubicacion.pasillo === n).length;
-      return { cl, texto: `${pos} posiciones · ${ocup} pallets` };
-    }
-    function botonesCluster(cl, dis) {
-      return `<div class="cl4">${[1, 2, 3, 0].map(c => `<button type="button" data-c="${c}" aria-pressed="${cl === c}" ${dis ? 'disabled' : ''} title="${c ? 'Cluster ' + c : 'Sin cluster'}">${c ? 'C' + c : '—'}</button>`).join('')}</div>`;
-    }
-    function asignarCluster(tipo, n, c) {
-      const val = c === 0 ? null : c;
-      const actual = tipo === 'rampa' ? CONFIG.layout.rampaCluster[n] : CONFIG.layout.pasilloCluster[n];
-      if (clNum(actual) === c) return;
-      aplicarCambioSeguro(() => { if (tipo === 'rampa') CONFIG.layout.rampaCluster[n] = val; else CONFIG.layout.pasilloCluster[n] = val; });
-    }
-    function renderAsignar() {
-      const dis = CFG.bloqueado;
-      document.getElementById('asgBloqueo').hidden = !dis;
-      const lista = document.getElementById('asgLista');
-      const buscados = numerosBuscados(asgBuscar.value);
-      const todos = asgTipo === 'rampa' ? rampas : Array.from({ length: 24 }, (_, i) => i + 1);
-      const items = buscados ? todos.filter(n => buscados.has(n)) : todos;
-      lista.innerHTML = items.length ? '' : `<div class="ayuda">No hay ${asgTipo === 'rampa' ? 'rampas' : 'pasillos'} con ese número.</div>`;
-      for (const n of items) {
-        const { cl, texto } = infoItem(asgTipo, n);
-        const row = el('div', 'asg' + (buscados && items.length === 1 ? ' foco' : ''), lista);
-        row.innerHTML = `<span class="letrero">${n}</span><div class="t"><b>${asgTipo === 'rampa' ? 'Rampa' : 'Pasillo'} ${n}</b><span>${texto}</span></div>` +
-          botonesCluster(cl, dis) + `<button type="button" class="ver" title="Ver en el plano">${ICON_VER}</button>`;
-        row.querySelectorAll('.cl4 button').forEach(b => b.onclick = () => asignarCluster(asgTipo, n, +b.dataset.c));
-        row.querySelector('.ver').onclick = () => enfocar(asgTipo, n);
-      }
-      const res = document.getElementById('asgResumen');
-      res.innerHTML = [1, 2, 3].map(c => {
-        const k = slotsDeClusterCount(c);
-        const pal = SIM.pallets.filter(p => p.cluster === c).length;
-        const falta = Math.max(0, pal - k.total_slots);
-        return `<div><i style="background:${COLOR_CL[c]}"></i><b>C${c}</b> ${k.rampas_n} rampas · ${k.pasillos_n} pasillos<span class="${falta ? 'mal' : ''}">${pal}/${k.total_slots} pos.</span></div>`;
-      }).join('');
-    }
-
-    /* ventana rápida */
-    const pop = document.getElementById('pop');
-    function abrirPop(tipo, n, x, y) {
-      const { cl, texto } = infoItem(tipo, n);
-      const dis = CFG.bloqueado;
-      pop.innerHTML = `<div class="pop-h"><span class="letrero">${n}</span><div><b>${tipo === 'rampa' ? 'Rampa' : 'Pasillo'} ${n}</b><small>${texto} · actual ${clTag(cl)}</small></div></div>` +
-        (dis ? '<div class="bloqueo">Configuración bloqueada.</div>' : '') + botonesCluster(cl, dis) +
-        `<div class="pie"><span>Elige el cluster</span><span>Esc para cerrar</span></div>`;
-      pop.hidden = false;
-      const w = pop.offsetWidth, h = pop.offsetHeight;
-      pop.style.left = clamp(x + 12, 8, window.innerWidth - w - 8) + 'px';
-      pop.style.top = clamp(y + 12, 8, window.innerHeight - h - 8) + 'px';
-      pop.querySelectorAll('.cl4 button').forEach(b => b.onclick = () => { pop.hidden = true; asignarCluster(tipo, n, +b.dataset.c); });
-    }
-    document.addEventListener('pointerdown', e => { if (!pop.hidden && !pop.contains(e.target)) pop.hidden = true; }, true);
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') pop.hidden = true; });
-
-    /* ===== Panel lateral ===== */
-    const cuerpo = document.getElementById('cuerpo'), panel = document.getElementById('panel'), btnPanel = document.getElementById('btnPanel');
-    let panelAbierto = leer('panelSimAbierto', window.innerWidth >= 1500);
-    const panelFlotante = () => window.innerWidth < 1500;
-    function pintarPanel() { panel.hidden = !panelAbierto; btnPanel.setAttribute('aria-pressed', panelAbierto); }
-    btnPanel.onclick = () => { panelAbierto = !panelAbierto; escribir('panelSimAbierto', panelAbierto); pintarPanel(); if (!panelFlotante()) dibujar(); };
-    document.getElementById('cerrarPanel').onclick = () => { panelAbierto = false; escribir('panelSimAbierto', false); pintarPanel(); if (!panelFlotante()) dibujar(); };
-
-    /* ===== Bloqueo ===== */
-    const cfgLockEl = document.getElementById('cfgLock');
-    function pintarCfg() {
-      document.getElementById('cfgLockTxt').textContent = CFG.bloqueado ? 'Desbloquear' : 'Bloquear';
-      cfgLockEl.setAttribute('aria-pressed', CFG.bloqueado);
-      document.getElementById('estadoLock').hidden = !CFG.bloqueado;
-    }
-    cfgLockEl.addEventListener('click', () => { CFG.bloqueado = !CFG.bloqueado; guardarConfig(); pintarCfg(); dibujar(); renderAsignar(); if (!viewConfig.hidden) renderConfigView(); });
-
-    /* ===== Filtros ===== */
-    const buscarEl = document.getElementById('buscarLocal');
-    buscarEl.addEventListener('input', () => { filtroTexto = buscarEl.value; aplicarFiltros(); });
-    buscarEl.addEventListener('keydown', e => { if (e.key === 'Escape') { buscarEl.value = ''; filtroTexto = ''; aplicarFiltros(); } });
-    const fDesde = document.getElementById('filtroUbicDesde'), fHasta = document.getElementById('filtroUbicHasta');
-    fDesde.addEventListener('input', () => { filtroUbicDesde = fDesde.value === '' ? null : clamp(int(fDesde.value), 0, 99); aplicarFiltros(); });
-    fHasta.addEventListener('input', () => { filtroUbicHasta = fHasta.value === '' ? null : clamp(int(fHasta.value), 0, 99); aplicarFiltros(); });
-    document.querySelectorAll('.cli').forEach(btn => btn.addEventListener('click', () => {
-      const cl = parseInt(btn.dataset.cl, 10);
-      filtroCluster = (filtroCluster === cl && cl !== 0) ? 0 : cl;
-      document.querySelectorAll('.cli').forEach(b => b.setAttribute('aria-pressed', parseInt(b.dataset.cl, 10) === filtroCluster));
-      aplicarFiltros();
-    }));
-    document.getElementById('limpiarFiltro').addEventListener('click', () => {
-      filtroTexto = ''; filtroCluster = 0; filtroUbicDesde = null; filtroUbicHasta = null;
-      buscarEl.value = ''; fDesde.value = ''; fHasta.value = '';
-      document.querySelectorAll('.cli').forEach(b => b.setAttribute('aria-pressed', b.dataset.cl === '0'));
-      aplicarFiltros();
-    });
-
-    /* ============================================================
-       CONFIGURACIÓN (vista aparte)
-       ============================================================ */
-    const viewPlano = document.getElementById('viewPlano');
-    const viewConfig = document.getElementById('viewConfig');
-    const cfgContent = document.getElementById('cfgContent');
-    const cfgEstado = document.getElementById('cfgEstado');
-    let tabActiva = 'layout';
-    function irAConfig() { viewPlano.hidden = true; viewConfig.hidden = false; renderConfigView(); }
-    function irAPlano() { viewConfig.hidden = true; viewPlano.hidden = false; dibujar(); }
-    document.getElementById('btnConfig').onclick = () => viewConfig.hidden ? irAConfig() : irAPlano();
-    document.getElementById('btnVolver').onclick = irAPlano;
-    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !viewConfig.hidden) irAPlano(); });
-    document.querySelectorAll('.cfg-tabs-nav button').forEach(b => {
-      b.onclick = () => { tabActiva = b.dataset.tab; document.querySelectorAll('.cfg-tabs-nav button').forEach(x => x.classList.toggle('active', x === b)); renderConfigView(); };
-    });
-
-    /* aplicar un cambio y avisar si deja pallets sin ubicación */
-    function aplicarCambioSeguro(fn) {
-      const ubicAntes = SIM.pallets.filter(p => p.ubicacion).length;
-      const backup = JSON.parse(JSON.stringify(CONFIG.layout));
-      const backupPal = JSON.parse(JSON.stringify(CFG.paletasPorRampa));
-      fn();
-      rebuildRampas();
-      reasignarUbicaciones();
-      const ubicDespues = SIM.pallets.filter(p => p.ubicacion).length;
-      if (ubicDespues < ubicAntes) {
-        const diff = ubicAntes - ubicDespues;
-        if (!confirm(`⚠ Este cambio deja ${diff} pallet(s) sin ubicación.\n\n¿Aplicarlo de todas formas?`)) {
-          CONFIG.layout = backup; CFG.paletasPorRampa = backupPal;
-          rebuildRampas(); reasignarUbicaciones();
-          renderEnvios(); if (!viewPlano.hidden) dibujar();
-          return false;
-        }
-      }
-      guardarConfig();
-      renderEnvios(); pintarCfg();
-      if (!viewPlano.hidden) dibujar();
-      if (!viewConfig.hidden) renderConfigView();
-      return true;
-    }
-
-    function renderConfigView() {
-      cfgEstado.innerHTML = `${rampas.length} rampas · ${SIM.pallets.length} pallets` + (CFG.bloqueado ? ' · bloqueada' : '');
-      cfgContent.innerHTML = '';
-      if (tabActiva === 'layout') renderLayoutTab(cfgContent);
-      else if (tabActiva === 'operacion') renderOperacionTab(cfgContent);
-      else renderDefaultsTab(cfgContent);
-    }
-
-    /* ---------- Layout ---------- */
-    function renderLayoutTab(container) {
-      if (CFG.bloqueado) { const a = el('div', 'alert-box', container); a.textContent = '⚠ Configuración bloqueada · desbloquéala arriba para editar.'; }
-      const dis = CFG.bloqueado;
-
-      const secR = el('section', 'cfg-section', container);
-      secR.innerHTML = `<h2>Rango de rampas <small>rampas activas del andén</small></h2>
-    <div class="cfg-card"><div class="cfg-row">
-      <label>Desde <input type="number" id="cfgRampaDesde" min="1" max="99" step="1" value="${CONFIG.layout.rampas.desde}" ${dis ? 'disabled' : ''}></label>
-      <label>Hasta <input type="number" id="cfgRampaHasta" min="1" max="99" step="1" value="${CONFIG.layout.rampas.hasta}" ${dis ? 'disabled' : ''}></label>
-      <span style="color:var(--muted);font-size:12.5px;font-weight:600">${rampas.length} rampas · ${totalPaletasAnden()} paletas asignadas</span>
-    </div></div>`;
-      if (!dis) {
-        const setR = () => {
-          const d = clamp(int(document.getElementById('cfgRampaDesde').value) || 1, 1, 99);
-          const h = clamp(int(document.getElementById('cfgRampaHasta').value) || d, d, 99);
-          if (d === CONFIG.layout.rampas.desde && h === CONFIG.layout.rampas.hasta) return;
-          aplicarCambioSeguro(() => { CONFIG.layout.rampas.desde = d; CONFIG.layout.rampas.hasta = h; });
-        };
-        document.getElementById('cfgRampaDesde').addEventListener('change', setR);
-        document.getElementById('cfgRampaHasta').addEventListener('change', setR);
-      }
-
-      const grilla = (titulo, idp, lista, clDe, setCl, nombre) => {
-        const sec = el('section', 'cfg-section', container);
-        sec.innerHTML = `<h2>${titulo} <small>clic para cambiar: — → C1 → C2 → C3 → —</small></h2>`;
-        const fb = el('div', 'filtro-box', sec);
-        el('div', 'filtro-linea', fb).innerHTML = `<span>Ver:</span>
-      <select id="filtroCl${idp}"><option value="">Todos</option><option value="1">Solo C1</option><option value="2">Solo C2</option><option value="3">Solo C3</option><option value="0">Sin asignar</option></select>
-      <label>Nº <input type="text" id="buscar${idp}" placeholder="ej: 5, 12" style="width:110px"></label>`;
-        el('div', 'filtro-linea', fb).innerHTML = `<span>Cambiar varios:</span>
-      <label>Desde <input type="number" id="desde${idp}" placeholder="—" min="0" max="99"></label>
-      <label>Hasta <input type="number" id="hasta${idp}" placeholder="—" min="0" max="99"></label>
-      <span>→</span>
-      <select id="aplicarCl${idp}"><option value="1">C1</option><option value="2">C2</option><option value="3">C3</option><option value="0">Sin asignar</option></select>
-      <button type="button" class="btn-accion primario" id="aplicar${idp}" ${dis ? 'disabled' : ''}>Aplicar</button>`;
-        const grid = el('div', 'slots-grid', sec);
-        const pintar = () => {
-          grid.innerHTML = '';
-          const filtCl = document.getElementById('filtroCl' + idp).value;
-          const busq = document.getElementById('buscar' + idp).value.trim();
-          const nums = busq ? busq.split(/[,\s]+/).map(x => parseInt(x, 10)).filter(x => !isNaN(x)) : null;
-          for (const n of lista) {
-            const c = clNum(clDe(n));
-            const b = el('button', 'slot-btn', grid); b.type = 'button'; b.dataset.cl = String(c); b.dataset.n = String(n); b.disabled = dis;
-            b.innerHTML = `<span class="n">${n}</span><span class="c">${clTag(c)}</span>`;
-            if ((filtCl !== '' && String(c) !== filtCl) || (nums && !nums.includes(n))) b.classList.add('dim');
-            b.onclick = () => { const o = clDe(n); const ciclo = o === null || o === undefined ? 1 : o === 1 ? 2 : o === 2 ? 3 : null; aplicarCambioSeguro(() => setCl(n, ciclo)); };
-          }
-        };
-        pintar();
-        document.getElementById('filtroCl' + idp).addEventListener('change', pintar);
-        document.getElementById('buscar' + idp).addEventListener('input', pintar);
-        document.getElementById('aplicar' + idp).onclick = () => {
-          const d = int(document.getElementById('desde' + idp).value), h = int(document.getElementById('hasta' + idp).value);
-          const clv = document.getElementById('aplicarCl' + idp).value;
-          const nuevo = clv === '0' ? null : parseInt(clv, 10);
-          if (!d || !h) { alert('Completa desde y hasta.'); return; }
-          const afect = lista.filter(n => n >= Math.min(d, h) && n <= Math.max(d, h));
-          if (!afect.length) { alert(`Ningún ${nombre} en ese rango.`); return; }
-          aplicarCambioSeguro(() => { for (const n of afect) setCl(n, nuevo); });
-        };
-      };
-      grilla('Asignación de rampas', 'R', rampas, n => CONFIG.layout.rampaCluster[n], (n, v) => { CONFIG.layout.rampaCluster[n] = v; }, 'rampa');
-      grilla('Asignación de pasillos', 'P', Array.from({ length: 24 }, (_, i) => i + 1), n => CONFIG.layout.pasilloCluster[n], (n, v) => { CONFIG.layout.pasilloCluster[n] = v; }, 'pasillo');
-
-      const secO = el('section', 'cfg-section', container);
-      secO.innerHTML = `<h2>Orden de asignación por cluster <small>si un cluster tiene rampas y pasillos, ¿qué se llena primero?</small></h2>`;
-      const gridO = el('div', 'orden-grid', el('div', 'cfg-card', secO));
-      for (const cl of [1, 2, 3]) {
-        const item = el('div', 'orden-item', gridO);
-        const bdg = el('span', 'badge', item); bdg.dataset.cl = String(cl); bdg.textContent = `C${cl}`;
-        const sel = el('select', '', item); sel.disabled = dis;
-        sel.innerHTML = `<option value="rampas_primero">Rampas primero</option><option value="pasillos_primero">Pasillos primero</option>`;
-        sel.value = CONFIG.layout.ordenAsignacion[cl] || 'rampas_primero';
-        sel.addEventListener('change', () => aplicarCambioSeguro(() => { CONFIG.layout.ordenAsignacion[cl] = sel.value; }));
-      }
-
-      const secRes = el('section', 'cfg-section', container);
-      secRes.innerHTML = `<h2>Resumen</h2>`;
-      const resumen = el('div', 'resumen', secRes);
-      let sinR = 0, sinP = 0;
-      for (const n of rampas) if (CONFIG.layout.rampaCluster[n] === null || CONFIG.layout.rampaCluster[n] === undefined) sinR++;
-      for (let p = 1; p <= 24; p++) if (CONFIG.layout.pasilloCluster[p] === null || CONFIG.layout.pasilloCluster[p] === undefined) sinP++;
-      for (const cl of [1, 2, 3]) {
-        const c = slotsDeClusterCount(cl);
-        const palletsCl = SIM.pallets.filter(p => p.cluster === cl).length;
-        const ubicadosCl = SIM.pallets.filter(p => p.cluster === cl && p.ubicacion).length;
-        const faltan = palletsCl - ubicadosCl;
-        el('div', 'cl-row', resumen).innerHTML = `<span class="cl-badge c${cl}">C${cl}</span>
-      <div class="info"><strong>Cluster ${cl}</strong><div class="meta">${c.rampas_n} rampa(s) + ${c.pasillos_n} pasillo(s) · ${c.total_slots} posiciones · ${ubicadosCl}/${palletsCl} pallets ubicados${faltan > 0 ? `<span class="err"> · ⚠ ${faltan} sin ubicar</span>` : ''}</div></div>`;
-      }
-      el('div', 'cl-row', resumen).innerHTML = `<span class="cl-badge c0">—</span><div class="info"><strong>Sin asignar</strong><div class="meta">${sinR} rampa(s) + ${sinP} pasillo(s) (no se usan)</div></div>`;
-      if (SIM.sinUbicar && SIM.sinUbicar.length) {
-        const a = el('div', 'alert-box', secRes); a.style.marginTop = '12px';
-        a.textContent = `⚠ ${SIM.sinUbicar.length} pallet(s) sin ubicación. Amplía la asignación o reduce los pallets del Excel.`;
-      }
-    }
-
-    /* ---------- Operación ---------- */
-    function renderOperacionTab(container) {
-      const dis = CFG.bloqueado;
-      if (dis) { const a = el('div', 'alert-box', container); a.textContent = '⚠ Configuración bloqueada.'; }
-      const sec = el('section', 'cfg-section', container);
-      sec.innerHTML = `<h2>Parámetros de operación</h2>
-    <div class="cfg-card">
-      <div class="cfg-row"><label>Operarios <input type="number" id="opOps" min="1" max="99" step="1" value="${CFG.operarios}" ${dis ? 'disabled' : ''}></label></div>
-      <div class="cfg-row"><label>Bultos / hora · operario <input type="number" id="opBpH" min="1" max="9999" step="1" value="${CFG.bultosHora}" ${dis ? 'disabled' : ''}></label></div>
-      <div class="info-box" style="margin-top:6px;margin-bottom:0">Capacidad total: <b>${CFG.operarios * CFG.bultosHora}</b> bultos/hora</div>
-    </div>`;
-      if (!dis) {
-        document.getElementById('opOps').addEventListener('change', e => { const v = clamp(int(e.target.value) || 6, 1, 99); e.target.value = v; if (v === CFG.operarios) return; CFG.operarios = v; guardarConfig(); renderEnvios(); renderConfigView(); });
-        document.getElementById('opBpH').addEventListener('change', e => { const v = clamp(int(e.target.value) || 120, 1, 9999); e.target.value = v; if (v === CFG.bultosHora) return; CFG.bultosHora = v; guardarConfig(); renderEnvios(); renderConfigView(); });
-      }
-      const secP = el('section', 'cfg-section', container);
-      secP.innerHTML = `<h2>Paletas por rampa <small>0–30 · solo cuenta si la rampa tiene cluster</small></h2>`;
-      const cardP = el('div', 'cfg-card', secP);
-      const grid = el('div', 'paletas-grid', cardP);
-      for (const n of rampas) {
-        const item = el('div', 'item', grid);
-        const cl = CONFIG.layout.rampaCluster[n];
-        el('span', '', item).textContent = `R${n}${cl ? ` · C${cl}` : ' · —'}`;
-        const inp = el('input', '', item);
-        inp.type = 'number'; inp.min = 0; inp.max = 30; inp.step = 1; inp.value = CFG.paletasPorRampa[n]; inp.disabled = dis;
-        inp.addEventListener('change', () => { const v = clamp(int(inp.value) || 0, 0, 30); inp.value = v; if (v === CFG.paletasPorRampa[n]) return; aplicarCambioSeguro(() => { CFG.paletasPorRampa[n] = v; }); });
-      }
-      const row = el('div', 'btn-row', cardP);
-      const b5 = el('button', 'btn-accion', row); b5.textContent = 'Todas a 5'; b5.disabled = dis;
-      b5.onclick = () => aplicarCambioSeguro(() => { for (const n of rampas) CFG.paletasPorRampa[n] = 5; });
-      const b10 = el('button', 'btn-accion', row); b10.textContent = 'Todas a 10'; b10.disabled = dis;
-      b10.onclick = () => aplicarCambioSeguro(() => { for (const n of rampas) CFG.paletasPorRampa[n] = 10; });
-      const b0 = el('button', 'btn-accion', row); b0.textContent = 'Todas a 0'; b0.disabled = dis;
-      b0.onclick = () => { if (!confirm('¿Poner todas las rampas en 0 paletas?')) return; aplicarCambioSeguro(() => { for (const n of rampas) CFG.paletasPorRampa[n] = 0; }); };
-    }
-
-    /* ---------- Defaults ---------- */
-    function renderDefaultsTab(container) {
-      const sec1 = el('section', 'cfg-section', container);
-      sec1.innerHTML = `<h2>Guardar / restaurar</h2><div class="info-box">La configuración se guarda sola. Aquí puedes fijar un "default" al que volver.</div>`;
-      const row1 = el('div', 'btn-row', el('div', 'cfg-card', sec1)); row1.style.marginTop = '0';
-      const bG = el('button', 'btn-accion primario', row1); bG.textContent = 'Guardar como default';
-      bG.onclick = () => { try { localStorage.setItem(STORAGE_KEY + ':default', JSON.stringify(CONFIG)); alert('✓ Guardado.'); } catch (e) { alert('Error: ' + e.message); } };
-      const bR = el('button', 'btn-accion', row1); bR.textContent = '↺ Restaurar default';
-      bR.onclick = () => {
-        const raw = localStorage.getItem(STORAGE_KEY + ':default');
-        if (!raw) { alert('No hay un default guardado.'); return; }
-        if (!confirm('¿Restaurar el default? Se pierden los cambios actuales.')) return;
-        try { Object.assign(CONFIG, deepMerge(defaultConfig(), JSON.parse(raw))); rebuildRampas(); guardarConfig(); reasignarUbicaciones(); renderEnvios(); pintarCfg(); renderConfigView(); alert('✓ Restaurado.'); }
-        catch (e) { alert('Error: ' + e.message); }
-      };
-      const bB = el('button', 'btn-accion peligro', row1); bB.textContent = 'Borrar default';
-      bB.onclick = () => { if (!confirm('¿Borrar el default guardado?')) return; localStorage.removeItem(STORAGE_KEY + ':default'); alert('✓ Borrado.'); };
-
-      const sec2 = el('section', 'cfg-section', container);
-      sec2.innerHTML = `<h2>Exportar / importar</h2><div class="info-box">Comparte la configuración como archivo JSON.</div>`;
-      const card2 = el('div', 'cfg-card', sec2);
-      const row2 = el('div', 'btn-row', card2); row2.style.marginTop = '0';
-      const bE = el('button', 'btn-accion', row2); bE.textContent = '⬇ Exportar JSON';
-      bE.onclick = () => {
-        const url = URL.createObjectURL(new Blob([JSON.stringify(CONFIG, null, 2)], { type: 'application/json' }));
-        const a = document.createElement('a'); a.href = url; a.download = `config-${new Date().toISOString().slice(0, 10)}.json`; a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-      };
-      const fileInp = document.createElement('input'); fileInp.type = 'file'; fileInp.accept = '.json'; fileInp.hidden = true; card2.appendChild(fileInp);
-      const bI = el('button', 'btn-accion', row2); bI.textContent = '⬆ Importar JSON';
-      bI.onclick = () => fileInp.click();
-      fileInp.onchange = () => {
-        const f = fileInp.files[0]; if (!f) return;
-        const reader = new FileReader();
-        reader.onload = ev => {
-          try {
-            const obj = JSON.parse(ev.target.result);
-            if (!obj.layout || !obj.operacion) throw new Error('Estructura inválida');
-            if (!confirm('¿Reemplazar la configuración actual?')) return;
-            Object.assign(CONFIG, deepMerge(defaultConfig(), obj));
-            rebuildRampas(); guardarConfig(); reasignarUbicaciones(); renderEnvios(); pintarCfg(); renderConfigView();
-            alert('✓ Importado.');
-          } catch (e) { alert('Error: ' + e.message); }
-        };
-        reader.readAsText(f); fileInp.value = '';
-      };
-
-      const sec3 = el('section', 'cfg-section', container);
-      sec3.innerHTML = `<h2>Reinicios</h2><div class="info-box">Reinicia la simulación sin tocar la configuración.</div>`;
-      const row3 = el('div', 'btn-row', el('div', 'cfg-card', sec3)); row3.style.marginTop = '0';
-      const bRS = el('button', 'btn-accion peligro', row3); bRS.textContent = '↺ Reiniciar simulación';
-      bRS.onclick = () => { if (!confirm('¿Reiniciar la simulación?')) return; resetSim(); renderEnvios(); renderConfigView(); };
-      const bRT = el('button', 'btn-accion peligro', row3); bRT.textContent = '⟲ Reset total (fábrica)';
-      bRT.onclick = () => {
-        if (!confirm('¿Borrar TODA la configuración y volver a fábrica?')) return;
-        localStorage.removeItem(STORAGE_KEY); localStorage.removeItem(STORAGE_KEY + ':default'); localStorage.removeItem('canalesAbiertos');
-        Object.assign(CONFIG, defaultConfig()); rebuildRampas(); guardarConfig(); resetSim(); renderEnvios(); pintarCfg(); renderConfigView();
-        alert('✓ Configuración de fábrica.');
-      };
-    }
-
-    /* ============================================================
-       IMPORTAR EXCEL
-       ============================================================ */
-    function importarExcel(file) {
-      if (typeof XLSX === 'undefined') { alert('No se pudo cargar la librería de Excel. Revisa tu conexión a internet.'); return; }
-      const reader = new FileReader();
-      reader.onload = ev => {
-        try {
-          const wb = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
-          const ws = wb.Sheets[wb.SheetNames[0]];
-          if (!ws) throw new Error('El archivo no tiene hojas');
-          const rows = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false });
-          let headerIdx = -1;
-          for (let i = 0; i < rows.length; i++) { const r = rows[i]; if (r && r[0] && /^RUTAS?$/i.test(String(r[0]).trim())) { headerIdx = i; break; } }
-          if (headerIdx === -1) throw new Error('No se encontró el encabezado (RUTAS · LOCAL · BULTOS · CLUSTER · 1 ENVIO · 2 ENVIO · 3 ENVIO)');
-          const parsed = [], errores = [];
-          for (let i = headerIdx + 1; i < rows.length; i++) {
-            const r = rows[i]; if (!r) continue;
-            const ruta = parseInt(r[0], 10) || 0;
-            const local = String(r[1] || '').trim();
-            if (!ruta && !local) continue;
-            const cluster = parseInt(r[3], 10) || 0;
-            const e1 = parseInt(r[4], 10) || 0, e2 = parseInt(r[5], 10) || 0, e3 = parseInt(r[6], 10) || 0;
-            if (!ruta) { errores.push(`Fila ${i + 1}: ruta inválida`); continue; }
-            if (!local) { errores.push(`Fila ${i + 1}: local vacío`); continue; }
-            if (![1, 2, 3].includes(cluster)) { errores.push(`Fila ${i + 1}: cluster "${r[3]}" no válido`); continue; }
-            if (e1 + e2 + e3 <= 0) { errores.push(`Fila ${i + 1}: sin bultos`); continue; }
-            parsed.push({ ruta, local, cluster, envios: [e1, e2, e3] });
-          }
-          if (!parsed.length) throw new Error('No hay filas válidas. ' + errores.slice(0, 3).join(' · '));
-          DATOS = parsed; escribir('simDatos', parsed);
-          resetSim(); renderEnvios(); pintarCfg();
-          if (!viewPlano.hidden) dibujar({ abajo: true });
-          if (!viewConfig.hidden) renderConfigView();
-          const rutas = new Set(parsed.map(p => p.ruta));
-          const totalB = parsed.reduce((s, p) => s + p.envios.reduce((a, x) => a + x, 0), 0);
-          let msg = `✓ ${parsed.length} filas · ${rutas.size} rutas · ${totalB} bultos`;
-          if (SIM.sinUbicar.length) msg += `\n\n⚠ ${SIM.sinUbicar.length} pallet(s) sin ubicación. Asigna más pasillos o rampas a su cluster.`;
-          if (errores.length) msg += `\n${errores.length} fila(s) con problemas: ${errores.slice(0, 3).join(' · ')}`;
-          alert(msg);
-        } catch (err) { alert('Error al importar: ' + err.message); }
-      };
-      reader.readAsArrayBuffer(file);
-    }
-    document.getElementById('fileInput').addEventListener('change', e => { const f = e.target.files[0]; if (f) importarExcel(f); e.target.value = ''; });
-    document.getElementById('importBtn').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.getElementById('fileInput').click(); } });
-
-    /* ===== Arranque ===== */
-    pintarCfg();
-    pintarPanel();
-    resetSim();
-    renderEnvios();
-    dibujar({ inicio: true });
-    let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (!viewPlano.hidden) dibujar(); }, 80); });
+    let t;
+    window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(maquetar, 60); });
+    maquetar();
   </script>
 </body>
 

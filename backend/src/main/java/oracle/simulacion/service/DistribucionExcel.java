@@ -443,7 +443,9 @@ final class DistribucionExcel {
   /**
    * Ficha: borde izquierdo grueso del color del grupo (gris sin grupo), fondo rosado en un buff. En
    * las filas de fichas solo la última columna lleva borde derecho: el borde de la celda vecina
-   * taparía la pestaña del grupo de la siguiente.
+   * taparía la pestaña del grupo de la siguiente. «Reducir hasta ajustar»: Excel en Windows dibuja
+   * la columna más angosta que en Mac y una ficha con bultos de 4 cifras perdería la letra del final;
+   * así se achica un poco en vez de cortarse (donde cabe, no cambia).
    */
   private XSSFCellStyle estiloFicha(String colorGrupo, boolean buff, boolean ultimaCol) {
     String grupo = colorGrupo == null ? null : colorGrupo.substring(1).toUpperCase(Locale.ROOT);
@@ -452,6 +454,7 @@ final class DistribucionExcel {
         (k) -> {
           XSSFCellStyle s = base(buff ? ROJO_SUAVE : "FFFFFF", fuente(10, true, TINTA), HorizontalAlignment.LEFT);
           s.setIndention((short) 1);
+          s.setShrinkToFit(true);
           bordes(s, BorderStyle.THIN, BORDE_FICHA, BorderStyle.THIN, BORDE_FICHA);
           s.setBorderLeft(grupo == null ? BorderStyle.THIN : BorderStyle.THICK);
           s.setLeftBorderColor(color(grupo == null ? BORDE : grupo));

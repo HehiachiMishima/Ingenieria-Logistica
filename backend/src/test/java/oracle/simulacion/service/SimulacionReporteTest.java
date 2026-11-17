@@ -110,6 +110,8 @@ class SimulacionReporteTest {
       // Borde izquierdo grueso del color del grupo, como la pestaña de la ficha.
       assertEquals(BorderStyle.THICK, diaria.getCellStyle().getBorderLeft());
       assertEquals("FF7C3AED", diaria.getCellStyle().getLeftBorderXSSFColor().getARGBHex());
+      // Si la columna se dibuja más angosta (Excel en Windows), la ficha se achica en vez de cortarse.
+      assertTrue(diaria.getCellStyle().getShrinkToFit(), "la ficha no se corta: reduce hasta ajustar");
 
       XSSFCell lxv = buscar(hoja, "A  3001   ■ 20   L");
       XSSFCell mjs = buscar(hoja, "A  4001   ■ 31   M");
