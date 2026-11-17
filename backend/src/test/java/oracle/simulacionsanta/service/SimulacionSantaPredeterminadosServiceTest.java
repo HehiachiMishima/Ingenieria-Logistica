@@ -22,6 +22,7 @@ import oracle.common.config.Transacciones;
 import oracle.common.exception.SolicitudInvalidaException;
 import oracle.common.response.ApiResponse;
 import oracle.simulacionsanta.model.OrdenLlenado;
+import oracle.simulacionsanta.repository.Candado;
 import oracle.simulacionsanta.repository.PredeterminadosGuardados;
 import oracle.simulacionsanta.repository.SimulacionSantaLotesRepository;
 import oracle.simulacionsanta.request.ConfiguracionRequest;
@@ -31,8 +32,12 @@ import oracle.simulacionsanta.response.ConfiguracionResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/** Candado de operarios y productividad de Santa Anita: ver, bloquear y desbloquear, sin BD. */
+/** Candado de la configuración de Santa Anita: ver, bloquear y desbloquear, sin BD. */
 class SimulacionSantaPredeterminadosServiceTest {
+
+  private static final Instant EN = Instant.parse("2026-11-17T10:00:00Z");
+  private static final List<String> ORDEN =
+      List.of("RAMPAS_PRIMERO", "PASILLOS_PRIMERO", "PASILLOS_PRIMERO");
 
   private SimulacionSantaLotesRepository lotes;
   private SimulacionSantaPredeterminadosService servicio;
@@ -49,40 +54,37 @@ class SimulacionSantaPredeterminadosServiceTest {
 
   @Test
   void bloquearGuardaTodoConCandadoYLoLlevaALosPendientes() {
-    when(lotes.aplicarPredeterminados(eq(9), eq(150), any(), any())).thenReturn(2);
+    when(lotes.aplicarPredeterminados(eq(9), eq(150), eq(ORDEN), any(), any())).thenReturn(2);
+    when(lotes.predeterminados(false))
+        .thenReturn(guardados(9, 150, new Candado(true, "Ana Pérez", EN)));
 
     ApiResponse<ConfiguracionResponse> respuesta = servicio.bloquear(pedido(9, 150, 2));
 
-    // Toda la configuración queda como predeterminada (también clusters y orden), con candado.
+    // Toda la configuración queda como predeterminada, con candado, y se aplica completa.
     verify(lotes)
-        .guardarPredeterminados(
-            eq(9),
-            eq(150),
-            eq(List.of("RAMPAS_PRIMERO", "PASILLOS_PRIMERO", "PASILLOS_PRIMERO")),
-            any(),
-            eq(true),
-            any(),
-            any());
-    verify(lotes).aplicarPredeterminados(eq(9), eq(150), any(), any());
+        .guardarPredeterminados(eq(9), eq(150), eq(ORDEN), any(), eq(true), any(), any());
+    verify(lotes).aplicarPredeterminados(eq(9), eq(150), eq(ORDEN), any(), any());
     ConfiguracionResponse datos = respuesta.datos();
     assertNull(datos.registroId());
     assertTrue(datos.bloqueado());
+    assertEquals("Ana Pérez", datos.bloqueadoPor());
+    assertEquals(EN, datos.bloqueadoEn());
     assertEquals(9, datos.operarios());
-    assertEquals(150, datos.bultosHora());
-    assertEquals(2, datos.rampas().getFirst().cluster());
     assertEquals(
-        "Operarios y productividad bloqueados para todos los registros;"
-            + " se aplicaron a 2 registro(s) pendiente(s).",
+        "Configuración bloqueada para todos los registros;"
+            + " se aplicó a 2 registro(s) pendiente(s).",
         respuesta.mensaje());
   }
 
   @Test
   void bloquearSinPendientesNoMencionaLaCuenta() {
-    when(lotes.aplicarPredeterminados(anyInt(), anyInt(), any(), any())).thenReturn(0);
+    when(lotes.aplicarPredeterminados(anyInt(), anyInt(), anyList(), any(), any())).thenReturn(0);
+    when(lotes.predeterminados(false))
+        .thenReturn(guardados(6, 120, new Candado(true, "Ana Pérez", EN)));
 
     ApiResponse<ConfiguracionResponse> respuesta = servicio.bloquear(pedido(6, 120, 1));
 
-    assertEquals("Operarios y productividad bloqueados para todos los registros.", respuesta.mensaje());
+    assertEquals("Configuración bloqueada para todos los registros.", respuesta.mensaje());
   }
 
   @Test
@@ -91,12 +93,11 @@ class SimulacionSantaPredeterminadosServiceTest {
 
     verify(lotes, never())
         .guardarPredeterminados(anyInt(), anyInt(), anyList(), anyList(), anyBoolean(), any(), any());
-    verify(lotes, never()).aplicarPredeterminados(anyInt(), anyInt(), any(), any());
+    verify(lotes, never()).aplicarPredeterminados(anyInt(), anyInt(), anyList(), any(), any());
   }
 
   @Test
-  void desbloquearConservaLosValores() {
-    Instant en = Instant.parse("2026-11-17T10:00:00Z");
+  void desbloquearConservaLosValoresYVaciaQuienYCuando() {
     when(lotes.predeterminados(false))
         .thenReturn(
             new PredeterminadosGuardados(
@@ -104,8 +105,8 @@ class SimulacionSantaPredeterminadosServiceTest {
                 150,
                 List.of("PASILLOS_PRIMERO", "PASILLOS_PRIMERO", "RAMPAS_PRIMERO"),
                 7L,
-                en,
-                false,
+                EN,
+                Candado.ABIERTO,
                 List.of()));
 
     ApiResponse<ConfiguracionResponse> respuesta = servicio.desbloquear();
@@ -113,28 +114,28 @@ class SimulacionSantaPredeterminadosServiceTest {
     verify(lotes).desbloquearPredeterminados(any(), any());
     verify(lotes, never())
         .guardarPredeterminados(anyInt(), anyInt(), anyList(), anyList(), anyBoolean(), any(), any());
-    verify(lotes, never()).aplicarPredeterminados(anyInt(), anyInt(), any(), any());
+    verify(lotes, never()).aplicarPredeterminados(anyInt(), anyInt(), anyList(), any(), any());
     ConfiguracionResponse datos = respuesta.datos();
     assertFalse(datos.bloqueado());
+    assertNull(datos.bloqueadoPor());
+    assertNull(datos.bloqueadoEn());
     assertNull(datos.registroId());
     assertEquals(9, datos.operarios());
     assertEquals(150, datos.bultosHora());
     assertEquals(OrdenLlenado.RAMPAS_PRIMERO, datos.ordenClusters().get(2));
-    assertEquals(7L, datos.actualizadoPor());
-    assertEquals(en, datos.actualizadoEn());
+    assertEquals("Configuración desbloqueada: cámbiala y vuelve a bloquearla.", respuesta.mensaje());
   }
 
   @Test
-  void verDevuelveElCandado() {
+  void verDevuelveElCandadoConQuienYCuando() {
     when(lotes.predeterminados(false))
-        .thenReturn(
-            new PredeterminadosGuardados(
-                8, 130, List.of("RAMPAS_PRIMERO", "PASILLOS_PRIMERO", "PASILLOS_PRIMERO"), 3L,
-                Instant.parse("2026-11-17T10:00:00Z"), true, List.of()));
+        .thenReturn(guardados(8, 130, new Candado(true, "Ana Pérez", EN)));
 
     ConfiguracionResponse datos = servicio.ver().datos();
 
     assertTrue(datos.bloqueado());
+    assertEquals("Ana Pérez", datos.bloqueadoPor());
+    assertEquals(EN, datos.bloqueadoEn());
     assertEquals(8, datos.operarios());
   }
 
@@ -143,25 +144,38 @@ class SimulacionSantaPredeterminadosServiceTest {
     ConfiguracionResponse datos = servicio.ver().datos();
 
     assertFalse(datos.bloqueado());
+    assertNull(datos.bloqueadoPor());
+    assertNull(datos.bloqueadoEn());
     assertEquals(ConfiguracionSanta.OPERARIOS_FABRICA, datos.operarios());
     assertEquals(ConfiguracionSanta.BULTOS_HORA_FABRICA, datos.bultosHora());
     assertNull(datos.actualizadoPor());
   }
 
+  private static PredeterminadosGuardados guardados(int operarios, int bultosHora, Candado candado) {
+    return new PredeterminadosGuardados(operarios, bultosHora, ORDEN, 3L, EN, candado, List.of());
+  }
+
   /** Configuración de fábrica con otros operarios, bultos por hora y cluster de las rampas. */
   static ConfiguracionRequest pedido(int operarios, int bultosHora, int clusterRampas) {
+    return pedido(operarios, bultosHora, clusterRampas, ORDEN, null);
+  }
+
+  /**
+   * Configuración de fábrica con otros operarios, bultos por hora, cluster de las rampas, orden
+   * de llenado y, si no es null, otras posiciones en todas las rampas.
+   */
+  static ConfiguracionRequest pedido(
+      int operarios, int bultosHora, int clusterRampas, List<String> orden, Integer posiciones) {
     ConfiguracionSanta fabrica = ConfiguracionSanta.fabrica();
     List<RampaRequest> rampas =
         fabrica.rampas().stream()
-            .map((r) -> new RampaRequest(r.numero(), clusterRampas, r.posiciones()))
+            .map(
+                (r) ->
+                    new RampaRequest(
+                        r.numero(), clusterRampas, posiciones == null ? r.posiciones() : posiciones))
             .toList();
     List<PasilloRequest> pasillos =
         fabrica.pasillos().stream().map((p) -> new PasilloRequest(p.numero(), p.cluster())).toList();
-    return new ConfiguracionRequest(
-        operarios,
-        bultosHora,
-        List.of("RAMPAS_PRIMERO", "PASILLOS_PRIMERO", "PASILLOS_PRIMERO"),
-        rampas,
-        pasillos);
+    return new ConfiguracionRequest(operarios, bultosHora, orden, rampas, pasillos);
   }
 }

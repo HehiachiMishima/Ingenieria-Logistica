@@ -1,0 +1,42 @@
+<!-- Con muchos envíos la tabla crece a lo ancho: el marco tiene su propio scroll horizontal. -->
+<div class="marco" tabindex="0" role="region" aria-label="Avance de cada cluster por envío">
+  <table class="tabla" [style.--envios]="envios().length">
+    <thead>
+      <tr>
+        <th scope="col">Cluster</th>
+        @for (n of envios(); track n) {
+          <th scope="col" [class.actual]="n === envioActual()">Al terminar el envío {{ n }}</th>
+        }
+      </tr>
+    </thead>
+    <tbody>
+      @for (c of clusters(); track c.cluster) {
+        <tr [style.--cl]="colorCluster(c.cluster)">
+          <th scope="row">
+            <div class="cl">
+              <span class="cl__nombre"><i aria-hidden="true"></i>C{{ c.cluster }}</span>
+              <span class="cl__dato">{{ entero(c.paletas) }} paletas · {{ entero(c.bultos) }} bultos</span>
+              <span class="cl__dato">{{ c.rampas }} rampas · {{ c.pasillos }} pasillos</span>
+              @for (a of c.avisos; track a.codigo) {
+                <span class="aviso" [class.aviso--mal]="a.codigo === 'U2'"><b>{{ a.codigo }}</b> {{ a.texto }}</span>
+              }
+            </div>
+          </th>
+          @for (e of c.envios; track e.envio) {
+            <td [class.actual]="e.envio === envioActual()">
+              <span class="avance" aria-hidden="true"><i [style.width.%]="e.avance"></i></span>
+              <span class="celda__pct">{{ porciento(e.avance) }}</span>
+              <span class="celda__dato">{{ entero(e.paletasCompletas) }}/{{ entero(c.paletas) }} paletas completas</span>
+              <span class="celda__dato">
+                +{{ entero(e.bultos) }} bultos ·
+                <b [title]="'Operarios para descargar ' + entero(e.bultos) + ' bultos de C' + c.cluster + ' dentro de la ventana'">
+                  {{ e.operarios ?? '—' }} op.
+                </b>
+              </span>
+            </td>
+          }
+        </tr>
+      }
+    </tbody>
+  </table>
+</div>

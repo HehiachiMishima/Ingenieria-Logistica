@@ -62,7 +62,7 @@ export class ConfiguracionSantaStore {
   /** Bloqueando o desbloqueando el candado. */
   readonly bloqueando = signal(false);
 
-  /** Candado global: operarios y productividad no se cambian en ningún registro. */
+  /** Candado global: ninguna parte de la configuración se cambia en ningún registro. */
   readonly bloqueado = computed(() => this.configuracion()?.bloqueado ?? false);
 
   readonly hayCambios = computed(() => {
@@ -186,9 +186,10 @@ export class ConfiguracionSantaStore {
 
   /* ---------- edición del borrador ---------- */
 
+  /** Toda edición pasa por aquí: con candado no se cambia nada (el servidor también lo rechaza). */
   private editar(cambio: (b: ConfiguracionSantaRequest) => ConfiguracionSantaRequest): void {
     const actual = this.borrador();
-    if (!actual) {
+    if (!actual || this.bloqueado()) {
       return;
     }
     this.borrador.set(cambio(actual));
@@ -222,9 +223,6 @@ export class ConfiguracionSantaStore {
   }
 
   fijarOperacion(operarios: number, bultosHora: number): void {
-    if (this.bloqueado()) {
-      return;
-    }
     this.editar((b) => ({
       ...b,
       operarios: Math.max(1, Math.min(99, Math.round(operarios) || 1)),
@@ -262,10 +260,12 @@ export class ConfiguracionSantaStore {
   }
 
   /**
-   * Candado (como Simulación Supply Chain). Bloquear fija los operarios y la
-   * productividad del borrador para todos los registros: el servidor los aplica a
-   * los pendientes y los nuevos nacen con esta configuración completa. Los
-   * registros en curso o completos conservan los suyos. Desbloquear los abre.
+   * Candado (como Simulación Supply Chain) sobre TODA la configuración de
+   * Asignar. Bloquear toma lo que se ve (con los cambios sin guardar) como
+   * estándar: el servidor lo aplica a los registros pendientes y los nuevos nacen
+   * con él; los en curso o completos conservan la suya. Luego se recarga el
+   * registro: si estaba pendiente ya tiene el estándar; si no, se ve la suya, en
+   * solo lectura. Desbloquear abre la edición sin cambiar ningún registro.
    */
   alternarBloqueo(): void {
     const borrador = this.borrador();
@@ -282,15 +282,14 @@ export class ConfiguracionSantaStore {
           takeUntilDestroyed(this.destroyRef),
         )
         .subscribe(() => {
-          this.configuracion.update((c) => (c ? { ...c, bloqueado: false } : c));
+          this.configuracion.update((c) => (c ? { ...c, bloqueado: false, bloqueadoPor: null, bloqueadoEn: null } : c));
           this.notificaciones.exito(
-            'Operarios y productividad desbloqueados',
-            'Cámbialos y vuelve a bloquearlos para todos los registros.',
+            'Configuración desbloqueada',
+            'Cámbiala y vuelve a bloquearla para todos los registros.',
           );
         });
       return;
     }
-    const pendiente = (this.registro()?.envioActual ?? 0) === 0;
     this.api
       .bloquearPredeterminados(borrador)
       .pipe(
@@ -298,25 +297,10 @@ export class ConfiguracionSantaStore {
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe(() => {
-        // Pendiente: el servidor ya le aplicó los valores. Si no, conserva los suyos.
-        this.configuracion.update((c) =>
-          c
-            ? pendiente
-              ? { ...c, operarios: borrador.operarios, bultosHora: borrador.bultosHora, bloqueado: true }
-              : { ...c, bloqueado: true }
-            : c,
-        );
-        if (!pendiente) {
-          this.borrador.update((b) => (b ? { ...b, operarios: config.operarios, bultosHora: config.bultosHora } : b));
-        }
-        if (this.hayCambios()) {
-          this.previa$.next();
-        } else {
-          this.vistaPrevia.set(null);
-        }
+        this.recargar();
         this.notificaciones.exito(
-          'Operarios y productividad bloqueados',
-          `${borrador.operarios} operarios × ${borrador.bultosHora} bultos/h para los registros pendientes y los nuevos.`,
+          'Configuración bloqueada',
+          'Se aplicó a los registros pendientes y los nuevos nacen con ella.',
         );
       });
   }

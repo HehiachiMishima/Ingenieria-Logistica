@@ -7,6 +7,7 @@ import oracle.common.config.Transacciones;
 import oracle.common.response.ApiResponse;
 import oracle.common.support.ActorActual;
 import oracle.common.support.Trazas;
+import oracle.simulacionsanta.repository.Candado;
 import oracle.simulacionsanta.repository.PredeterminadosGuardados;
 import oracle.simulacionsanta.repository.SimulacionSantaLotesRepository;
 import oracle.simulacionsanta.request.ConfiguracionRequest;
@@ -14,19 +15,19 @@ import oracle.simulacionsanta.response.ConfiguracionResponse;
 import org.springframework.stereotype.Service;
 
 /**
- * Predeterminados de Santa Anita: la configuración con que nace todo registro y el candado de
- * operarios y bultos por hora («productividad»). Bloqueados, ningún registro los cambia; al
- * bloquear se llevan también a los registros PENDIENTE (los EN_CURSO y COMPLETO conservan los
- * suyos: ya se despachan con ellos). Clusters, posiciones y orden de llenado no tienen candado:
- * se siguen editando en cada registro. Sin cachés: nada que invalidar al bloquear.
+ * Predeterminados de Santa Anita: la configuración con que nace todo registro y su candado.
+ * Bloqueada, ningún registro cambia su configuración (operarios, bultos por hora, orden de
+ * llenado, clusters y posiciones); al bloquear se lleva completa a los registros PENDIENTE (los
+ * EN_CURSO y COMPLETO conservan la suya: ya se despachan con ella). Los envíos no tienen
+ * candado. Sin cachés: nada que invalidar al bloquear.
  */
 @Slf4j
 @Service
 public class SimulacionSantaPredeterminadosService {
 
-  /** 409 al cambiar operarios o bultos por hora de un registro con el candado puesto. */
-  static final String MENSAJE_BLOQUEADOS =
-      "Operarios y productividad están bloqueados: desbloquéalos para cambiarlos.";
+  /** 409 al guardar la configuración de un registro con el candado puesto. */
+  static final String MENSAJE_BLOQUEADA =
+      "La configuración está bloqueada: desbloquéala para cambiarla.";
 
   private final SimulacionSantaLotesRepository lotes;
   private final Transacciones transacciones;
@@ -46,15 +47,16 @@ public class SimulacionSantaPredeterminadosService {
 
   /**
    * En una sola transacción: guarda toda la configuración como predeterminados (los registros
-   * nuevos nacen con ella), pone el candado y lleva operarios y bultos por hora a los registros
-   * PENDIENTE. Valida todo antes de abrir la transacción.
+   * nuevos nacen con ella), pone el candado y la lleva completa a los registros PENDIENTE. Valida
+   * todo antes de abrir la transacción; la respuesta es la fila recién guardada (con el nombre
+   * de quien bloqueó).
    */
   public ApiResponse<ConfiguracionResponse> bloquear(ConfiguracionRequest req) {
     ConfiguracionSanta config = ConfiguracionSanta.desde(req);
     Long actor = ActorActual.id();
     // Microsegundos: lo que guarda TIMESTAMPTZ, así la respuesta coincide con una lectura posterior.
     Instant ahora = Instant.now().truncatedTo(ChronoUnit.MICROS);
-    int aplicados =
+    Bloqueo bloqueo =
         Trazas.medir(
             log,
             "SimulacionSantaPredeterminadosService.bloquear",
@@ -69,19 +71,24 @@ public class SimulacionSantaPredeterminadosService {
                           true,
                           actor,
                           ahora);
-                      return lotes.aplicarPredeterminados(
-                          config.operarios(), config.bultosHora(), actor, ahora);
+                      int aplicados =
+                          lotes.aplicarPredeterminados(
+                              config.operarios(),
+                              config.bultosHora(),
+                              config.ordenComoTexto(),
+                              actor,
+                              ahora);
+                      return new Bloqueo(aplicados, respuesta(lotes.predeterminados(false)));
                     }));
     String mensaje =
-        "Operarios y productividad bloqueados para todos los registros"
-            + (aplicados > 0
-                ? "; se aplicaron a " + aplicados + " registro(s) pendiente(s)."
+        "Configuración bloqueada para todos los registros"
+            + (bloqueo.aplicados() > 0
+                ? "; se aplicó a " + bloqueo.aplicados() + " registro(s) pendiente(s)."
                 : ".");
-    return ApiResponse.ok(
-        mensaje, SimulacionSantaRespuestas.configuracion(null, config, actor, ahora, true));
+    return ApiResponse.ok(mensaje, bloqueo.datos());
   }
 
-  /** Abre operarios y bultos por hora para cambiarlos; los valores se conservan. */
+  /** Abre la configuración para cambiarla; los valores se conservan. */
   public ApiResponse<ConfiguracionResponse> desbloquear() {
     Long actor = ActorActual.id();
     Instant ahora = Instant.now().truncatedTo(ChronoUnit.MICROS);
@@ -95,15 +102,16 @@ public class SimulacionSantaPredeterminadosService {
                       lotes.desbloquearPredeterminados(actor, ahora);
                       return respuesta(lotes.predeterminados(false));
                     }));
-    return ApiResponse.ok(
-        "Operarios y productividad desbloqueados: cámbialos y vuelve a bloquearlos.", datos);
+    return ApiResponse.ok("Configuración desbloqueada: cámbiala y vuelve a bloquearla.", datos);
   }
+
+  private record Bloqueo(int aplicados, ConfiguracionResponse datos) {}
 
   /** Respuesta de los predeterminados guardados; los de fábrica (abiertos) si falta la fila. */
   static ConfiguracionResponse respuesta(PredeterminadosGuardados guardados) {
     if (guardados == null) {
       return SimulacionSantaRespuestas.configuracion(
-          null, ConfiguracionSanta.fabrica(), null, null, false);
+          null, ConfiguracionSanta.fabrica(), null, null, Candado.ABIERTO);
     }
     return SimulacionSantaRespuestas.configuracion(
         null,
@@ -114,6 +122,6 @@ public class SimulacionSantaPredeterminadosService {
             guardados.ubicaciones()),
         guardados.actualizadoPor(),
         guardados.actualizadoEn(),
-        guardados.bloqueado());
+        guardados.candado());
   }
 }

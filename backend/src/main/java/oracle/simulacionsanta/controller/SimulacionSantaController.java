@@ -60,14 +60,16 @@ public class SimulacionSantaController {
   /** Los 200 más recientes, para los selectores. */
   @GetMapping("/opciones")
   @PreAuthorize(
-      "hasAnyAuthority('VER_REGISTRO_SIMULACION_SANTA','VER_CONFIGURACION_SIMULACION_SANTA')")
+      "hasAnyAuthority('VER_REGISTRO_SIMULACION_SANTA','VER_CONFIGURACION_SIMULACION_SANTA',"
+          + "'VER_DASHBOARD_SIMULACION_SANTA')")
   public ApiResponse<List<RegistroResponse>> opciones() {
     return registroService.opciones();
   }
 
   @GetMapping("/{id}")
   @PreAuthorize(
-      "hasAnyAuthority('VER_REGISTRO_SIMULACION_SANTA','VER_CONFIGURACION_SIMULACION_SANTA')")
+      "hasAnyAuthority('VER_REGISTRO_SIMULACION_SANTA','VER_CONFIGURACION_SIMULACION_SANTA',"
+          + "'VER_DASHBOARD_SIMULACION_SANTA')")
   public ApiResponse<RegistroResponse> obtener(@PathVariable Long id) {
     return registroService.obtener(id);
   }

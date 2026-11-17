@@ -110,6 +110,7 @@ export class RegistroSantaStore {
     this.revision.set(null);
     this.falloRevision.set(null);
     this.fase.set('revisando');
+    this.cargarOperacion();
     this.api
       .validar(archivo)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -128,6 +129,28 @@ export class RegistroSantaStore {
           this.falloRevision.set(mensajeDeError(err));
           this.fase.set('fallo');
         },
+      });
+  }
+
+  /**
+   * Operarios y productividad con que nacerá el registro (los predeterminados):
+   * con ellos se estima el tiempo de cada envío al validar. Se piden una vez; sin
+   * permiso de configuración el tiempo queda en «—» y la carga sigue igual.
+   */
+  readonly operacion = signal<{ operarios: number; bultosHora: number } | null>(null);
+  private operacionPedida = false;
+
+  private cargarOperacion(): void {
+    if (this.operacionPedida) {
+      return;
+    }
+    this.operacionPedida = true;
+    this.api
+      .predeterminados()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (p) => this.operacion.set({ operarios: p.operarios, bultosHora: p.bultosHora }),
+        error: () => (this.operacionPedida = false),
       });
   }
 

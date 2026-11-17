@@ -1,0 +1,193 @@
+/* ---------- estructura ---------- */
+:host {
+  display: block;
+  min-width: 0;
+  container-type: inline-size;
+}
+
+.envios {
+  overflow: hidden;
+
+  &__fila {
+    display: grid;
+    grid-template-columns: minmax(0, 8rem) minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(0, 7rem);
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+  }
+
+  &__nombre {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1) var(--space-2);
+  }
+
+  &__vacio {
+    margin: 0;
+    padding: var(--space-4);
+  }
+}
+
+.num {
+  text-align: right;
+}
+
+.chip {
+  padding: 0 6px;
+}
+
+.medida {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+
+  &__barra {
+    position: relative;
+    display: block;
+    height: 8px;
+
+    i {
+      display: block;
+      height: 100%;
+    }
+  }
+
+  &__ventana {
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    width: 2px;
+    margin-left: -1px;
+  }
+
+  &__texto {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Angosto: el nombre y los operarios arriba, las dos medidas debajo a lo ancho. */
+@container (max-width: 620px) {
+  .envios__fila {
+    grid-template-columns: minmax(0, 1fr) auto;
+
+    > .medida {
+      grid-column: 1 / -1;
+    }
+  }
+
+  .envios__fila--cabeza {
+    display: none;
+  }
+
+  .envios__operarios::before {
+    content: 'Operarios ';
+  }
+}
+
+/* ---------- apariencia ---------- */
+.envios {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+
+  &__fila {
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+
+    & + & {
+      border-top: 1px solid var(--border);
+    }
+
+    &--cabeza {
+      background: var(--table-head-bg);
+      font-size: var(--fs-xs);
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--table-head-fg);
+    }
+
+    &--actual {
+      background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+    }
+  }
+
+  &__nombre {
+    font-family: var(--font-display);
+    font-weight: 800;
+    color: var(--text);
+  }
+
+  &__operarios {
+    font-family: var(--font-display);
+    font-size: var(--fs-lg);
+    font-weight: 800;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+
+    &--mal {
+      color: var(--danger);
+    }
+  }
+
+  &__vacio {
+    color: var(--text-3);
+  }
+}
+
+.chip {
+  border-radius: var(--radius-pill);
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+
+  &--ok {
+    background: var(--success-soft);
+    color: var(--success);
+  }
+}
+
+.medida {
+  &__barra {
+    border-radius: var(--radius-pill);
+    background: var(--surface-3);
+
+    i {
+      border-radius: var(--radius-pill);
+      background: var(--accent);
+    }
+
+    &--tiempo i {
+      background: var(--success);
+    }
+
+    &--mal i {
+      background: var(--danger);
+    }
+  }
+
+  &__ventana {
+    border-radius: 1px;
+    background: var(--text);
+  }
+
+  &__texto {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+    font-variant-numeric: tabular-nums;
+
+    b {
+      font-size: var(--fs-sm);
+      color: var(--text);
+    }
+
+    &--mal,
+    &--mal b {
+      color: var(--danger);
+    }
+  }
+}

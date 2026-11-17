@@ -23,6 +23,11 @@ export const SIMULACION_SANTA_ROUTES: Routes = [
         loadComponent: () =>
           import('./pages/configuracion/configuracion').then((m) => m.SantaConfiguracion),
       },
+      {
+        path: 'dashboard',
+        canActivate: [permisoGuard(PERMISOS.VER_DASHBOARD_SIMULACION_SANTA)],
+        loadComponent: () => import('./pages/dashboard/dashboard').then((m) => m.SantaDashboard),
+      },
     ],
   },
 ];

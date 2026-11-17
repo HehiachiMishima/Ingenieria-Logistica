@@ -223,13 +223,6 @@
     }
   }
 
-  /* Posiciones por rampa: fila completa de la tarjeta, bajo los campos. */
-  &__posiciones {
-    display: grid;
-    gap: var(--space-2);
-    padding-top: var(--space-3);
-  }
-
   &__acciones {
     display: flex;
     flex: 0 1 auto;
@@ -265,11 +258,52 @@
   gap: var(--space-2);
 }
 
-.toolbar__acciones {
+/* Pestañas Clusters | Posiciones por rampa; a la derecha, las acciones de la pestaña. */
+.pestanas {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-left: auto;
+  align-items: flex-end;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-3);
+
+  &__lista {
+    display: flex;
+    flex: none;
+  }
+
+  &__tab {
+    min-height: 40px;
+    padding: 0 var(--space-4);
+    cursor: pointer;
+    white-space: nowrap; /* responsive:ok etiquetas cortas de pestaña */
+  }
+
+  &__acciones {
+    display: flex;
+    flex: 1 1 320px;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    min-width: 0;
+    padding-bottom: var(--space-2);
+  }
+
+  &__buscar {
+    flex: 1 1 220px;
+    min-width: min(100%, 180px);
+    max-width: 360px;
+  }
+}
+
+.panel-posiciones {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+
+  &__nota {
+    margin: 0;
+  }
 }
 
 .faltan {
@@ -355,12 +389,28 @@
     padding: var(--space-1);
   }
 
-  .toolbar__acciones {
-    flex: 1 1 100%;
-    margin-left: 0;
+  .pestanas {
+    &__lista {
+      flex: 1 1 100%;
+    }
 
-    .ui-btn {
-      flex: 1 1 auto;
+    &__tab {
+      flex: 1 1 0;
+      padding: 0 var(--space-2);
+    }
+
+    &__acciones {
+      flex: 1 1 100%;
+      justify-content: flex-start;
+
+      .ui-btn {
+        flex: 1 1 auto;
+      }
+    }
+
+    &__buscar {
+      flex: 1 1 100%;
+      max-width: none;
     }
   }
 
@@ -601,6 +651,16 @@
     color: var(--accent);
   }
 
+  &--regla {
+    border-color: color-mix(in srgb, var(--warning) 35%, var(--border));
+    background: var(--warning-soft);
+    color: var(--warning);
+
+    b {
+      color: var(--warning);
+    }
+  }
+
   b {
     color: var(--danger);
   }
@@ -643,8 +703,47 @@ app-matriz-asignacion {
   }
 }
 
-.parametros__posiciones {
-  border-top: 1px solid var(--border);
+.pestanas {
+  border-bottom: 1px solid var(--border);
+
+  &__lista {
+    margin-bottom: -1px;
+  }
+
+  &__tab {
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    color: var(--text-3);
+
+    &:hover {
+      color: var(--text);
+    }
+
+    &[aria-selected='true'] {
+      border-bottom-color: var(--text);
+      color: var(--text);
+    }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: inset var(--ring);
+    }
+  }
+}
+
+.panel-posiciones {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xs);
+
+  &__nota {
+    font-size: var(--fs-sm);
+    color: var(--text-3);
+  }
 }
 
 .posiciones {

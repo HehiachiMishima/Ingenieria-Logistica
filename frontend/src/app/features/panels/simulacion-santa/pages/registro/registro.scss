@@ -86,24 +86,74 @@
   }
 }
 
-.resumen {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
-  gap: var(--space-2) var(--space-4);
-  margin: 0 0 var(--space-4);
+/* Tablas de la revisión (envíos y clusters): con scroll propio si no caben a lo ancho. */
+.tabla-mini {
+  width: 100%;
+  min-width: 26rem; /* responsive:ok el marco tiene scroll horizontal propio en pantallas angostas */
+  border-collapse: collapse;
 
-  &__fila {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    min-width: 0;
-    padding: var(--space-2) 0;
+  &__marco {
+    margin: 0 0 var(--space-4);
+    overflow-x: auto;
   }
 
-  dt,
-  dd {
-    margin: 0;
+  caption {
+    padding-bottom: var(--space-2);
+    text-align: left;
+  }
+
+  th,
+  td {
+    padding: var(--space-2) var(--space-3);
+    text-align: left;
+  }
+
+  .num {
+    text-align: right;
+    white-space: nowrap; /* responsive:ok cifras cortas; la tabla tiene scroll propio */
+  }
+}
+
+/* Barrita del % dentro de la celda. */
+.barrita {
+  display: inline-block;
+  width: 40px;
+  height: 6px;
+  margin-right: var(--space-2);
+  vertical-align: middle;
+}
+
+.regla {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 18px;
+  padding: 0 4px;
+  margin-right: var(--space-2);
+  box-sizing: border-box;
+}
+
+.reglas {
+  margin-top: var(--space-2);
+
+  summary {
+    display: flex;
+    align-items: center;
+    min-height: 32px;
+    cursor: pointer;
+  }
+
+  &__lista {
+    display: grid;
+    gap: var(--space-2);
+    margin: var(--space-2) 0;
+    padding: 0;
+    list-style: none;
+
+    li {
+      display: flex;
+      align-items: baseline;
+    }
   }
 }
 
@@ -119,11 +169,14 @@
   }
 
   &__lista {
+    display: grid;
+    gap: var(--space-1);
     max-height: 180px;
     margin: 0;
-    padding-left: var(--space-5);
+    padding: 0;
     overflow-y: auto;
     overflow-wrap: anywhere;
+    list-style: none;
   }
 }
 
@@ -202,18 +255,82 @@
   color: var(--text-3);
 }
 
-.resumen__fila {
-  border-bottom: 1px solid var(--border);
+.tabla-mini {
   font-size: var(--fs-sm);
 
-  dt {
+  &__marco {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+
+  caption {
+    padding-left: var(--space-3);
+    padding-top: var(--space-2);
+    font-weight: 800;
+    color: var(--text);
+
+    span {
+      font-weight: 400;
+      color: var(--text-3);
+    }
+  }
+
+  thead th {
+    background: var(--table-head-bg);
+    font-size: var(--fs-xs);
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--table-head-fg);
+  }
+
+  tbody tr + tr {
+    border-top: 1px solid var(--border);
+  }
+
+  tbody th {
+    font-weight: 700;
     color: var(--text-2);
   }
 
-  dd {
+  td {
     font-weight: 700;
     color: var(--text);
     font-variant-numeric: tabular-nums;
+  }
+}
+
+.barrita {
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, var(--accent) var(--p, 0%), var(--surface-3) var(--p, 0%));
+}
+
+.regla {
+  border-radius: var(--radius-xs);
+  background: var(--surface-3);
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+
+  &--crucial {
+    background: var(--danger-soft);
+    color: var(--danger);
+  }
+}
+
+.reglas {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+
+  summary {
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  &__crucial {
+    font-weight: 700;
+    color: var(--text);
   }
 }
 

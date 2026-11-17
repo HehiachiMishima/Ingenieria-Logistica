@@ -14,4 +14,6 @@ public record ValidacionExcelResponse(
     List<Integer> paletasCluster,
     /** Como máximo 50. */
     List<ErrorFila> errores,
-    int totalErrores) {}
+    int totalErrores,
+    /** Bultos de las filas válidas: 3 filas (C1, C2, C3) × 3 columnas (envío 1, 2, 3). */
+    List<List<Integer>> bultosClusterEnvio) {}

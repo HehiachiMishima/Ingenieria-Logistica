@@ -24,7 +24,7 @@ cada usuario. Su nombre es un acróstico:
 | Administración | `/admin` | Dashboard, Usuarios, Roles, Permisos | `PANEL_ADMIN` |
 | Bitácora | `/bitacora` | Incidencias, Control (centros, sistemas, áreas, responsables), Dashboard | `PANEL_BITACORA` |
 | Simulación | `/simulacion` | Registro (Excel), Configuración (clusters, chutes, balanceo), Dashboard | `PANEL_SIMULACION` |
-| Simulación Santa Anita | `/simulacion-santa` | Registro (Excel de despacho), Configuración (clusters por rampa y pasillo, operarios y simulación por envío) | `PANEL_SIMULACION_SANTA` |
+| Simulación Santa Anita | `/simulacion-santa` | Registro (Excel de despacho), Configuración (clusters por rampa y pasillo, operarios y simulación por envío), Dashboard (envíos y clusters de un registro) | `PANEL_SIMULACION_SANTA` |
 | Malla Operativa | `/malla` | Malla (turnos, flujos de proceso, olas, zonas, capacidad) | `PANEL_MALLA` |
 | Análisis | `/analisis` | Resumen | `PANEL_ANALISIS` |
 | Trazabilidad | `/trazabilidad` | Resumen | `PANEL_TRAZABILIDAD` |
@@ -148,9 +148,9 @@ Si la base ya estaba instalada antes del panel **Simulación Santa Anita**, apli
 (con `ddl-auto=validate` no arranca si falta el esquema). Corre en una transacción y es
 re-ejecutable (`IF NOT EXISTS`, `ON CONFLICT DO NOTHING`): crea el esquema
 `simulacion_santa`, sus tablas e índices, el trigger de `actualizado_en`, los
-predeterminados de fábrica, los 7 permisos del panel (el rol `ADMINISTRADOR` los recibe
+predeterminados de fábrica, los 8 permisos del panel (el rol `ADMINISTRADOR` los recibe
 por trigger) y los privilegios de `atlas_app` si existe. En una base que ya tenía el panel,
-agrega la columna `predeterminados.bloqueado` (candado de operarios y bultos/hora):
+agrega la columna `predeterminados.bloqueado` (candado de la configuración de todos los registros):
 aplicarla antes de arrancar el backend que la usa.
 
 ```bash
@@ -170,7 +170,7 @@ Organización y decisiones del esquema:
 | `bitacora` | Catálogos (centro, sistema, área, responsable, tipo) e `incidencias`. |
 | `simulacion` | Registros Excel, clusters, chutes, parámetros, rutas, lanzamientos e historial de balanceo. |
 | `malla` | Centros, turnos, flujos, olas, zonas, capacidad, dotación, historial de cambios y reglas. |
-| `simulacion_santa` | Cargas del Excel de despacho de Santa Anita (`registros`, con totales precalculados, envío en curso y configuración), sus `filas` (una paleta por ruta + local), `ubicaciones` por registro (cluster de cada rampa 15–33 y pasillo 1–24, posiciones habilitadas por rampa) y `predeterminados` (+ `predeterminados_ubicaciones`) con que nace cada registro. El plano físico es una constante del backend (`PlanoSantaAnita`). |
+| `simulacion_santa` | Cargas del Excel de despacho de Santa Anita (`registros`, con totales precalculados, envío en curso y configuración), sus `filas` (una paleta = un solo local con todos sus bultos; en las cargas nuevas un local no se repite), `ubicaciones` por registro (cluster de cada rampa 15–33 y pasillo 1–24, posiciones habilitadas por rampa) y `predeterminados` (+ `predeterminados_ubicaciones`) con que nace cada registro. El plano físico es una constante del backend (`PlanoSantaAnita`). |
 
 - La conexión lleva `currentSchema=seguridad,bitacora,simulacion,malla,simulacion_santa,public`,
   así el backend consulta las tablas sin prefijo. Santa Anita escribe siempre el
@@ -366,17 +366,18 @@ Base: `/api`
 | `GET` | `/admin/analitica` | `DASHBOARD_ADMIN` — cuentas, roles, permisos, cobertura por panel y altas |
 | `GET` | `/malla/vista` | `VER_MALLA` — HTML autónomo de la malla (`text/html`, `no-store`) |
 | `GET` | `/simulacion-santa/registros?pagina&tamano&texto&estados` | `VER_REGISTRO_SIMULACION_SANTA` — cargas paginadas, recientes primero (`estados` repetido o separado por coma) |
-| `GET` | `/simulacion-santa/registros/opciones`, `/simulacion-santa/registros/{id}` | `VER_REGISTRO_…` o `VER_CONFIGURACION_SIMULACION_SANTA` — los 200 más recientes / un registro |
-| `POST` | `/simulacion-santa/registros/validar` (multipart `archivo`) | `CREAR_REGISTRO_SIMULACION_SANTA` — lee el Excel sin guardar (filas válidas, totales y hasta 50 errores) |
+| `GET` | `/simulacion-santa/registros/opciones`, `/simulacion-santa/registros/{id}` | `VER_REGISTRO_…`, `VER_CONFIGURACION_…` o `VER_DASHBOARD_SIMULACION_SANTA` — los 200 más recientes / un registro |
+| `POST` | `/simulacion-santa/registros/validar` (multipart `archivo`) | `CREAR_REGISTRO_SIMULACION_SANTA` — lee el Excel sin guardar (filas válidas, totales, bultos por cluster × envío y hasta 50 errores con su código E2–E7; un local repetido es E7) |
 | `POST` | `/simulacion-santa/registros` (multipart `archivo`, `nombre`) | `CREAR_REGISTRO_SIMULACION_SANTA` — guarda las filas válidas y copia los predeterminados; idempotente ante un reintento |
 | `PUT` / `DELETE` | `/simulacion-santa/registros/{id}` | `MODIFICAR_REGISTRO_…` (renombrar) / `ELIMINAR_REGISTRO_SIMULACION_SANTA` |
-| `GET` / `PUT` | `/simulacion-santa/registros/{id}/configuracion` | `VER_CONFIGURACION_…` / `MODIFICAR_CONFIGURACION_SIMULACION_SANTA` — operarios, bultos/hora, orden de llenado y las 19 rampas y 24 pasillos; `bloqueado` = candado global. Con candado, cambiar operarios o bultos/hora da 409 (clusters, posiciones y orden sí se guardan) |
+| `GET` / `PUT` | `/simulacion-santa/registros/{id}/configuracion` | `VER_CONFIGURACION_…` / `MODIFICAR_CONFIGURACION_SIMULACION_SANTA` — operarios, bultos/hora, orden de llenado y las 19 rampas y 24 pasillos; `bloqueado`, `bloqueadoPor` (nombre) y `bloqueadoEn` = candado global. Con candado, el `PUT` siempre da 409 y no guarda nada (los envíos sí cambian) |
 | `GET` | `/simulacion-santa/registros/{id}/simulacion?envio=` | `VER_CONFIGURACION_SIMULACION_SANTA` — ubicación de cada paleta, estados y KPIs del envío (por defecto el actual) |
 | `POST` | `/simulacion-santa/registros/{id}/simulacion/previsualizar?envio=` | `VER_CONFIGURACION_SIMULACION_SANTA` — la misma simulación con la configuración del cuerpo, sin guardar |
+| `GET` | `/simulacion-santa/registros/{id}/dashboard` | `VER_DASHBOARD_SIMULACION_SANTA` — totales por envío y, por cluster, rampas, pasillos, posiciones, paletas, sin ubicar, bultos y paletas completas por envío (agregados en SQL) |
 | `PUT` | `/simulacion-santa/registros/{id}/envio` | `MODIFICAR_CONFIGURACION_SIMULACION_SANTA` — envío en curso (0 a 3) |
-| `GET` | `/simulacion-santa/predeterminados` | `VER_CONFIGURACION_SIMULACION_SANTA` — configuración con que nace cada registro y su candado (`bloqueado`) |
-| `PUT` | `/simulacion-santa/predeterminados/bloquear` (cuerpo `ConfiguracionRequest`) | `MODIFICAR_CONFIGURACION_SIMULACION_SANTA` — en una transacción: guarda todo como predeterminados, bloquea operarios y bultos/hora para todos los registros y los lleva a los PENDIENTE (EN_CURSO y COMPLETO conservan los suyos) |
-| `PUT` | `/simulacion-santa/predeterminados/desbloquear` | `MODIFICAR_CONFIGURACION_SIMULACION_SANTA` — abre operarios y bultos/hora; los valores se conservan |
+| `GET` | `/simulacion-santa/predeterminados` | `VER_CONFIGURACION_SIMULACION_SANTA` — configuración con que nace cada registro y su candado (`bloqueado`, `bloqueadoPor`, `bloqueadoEn`) |
+| `PUT` | `/simulacion-santa/predeterminados/bloquear` (cuerpo `ConfiguracionRequest`) | `MODIFICAR_CONFIGURACION_SIMULACION_SANTA` — en una transacción: guarda todo como predeterminados, bloquea la configuración de todos los registros y la lleva completa (operarios, bultos/hora, orden, clusters y posiciones) a los PENDIENTE; EN_CURSO y COMPLETO conservan la suya |
+| `PUT` | `/simulacion-santa/predeterminados/desbloquear` | `MODIFICAR_CONFIGURACION_SIMULACION_SANTA` — abre la configuración; los valores se conservan |
 
 ---
 

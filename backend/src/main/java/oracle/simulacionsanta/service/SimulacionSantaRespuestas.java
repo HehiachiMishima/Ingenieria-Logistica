@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.List;
 import oracle.simulacionsanta.model.EstadoRegistro;
 import oracle.simulacionsanta.model.RegistroSanta;
+import oracle.simulacionsanta.repository.Candado;
 import oracle.simulacionsanta.response.ConfiguracionResponse;
 import oracle.simulacionsanta.response.PasilloConfig;
 import oracle.simulacionsanta.response.RampaConfig;
@@ -44,21 +45,22 @@ public final class SimulacionSantaRespuestas {
         r.bultosEnvios(),
         r.paletasCluster(),
         r.errores(),
-        r.totalErrores());
+        r.totalErrores(),
+        r.bultosClusterEnvio());
   }
 
   /**
    * Configuración de un registro (registroId) o de los predeterminados (registroId null).
    *
    * @param actualizadoPor null en los predeterminados de fábrica
-   * @param bloqueado el candado global de operarios y bultos por hora
+   * @param candado el candado global de la configuración (quién y cuándo, si está bloqueada)
    */
   public static ConfiguracionResponse configuracion(
       Long registroId,
       ConfiguracionSanta c,
       Long actualizadoPor,
       Instant actualizadoEn,
-      boolean bloqueado) {
+      Candado candado) {
     List<RampaConfig> rampas =
         c.rampas().stream()
             .map((r) -> new RampaConfig(r.numero(), r.cluster(), r.capacidad(), r.posiciones()))
@@ -77,7 +79,9 @@ public final class SimulacionSantaRespuestas {
         pasillos,
         actualizadoPor,
         actualizadoEn,
-        bloqueado);
+        candado.bloqueado(),
+        candado.bloqueadoPor(),
+        candado.bloqueadoEn());
   }
 
   /** La configuración guardada en un registro (sin sus ubicaciones, que van aparte). */

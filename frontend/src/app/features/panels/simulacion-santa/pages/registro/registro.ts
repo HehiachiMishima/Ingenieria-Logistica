@@ -21,9 +21,11 @@ import { ChipFiltro, FiltrosActivos } from '../../../../../shared/ui/panel-filtr
 import { PanelFiltros } from '../../../../../shared/ui/panel-filtros/panel-filtros';
 import { RegistroSantaStore } from '../../data/registro.store';
 import { EstadoRegistroSanta, RegistroSanta } from '../../models/santa.model';
+import { avanceAcumulado, duracion, porciento, tablaEnvios } from '../../santa-calculo';
 import {
   CLUSTERS,
   ESTADOS_REGISTRO_SANTA,
+  REGLAS_EXCEL,
   colorCluster,
   entero,
   etiquetaEstadoRegistro,
@@ -60,6 +62,9 @@ export class SantaRegistro {
   readonly colorCluster = colorCluster;
   readonly etiquetaEstado = etiquetaEstadoRegistro;
   readonly tamanoArchivo = tamanoArchivo;
+  readonly reglas = REGLAS_EXCEL;
+  readonly duracion = duracion;
+  readonly porciento = porciento;
 
   readonly filtrosAbierto = signal(false);
 
@@ -78,6 +83,33 @@ export class SantaRegistro {
   readonly paginaActual = computed(() =>
     Math.min(Math.max(1, this.store.pagina()), this.totalPaginas()),
   );
+
+  /** Envíos del archivo revisado: bultos, % del total, acumulado y tiempo con los predeterminados. */
+  readonly enviosRevision = computed(() => {
+    const revision = this.store.revision();
+    if (!revision) {
+      return [];
+    }
+    const op = this.store.operacion();
+    return tablaEnvios(revision.bultosEnvios, op?.operarios ?? 0, op?.bultosHora ?? 0);
+  });
+
+  /** Por cluster: paletas, bultos y avance acumulado (%) al terminar cada envío. */
+  readonly clustersRevision = computed(() => {
+    const revision = this.store.revision();
+    if (!revision) {
+      return [];
+    }
+    return CLUSTERS.map((cluster, i) => {
+      const porEnvio = revision.bultosClusterEnvio?.[i] ?? [];
+      return {
+        cluster,
+        paletas: revision.paletasCluster[i],
+        bultos: porEnvio.reduce((s, b) => s + b, 0),
+        avance: avanceAcumulado(porEnvio),
+      };
+    });
+  });
 
   /** Errores de la revisión que no se listan (el servidor envía hasta 50). */
   readonly erroresOcultos = computed(() => {

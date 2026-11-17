@@ -1,0 +1,170 @@
+<header class="page-head">
+  <div>
+    <h1 class="page-head__title">Dashboard</h1>
+    <p class="page-head__sub">
+      Cuánto trae cada envío, cuánto tarda y cuántos operarios hacen falta. Los operarios trabajan en las rampas.
+    </p>
+  </div>
+</header>
+
+@if (store.cargandoRegistros()) {
+  <div class="loading"><span class="ui-spinner"></span> Cargando registros…</div>
+} @else if (store.registros().length === 0) {
+  <div class="table-card">
+    <ui-empty icono="almacen" titulo="Aún no hay registros" mensaje="Sube un Excel de despacho en Registro para verlo aquí.">
+      <a *hasPermiso="permisos.VER_REGISTRO_SIMULACION_SANTA" class="ui-btn ui-btn--primary ui-btn--sm" routerLink="/simulacion-santa/registro">
+        Ir a Registro
+      </a>
+    </ui-empty>
+  </div>
+} @else {
+  <!-- ===================== Parámetros de la simulación ===================== -->
+  <section class="parametros" aria-label="Parámetros">
+    <div class="parametros__campo parametros__campo--registro">
+      <label class="ui-label" for="dash-registro">Registro</label>
+      <select id="dash-registro" class="ui-select" [value]="store.registroId() ?? ''" (change)="elegirRegistro($any($event.target).value)">
+        @for (r of store.registros(); track r.id) {
+          <option [value]="r.id" [selected]="r.id === store.registroId()">{{ r.nombre }} · {{ etiquetaEstadoRegistro(r.estado) }}</option>
+        }
+      </select>
+    </div>
+    <div class="parametros__campo">
+      <label class="ui-label" for="dash-operarios">Operarios a simular</label>
+      <input
+        id="dash-operarios"
+        type="number"
+        class="ui-input"
+        min="1"
+        max="999"
+        inputmode="numeric"
+        [value]="store.operarios()"
+        (change)="fijarOperarios($any($event.target).value)"
+      />
+    </div>
+    <div class="parametros__campo">
+      <label class="ui-label" for="dash-ventana">Ventana por envío (min)</label>
+      <input
+        id="dash-ventana"
+        type="number"
+        class="ui-input"
+        min="5"
+        max="1440"
+        step="5"
+        inputmode="numeric"
+        [value]="store.ventanaMin()"
+        (change)="fijarVentana($any($event.target).value)"
+      />
+    </div>
+    <div class="parametros__acciones">
+      @if (store.simulando()) {
+        <button type="button" class="ui-btn ui-btn--secondary" (click)="store.fijarOperarios(store.datos()?.operarios ?? 0)">
+          <ui-icon name="refresh" [size]="16" /> Usar los configurados ({{ store.datos()?.operarios }})
+        </button>
+      }
+      @if (store.diferencia() !== 0 && store.operariosNecesarios() > 0) {
+        <button type="button" class="ui-btn ui-btn--secondary" (click)="store.usarOperariosNecesarios()">
+          Simular con {{ store.operariosNecesarios() }}
+        </button>
+      }
+    </div>
+    @if (store.datos(); as d) {
+      <p class="parametros__nota">
+        Configuración del registro: {{ d.operarios }} operarios × {{ entero(d.bultosHora) }} bultos/h por operario.
+        @if (store.simulando()) {
+          <b>Simulando con {{ store.operarios() }}: no se guarda.</b>
+        }
+      </p>
+    }
+  </section>
+
+  @if (store.error()) {
+    <div class="table-card">
+      <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="store.error()!">
+        <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="store.recargar()">
+          <ui-icon name="refresh" [size]="16" /> Reintentar
+        </button>
+      </ui-empty>
+    </div>
+  } @else if (store.datos(); as d) {
+    <!-- ===================== Indicadores ===================== -->
+    <section class="kpis" aria-label="Indicadores">
+      <div class="kpi">
+        <span class="kpi__lbl">Bultos</span>
+        <span class="kpi__valor">{{ entero(d.bultosTotal) }}</span>
+        <span class="kpi__sub">{{ entero(d.paletasTotal) }} paletas · {{ d.envios.length }} envíos</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi__lbl">Capacidad</span>
+        <span class="kpi__valor">{{ entero(store.capacidadHora()) }}</span>
+        <span class="kpi__sub">bultos/h con {{ store.operarios() }} operarios</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi__lbl">Tiempo total</span>
+        <span class="kpi__valor">{{ duracion(store.minutosTotales()) }}</span>
+        <span class="kpi__sub">los {{ d.envios.length }} envíos seguidos</span>
+      </div>
+      <div class="kpi" [class.kpi--mal]="store.diferencia() > 0" [class.kpi--bien]="store.diferencia() <= 0">
+        <span class="kpi__lbl">Operarios necesarios</span>
+        <span class="kpi__valor">{{ store.operariosNecesarios() }}</span>
+        <span class="kpi__sub">
+          @if (store.envioPico(); as pico) {
+            para el envío {{ pico.envio }} en {{ duracion(store.ventanaMin()) }}
+          }
+        </span>
+      </div>
+    </section>
+
+    <!-- Recomendación en palabras -->
+    @if (store.envioPico(); as pico) {
+      <p class="recomendacion" [class.recomendacion--mal]="store.diferencia() > 0" role="status">
+        <ui-icon [name]="store.diferencia() > 0 ? 'alertTriangle' : 'checkCircleFilled'" [size]="18" />
+        <!-- Un solo span: dentro del flex, el texto y el <b> no se separan. -->
+        <span>
+          @if (store.diferencia() > 0) {
+            Con {{ store.operarios() }} operarios el envío {{ pico.envio }} tarda {{ duracion(pico.minutos) }} y la ventana es de
+            {{ duracion(store.ventanaMin()) }}: <b>faltan {{ store.diferencia() }} operarios</b>.
+          } @else if (store.diferencia() < 0) {
+            Con {{ store.operarios() }} operarios todos los envíos caben en {{ duracion(store.ventanaMin()) }}:
+            <b>sobran {{ -store.diferencia() }}</b> (bastan {{ store.operariosNecesarios() }}).
+          } @else {
+            Con {{ store.operarios() }} operarios todos los envíos caben justo en {{ duracion(store.ventanaMin()) }}.
+          }
+        </span>
+      </p>
+    }
+
+    <!-- ===================== Envíos ===================== -->
+    <section class="bloque" aria-labelledby="dash-envios">
+      <h2 class="bloque__titulo" id="dash-envios">Envíos</h2>
+      <app-envios-tiempos
+        [filas]="store.envios()"
+        [ventanaMin]="store.ventanaMin()"
+        [operarios]="store.operarios()"
+        [envioActual]="d.envioActual"
+      />
+    </section>
+
+    <!-- ===================== Clusters ===================== -->
+    <section class="bloque" aria-labelledby="dash-clusters">
+      <div class="bloque__cabeza">
+        <h2 class="bloque__titulo" id="dash-clusters">Avance de cada cluster por envío</h2>
+        <div class="reparto" aria-label="Parte de los bultos de cada cluster">
+          @for (p of store.partesCluster(); track p.cluster) {
+            <span class="reparto__parte" [style.--cl]="colorCluster(p.cluster)" [style.flex-grow]="p.parte || 0.0001" [title]="'C' + p.cluster + ': ' + porciento(p.parte)">
+              C{{ p.cluster }} {{ porciento(p.parte) }}
+            </span>
+          }
+        </div>
+      </div>
+      <app-avance-clusters [clusters]="store.clusters()" [envioActual]="d.envioActual" />
+      <p class="nota">
+        El avance se mide por bultos. Los operarios por cluster son los que necesita cada uno para su parte del envío dentro de la ventana.
+        <a *hasPermiso="permisos.VER_CONFIGURACION_SIMULACION_SANTA" routerLink="/simulacion-santa/configuracion" [queryParams]="{ registro: d.registroId }">
+          Ver el plano y la asignación
+        </a>
+      </p>
+    </section>
+  } @else {
+    <div class="loading"><span class="ui-spinner"></span> Calculando el dashboard…</div>
+  }
+}

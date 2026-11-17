@@ -228,6 +228,14 @@ public final class AsignadorUbicaciones {
         .doubleValue();
   }
 
+  /**
+   * Paletas de un cluster que {@link #asignar} deja sin hueco: ocupan los huecos en orden hasta
+   * agotarlos, así que sobran las que pasan de las posiciones habilitadas (no depende del envío).
+   */
+  public static int sinUbicar(int paletas, int posiciones) {
+    return Math.max(0, paletas - posiciones);
+  }
+
   /** Huecos habilitados del cluster: posiciones de sus rampas más 24 por pasillo. */
   static int posiciones(ConfiguracionSanta config, int cluster) {
     int posiciones = 0;
@@ -244,14 +252,14 @@ public final class AsignadorUbicaciones {
     return posiciones;
   }
 
-  private static List<Integer> rampasDe(ConfiguracionSanta config, int cluster) {
+  static List<Integer> rampasDe(ConfiguracionSanta config, int cluster) {
     return config.rampas().stream()
         .filter((r) -> r.cluster() != null && r.cluster() == cluster)
         .map(ConfiguracionSanta.Rampa::numero)
         .toList();
   }
 
-  private static List<Integer> pasillosDe(ConfiguracionSanta config, int cluster) {
+  static List<Integer> pasillosDe(ConfiguracionSanta config, int cluster) {
     return config.pasillos().stream()
         .filter((p) -> p.cluster() != null && p.cluster() == cluster)
         .map(ConfiguracionSanta.Pasillo::numero)

@@ -17,7 +17,11 @@ public record ConfiguracionResponse(
     Long actualizadoPor,
     Instant actualizadoEn,
     /**
-     * Candado global: true = operarios y bultos por hora bloqueados para todos los registros
-     * (clusters, posiciones y orden de llenado siguen editables en cada registro).
+     * Candado global: true = la configuración completa está bloqueada para todos los registros
+     * (ninguno la cambia hasta desbloquearla).
      */
-    boolean bloqueado) {}
+    boolean bloqueado,
+    /** Nombre visible de quien bloqueó; null si está abierta o el usuario no se encuentra. */
+    String bloqueadoPor,
+    /** Instante (UTC) del bloqueo; null si está abierta. */
+    Instant bloqueadoEn) {}

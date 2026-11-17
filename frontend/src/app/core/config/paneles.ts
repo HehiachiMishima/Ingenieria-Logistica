@@ -226,6 +226,14 @@ export const PANEL_SIMULACION_SANTA: PanelDef = {
       ruta: 'configuracion',
       permiso: PERMISOS.VER_CONFIGURACION_SIMULACION_SANTA,
     },
+    {
+      id: 'dashboard',
+      nombre: 'Dashboard',
+      descripcion: 'Envíos, tiempos, avance por cluster y operarios necesarios.',
+      icono: 'dashboard',
+      ruta: 'dashboard',
+      permiso: PERMISOS.VER_DASHBOARD_SIMULACION_SANTA,
+    },
   ],
 };
 

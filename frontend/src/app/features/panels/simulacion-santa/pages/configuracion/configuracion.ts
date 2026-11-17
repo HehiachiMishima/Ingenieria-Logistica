@@ -7,7 +7,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { NgTemplateOutlet } from '@angular/common';
+import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { PERMISOS } from '../../../../../core/config/permisos';
 import { SesionStore } from '../../../../../core/services/sesion';
@@ -36,6 +36,13 @@ import {
 } from '../../ui/matriz-asignacion/matriz-asignacion';
 
 type Ventana = 'rampas' | '1-6' | '7-12' | '13-18' | '19-24';
+type Pestana = 'clusters' | 'posiciones';
+
+/** Pestañas de Asignar, en orden (las flechas ← → pasan de una a otra). */
+const PESTANAS: { id: Pestana; etiqueta: string }[] = [
+  { id: 'clusters', etiqueta: 'Clusters' },
+  { id: 'posiciones', etiqueta: 'Posiciones por rampa' },
+];
 
 /** Ventanas del plano en el orden de los botones (y de las teclas 1 a 5). */
 const VENTANAS: { id: Ventana; etiqueta: string }[] = [
@@ -56,6 +63,7 @@ const VENTANAS: { id: Ventana; etiqueta: string }[] = [
   selector: 'app-santa-configuracion',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    DatePipe,
     NgTemplateOutlet,
     RouterLink,
     Icon,
@@ -82,6 +90,7 @@ export class SantaConfiguracion {
 
   readonly permisos = PERMISOS;
   readonly ventanas = VENTANAS;
+  readonly pestanas = PESTANAS;
   readonly clusters = CLUSTERS;
   readonly envios = [1, 2, 3];
   readonly entero = entero;
@@ -95,17 +104,25 @@ export class SantaConfiguracion {
   readonly leyendaAbierta = signal(false);
   readonly confirmarGuardar = signal(false);
   readonly confirmarReinicio = signal(false);
+  readonly confirmarBloqueo = signal(false);
   /** Lista de paletas sin ubicación desplegada (la abre el aviso del plano). */
   readonly faltanAbierto = signal(false);
-  /** Búsqueda y filtro de Asignar. */
+  /** Pestaña, búsqueda y filtro de Asignar. */
+  readonly pestana = signal<Pestana>('clusters');
   readonly busqueda = signal('');
   readonly soloCambios = signal(false);
 
   readonly puedeModificar = computed(() =>
     this.sesion.tienePermiso(PERMISOS.MODIFICAR_CONFIGURACION_SIMULACION_SANTA),
   );
-  /** Operarios y productividad editables: con permiso y sin candado. */
-  readonly operacionEditable = computed(() => this.puedeModificar() && !this.store.bloqueado());
+  /**
+   * Toda la configuración de Asignar (operarios, productividad, clusters,
+   * posiciones y orden de llenado) se edita con permiso y sin candado.
+   */
+  readonly configEditable = computed(() => this.puedeModificar() && !this.store.bloqueado());
+
+  /** Registros que reciben la configuración al bloquear (los que aún no reciben envíos). */
+  readonly pendientes = computed(() => this.store.registros().filter((r) => r.estado === 'PENDIENTE').length);
 
   readonly bloque = computed(() => BLOQUES.find((b) => b.id === this.ventana()) ?? null);
   readonly envioActual = computed(() => this.store.registro()?.envioActual ?? 0);
@@ -167,6 +184,17 @@ export class SantaConfiguracion {
   });
 
   readonly cambiosDeCluster = computed(() => this.fichas().filter((f) => f.cambiada).length);
+
+  /**
+   * Regla U2: los operarios trabajan solo en rampas, así que un cluster con
+   * paletas y sin ninguna rampa no tiene quién lo atienda.
+   */
+  readonly clustersSinRampa = computed(() => {
+    const conRampa = new Set(this.rampasVista().map((r) => r.cluster));
+    return (this.store.simulacionVisible()?.clusters ?? [])
+      .filter((c) => c.paletas > 0 && !conRampa.has(c.cluster))
+      .map((c) => c.cluster);
+  });
 
   readonly kpis = computed(() => this.store.simulacionVisible()?.kpis ?? null);
   readonly avance = computed(() => {
@@ -296,6 +324,41 @@ export class SantaConfiguracion {
     if (b) {
       this.store.fijarOperacion(b.operarios, Number(valor));
     }
+  }
+
+  /* ---------- pestañas y candado ---------- */
+
+  /** ← → Inicio Fin entre pestañas (patrón de pestañas accesibles). */
+  alTecladoPestanas(evento: KeyboardEvent): void {
+    const actual = PESTANAS.findIndex((p) => p.id === this.pestana());
+    const destino =
+      evento.key === 'ArrowRight' ? (actual + 1) % PESTANAS.length
+      : evento.key === 'ArrowLeft' ? (actual - 1 + PESTANAS.length) % PESTANAS.length
+      : evento.key === 'Home' ? 0
+      : evento.key === 'End' ? PESTANAS.length - 1
+      : -1;
+    if (destino < 0) {
+      return;
+    }
+    evento.preventDefault();
+    this.pestana.set(PESTANAS[destino].id);
+    const lista = (evento.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('[role="tab"]');
+    lista[destino]?.focus();
+  }
+
+  /** Bloquear pide confirmación (cambia otros registros); desbloquear es directo. */
+  pulsarCandado(): void {
+    if (this.store.bloqueado()) {
+      this.store.alternarBloqueo();
+    } else {
+      this.confirmarBloqueo.set(true);
+    }
+  }
+
+  bloquear(): void {
+    this.confirmarBloqueo.set(false);
+    this.soloCambios.set(false);
+    this.store.alternarBloqueo();
   }
 
   restablecer(): void {

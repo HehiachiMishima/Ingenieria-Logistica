@@ -61,7 +61,7 @@
               min="1"
               max="99"
               inputmode="numeric"
-              [disabled]="!operacionEditable()"
+              [disabled]="!configEditable()"
               [value]="b.operarios"
               (change)="fijarOperarios($any($event.target).value)"
             />
@@ -75,7 +75,7 @@
               min="1"
               max="9999"
               inputmode="numeric"
-              [disabled]="!operacionEditable()"
+              [disabled]="!configEditable()"
               [value]="b.bultosHora"
               (change)="fijarBultosHora($any($event.target).value)"
             />
@@ -88,8 +88,8 @@
                 [class.candado--activo]="store.bloqueado()"
                 [attr.aria-pressed]="store.bloqueado()"
                 [disabled]="store.bloqueando() || store.guardando()"
-                [title]="store.bloqueado() ? 'Desbloquear operarios y productividad para cambiarlos' : 'Bloquear estos operarios y esta productividad para todos los registros'"
-                (click)="store.alternarBloqueo()"
+                [title]="store.bloqueado() ? 'Desbloquear la configuración para cambiarla' : 'Bloquear esta configuración para todos los registros'"
+                (click)="pulsarCandado()"
               >
                 @if (store.bloqueando()) {
                   <span class="ui-spinner spinner-btn" aria-hidden="true"></span>
@@ -98,64 +98,56 @@
                 }
                 {{ store.bloqueado() ? 'Desbloquear' : 'Bloquear' }}
               </button>
-              <button
-                type="button"
-                class="ui-btn ui-btn--primary"
-                [disabled]="!store.hayCambios() || store.guardando() || store.previsualizando()"
-                (click)="guardar()"
-              >
-                @if (store.guardando()) {
-                  <span class="ui-spinner spinner-btn"></span>
-                }
-                Guardar cambios
-                @if (cambiosDeCluster() > 0) {
-                  <span class="parametros__cuenta">{{ cambiosDeCluster() }}</span>
-                }
-              </button>
+              <!-- Con candado no hay nada que guardar: el botón desaparece. -->
+              @if (!store.bloqueado()) {
+                <button
+                  type="button"
+                  class="ui-btn ui-btn--primary"
+                  [disabled]="!store.hayCambios() || store.guardando() || store.previsualizando()"
+                  (click)="guardar()"
+                >
+                  @if (store.guardando()) {
+                    <span class="ui-spinner spinner-btn"></span>
+                  }
+                  Guardar cambios
+                  @if (cambiosDeCluster() > 0) {
+                    <span class="parametros__cuenta">{{ cambiosDeCluster() }}</span>
+                  }
+                </button>
+              }
             </div>
           }
         }
       </div>
 
-      @if (store.borrador()) {
-        <div class="parametros__posiciones" role="group" aria-labelledby="titulo-posiciones">
-          <span class="ui-label" id="titulo-posiciones" title="Capacidad del plano: 10 en las rampas 15–18 y 25; 14 en las demás">
-            Posiciones por rampa
-          </span>
-          <div class="posiciones">
-            @for (r of rampasVista(); track r.numero) {
-              <label class="posiciones__item" [style.--cl]="colorCluster(r.cluster)">
-                <span class="posiciones__rampa">R{{ r.numero }}</span>
-                <input
-                  type="number"
-                  class="ui-input posiciones__input"
-                  min="0"
-                  [max]="r.capacidad"
-                  inputmode="numeric"
-                  [disabled]="!puedeModificar()"
-                  [value]="r.posiciones"
-                  [attr.aria-label]="'Posiciones habilitadas de la rampa ' + r.numero"
-                  (change)="fijarPosiciones(r.numero, $any($event.target).value)"
-                />
-                <span class="posiciones__cap">/ {{ r.capacidad }}</span>
-              </label>
+      @if (store.configuracion(); as c) {
+        @if (c.bloqueado) {
+          <p class="aviso aviso--candado">
+            <ui-icon name="lock" [size]="15" />
+            Configuración bloqueada para todos los registros
+            @if (c.bloqueadoPor || c.bloqueadoEn) {
+              · por {{ c.bloqueadoPor ?? 'alguien' }}{{ c.bloqueadoEn ? ', ' + (c.bloqueadoEn | date: 'dd/MM/yyyy HH:mm') : '' }}
             }
-          </div>
-        </div>
+            @if (envioActual() > 0) {
+              <span>· Este registro ya recibió envíos y conserva la suya.</span>
+            }
+          </p>
+        } @else if (!puedeModificar()) {
+          <p class="aviso"><ui-icon name="lock" [size]="15" /> Solo lectura: no tienes permiso para cambiar la configuración.</p>
+        }
       }
-
-      @if (!puedeModificar()) {
-        <p class="aviso"><ui-icon name="lock" [size]="15" /> Solo lectura: no tienes permiso para cambiar la configuración.</p>
-      } @else if (store.bloqueado()) {
-        <p class="aviso aviso--candado">
-          <ui-icon name="lock" [size]="15" />
-          Operarios y productividad bloqueados para todos los registros.
-          @if (envioActual() > 0) {
-            Este registro ya recibió envíos y conserva los suyos.
+      @if (clustersSinRampa().length > 0) {
+        <p class="aviso aviso--regla">
+          <ui-icon name="alertTriangle" [size]="15" />
+          <b>U2</b>
+          {{ clustersSinRampa().length === 1 ? 'El cluster' : 'Los clusters' }}
+          @for (c of clustersSinRampa(); track c; let ultimo = $last) {
+            C{{ c }}{{ ultimo ? '' : ', ' }}
           }
+          {{ clustersSinRampa().length === 1 ? 'no tiene' : 'no tienen' }} rampas: los operarios trabajan solo en rampas y nadie descargaría sus bultos.
         </p>
       }
-      @if (puedeModificar() && store.hayCambios()) {
+      @if (configEditable() && store.hayCambios()) {
         <p class="aviso aviso--cambios">
           <ui-icon name="info" [size]="15" />
           {{ store.previsualizando() ? 'Calculando la vista previa…' : 'Vista previa: los cambios aún no se guardan.' }}
@@ -183,34 +175,53 @@
     @if (store.error()) {
       <ng-container [ngTemplateOutlet]="errorCarga" />
     } @else if (store.borrador(); as b) {
-      <div class="toolbar">
-        <div class="ui-search toolbar__grow">
-          <!-- responsive:ok la lupa va dentro del campo a propósito (patrón ui-search) -->
-          <ui-icon name="search" [size]="18" data-responsive-ignore />
-          <input
-            type="search"
-            class="ui-input"
-            placeholder="Buscar: 15, P7, 13-18…"
-            aria-label="Buscar rampa o pasillo"
-            [value]="busqueda()"
-            (input)="busqueda.set($any($event.target).value)"
-          />
+      <!-- ===================== Pestañas: Clusters | Posiciones por rampa ===================== -->
+      <div class="pestanas">
+        <div class="pestanas__lista" role="tablist" aria-label="Qué asignar" (keydown)="alTecladoPestanas($event)">
+          @for (p of pestanas; track p.id) {
+            <button
+              type="button"
+              role="tab"
+              class="pestanas__tab"
+              [id]="'santa-tab-' + p.id"
+              [attr.aria-controls]="'santa-panel-' + p.id"
+              [attr.aria-selected]="pestana() === p.id"
+              [tabindex]="pestana() === p.id ? 0 : -1"
+              (click)="pestana.set(p.id)"
+            >
+              {{ p.etiqueta }}
+            </button>
+          }
         </div>
-        <div class="toolbar__acciones">
-          <button
-            type="button"
-            class="ui-btn ui-btn--secondary ui-btn--sm"
-            [attr.aria-pressed]="soloCambios()"
-            [class.boton--activo]="soloCambios()"
-            [disabled]="cambiosDeCluster() === 0 && !soloCambios()"
-            (click)="soloCambios.set(!soloCambios())"
-          >
-            <ui-icon name="ver" [size]="16" /> Mostrar cambios
-            @if (cambiosDeCluster() > 0) {
-              ({{ cambiosDeCluster() }})
-            }
-          </button>
-          @if (puedeModificar()) {
+        <div class="pestanas__acciones">
+          @if (pestana() === 'clusters') {
+            <div class="ui-search pestanas__buscar">
+              <!-- responsive:ok la lupa va dentro del campo a propósito (patrón ui-search) -->
+              <ui-icon name="search" [size]="18" data-responsive-ignore />
+              <input
+                type="search"
+                class="ui-input"
+                placeholder="Buscar: 15, P7, 13-18…"
+                aria-label="Buscar rampa o pasillo"
+                [value]="busqueda()"
+                (input)="busqueda.set($any($event.target).value)"
+              />
+            </div>
+            <button
+              type="button"
+              class="ui-btn ui-btn--secondary ui-btn--sm"
+              [attr.aria-pressed]="soloCambios()"
+              [class.boton--activo]="soloCambios()"
+              [disabled]="cambiosDeCluster() === 0 && !soloCambios()"
+              (click)="soloCambios.set(!soloCambios())"
+            >
+              <ui-icon name="ver" [size]="16" /> Mostrar cambios
+              @if (cambiosDeCluster() > 0) {
+                ({{ cambiosDeCluster() }})
+              }
+            </button>
+          }
+          @if (configEditable()) {
             <button
               type="button"
               class="ui-btn ui-btn--secondary ui-btn--sm"
@@ -227,17 +238,44 @@
         </div>
       </div>
 
-      <app-matriz-asignacion
-        [class.matriz--refrescando]="store.previsualizando()"
-        [fichas]="fichas()"
-        [clusters]="store.simulacionVisible()?.clusters ?? []"
-        [orden]="b.ordenClusters"
-        [editable]="puedeModificar()"
-        [texto]="busqueda()"
-        [soloCambios]="soloCambios()"
-        (mover)="moverFichas($event)"
-        (cambiarOrden)="cambiarOrden($event)"
-      />
+      @if (pestana() === 'clusters') {
+        <div role="tabpanel" id="santa-panel-clusters" aria-labelledby="santa-tab-clusters">
+          <app-matriz-asignacion
+            [class.matriz--refrescando]="store.previsualizando()"
+            [fichas]="fichas()"
+            [clusters]="store.simulacionVisible()?.clusters ?? []"
+            [orden]="b.ordenClusters"
+            [editable]="configEditable()"
+            [texto]="busqueda()"
+            [soloCambios]="soloCambios()"
+            (mover)="moverFichas($event)"
+            (cambiarOrden)="cambiarOrden($event)"
+          />
+        </div>
+      } @else {
+        <div role="tabpanel" id="santa-panel-posiciones" aria-labelledby="santa-tab-posiciones" class="panel-posiciones">
+          <p class="panel-posiciones__nota">Capacidad del plano: 10 en las rampas 15–18 y 25; 14 en las demás.</p>
+          <div class="posiciones">
+            @for (r of rampasVista(); track r.numero) {
+              <label class="posiciones__item" [style.--cl]="colorCluster(r.cluster)">
+                <span class="posiciones__rampa">R{{ r.numero }}</span>
+                <input
+                  type="number"
+                  class="ui-input posiciones__input"
+                  min="0"
+                  [max]="r.capacidad"
+                  inputmode="numeric"
+                  [disabled]="!configEditable()"
+                  [value]="r.posiciones"
+                  [attr.aria-label]="'Posiciones habilitadas de la rampa ' + r.numero"
+                  (change)="fijarPosiciones(r.numero, $any($event.target).value)"
+                />
+                <span class="posiciones__cap">/ {{ r.capacidad }}</span>
+              </label>
+            }
+          </div>
+        </div>
+      }
     } @else {
       <div class="loading"><span class="ui-spinner"></span> Cargando la configuración…</div>
     }
@@ -358,8 +396,8 @@
           <div class="detalle" role="status">
             <span class="detalle__cl" [style.--cl]="colorCluster(p.cluster)">C{{ p.cluster }}</span>
             <div class="detalle__texto">
-              <b>Ruta {{ p.ruta }}</b>
-              <span class="detalle__local">{{ p.local }}</span>
+              <b class="detalle__local">{{ p.local }}</b>
+              <span>Ruta {{ p.ruta }}</span>
               <span>{{ textoUbicacion(p) }}</span>
               <span>
                 {{ entero(p.recibidos) }}/{{ entero(p.total) }} bultos · {{ etiquetaEstadoPaleta(p.estado) }}
@@ -388,6 +426,48 @@
     </ui-empty>
   </div>
 </ng-template>
+
+<ui-modal
+  [abierto]="confirmarBloqueo()"
+  ancho="sm"
+  [compacto]="true"
+  titulo="Bloquear la configuración"
+  (cerrar)="confirmarBloqueo.set(false)"
+>
+  @if (store.borrador(); as b) {
+    <div class="confirm">
+      <span class="confirm__icon"><ui-icon name="lock" [size]="22" /></span>
+      <div class="confirm__text">
+        <p class="confirm__title">
+          @switch (pendientes()) {
+            @case (0) {
+              Los registros nuevos nacerán con esta configuración (ahora no hay pendientes).
+            }
+            @case (1) {
+              Se aplica esta configuración a 1 registro pendiente y a los nuevos.
+            }
+            @default {
+              Se aplica esta configuración a {{ entero(pendientes()) }} registros pendientes y a los nuevos.
+            }
+          }
+        </p>
+        <p class="confirm__desc">
+          Clusters de rampas y pasillos, posiciones, orden de llenado y {{ b.operarios }} operarios × {{ entero(b.bultosHora) }} bultos/h.
+          Los registros en curso o completos conservan la suya. Nadie podrá cambiarla hasta desbloquearla.
+          @if (store.hayCambios()) {
+            Incluye los cambios que aún no guardaste.
+          }
+        </p>
+      </div>
+    </div>
+  }
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="confirmarBloqueo.set(false)">Cancelar</button>
+    <button type="button" class="ui-btn ui-btn--primary" (click)="bloquear()">
+      <ui-icon name="lock" [size]="16" /> Bloquear
+    </button>
+  </div>
+</ui-modal>
 
 <ui-modal
   [abierto]="confirmarGuardar()"

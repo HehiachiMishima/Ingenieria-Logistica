@@ -18,9 +18,9 @@
     }
     @if (conTexto()) {
       <span class="etiqueta">
-        <b>{{ p.ruta }}</b>
+        <b class="etiqueta__local">{{ p.local }}</b>
         @if (conAvance()) {
-          {{ separador() }}{{ p.recibidos }}/{{ p.total }}
+          <span class="etiqueta__avance">{{ p.recibidos }}/{{ p.total }}</span>
         }
       </span>
     }

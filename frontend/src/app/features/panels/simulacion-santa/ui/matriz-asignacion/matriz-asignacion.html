@@ -10,7 +10,14 @@
   </div>
 }
 
-<div class="tablero" appArrastreFichas [validar]="validar" [grupo]="grupo" (soltar)="soltar($event)">
+<div
+  class="tablero"
+  [class.tablero--lectura]="!editable()"
+  appArrastreFichas
+  [validar]="validar"
+  [grupo]="grupo"
+  (soltar)="soltar($event)"
+>
   @for (col of columnas(); track $index) {
     <section
       class="columna"
@@ -25,6 +32,9 @@
             <i class="columna__punto" aria-hidden="true"></i>C{{ col.cluster }}
           } @else {
             Sin cluster
+          }
+          @if (!editable()) {
+            <ui-icon name="lock" [size]="13" class="columna__candado" aria-hidden="true" />
           }
         </span>
         @if (col.resumen; as r) {
@@ -41,20 +51,26 @@
 
       @if (col.cluster && col.resumen; as r) {
         <p class="columna__datos">{{ entero(r.paletas) }} pal · {{ entero(r.posiciones) }} pos · {{ col.ocupacion }} %</p>
-        <div class="llenar" role="group" [attr.aria-label]="'Qué llena primero el cluster ' + col.cluster">
-          <span class="llenar__lbl">Llenar</span>
-          @for (o of ordenes; track o.id) {
-            <button
-              type="button"
-              class="llenar__btn"
-              [attr.aria-pressed]="orden()[col.cluster - 1] === o.id"
-              [disabled]="!editable()"
-              (click)="fijarOrden(col.cluster, o.id)"
-            >
-              {{ o.id === 'RAMPAS_PRIMERO' ? 'Rampas' : 'Pasillos' }}
-            </button>
-          }
-        </div>
+        @if (editable()) {
+          <div class="llenar" role="group" [attr.aria-label]="'Qué llena primero el cluster ' + col.cluster">
+            <span class="llenar__lbl">Llenar</span>
+            @for (o of ordenes; track o.id) {
+              <button
+                type="button"
+                class="llenar__btn"
+                [attr.aria-pressed]="orden()[col.cluster - 1] === o.id"
+                (click)="fijarOrden(col.cluster, o.id)"
+              >
+                {{ o.id === 'RAMPAS_PRIMERO' ? 'Rampas' : 'Pasillos' }}
+              </button>
+            }
+          </div>
+        } @else {
+          <!-- Solo lectura (candado o sin permiso): el orden se lee, no se elige. -->
+          <p class="llenar__texto">
+            Llena primero: <b>{{ orden()[col.cluster - 1] === 'RAMPAS_PRIMERO' ? 'Rampas' : 'Pasillos' }}</b>
+          </p>
+        }
       } @else {
         <p class="columna__datos">No se usan en la simulación.</p>
       }

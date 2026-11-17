@@ -23,6 +23,15 @@ public class SimulacionSantaLotesRepository {
 
   private static final int LOTE = 1_000;
 
+  /**
+   * Nombre visible de quien bloqueó la configuración (nombre y apellido, como lo muestra la app;
+   * el login si ambos están vacíos), por la PK de usuarios. Null si está abierta o el usuario no
+   * existe. Va como subconsulta de la misma lectura de los predeterminados (alias p).
+   */
+  private static final String NOMBRE_ACTOR =
+      "(SELECT COALESCE(NULLIF(btrim(concat_ws(' ', u.nombre, u.apellido)), ''), u.usuario)"
+          + " FROM seguridad.usuarios u WHERE u.id = p.actualizado_por AND p.bloqueado)";
+
   private final JdbcTemplate jdbc;
 
   public SimulacionSantaLotesRepository(JdbcTemplate jdbc) {
@@ -75,6 +84,37 @@ public class SimulacionSantaLotesRepository {
         registroId);
   }
 
+  /**
+   * Paletas, bultos por envío y paletas completas por envío de cada cluster del registro, en una
+   * sola consulta (GROUP BY cluster; los acumulados salen de envio1..3). Solo los clusters con
+   * filas, en orden.
+   */
+  public List<AgregadoCluster> agregadosPorCluster(Long registroId) {
+    // Q: filas de un registro (uq_filas_registro_orden: WHERE registro_id = ?).
+    return jdbc.query(
+        """
+        SELECT cluster,
+               count(*) AS paletas,
+               coalesce(sum(envio1), 0) AS bultos1,
+               coalesce(sum(envio2), 0) AS bultos2,
+               coalesce(sum(envio3), 0) AS bultos3,
+               count(*) FILTER (WHERE envio1 >= envio1 + envio2 + envio3) AS completas1,
+               count(*) FILTER (WHERE envio1 + envio2 >= envio1 + envio2 + envio3) AS completas2,
+               count(*) AS completas3 -- hasta el envío 3, el acumulado es el total
+        FROM simulacion_santa.filas
+        WHERE registro_id = ?
+        GROUP BY cluster
+        ORDER BY cluster
+        """,
+        (rs, i) ->
+            new AgregadoCluster(
+                rs.getInt("cluster"),
+                rs.getInt("paletas"),
+                List.of(rs.getInt("bultos1"), rs.getInt("bultos2"), rs.getInt("bultos3")),
+                List.of(rs.getInt("completas1"), rs.getInt("completas2"), rs.getInt("completas3"))),
+        registroId);
+  }
+
   // ---------------- Ubicaciones de un registro ----------------
 
   /** Rampas y pasillos de un registro (por su PK). */
@@ -118,20 +158,25 @@ public class SimulacionSantaLotesRepository {
    * (el cambio espera a que la carga confirme).
    */
   public PredeterminadosGuardados predeterminados(boolean compartido) {
+    // La subconsulta del nombre no entra en el FOR SHARE (solo bloquea la fila de p).
     PredeterminadosGuardados fila =
         jdbc.query(
             """
-            SELECT operarios, bultos_hora, orden_cluster1, orden_cluster2, orden_cluster3,
-                   actualizado_por, actualizado_en, bloqueado
-            FROM simulacion_santa.predeterminados
-            WHERE id = 1
+            SELECT p.operarios, p.bultos_hora, p.orden_cluster1, p.orden_cluster2, p.orden_cluster3,
+                   p.actualizado_por, p.actualizado_en, p.bloqueado,
+            """
+                + NOMBRE_ACTOR
+                + """
+                   AS bloqueado_por
+            FROM simulacion_santa.predeterminados p
+            WHERE p.id = 1
             """
                 + (compartido ? " FOR SHARE" : ""),
             rs -> {
               if (!rs.next()) {
                 return null;
               }
-              OffsetDateTime en = rs.getObject("actualizado_en", OffsetDateTime.class);
+              Instant en = instante(rs, "actualizado_en");
               return new PredeterminadosGuardados(
                   rs.getInt("operarios"),
                   rs.getInt("bultos_hora"),
@@ -140,8 +185,8 @@ public class SimulacionSantaLotesRepository {
                       rs.getString("orden_cluster2"),
                       rs.getString("orden_cluster3")),
                   rs.getObject("actualizado_por", Long.class),
-                  en == null ? null : en.toInstant(),
-                  rs.getBoolean("bloqueado"),
+                  en,
+                  candado(rs.getBoolean("bloqueado"), rs.getString("bloqueado_por"), en),
                   List.of());
             });
     if (fila == null) {
@@ -161,22 +206,30 @@ public class SimulacionSantaLotesRepository {
         fila.ordenClusters(),
         fila.actualizadoPor(),
         fila.actualizadoEn(),
-        fila.bloqueado(),
+        fila.candado(),
         ubicaciones);
   }
 
   /**
-   * Si operarios y bultos por hora están bloqueados para todos los registros (false si falta la
-   * fila). Lectura simple, sin FOR SHARE: quien configura un registro ya tiene su fila FOR UPDATE
-   * y bloquear espera por ella para aplicarle los valores, así que un bloqueo simultáneo igual
-   * termina aplicándose (y no hay abrazo mortal entre las dos filas).
+   * El candado de la configuración (abierto si falta la fila), con el nombre de quien bloqueó en
+   * la misma consulta. Lectura simple, sin FOR SHARE: quien configura un registro ya tiene su
+   * fila FOR UPDATE y bloquear espera por ella para aplicarle la configuración, así que un
+   * bloqueo simultáneo igual termina aplicándose (y no hay abrazo mortal entre las dos filas).
    */
-  public boolean predeterminadosBloqueados() {
-    Boolean bloqueado =
+  public Candado candado() {
+    Candado candado =
         jdbc.query(
-            "SELECT bloqueado FROM simulacion_santa.predeterminados WHERE id = 1",
-            rs -> rs.next() ? rs.getBoolean(1) : null);
-    return Boolean.TRUE.equals(bloqueado);
+            "SELECT p.bloqueado, p.actualizado_en, "
+                + NOMBRE_ACTOR
+                + " AS bloqueado_por FROM simulacion_santa.predeterminados p WHERE p.id = 1",
+            rs ->
+                rs.next()
+                    ? candado(
+                        rs.getBoolean("bloqueado"),
+                        rs.getString("bloqueado_por"),
+                        instante(rs, "actualizado_en"))
+                    : null);
+    return candado == null ? Candado.ABIERTO : candado;
   }
 
   /**
@@ -233,8 +286,8 @@ public class SimulacionSantaLotesRepository {
   }
 
   /**
-   * Abre operarios y bultos por hora para cambiarlos; los valores se conservan. Sin efecto si ya
-   * estaban abiertos o falta la fila (entonces no hay nada bloqueado).
+   * Abre la configuración para cambiarla; los valores se conservan. Sin efecto si ya estaba
+   * abierta o falta la fila (entonces no hay nada bloqueado).
    *
    * @return si la fila estaba bloqueada y se abrió
    */
@@ -251,33 +304,105 @@ public class SimulacionSantaLotesRepository {
   }
 
   /**
-   * Lleva operarios y bultos por hora a los registros PENDIENTE (envío 0) que tengan otros; los
-   * EN_CURSO y COMPLETO conservan los suyos. Una sentencia, sin recorrer registros: cuenta como
-   * un cambio de configuración de cada registro tocado. Si alguien está configurando o moviendo
-   * el envío de un registro, la sentencia espera su commit y vuelve a evaluar el estado.
+   * Lleva la configuración completa de los predeterminados (ya guardados en esta transacción) a
+   * los registros PENDIENTE (envío 0): operarios, bultos por hora, orden de los 3 clusters y el
+   * cluster y las posiciones de cada rampa y pasillo. Los EN_CURSO y COMPLETO conservan la suya.
+   * Tres sentencias, sin recorrer registros:
    *
-   * @return cuántos registros recibieron los valores
+   * <ol>
+   *   <li>bloquea los pendientes en orden de id (FOR UPDATE): quien esté configurando o moviendo
+   *       el envío de uno termina antes, y si lo sacó de PENDIENTE ya no entra;
+   *   <li>copia las 43 ubicaciones de los predeterminados a esos registros, solo las distintas;
+   *   <li>actualiza la fila de cada registro que cambió en algo (valores o alguna ubicación), con
+   *       su configurado_por/en y actualizado_por/en.
+   * </ol>
+   *
+   * @return cuántos registros cambiaron
    */
-  public int aplicarPredeterminados(int operarios, int bultosHora, Long actor, Instant ahora) {
-    OffsetDateTime en = OffsetDateTime.ofInstant(ahora, ZoneOffset.UTC);
+  public int aplicarPredeterminados(
+      int operarios, int bultosHora, List<String> ordenClusters, Long actor, Instant ahora) {
     // Q: registros pendientes (idx_registros_estado): WHERE estado = 'PENDIENTE'.
+    List<Long> pendientes =
+        jdbc.queryForList(
+            """
+            SELECT id FROM simulacion_santa.registros
+            WHERE estado = 'PENDIENTE'
+            ORDER BY id
+            FOR UPDATE
+            """,
+            Long.class);
+    if (pendientes.isEmpty()) {
+      return 0;
+    }
+    Long[] ids = pendientes.toArray(Long[]::new);
+    // Q: ubicaciones de esos registros por su PK (registro_id, tipo, numero).
+    List<Long> conUbicacionesNuevas =
+        jdbc.query(
+            conexion -> {
+              var ps =
+                  conexion.prepareStatement(
+                      """
+                      INSERT INTO simulacion_santa.ubicaciones AS u
+                          (registro_id, tipo, numero, cluster, posiciones)
+                      SELECT r.id, p.tipo, p.numero, p.cluster, p.posiciones
+                      FROM unnest(?::bigint[]) AS r(id)
+                      CROSS JOIN simulacion_santa.predeterminados_ubicaciones p
+                      ON CONFLICT (registro_id, tipo, numero) DO UPDATE
+                      SET cluster = EXCLUDED.cluster, posiciones = EXCLUDED.posiciones
+                      WHERE (u.cluster, u.posiciones)
+                          IS DISTINCT FROM (EXCLUDED.cluster, EXCLUDED.posiciones)
+                      RETURNING u.registro_id
+                      """);
+              ps.setArray(1, conexion.createArrayOf("bigint", ids));
+              return ps;
+            },
+            (rs, i) -> rs.getLong(1));
+    Long[] cambiados = conUbicacionesNuevas.stream().distinct().toArray(Long[]::new);
+    OffsetDateTime en = OffsetDateTime.ofInstant(ahora, ZoneOffset.UTC);
+    // Q: registros por su PK (id = ANY).
     return jdbc.update(
-        """
-        UPDATE simulacion_santa.registros
-        SET operarios = ?, bultos_hora = ?,
-            configurado_por = ?, configurado_en = ?,
-            actualizado_por = ?, actualizado_en = ?
-        WHERE estado = 'PENDIENTE'
-          AND (operarios <> ? OR bultos_hora <> ?)
-        """,
-        operarios,
-        bultosHora,
-        actor,
-        en,
-        actor,
-        en,
-        operarios,
-        bultosHora);
+        conexion -> {
+          var ps =
+              conexion.prepareStatement(
+                  """
+                  UPDATE simulacion_santa.registros
+                  SET operarios = ?, bultos_hora = ?,
+                      orden_cluster1 = ?, orden_cluster2 = ?, orden_cluster3 = ?,
+                      configurado_por = ?, configurado_en = ?,
+                      actualizado_por = ?, actualizado_en = ?
+                  WHERE id = ANY(?::bigint[])
+                    AND (operarios <> ? OR bultos_hora <> ?
+                         OR orden_cluster1 <> ? OR orden_cluster2 <> ? OR orden_cluster3 <> ?
+                         OR id = ANY(?::bigint[]))
+                  """);
+          int i = 1;
+          ps.setInt(i++, operarios);
+          ps.setInt(i++, bultosHora);
+          for (String orden : ordenClusters) {
+            ps.setString(i++, orden);
+          }
+          ps.setObject(i++, actor, Types.BIGINT);
+          ps.setObject(i++, en);
+          ps.setObject(i++, actor, Types.BIGINT);
+          ps.setObject(i++, en);
+          ps.setArray(i++, conexion.createArrayOf("bigint", ids));
+          ps.setInt(i++, operarios);
+          ps.setInt(i++, bultosHora);
+          for (String orden : ordenClusters) {
+            ps.setString(i++, orden);
+          }
+          ps.setArray(i, conexion.createArrayOf("bigint", cambiados));
+          return ps;
+        });
+  }
+
+  private static Candado candado(boolean bloqueado, String bloqueadoPor, Instant en) {
+    return bloqueado ? new Candado(true, bloqueadoPor, en) : Candado.ABIERTO;
+  }
+
+  private static Instant instante(ResultSet rs, String columna) throws SQLException {
+    OffsetDateTime valor = rs.getObject(columna, OffsetDateTime.class);
+    return valor == null ? null : valor.toInstant();
   }
 
   private static UbicacionGuardada ubicacion(ResultSet rs) throws SQLException {

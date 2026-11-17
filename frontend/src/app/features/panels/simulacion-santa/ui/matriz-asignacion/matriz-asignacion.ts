@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 import { Cluster, ClusterSimulacion, OrdenLlenado } from '../../models/santa.model';
 import { CLUSTERS, ORDENES_LLENADO, colorCluster, entero, porcentaje } from '../../santa-formato';
+import { Icon } from '../../../../../shared/ui/icon/icon';
 import { ArrastreFichas, DestinoFichas, TipoFicha } from './arrastre-fichas.directive';
 
 /** Una rampa o un pasillo como ficha del tablero. */
@@ -45,7 +46,7 @@ interface ColumnaVista {
 @Component({
   selector: 'app-matriz-asignacion',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ArrastreFichas],
+  imports: [ArrastreFichas, Icon],
   host: { '(keydown.escape)': 'limpiar()' },
   templateUrl: './matriz-asignacion.html',
   styleUrl: './matriz-asignacion.scss',

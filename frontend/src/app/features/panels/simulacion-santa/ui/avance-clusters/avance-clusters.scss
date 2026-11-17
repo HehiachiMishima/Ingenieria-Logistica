@@ -1,0 +1,168 @@
+/* ---------- estructura ---------- */
+:host {
+  display: block;
+  min-width: 0;
+}
+
+/* responsive:ok scroll horizontal propio: con muchos envíos la tabla es más ancha que la pantalla */
+.marco {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.tabla {
+  width: 100%;
+  min-width: calc(14rem + var(--envios, 3) * 11rem);
+  border-collapse: collapse;
+
+  th,
+  td {
+    padding: var(--space-3) var(--space-4);
+    text-align: left;
+    vertical-align: top;
+  }
+
+  td {
+    min-width: 10rem;
+  }
+}
+
+.cl {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 13rem;
+
+  &__nombre {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+
+    i {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+  }
+}
+
+.avance {
+  display: block;
+  height: 8px;
+  margin-bottom: 6px;
+
+  i {
+    display: block;
+    height: 100%;
+  }
+}
+
+.celda__pct,
+.celda__dato {
+  display: block;
+}
+
+.aviso {
+  display: block;
+  margin-top: 2px;
+  padding: 2px 6px;
+}
+
+/* ---------- apariencia ---------- */
+.marco {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  scrollbar-width: thin;
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--ring);
+  }
+}
+
+.tabla {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+
+  thead th {
+    background: var(--table-head-bg);
+    font-size: var(--fs-xs);
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--table-head-fg);
+  }
+
+  tbody tr + tr {
+    border-top: 1px solid var(--border);
+  }
+
+  tbody th {
+    border-left: 4px solid var(--cl);
+    font-weight: 400;
+  }
+
+  .actual {
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
+  }
+}
+
+.cl {
+  &__nombre {
+    font-family: var(--font-display);
+    font-size: var(--fs-lg);
+    font-weight: 800;
+    color: var(--text);
+
+    i {
+      background: var(--cl);
+    }
+  }
+
+  &__dato {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+  }
+}
+
+.avance {
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+
+  i {
+    border-radius: var(--radius-pill);
+    background: var(--cl);
+  }
+}
+
+.celda__pct {
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: 800;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.celda__dato {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+
+  b {
+    color: var(--text);
+  }
+}
+
+.aviso {
+  border-radius: var(--radius-xs);
+  background: var(--warning-soft);
+  font-size: var(--fs-xs);
+  color: var(--warning);
+
+  &--mal {
+    background: var(--danger-soft);
+    color: var(--danger);
+  }
+}

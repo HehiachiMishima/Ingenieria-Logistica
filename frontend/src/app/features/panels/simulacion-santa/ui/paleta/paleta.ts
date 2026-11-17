@@ -10,18 +10,18 @@ const CUARTOS = [
   { x: 50, y: 50 },
 ];
 
-/** Ancho desde el que se escribe la ruta y el avance sobre la paleta. */
+/** Ancho desde el que se escribe el local sobre la paleta. */
 const ANCHO_TEXTO = 56;
-/** Ancho desde el que además de la ruta entra el avance («2101 10/16»). */
-const ANCHO_AVANCE = 80;
-/** Ancho desde el que ruta y avance entran con separador («2101 · 12/12»). */
-const ANCHO_UNA_LINEA = 110;
+/** Ancho desde el que, bajo el local, entra una segunda línea con el avance («10/16»). */
+const ANCHO_AVANCE = 96;
 
 /**
  * Una posición del plano dibujada como en el almacén: paleta amarilla vista
  * desde arriba y, encima, las cajas de los bultos ya recibidos (un cuarto por
- * cada 25 %). Sin paleta es un hueco libre (borde del cluster) o deshabilitado.
- * Se ubica de forma absoluta dentro del plano.
+ * cada 25 %). Lleva escrito su local: una paleta es un solo local con todos sus
+ * bultos (si no entra, se corta con «…» y el tooltip lo dice completo). Sin
+ * paleta es un hueco libre (borde del cluster) o deshabilitado. Se ubica de
+ * forma absoluta dentro del plano.
  */
 @Component({
   selector: 'app-paleta',
@@ -50,10 +50,8 @@ export class Paleta {
 
   readonly color = computed(() => colorCluster(this.paleta()?.cluster ?? this.cluster()));
   readonly conTexto = computed(() => this.ancho() >= ANCHO_TEXTO);
-  /** Bajo 80 px solo entra la ruta: el avance lo dicen las cajas (y el tooltip). */
+  /** Bajo 96 px solo entra el local: el avance lo dicen las cajas (y el tooltip). */
   readonly conAvance = computed(() => this.ancho() >= ANCHO_AVANCE);
-  /** Con poco ancho, ruta y avance van separados solo por un espacio. */
-  readonly separador = computed(() => (this.ancho() >= ANCHO_UNA_LINEA ? ' · ' : ' '));
 
   readonly cajas = computed(() => {
     const p = this.paleta();
@@ -69,6 +67,6 @@ export class Paleta {
     if (!p) {
       return `${this.lugar()} · ${this.habilitada() ? 'libre' : 'deshabilitada'}`;
     }
-    return `${this.lugar()} · Ruta ${p.ruta} · ${p.local} · C${p.cluster} · ${p.recibidos}/${p.total} bultos · ${etiquetaEstadoPaleta(p.estado)}`;
+    return `${p.local} · Ruta ${p.ruta} · C${p.cluster} · ${this.lugar()} · ${p.recibidos}/${p.total} bultos · ${etiquetaEstadoPaleta(p.estado)}`;
   });
 }

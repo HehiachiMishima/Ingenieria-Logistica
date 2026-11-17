@@ -3,6 +3,7 @@ package oracle.simulacionsanta.service;
 import static oracle.simulacionsanta.service.SimulacionSantaPredeterminadosServiceTest.pedido;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -20,19 +21,24 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import oracle.common.config.Transacciones;
 import oracle.common.exception.ConflictoException;
+import oracle.common.exception.RecursoNoEncontradoException;
 import oracle.simulacionsanta.model.RegistroSanta;
+import oracle.simulacionsanta.repository.Candado;
 import oracle.simulacionsanta.repository.RegistroSantaRepository;
 import oracle.simulacionsanta.repository.SimulacionSantaLotesRepository;
-import oracle.simulacionsanta.repository.UbicacionGuardada;
+import oracle.simulacionsanta.request.EnvioRequest;
 import oracle.simulacionsanta.response.ConfiguracionResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 
-/** Configuración de un registro con el candado de operarios y productividad, sin BD. */
+/** Configuración de un registro con el candado de la configuración, sin BD. */
 class SimulacionSantaConfiguracionServiceTest {
 
   private static final Long ID = 5L;
+  private static final Instant EN = Instant.parse("2026-11-17T15:00:00Z");
+  private static final Candado BLOQUEADA = new Candado(true, "Ana Pérez", EN);
+  private static final String MENSAJE =
+      "La configuración está bloqueada: desbloquéala para cambiarla.";
 
   private RegistroSantaRepository registros;
   private SimulacionSantaLotesRepository lotes;
@@ -66,74 +72,91 @@ class SimulacionSantaConfiguracionServiceTest {
 
   @Test
   void conCandadoNoSeCambianLosOperarios() {
-    when(lotes.predeterminadosBloqueados()).thenReturn(true);
+    when(lotes.candado()).thenReturn(BLOQUEADA);
 
     ConflictoException error =
         assertThrows(
             ConflictoException.class, () -> servicio.guardarConfiguracion(ID, pedido(7, 120, 1)));
 
-    assertEquals(
-        "Operarios y productividad están bloqueados: desbloquéalos para cambiarlos.",
-        error.getMessage());
+    assertEquals(MENSAJE, error.getMessage());
     assertEquals(6, registro.getOperarios());
     verify(registros, never()).save(any());
     verify(lotes, never()).guardarUbicaciones(anyLong(), anyList());
   }
 
   @Test
-  void conCandadoNoSeCambiaLaProductividad() {
-    when(lotes.predeterminadosBloqueados()).thenReturn(true);
+  void conCandadoTampocoSeCambianSoloLosClusters() {
+    when(lotes.candado()).thenReturn(BLOQUEADA);
+
+    // Mismos operarios y bultos por hora: igual es 409, ya no se compara campo a campo.
+    ConflictoException error =
+        assertThrows(
+            ConflictoException.class, () -> servicio.guardarConfiguracion(ID, pedido(6, 120, 3)));
+
+    assertEquals(MENSAJE, error.getMessage());
+    verify(registros, never()).save(any());
+    verify(lotes, never()).guardarUbicaciones(anyLong(), anyList());
+  }
+
+  @Test
+  void conCandadoNiSiquieraLaMismaConfiguracion() {
+    when(lotes.candado()).thenReturn(BLOQUEADA);
 
     assertThrows(
-        ConflictoException.class, () -> servicio.guardarConfiguracion(ID, pedido(6, 121, 1)));
+        ConflictoException.class, () -> servicio.guardarConfiguracion(ID, pedido(6, 120, 1)));
 
-    assertEquals(120, registro.getBultosHora());
     verify(registros, never()).save(any());
   }
 
   @Test
-  @SuppressWarnings("unchecked")
-  void conCandadoSiSeCambianLosClusters() {
-    when(lotes.predeterminadosBloqueados()).thenReturn(true);
+  void unRegistroQueNoExisteSigueSiendo404ConCandado() {
+    when(lotes.candado()).thenReturn(BLOQUEADA);
+    when(registros.bloquear(99L)).thenReturn(Optional.empty());
 
-    ConfiguracionResponse datos = servicio.guardarConfiguracion(ID, pedido(6, 120, 3)).datos();
-
-    ArgumentCaptor<List<UbicacionGuardada>> ubicaciones = ArgumentCaptor.forClass(List.class);
-    verify(lotes).guardarUbicaciones(eq(ID), ubicaciones.capture());
-    UbicacionGuardada rampa15 =
-        ubicaciones.getValue().stream()
-            .filter((u) -> "RAMPA".equals(u.tipo()) && u.numero() == 15)
-            .findFirst()
-            .orElseThrow();
-    assertEquals(3, rampa15.cluster());
-    assertTrue(datos.bloqueado());
-    assertEquals(3, datos.rampas().getFirst().cluster());
-    assertEquals(6, datos.operarios());
+    assertThrows(
+        RecursoNoEncontradoException.class,
+        () -> servicio.guardarConfiguracion(99L, pedido(6, 120, 1)));
   }
 
   @Test
-  void sinCandadoSeCambianLosOperarios() {
-    when(lotes.predeterminadosBloqueados()).thenReturn(false);
+  void conCandadoElEnvioSiCambia() {
+    when(lotes.candado()).thenReturn(BLOQUEADA);
 
-    ConfiguracionResponse datos = servicio.guardarConfiguracion(ID, pedido(9, 150, 1)).datos();
+    servicio.cambiarEnvio(ID, new EnvioRequest(1));
+
+    assertEquals(1, registro.getEnvioActual());
+  }
+
+  @Test
+  void sinCandadoSeGuardaTodo() {
+    when(lotes.candado()).thenReturn(Candado.ABIERTO);
+
+    ConfiguracionResponse datos = servicio.guardarConfiguracion(ID, pedido(9, 150, 3)).datos();
 
     assertEquals(9, registro.getOperarios());
     assertEquals(150, registro.getBultosHora());
+    verify(lotes).guardarUbicaciones(eq(ID), anyList());
     assertFalse(datos.bloqueado());
-    assertEquals(9, datos.operarios());
+    assertNull(datos.bloqueadoPor());
+    assertNull(datos.bloqueadoEn());
+    assertEquals(3, datos.rampas().getFirst().cluster());
   }
 
   @Test
-  void laConfiguracionDelRegistroDiceSiEstaBloqueada() {
-    when(lotes.predeterminadosBloqueados()).thenReturn(true);
+  void laConfiguracionDelRegistroDiceQuienYCuandoLaBloqueo() {
+    when(lotes.candado()).thenReturn(BLOQUEADA);
 
     ConfiguracionResponse datos = servicio.configuracion(ID).datos();
 
     assertTrue(datos.bloqueado());
+    assertEquals("Ana Pérez", datos.bloqueadoPor());
+    assertEquals(EN, datos.bloqueadoEn());
     assertEquals(ID, datos.registroId());
-    assertEquals(6, datos.operarios());
 
-    when(lotes.predeterminadosBloqueados()).thenReturn(false);
-    assertFalse(servicio.configuracion(ID).datos().bloqueado());
+    when(lotes.candado()).thenReturn(Candado.ABIERTO);
+    ConfiguracionResponse abierta = servicio.configuracion(ID).datos();
+    assertFalse(abierta.bloqueado());
+    assertNull(abierta.bloqueadoPor());
+    assertNull(abierta.bloqueadoEn());
   }
 }

@@ -1,0 +1,45 @@
+<div class="envios" role="table" aria-label="Envíos: porcentaje, tiempo y operarios">
+  <div class="envios__fila envios__fila--cabeza" role="row">
+    <span role="columnheader">Envío</span>
+    <span role="columnheader">Bultos y % del total</span>
+    <span role="columnheader">Tiempo con {{ operarios() }} operarios · ventana {{ duracion(ventanaMin()) }}</span>
+    <span role="columnheader" class="num">Operarios para la ventana</span>
+  </div>
+
+  @for (f of filas(); track f.envio) {
+    <div class="envios__fila" role="row" [class.envios__fila--actual]="f.envio === envioActual()">
+      <span role="cell" class="envios__nombre">
+        Envío {{ f.envio }}
+        @if (f.envio <= envioActual()) {
+          <span class="chip chip--ok">recibido</span>
+        }
+      </span>
+
+      <span role="cell" class="medida">
+        <span class="medida__barra" aria-hidden="true"><i [style.width.%]="f.porcentaje"></i></span>
+        <span class="medida__texto">
+          <b>{{ porciento(f.porcentaje) }}</b> · {{ entero(f.bultos) }} bultos · acumulado {{ porciento(f.acumulado) }}
+        </span>
+      </span>
+
+      <span role="cell" class="medida">
+        <span class="medida__barra medida__barra--tiempo" [class.medida__barra--mal]="excede(f)" aria-hidden="true">
+          <i [style.width.%]="anchoTiempo(f)"></i>
+          <em class="medida__ventana" [style.left.%]="marcaVentana()"></em>
+        </span>
+        <span class="medida__texto" [class.medida__texto--mal]="excede(f)">
+          <b>{{ duracion(f.minutos) }}</b>
+          @if (excede(f)) {
+            · se pasa {{ duracion((f.minutos ?? 0) - ventanaMin()) }}
+          }
+        </span>
+      </span>
+
+      <span role="cell" class="num envios__operarios" [class.envios__operarios--mal]="(f.operarios ?? 0) > operarios()">
+        {{ f.operarios ?? '—' }}
+      </span>
+    </div>
+  } @empty {
+    <p class="envios__vacio">Este registro no tiene envíos.</p>
+  }
+</div>

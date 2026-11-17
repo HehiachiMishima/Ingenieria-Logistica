@@ -1,4 +1,4 @@
-import { Cluster, EstadoPaleta, EstadoRegistroSanta, OrdenLlenado } from './models/santa.model';
+import { Cluster, EstadoPaleta, EstadoRegistroSanta, OrdenLlenado, ReglaExcel } from './models/santa.model';
 
 export const ESTADOS_REGISTRO_SANTA: { id: EstadoRegistroSanta; etiqueta: string }[] = [
   { id: 'PENDIENTE', etiqueta: 'Pendiente' },
@@ -37,6 +37,24 @@ export function etiquetaCluster(cluster: Cluster | null): string {
 export const ORDENES_LLENADO: { id: OrdenLlenado; etiqueta: string }[] = [
   { id: 'RAMPAS_PRIMERO', etiqueta: 'Rampas primero' },
   { id: 'PASILLOS_PRIMERO', etiqueta: 'Pasillos primero' },
+];
+
+/**
+ * Reglas explícitas del Excel de despacho, con el mismo código que el servidor
+ * pone en cada error (`ErrorFila.regla`). La E7 es la regla crucial.
+ */
+export const REGLAS_EXCEL: { codigo: ReglaExcel; regla: string; crucial?: boolean }[] = [
+  { codigo: 'E1', regla: 'Deben estar las columnas RUTA, LOCAL, CLUSTER y 1, 2 y 3 ENVÍO; si falta una, no se carga nada.' },
+  { codigo: 'E2', regla: 'La ruta no puede estar vacía ni pasar de 50 caracteres.' },
+  { codigo: 'E3', regla: 'El local no puede estar vacío ni pasar de 150 caracteres.' },
+  { codigo: 'E4', regla: 'El cluster es obligatorio y debe ser 1, 2 o 3 (se acepta «C1», «CL1» o «CLUSTER 1»).' },
+  { codigo: 'E5', regla: 'Cada envío es un número entero de bultos entre 0 y 99.999 (vacío cuenta como 0).' },
+  { codigo: 'E6', regla: 'La suma de los 3 envíos debe ser mayor que 0.' },
+  {
+    codigo: 'E7',
+    regla: 'Una paleta lleva un solo local con todos sus bultos: un local no puede repetirse, ni con otra ruta.',
+    crucial: true,
+  },
 ];
 
 const FORMATO_ENTERO = new Intl.NumberFormat('es-PE', { maximumFractionDigits: 0 });

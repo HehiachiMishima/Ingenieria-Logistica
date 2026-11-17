@@ -10,6 +10,7 @@ import oracle.common.support.ActorActual;
 import oracle.common.support.Auditoria;
 import oracle.common.support.Trazas;
 import oracle.simulacionsanta.model.RegistroSanta;
+import oracle.simulacionsanta.repository.Candado;
 import oracle.simulacionsanta.repository.RegistroSantaRepository;
 import oracle.simulacionsanta.repository.SimulacionSantaLotesRepository;
 import oracle.simulacionsanta.repository.UbicacionGuardada;
@@ -56,15 +57,15 @@ public class SimulacionSantaConfiguracionService {
                           configuracionDe(registro, lotes.ubicaciones(id)),
                           registro.getConfiguradoPor(),
                           registro.getConfiguradoEn(),
-                          lotes.predeterminadosBloqueados());
+                          lotes.candado());
                     }));
     return ApiResponse.ok("Configuración del registro.", datos);
   }
 
   /**
    * Reemplaza la configuración del registro (valida todo antes de abrir la transacción). Con el
-   * candado de los predeterminados puesto, operarios y bultos por hora deben quedar como están
-   * (409 si cambian); clusters, posiciones y orden de llenado sí se guardan.
+   * candado de los predeterminados puesto no se guarda nada: 409 siempre (404 antes, si el
+   * registro no existe).
    */
   public ApiResponse<ConfiguracionResponse> guardarConfiguracion(Long id, ConfiguracionRequest req) {
     ConfiguracionSanta config = ConfiguracionSanta.desde(req);
@@ -77,12 +78,10 @@ public class SimulacionSantaConfiguracionService {
                 transacciones.ejecutar(
                     () -> {
                       RegistroSanta registro = bloquear(id);
-                      boolean bloqueado = lotes.predeterminadosBloqueados();
-                      if (bloqueado
-                          && (config.operarios() != registro.getOperarios()
-                              || config.bultosHora() != registro.getBultosHora())) {
+                      Candado candado = lotes.candado();
+                      if (candado.bloqueado()) {
                         throw new ConflictoException(
-                            SimulacionSantaPredeterminadosService.MENSAJE_BLOQUEADOS);
+                            SimulacionSantaPredeterminadosService.MENSAJE_BLOQUEADA);
                       }
                       List<String> orden = config.ordenComoTexto();
                       registro.setOperarios(config.operarios());
@@ -96,7 +95,7 @@ public class SimulacionSantaConfiguracionService {
                       registros.save(registro);
                       lotes.guardarUbicaciones(id, config.ubicaciones());
                       return SimulacionSantaRespuestas.configuracion(
-                          id, config, actor, registro.getConfiguradoEn(), bloqueado);
+                          id, config, actor, registro.getConfiguradoEn(), candado);
                     }));
     return ApiResponse.ok("Configuración guardada.", datos);
   }

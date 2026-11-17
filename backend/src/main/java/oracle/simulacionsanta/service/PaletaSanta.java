@@ -1,7 +1,8 @@
 package oracle.simulacionsanta.service;
 
 /**
- * Una fila guardada del Excel (ruta + local = una paleta), como la necesita el asignador.
+ * Una fila guardada del Excel (una paleta: un solo local con todos sus bultos), como la necesita
+ * el asignador.
  *
  * @param orden número de fila en el Excel: las paletas ocupan los huecos en este orden
  */

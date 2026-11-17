@@ -1,0 +1,229 @@
+/* ---------- estructura ---------- */
+.parametros {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  margin-bottom: var(--space-4);
+
+  &__campo {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: min(100%, 170px);
+
+    &--registro {
+      flex-grow: 2;
+      min-width: min(100%, 240px);
+    }
+
+    .ui-input,
+    .ui-select {
+      height: 38px;
+    }
+  }
+
+  &__acciones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  &__nota {
+    flex: 1 1 100%;
+    margin: 0;
+  }
+}
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-4);
+}
+
+.recomendacion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-5);
+  padding: var(--space-3) var(--space-4);
+}
+
+.bloque {
+  margin-bottom: var(--space-6);
+
+  &__cabeza {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-4);
+    margin-bottom: var(--space-3);
+
+    .bloque__titulo {
+      margin: 0;
+    }
+  }
+
+  &__titulo {
+    margin: 0 0 var(--space-3);
+  }
+}
+
+/* Barra apilada con la parte de bultos de cada cluster. */
+.reparto {
+  display: flex;
+  flex: 1 1 280px;
+  max-width: 520px;
+  min-width: 0;
+  height: 26px;
+  overflow: hidden;
+
+  &__parte {
+    display: grid;
+    flex: 1 1 0;
+    place-items: center;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap; /* responsive:ok etiqueta corta dentro de la barra; el % completo va en el tooltip */
+  }
+}
+
+.nota {
+  margin: var(--space-2) 0 0;
+}
+
+@media (max-width: 720px) {
+  .parametros {
+    padding: var(--space-4);
+
+    &__acciones {
+      flex: 1 1 100%;
+
+      .ui-btn {
+        flex: 1 1 auto;
+      }
+    }
+  }
+}
+
+/* ---------- apariencia ---------- */
+.parametros {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+
+  &__nota {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+
+    b {
+      color: var(--accent);
+    }
+  }
+}
+
+.kpi {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xs);
+
+  &__lbl {
+    font-size: var(--fs-xs);
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+
+  &__valor {
+    font-family: var(--font-display);
+    font-size: var(--fs-2xl);
+    font-weight: 800;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__sub {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+  }
+
+  &--mal {
+    border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
+
+    .kpi__valor {
+      color: var(--danger);
+    }
+  }
+
+  &--bien .kpi__valor {
+    color: var(--success);
+  }
+}
+
+.recomendacion {
+  border: 1px solid color-mix(in srgb, var(--success) 30%, var(--border));
+  border-radius: var(--radius-lg);
+  background: var(--success-soft);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+
+  ui-icon {
+    color: var(--success);
+  }
+
+  &--mal {
+    border-color: color-mix(in srgb, var(--danger) 30%, var(--border));
+    background: var(--danger-soft);
+
+    ui-icon,
+    b {
+      color: var(--danger);
+    }
+  }
+}
+
+.bloque__titulo {
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: 800;
+  color: var(--text);
+}
+
+.reparto {
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+
+  &__parte {
+    background: color-mix(in srgb, var(--cl) 85%, var(--surface));
+    font-size: var(--fs-xs);
+    font-weight: 800;
+    color: var(--brand-contrast);
+  }
+}
+
+.nota {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+
+  a {
+    font-weight: 700;
+    color: var(--accent);
+  }
+}

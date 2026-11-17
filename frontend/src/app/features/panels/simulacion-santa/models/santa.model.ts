@@ -30,9 +30,13 @@ export interface RegistroSanta {
   actualizadoEn: string;
 }
 
+/** Reglas del Excel (catálogo en `REGLAS_EXCEL`). */
+export type ReglaExcel = 'E1' | 'E2' | 'E3' | 'E4' | 'E5' | 'E6' | 'E7';
+
 export interface ErrorFila {
   /** Número de fila del Excel (desde 1). */
   fila: number;
+  regla: ReglaExcel;
   mensaje: string;
 }
 
@@ -46,6 +50,49 @@ export interface ValidacionExcel {
   paletasCluster: Trio;
   errores: ErrorFila[];
   totalErrores: number; // jus:ok conteo de filas, no es un importe
+  /** Bultos válidos por cluster (filas C1..C3) y envío (columnas 1..3). */
+  bultosClusterEnvio: number[][];
+}
+
+/** Lo que muestra el dashboard de un registro (agregado en el servidor). */
+export interface DashboardSanta {
+  registroId: number;
+  nombre: string;
+  envioActual: number;
+  operarios: number;
+  bultosHora: number;
+  bloqueado: boolean;
+  bultosTotal: number;
+  paletasTotal: number;
+  envios: { envio: number; bultos: number }[];
+  clusters: ClusterDashboard[];
+}
+
+/** Un cluster tal como lo muestra el dashboard (calculado en el store). */
+export interface ClusterVista {
+  cluster: Cluster;
+  rampas: number;
+  pasillos: number;
+  paletas: number;
+  bultos: number;
+  sinUbicar: number;
+  /** Por envío: bultos, avance acumulado (%), paletas completas y operarios para la ventana. */
+  envios: { envio: number; bultos: number; avance: number; paletasCompletas: number; operarios: number | null }[];
+  /** Mayor cantidad de operarios que pide en un envío. */
+  operariosPico: number;
+  /** Avisos de reglas: U1 sin espacio, U2 sin rampas. */
+  avisos: { codigo: 'U1' | 'U2'; texto: string }[];
+}
+
+export interface ClusterDashboard {
+  cluster: Cluster;
+  rampas: number;
+  pasillos: number;
+  posiciones: number;
+  paletas: number;
+  sinUbicar: number;
+  bultos: number;
+  porEnvio: { envio: number; bultos: number; paletasCompletas: number }[];
 }
 
 export interface RampaConfig {
@@ -70,8 +117,15 @@ export interface ConfiguracionSanta {
   pasillos: PasilloConfig[];
   actualizadoPor: number | null;
   actualizadoEn: string | null;
-  /** Candado global: operarios y productividad bloqueados para todos los registros. */
+  /**
+   * Candado global: toda la configuración (operarios, productividad, clusters,
+   * posiciones y orden de llenado) bloqueada para todos los registros.
+   */
   bloqueado: boolean;
+  /** Nombre de quien bloqueó (null sin candado). */
+  bloqueadoPor: string | null;
+  /** Instante ISO (UTC) del bloqueo (null sin candado). */
+  bloqueadoEn: string | null;
 }
 
 export interface ConfiguracionSantaRequest {

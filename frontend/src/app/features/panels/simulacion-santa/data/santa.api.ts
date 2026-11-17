@@ -5,6 +5,7 @@ import { Api } from '../../../../core/services/api';
 import {
   ConfiguracionSanta,
   ConfiguracionSantaRequest,
+  DashboardSanta,
   RegistroSanta,
   SimulacionSanta,
   ValidacionExcel,
@@ -86,6 +87,11 @@ export class SantaApi {
     );
   }
 
+  /** Bultos agregados por envío y cluster, con la configuración guardada del registro. */
+  dashboard(id: number): Observable<DashboardSanta> {
+    return this.api.get<DashboardSanta>(`${BASE}/registros/${id}/dashboard`);
+  }
+
   fijarEnvio(id: number, envio: number): Observable<RegistroSanta> {
     return this.api.put<RegistroSanta>(`${BASE}/registros/${id}/envio`, { envio });
   }
@@ -95,14 +101,14 @@ export class SantaApi {
   }
 
   /**
-   * Bloquea operarios y productividad para todos los registros: se aplican a los
-   * pendientes y los nuevos nacen con esta configuración completa.
+   * Bloquea toda la configuración para todos los registros: se aplica a los
+   * pendientes y los nuevos nacen con ella.
    */
   bloquearPredeterminados(peticion: ConfiguracionSantaRequest): Observable<ConfiguracionSanta> {
     return this.api.put<ConfiguracionSanta>(`${BASE}/predeterminados/bloquear`, peticion);
   }
 
-  /** Abre operarios y productividad para cambiarlos (los valores se conservan). */
+  /** Abre la configuración para cambiarla (los valores se conservan). */
   desbloquearPredeterminados(): Observable<ConfiguracionSanta> {
     return this.api.put<ConfiguracionSanta>(`${BASE}/predeterminados/desbloquear`, {});
   }

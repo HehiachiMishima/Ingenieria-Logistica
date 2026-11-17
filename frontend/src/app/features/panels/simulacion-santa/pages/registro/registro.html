@@ -270,20 +270,72 @@
           </div>
         </div>
 
-        <dl class="resumen">
-          @for (e of [0, 1, 2]; track e) {
-            <div class="resumen__fila">
-              <dt>Envío {{ e + 1 }}</dt>
-              <dd>{{ entero(rev.bultosEnvios[e]) }} bultos</dd>
-            </div>
-          }
-          @for (c of clusters; track c; let i = $index) {
-            <div class="resumen__fila">
-              <dt><span class="clusters__item" [style.--cl]="colorCluster(c)"><i aria-hidden="true"></i>C{{ c }}</span></dt>
-              <dd>{{ entero(rev.paletasCluster[i]) }} paletas</dd>
-            </div>
-          }
-        </dl>
+        <!-- Envíos: cuánto trae cada uno y cuánto tarda con los operarios predeterminados. -->
+        <div class="tabla-mini__marco">
+          <table class="tabla-mini">
+            <caption>
+              Envíos
+              @if (store.operacion(); as op) {
+                <span>· con {{ op.operarios }} operarios × {{ entero(op.bultosHora) }} bultos/h ({{ entero(op.operarios * op.bultosHora) }} por hora)</span>
+              }
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Envío</th>
+                <th scope="col" class="num">Bultos</th>
+                <th scope="col" class="num">% del total</th>
+                <th scope="col" class="num">Acumulado</th>
+                <th scope="col" class="num">Tiempo</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (f of enviosRevision(); track f.envio) {
+                <tr>
+                  <th scope="row">Envío {{ f.envio }}</th>
+                  <td class="num">{{ entero(f.bultos) }}</td>
+                  <td class="num">
+                    <span class="barrita" [style.--p.%]="f.porcentaje"></span>{{ porciento(f.porcentaje) }}
+                  </td>
+                  <td class="num">{{ porciento(f.acumulado) }}</td>
+                  <td class="num">{{ duracion(f.minutos) }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Avance de cada cluster al terminar cada envío (por bultos). -->
+        <div class="tabla-mini__marco">
+          <table class="tabla-mini">
+            <caption>Avance de cada cluster por envío</caption>
+            <thead>
+              <tr>
+                <th scope="col">Cluster</th>
+                <th scope="col" class="num">Paletas</th>
+                <th scope="col" class="num">Bultos</th>
+                <th scope="col" class="num">Envío 1</th>
+                <th scope="col" class="num">Envío 2</th>
+                <th scope="col" class="num">Envío 3</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (c of clustersRevision(); track c.cluster) {
+                <tr>
+                  <th scope="row">
+                    <span class="clusters__item" [style.--cl]="colorCluster(c.cluster)"><i aria-hidden="true"></i>C{{ c.cluster }}</span>
+                  </th>
+                  <td class="num">{{ entero(c.paletas) }}</td>
+                  <td class="num">{{ entero(c.bultos) }}</td>
+                  @for (a of c.avance; track $index) {
+                    <td class="num">{{ porciento(a) }}</td>
+                  } @empty {
+                    <td class="num" colspan="3">—</td>
+                  }
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
 
         @if (rev.errores.length > 0) {
           <div class="errores">
@@ -292,7 +344,10 @@
             </p>
             <ul class="errores__lista">
               @for (err of rev.errores; track $index) {
-                <li><b>Fila {{ err.fila }}</b> · {{ err.mensaje }}</li>
+                <li>
+                  <span class="regla" [class.regla--crucial]="err.regla === 'E7'" [title]="'Regla ' + err.regla">{{ err.regla }}</span>
+                  <b>Fila {{ err.fila }}</b> · {{ err.mensaje }}
+                </li>
               }
             </ul>
             @if (erroresOcultos() > 0) {
@@ -319,10 +374,17 @@
     }
   }
 
-  <p class="hint">
-    Columnas: RUTA, LOCAL, CLUSTER (1, 2 o 3) y 1 ENVÍO, 2 ENVÍO, 3 ENVÍO (bultos enteros).
-    Cada fila es una paleta. Se aceptan .xlsx, .xls y .csv de hasta 10 MB.
-  </p>
+  <details class="reglas">
+    <summary>Reglas del Excel</summary>
+    <ul class="reglas__lista">
+      @for (r of reglas; track r.codigo) {
+        <li [class.reglas__crucial]="r.crucial">
+          <span class="regla" [class.regla--crucial]="r.crucial">{{ r.codigo }}</span>{{ r.regla }}
+        </li>
+      }
+    </ul>
+    <p class="hint">Cada fila es una paleta. Se aceptan .xlsx, .xls y .csv de hasta 10 MB y 5.000 filas.</p>
+  </details>
 
   <div modal-footer class="modal-foot">
     <button type="button" class="ui-btn ui-btn--ghost" (click)="store.cerrarCarga()">Cancelar</button>

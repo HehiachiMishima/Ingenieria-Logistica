@@ -82,17 +82,76 @@ class ExcelSantaAnitaTest {
     assertEquals(List.of(7, 8, 0), List.of(tercera.envio1(), tercera.envio2(), tercera.envio3()));
 
     assertEquals(List.of(7, 8, 9, 10, 12, 13), r.errores().stream().map(ErrorFila::fila).toList());
-    assertTrue(mensaje(r, 7).contains("ya aparece en la fila 5"), mensaje(r, 7));
+    assertEquals(
+        "El local «LOCAL a» ya está en la fila 5: una paleta lleva un solo local con todos sus"
+            + " bultos.",
+        mensaje(r, 7));
     assertTrue(mensaje(r, 8).contains("debe ser un número entero"), mensaje(r, 8));
     assertTrue(mensaje(r, 9).contains("CLUSTER «4» no es válido"), mensaje(r, 9));
     assertTrue(mensaje(r, 10).contains("mayor que 0"), mensaje(r, 10));
     assertEquals("Falta el LOCAL.", mensaje(r, 12));
     assertEquals("ENVÍO 1 no puede ser negativo.", mensaje(r, 13));
+    assertEquals(
+        List.of("E7", "E5", "E4", "E6", "E3", "E5"),
+        r.errores().stream().map(ErrorFila::regla).toList());
 
     assertEquals(3, r.rutas());
     assertEquals(List.of(29, 13, 3), r.bultosEnvios());
     assertEquals(45, r.bultos());
     assertEquals(List.of(1, 1, 1), r.paletasCluster());
+    // C1 (fila 5), C2 (fila 4) y C3 (fila 11) × envíos 1, 2 y 3.
+    assertEquals(
+        List.of(List.of(12, 0, 3), List.of(10, 5, 0), List.of(7, 8, 0)), r.bultosClusterEnvio());
+  }
+
+  @Test
+  void unLocalVaEnUnaSolaFilaAunqueCambieLaRutaElClusterLasMayusculasOLasTildes() {
+    String texto =
+        "RUTA;LOCAL;CLUSTER;ENVIO1;ENVIO2;ENVIO3\n"
+            + "R1;Botica Central Lima;1;1;0;0\n"
+            + "R2;  BOTICA   CENTRAL  LIMA ;2;2;0;0\n"
+            + "R1;bótica céntral límá;1;0;1;0\n"
+            + "R3;Botica Central Callao;1;3;0;0\n"
+            + "R4;Otro Local;C9;1;0;0\n"
+            + "R5;otro local;2;1;0;0\n";
+
+    ExcelSantaAnita.Resultado r = ExcelSantaAnita.leer(csv(texto));
+
+    // La fila 6 tiene error (cluster), así que «Otro Local» se queda con la fila 7.
+    assertEquals(List.of(2, 5, 7), r.filas().stream().map(ExcelSantaAnita.Fila::orden).toList());
+    assertEquals(List.of(3, 4, 6), r.errores().stream().map(ErrorFila::fila).toList());
+    assertEquals(List.of("E7", "E7", "E4"), r.errores().stream().map(ErrorFila::regla).toList());
+    assertEquals(
+        "El local «BOTICA CENTRAL LIMA» ya está en la fila 2: una paleta lleva un solo local con"
+            + " todos sus bultos.",
+        mensaje(r, 3));
+    assertTrue(mensaje(r, 4).startsWith("El local «bótica céntral límá» ya está en la fila 2:"));
+  }
+
+  @Test
+  void cadaErrorTraeSuCodigoDeRegla() {
+    String texto =
+        "RUTA;LOCAL;CLUSTER;ENVIO1;ENVIO2;ENVIO3\n"
+            + ";Local 1;1;1;0;0\n"
+            + "R".repeat(51) + ";Local 2;1;1;0;0\n"
+            + "R3;;1;1;0;0\n"
+            + "R4;" + "L".repeat(151) + ";1;1;0;0\n"
+            + "R5;Local 5;;1;0;0\n"
+            + "R6;Local 6;7;1;0;0\n"
+            + "R7;Local 7;1;abc;0;0\n"
+            + "R8;Local 8;1;0;-1;0\n"
+            + "R9;Local 9;1;0;0;1,5\n"
+            + "R10;Local 10;1;0;0;0\n"
+            + "R11;Local 11;1;5;0;0\n"
+            + "R12;local  11;3;1;0;0\n";
+
+    ExcelSantaAnita.Resultado r = ExcelSantaAnita.leer(csv(texto));
+
+    assertEquals(1, r.filas().size());
+    assertEquals(
+        List.of("E2", "E2", "E3", "E3", "E4", "E4", "E5", "E5", "E5", "E6", "E7"),
+        r.errores().stream().map(ErrorFila::regla).toList());
+    assertEquals(List.of(List.of(5, 0, 0), List.of(0, 0, 0), List.of(0, 0, 0)), r.bultosClusterEnvio());
   }
 
   @Test
@@ -127,6 +186,7 @@ class ExcelSantaAnitaTest {
             () -> ExcelSantaAnita.leer(new MockMultipartFile("archivo", "d.xlsx", XLSX, contenido)));
 
     assertEquals(HttpStatus.UNPROCESSABLE_CONTENT, error.estado());
+    assertTrue(error.getMessage().startsWith("E1 · Faltan columnas obligatorias"), error.getMessage());
     assertTrue(
         error.getMessage().contains("(fila 1): CLUSTER, ENVÍO 2."), error.getMessage());
   }
@@ -220,7 +280,7 @@ class ExcelSantaAnitaTest {
     // Fila 3: sin comillas «FARMACIA, CENTRO» corre las columnas (LOCAL = FARMACIA, CLUSTER = CENTRO).
     assertEquals(List.of(3, 4, 5), r.errores().stream().map(ErrorFila::fila).toList());
     assertTrue(mensaje(r, 3).contains("CLUSTER «CENTRO»"), mensaje(r, 3));
-    assertTrue(mensaje(r, 4).contains("ya aparece en la fila 2"), mensaje(r, 4));
+    assertTrue(mensaje(r, 4).contains("ya está en la fila 2"), mensaje(r, 4));
     assertTrue(mensaje(r, 5).contains("debe ser un número entero"), mensaje(r, 5));
   }
 

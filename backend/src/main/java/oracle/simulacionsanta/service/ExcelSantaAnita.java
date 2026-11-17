@@ -58,16 +58,18 @@ import org.xml.sax.XMLReader;
 
 /**
  * Lee el Excel de despacho de Santa Anita (.xlsx, .xls o .csv con coma o punto y coma): una fila
- * por paleta (ruta + local) con su cluster y los bultos de los 3 envíos.
+ * por paleta, y una paleta es un solo local con su ruta, su cluster y todos sus bultos de los 3
+ * envíos (un local no se repite en el archivo).
  *
  * <ul>
  *   <li>Encabezado: la primera fila, dentro de las {@value #FILAS_CABECERA} primeras, con una celda
  *       RUTA o RUTAS. Las columnas se reconocen por nombre sin importar mayúsculas, tildes,
  *       espacios ni signos: RUTA|RUTAS, LOCAL|LOCALES, CLUSTER, ENVIO1|1ENVIO|PRIMERENVIO,
  *       ENVIO2|2ENVIO|SEGUNDOENVIO y ENVIO3|3ENVIO|TERCERENVIO (BULTOS u otras se ignoran). Si
- *       falta una obligatoria, 422 con la lista.
+ *       falta una obligatoria, 422 «E1 · …» con la lista.
  *   <li>Filas: se ignoran las vacías (sin ninguna de esas 6 columnas). Una fila con error no se
- *       guarda y se informa (un error por fila, el primero que se encuentra); las demás sí.
+ *       guarda y se informa con el código de su {@link Regla} (un error por fila, el primero que
+ *       se encuentra); las demás sí.
  *   <li>Topes: {@value #MAX_BYTES} bytes (10 MB) y {@value #MAX_FILAS} filas de datos (413).
  * </ul>
  *
@@ -124,6 +126,24 @@ public final class ExcelSantaAnita {
 
   private ExcelSantaAnita() {}
 
+  /** Reglas del archivo: el código viaja en cada ErrorFila (E1, en el mensaje del 422). */
+  public enum Regla {
+    /** Faltan columnas obligatorias en el encabezado (422, ninguna fila se lee). */
+    E1,
+    /** RUTA vacía o de más de {@value ExcelSantaAnita#MAX_RUTA} caracteres. */
+    E2,
+    /** LOCAL vacío o de más de {@value ExcelSantaAnita#MAX_LOCAL} caracteres. */
+    E3,
+    /** CLUSTER vacío o que no es 1, 2 ni 3. */
+    E4,
+    /** Envío que no es número, negativo, con decimales o de más de 99.999 bultos. */
+    E5,
+    /** La suma de los 3 envíos es 0. */
+    E6,
+    /** El LOCAL ya está en otra fila: una paleta lleva un solo local con todos sus bultos. */
+    E7
+  }
+
   /**
    * Una fila válida: una paleta.
    *
@@ -175,6 +195,21 @@ public final class ExcelSantaAnita {
       int[] cuenta = new int[3];
       filas.forEach((f) -> cuenta[f.cluster() - 1]++);
       return List.of(cuenta[0], cuenta[1], cuenta[2]);
+    }
+
+    /** Bultos por cluster (filas C1, C2, C3) y envío (columnas envío 1, 2, 3). */
+    public List<List<Integer>> bultosClusterEnvio() {
+      int[][] bultos = new int[3][3];
+      for (Fila f : filas) {
+        int[] cluster = bultos[f.cluster() - 1];
+        cluster[0] += f.envio1();
+        cluster[1] += f.envio2();
+        cluster[2] += f.envio3();
+      }
+      return List.of(
+          List.of(bultos[0][0], bultos[0][1], bultos[0][2]),
+          List.of(bultos[1][0], bultos[1][1], bultos[1][2]),
+          List.of(bultos[2][0], bultos[2][1], bultos[2][2]));
     }
   }
 
@@ -308,8 +343,8 @@ public final class ExcelSantaAnita {
     private int totalErrores;
     private final List<Fila> filas = new ArrayList<>();
     private final List<ErrorFila> errores = new ArrayList<>();
-    /** Ruta + local (minúsculas) → fila donde apareció primero. */
-    private final Map<String, Integer> vistas = new HashMap<>();
+    /** Local normalizado ({@link #claveLocal}) → fila válida donde apareció primero. */
+    private final Map<String, Integer> locales = new HashMap<>();
 
     void fila(int numero, String[] celdas) {
       if (!cabecera) {
@@ -339,7 +374,7 @@ public final class ExcelSantaAnita {
       } catch (FilaInvalida e) {
         totalErrores++;
         if (errores.size() < MAX_ERRORES) {
-          errores.add(new ErrorFila(numero, e.getMessage()));
+          errores.add(new ErrorFila(numero, e.regla().name(), e.getMessage()));
         }
       }
     }
@@ -354,24 +389,25 @@ public final class ExcelSantaAnita {
         String envio3Crudo) {
       String ruta = ruta(rutaCruda);
       if (ruta.isEmpty()) {
-        throw new FilaInvalida("Falta la RUTA.");
+        throw new FilaInvalida(Regla.E2, "Falta la RUTA.");
       }
       if (ruta.length() > MAX_RUTA) {
-        throw new FilaInvalida("La RUTA supera los " + MAX_RUTA + " caracteres.");
+        throw new FilaInvalida(Regla.E2, "La RUTA supera los " + MAX_RUTA + " caracteres.");
       }
       String local = texto(localCruda);
       if (local.isEmpty()) {
-        throw new FilaInvalida("Falta el LOCAL.");
+        throw new FilaInvalida(Regla.E3, "Falta el LOCAL.");
       }
       if (local.length() > MAX_LOCAL) {
-        throw new FilaInvalida("El LOCAL supera los " + MAX_LOCAL + " caracteres.");
+        throw new FilaInvalida(Regla.E3, "El LOCAL supera los " + MAX_LOCAL + " caracteres.");
       }
       if (vacio(clusterCruda)) {
-        throw new FilaInvalida("Falta el CLUSTER.");
+        throw new FilaInvalida(Regla.E4, "Falta el CLUSTER.");
       }
       Integer cluster = cluster(clusterCruda);
       if (cluster == null) {
         throw new FilaInvalida(
+            Regla.E4,
             "El CLUSTER «" + recortar(texto(clusterCruda))
                 + "» no es válido: usa 1, 2 o 3 (también C1, CL1 o CLUSTER 1).");
       }
@@ -379,14 +415,16 @@ public final class ExcelSantaAnita {
       int envio2 = envio(envio2Crudo, "ENVÍO 2");
       int envio3 = envio(envio3Crudo, "ENVÍO 3");
       if (envio1 + envio2 + envio3 <= 0) {
-        throw new FilaInvalida("La suma de los 3 envíos debe ser mayor que 0.");
+        throw new FilaInvalida(Regla.E6, "La suma de los 3 envíos debe ser mayor que 0.");
       }
-      String clave = ruta.toLowerCase(Locale.ROOT) + '\u0000' + local.toLowerCase(Locale.ROOT);
-      Integer previa = vistas.putIfAbsent(clave, numero);
+      // Una paleta = un solo local con todos sus bultos: el local no se repite en el archivo,
+      // aunque cambie la ruta o el cluster.
+      Integer previa = locales.putIfAbsent(claveLocal(local), numero);
       if (previa != null) {
         throw new FilaInvalida(
-            "La ruta " + ruta + " con el local «" + recortar(local) + "» ya aparece en la fila "
-                + previa + ".");
+            Regla.E7,
+            "El local «" + recortar(local) + "» ya está en la fila " + previa
+                + ": una paleta lleva un solo local con todos sus bultos.");
       }
       filas.add(new Fila(numero, ruta, local, cluster, envio1, envio2, envio3));
     }
@@ -414,8 +452,8 @@ public final class ExcelSantaAnita {
           OBLIGATORIAS.stream().filter((c) -> !columnas.containsKey(c)).map(NOMBRES::get).toList();
       if (!faltan.isEmpty()) {
         throw ArchivoInvalidoException.contenido(
-            "Faltan columnas obligatorias en el encabezado (fila " + numero + "): "
-                + String.join(", ", faltan) + ".");
+            Regla.E1.name() + " · Faltan columnas obligatorias en el encabezado (fila " + numero
+                + "): " + String.join(", ", faltan) + ".");
       }
       cabecera = true;
       filaCabecera = numero;
@@ -485,9 +523,26 @@ public final class ExcelSantaAnita {
 
   /** Error de una fila: no corta la lectura. Sin traza (es un flujo normal). */
   private static final class FilaInvalida extends RuntimeException {
-    FilaInvalida(String mensaje) {
+    private final Regla regla;
+
+    FilaInvalida(Regla regla, String mensaje) {
       super(mensaje, null, false, false);
+      this.regla = regla;
     }
+
+    Regla regla() {
+      return regla;
+    }
+  }
+
+  /**
+   * Clave de un local para compararlo: recortado, con los espacios colapsados, sin tildes y sin
+   * distinguir mayúsculas («  Plaza  Vea  Lima » = «plaza vea LIMÁ»).
+   */
+  static String claveLocal(String local) {
+    String sinTildes =
+        MARCAS.matcher(Normalizer.normalize(texto(local), Normalizer.Form.NFD)).replaceAll("");
+    return sinTildes.toUpperCase(Locale.ROOT);
   }
 
   /**
@@ -537,19 +592,20 @@ public final class ExcelSantaAnita {
     }
     Matcher numero = NUMERO.matcher(limpio);
     if (!numero.matches()) {
-      throw new FilaInvalida(columna + " «" + recortar(texto(valor)) + "» no es un número.");
+      throw new FilaInvalida(
+          Regla.E5, columna + " «" + recortar(texto(valor)) + "» no es un número.");
     }
     String decimales = numero.group(3);
     if (decimales != null && !decimales.chars().allMatch((c) -> c == '0')) {
       throw new FilaInvalida(
-          columna + " «" + recortar(texto(valor)) + "» debe ser un número entero.");
+          Regla.E5, columna + " «" + recortar(texto(valor)) + "» debe ser un número entero.");
     }
     String entero = numero.group(2).replaceFirst("^0+(?=\\d)", "");
     if (numero.group(1) != null && !"0".equals(entero)) {
-      throw new FilaInvalida(columna + " no puede ser negativo.");
+      throw new FilaInvalida(Regla.E5, columna + " no puede ser negativo.");
     }
     if (entero.length() > 5 || Integer.parseInt(entero) > MAX_BULTOS) {
-      throw new FilaInvalida(columna + " supera el máximo de 99.999 bultos.");
+      throw new FilaInvalida(Regla.E5, columna + " supera el máximo de 99.999 bultos.");
     }
     return Integer.parseInt(entero);
   }

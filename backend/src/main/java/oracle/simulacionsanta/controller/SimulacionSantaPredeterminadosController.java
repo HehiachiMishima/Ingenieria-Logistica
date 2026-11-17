@@ -13,8 +13,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Configuración con que nace cada registro nuevo de Santa Anita (registroId null) y el candado
- * de operarios y bultos por hora de todos los registros: ver, bloquear y desbloquear.
+ * Configuración con que nace cada registro nuevo de Santa Anita (registroId null) y su candado,
+ * que bloquea la configuración de todos los registros: ver, bloquear y desbloquear.
  */
 @RestController
 @RequestMapping("/api/simulacion-santa/predeterminados")

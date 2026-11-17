@@ -104,10 +104,27 @@
       cursor: default;
     }
   }
+
+  &__texto {
+    display: flex;
+    align-items: center;
+    min-height: 26px;
+    margin: 0;
+  }
 }
 
 .grupo {
   margin: var(--space-1) 0;
+}
+
+/* Solo lectura (candado o sin permiso): las fichas no se toman ni se levantan. */
+.tablero--lectura .ficha {
+  cursor: default;
+
+  &:hover {
+    transform: none;
+    box-shadow: none;
+  }
 }
 
 .fichas {
@@ -277,6 +294,25 @@
       box-shadow: var(--ring);
     }
   }
+
+  &__texto {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+
+    b {
+      margin-left: 4px;
+      color: var(--text);
+    }
+  }
+}
+
+.columna__candado {
+  color: var(--text-3);
+}
+
+/* Sin pisar la atenuación de la búsqueda. */
+.tablero--lectura .ficha:not(.ficha--atenuada) {
+  opacity: 0.8;
 }
 
 .grupo {
