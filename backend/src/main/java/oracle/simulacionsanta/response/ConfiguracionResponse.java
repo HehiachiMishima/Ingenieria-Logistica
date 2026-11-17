@@ -15,4 +15,9 @@ public record ConfiguracionResponse(
     /** 1 a 24 en orden. */
     List<PasilloConfig> pasillos,
     Long actualizadoPor,
-    Instant actualizadoEn) {}
+    Instant actualizadoEn,
+    /**
+     * Candado global: true = operarios y bultos por hora bloqueados para todos los registros
+     * (clusters, posiciones y orden de llenado siguen editables en cada registro).
+     */
+    boolean bloqueado) {}

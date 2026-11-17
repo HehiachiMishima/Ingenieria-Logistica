@@ -8,6 +8,7 @@ import java.util.List;
  *
  * @param ordenClusters nombres de OrdenLlenado de C1, C2 y C3
  * @param actualizadoPor null mientras sean los de fábrica
+ * @param bloqueado operarios y bultos por hora bloqueados para todos los registros
  */
 public record PredeterminadosGuardados(
     int operarios,
@@ -15,4 +16,5 @@ public record PredeterminadosGuardados(
     List<String> ordenClusters,
     Long actualizadoPor,
     Instant actualizadoEn,
+    boolean bloqueado,
     List<UbicacionGuardada> ubicaciones) {}

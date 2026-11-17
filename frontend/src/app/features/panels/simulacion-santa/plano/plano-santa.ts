@@ -6,6 +6,31 @@ import { Lado, TipoUbicacion } from '../models/santa.model';
  * el backend.
  */
 
+/** Paleta más chica que se dibuja (px); por debajo, el plano pasa a tener scroll. */
+const PALETA_MIN = 64;
+/** Proporción de la paleta: 1,00 m de fondo por 1,20 m de ancho. */
+const PROPORCION = 0.82;
+/** Ancho de un bloque de pasillos en «paletas»: 12 columnas + 5 calles (0,4) + la ancha (0,52) + la central (0,7). */
+const BLOQUE_EN_PALETAS = 12 + 5 * 0.4 + 0.52 + 0.7;
+/** Lo fijo del bloque en px: márgenes (2 × 14), juntas (4 × 4) y un scrollbar clásico (16). */
+const BLOQUE_FIJO = 2 * 14 + 4 * 4 + 16;
+
+export interface TamanoPaleta {
+  ancho: number;
+  alto: number;
+}
+
+/**
+ * Tamaño M de la paleta, el mismo en rampas y en pasillos: el más grande que
+ * deja ver un bloque de 6 pasillos sin scroll horizontal (y así, en rampas, se
+ * ven la 15 a la 20 al abrir). Crece con la pantalla; nunca baja de 64 px.
+ * Ambas vistas lo calculan con el ancho del plano, que es el mismo.
+ */
+export function tamanoPaleta(anchoPlano: number): TamanoPaleta {
+  const ancho = Math.round(Math.max(PALETA_MIN, (anchoPlano - BLOQUE_FIJO) / BLOQUE_EN_PALETAS));
+  return { ancho, alto: Math.round(ancho * PROPORCION) };
+}
+
 /** ¿La celda (lado, fila) de una rampa está habilitada con `h` posiciones? */
 export function celdaRampaHabilitada(lado: Lado, fila: number, habilitadas: number): boolean {
   const izquierda = Math.ceil(habilitadas / 2);

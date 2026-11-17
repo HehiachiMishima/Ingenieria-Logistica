@@ -59,6 +59,11 @@ export class ConfiguracionSantaStore {
   readonly previsualizando = signal(false);
   readonly guardando = signal(false);
   readonly cambiandoEnvio = signal(false);
+  /** Bloqueando o desbloqueando el candado. */
+  readonly bloqueando = signal(false);
+
+  /** Candado global: operarios y productividad no se cambian en ningún registro. */
+  readonly bloqueado = computed(() => this.configuracion()?.bloqueado ?? false);
 
   readonly hayCambios = computed(() => {
     const config = this.configuracion();
@@ -217,6 +222,9 @@ export class ConfiguracionSantaStore {
   }
 
   fijarOperacion(operarios: number, bultosHora: number): void {
+    if (this.bloqueado()) {
+      return;
+    }
     this.editar((b) => ({
       ...b,
       operarios: Math.max(1, Math.min(99, Math.round(operarios) || 1)),
@@ -253,28 +261,64 @@ export class ConfiguracionSantaStore {
       });
   }
 
-  /** Copia los predeterminados al borrador (hay que guardar para aplicarlos). */
-  usarPredeterminados(): void {
-    this.api
-      .predeterminados()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((pred) => this.editar(() => aPeticion(pred)));
-  }
-
-  guardarComoPredeterminados(): void {
+  /**
+   * Candado (como Simulación Supply Chain). Bloquear fija los operarios y la
+   * productividad del borrador para todos los registros: el servidor los aplica a
+   * los pendientes y los nuevos nacen con esta configuración completa. Los
+   * registros en curso o completos conservan los suyos. Desbloquear los abre.
+   */
+  alternarBloqueo(): void {
     const borrador = this.borrador();
-    if (!borrador) {
+    const config = this.configuracion();
+    if (!borrador || !config || this.bloqueando()) {
       return;
     }
+    this.bloqueando.set(true);
+    if (config.bloqueado) {
+      this.api
+        .desbloquearPredeterminados()
+        .pipe(
+          finalize(() => this.bloqueando.set(false)),
+          takeUntilDestroyed(this.destroyRef),
+        )
+        .subscribe(() => {
+          this.configuracion.update((c) => (c ? { ...c, bloqueado: false } : c));
+          this.notificaciones.exito(
+            'Operarios y productividad desbloqueados',
+            'Cámbialos y vuelve a bloquearlos para todos los registros.',
+          );
+        });
+      return;
+    }
+    const pendiente = (this.registro()?.envioActual ?? 0) === 0;
     this.api
-      .guardarPredeterminados(borrador)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() =>
+      .bloquearPredeterminados(borrador)
+      .pipe(
+        finalize(() => this.bloqueando.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe(() => {
+        // Pendiente: el servidor ya le aplicó los valores. Si no, conserva los suyos.
+        this.configuracion.update((c) =>
+          c
+            ? pendiente
+              ? { ...c, operarios: borrador.operarios, bultosHora: borrador.bultosHora, bloqueado: true }
+              : { ...c, bloqueado: true }
+            : c,
+        );
+        if (!pendiente) {
+          this.borrador.update((b) => (b ? { ...b, operarios: config.operarios, bultosHora: config.bultosHora } : b));
+        }
+        if (this.hayCambios()) {
+          this.previa$.next();
+        } else {
+          this.vistaPrevia.set(null);
+        }
         this.notificaciones.exito(
-          'Predeterminados guardados',
-          'Los registros nuevos nacerán con esta configuración.',
-        ),
-      );
+          'Operarios y productividad bloqueados',
+          `${borrador.operarios} operarios × ${borrador.bultosHora} bultos/h para los registros pendientes y los nuevos.`,
+        );
+      });
   }
 
   /* ---------- envíos ---------- */

@@ -131,6 +131,38 @@
   flex-direction: column;
   height: calc(100dvh - var(--topbar-h) - 2 * clamp(var(--space-4), 2.2vw, var(--space-8)));
   min-height: 560px;
+  scroll-margin-top: calc(var(--topbar-h) + var(--space-3));
+}
+
+/* Asignar va arriba y el plano debajo; los botones «Asignar» y «Plano» saltan entre ambos. */
+.asignar {
+  margin-bottom: var(--space-8);
+  scroll-margin-top: calc(var(--topbar-h) + var(--space-3));
+
+  /*
+   * Mientras llega la configuración, Asignar reserva su alto aproximado: si no,
+   * el plano aparece arriba y luego salta hacia abajo (CLS).
+   */
+  &--cargando {
+    min-height: 820px;
+  }
+
+  &__titulo {
+    margin: 0 0 var(--space-3);
+  }
+}
+
+/* El chevron gira para indicar hacia dónde está la otra sección. */
+.giro {
+  display: inline-flex;
+
+  &--abajo {
+    rotate: 90deg;
+  }
+
+  &--arriba {
+    rotate: -90deg;
+  }
 }
 
 .plano {
@@ -171,16 +203,81 @@
   }
 }
 
-.nota {
+/* ---------- Asignar: tarjeta de parámetros (como Configuración de Supply Chain) ---------- */
+.parametros {
   display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  margin-bottom: var(--space-4);
+
+  &__campos {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-3);
+  }
+
+  &__campo {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: min(100%, 170px);
+
+    .ui-input {
+      height: 38px;
+    }
+  }
+
+  &__acciones {
+    display: flex;
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin-left: auto;
+  }
+
+  &__cuenta {
+    display: inline-grid;
+    place-items: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    margin-left: 2px;
+    box-sizing: border-box;
+  }
+}
+
+.aviso {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-  margin: 0 0 var(--space-3);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+}
+
+.candado {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.toolbar__acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.tarjeta--asignar {
+  margin-top: var(--space-4);
 }
 
 .faltan {
   padding: var(--space-2) var(--space-4);
-  margin-bottom: var(--space-4);
 
   summary {
     display: flex;
@@ -214,13 +311,6 @@
     margin-right: var(--space-1);
     text-align: center;
   }
-}
-
-.tarjetas {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
-  gap: var(--space-4);
-  margin-top: var(--space-4);
 }
 
 .tarjeta {
@@ -274,16 +364,6 @@
   }
 }
 
-.operacion {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
-  gap: var(--space-3);
-}
-
-.modal-foot__estado {
-  margin-right: auto;
-}
-
 .spinner-btn {
   width: 16px;
   height: 16px;
@@ -296,6 +376,35 @@
 
   .plano {
     padding: var(--space-1);
+  }
+
+  .toolbar__acciones {
+    flex: 1 1 100%;
+    margin-left: 0;
+
+    .ui-btn {
+      flex: 1 1 auto;
+    }
+  }
+
+  .parametros {
+    padding: var(--space-4);
+
+    &__acciones {
+      flex: 1 1 100%;
+      margin-left: 0;
+
+      /* En 320 px «Guardar como predeterminados» no cabe en una línea: el texto baja. */
+      .ui-btn {
+        flex: 1 1 auto;
+        height: auto;
+        min-height: 40px;
+        max-width: 100%;
+        padding-block: var(--space-2);
+        line-height: 1.25;
+        white-space: normal;
+      }
+    }
   }
 }
 
@@ -338,10 +447,6 @@
       background: var(--chrome-bg);
       color: var(--chrome-fg-strong);
     }
-  }
-
-  &--chico .seg__btn {
-    font-size: var(--fs-xs);
   }
 }
 
@@ -486,9 +591,66 @@
   }
 }
 
-.nota {
-  font-size: var(--fs-sm);
-  color: var(--text-3);
+.parametros {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+
+  &__cuenta {
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--brand-contrast) 22%, transparent);
+    font-size: var(--fs-xs);
+    font-weight: 800;
+  }
+}
+
+.aviso {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+
+  &--cambios {
+    border-color: color-mix(in srgb, var(--info) 28%, var(--border));
+    background: var(--info-soft);
+    color: var(--info);
+  }
+
+  &--candado {
+    border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  b {
+    color: var(--danger);
+  }
+}
+
+.asignar__titulo {
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+/* Bloqueado: el botón (ahora «Desbloquear») toma el acento, como en Supply Chain. */
+.boton--activo,
+.candado--activo {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+app-matriz-asignacion {
+  transition: opacity var(--transition-fast);
+
+  &.matriz--refrescando {
+    opacity: 0.75;
+  }
 }
 
 .faltan {
@@ -554,13 +716,9 @@
   }
 }
 
-.modal-foot__estado {
-  font-size: var(--fs-sm);
-  color: var(--text-3);
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .plano {
+  .plano,
+  app-matriz-asignacion {
     transition: none;
   }
 }

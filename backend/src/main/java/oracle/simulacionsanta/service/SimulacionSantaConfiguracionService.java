@@ -1,17 +1,15 @@
 package oracle.simulacionsanta.service;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import oracle.common.config.Transacciones;
+import oracle.common.exception.ConflictoException;
 import oracle.common.exception.SolicitudInvalidaException;
 import oracle.common.response.ApiResponse;
 import oracle.common.support.ActorActual;
 import oracle.common.support.Auditoria;
 import oracle.common.support.Trazas;
 import oracle.simulacionsanta.model.RegistroSanta;
-import oracle.simulacionsanta.repository.PredeterminadosGuardados;
 import oracle.simulacionsanta.repository.RegistroSantaRepository;
 import oracle.simulacionsanta.repository.SimulacionSantaLotesRepository;
 import oracle.simulacionsanta.repository.UbicacionGuardada;
@@ -23,9 +21,9 @@ import oracle.simulacionsanta.response.SimulacionResponse;
 import org.springframework.stereotype.Service;
 
 /**
- * Configuración, envío en curso y simulación de un registro, y los predeterminados del panel. La
- * simulación se calcula fuera de la transacción con {@link AsignadorUbicaciones} (la misma para
- * la guardada y la vista previa).
+ * Configuración, envío en curso y simulación de un registro (los predeterminados y su candado
+ * están en {@link SimulacionSantaPredeterminadosService}). La simulación se calcula fuera de la
+ * transacción con {@link AsignadorUbicaciones} (la misma para la guardada y la vista previa).
  */
 @Slf4j
 @Service
@@ -57,12 +55,17 @@ public class SimulacionSantaConfiguracionService {
                           id,
                           configuracionDe(registro, lotes.ubicaciones(id)),
                           registro.getConfiguradoPor(),
-                          registro.getConfiguradoEn());
+                          registro.getConfiguradoEn(),
+                          lotes.predeterminadosBloqueados());
                     }));
     return ApiResponse.ok("Configuración del registro.", datos);
   }
 
-  /** Reemplaza la configuración del registro (valida todo antes de abrir la transacción). */
+  /**
+   * Reemplaza la configuración del registro (valida todo antes de abrir la transacción). Con el
+   * candado de los predeterminados puesto, operarios y bultos por hora deben quedar como están
+   * (409 si cambian); clusters, posiciones y orden de llenado sí se guardan.
+   */
   public ApiResponse<ConfiguracionResponse> guardarConfiguracion(Long id, ConfiguracionRequest req) {
     ConfiguracionSanta config = ConfiguracionSanta.desde(req);
     Long actor = ActorActual.id();
@@ -74,6 +77,13 @@ public class SimulacionSantaConfiguracionService {
                 transacciones.ejecutar(
                     () -> {
                       RegistroSanta registro = bloquear(id);
+                      boolean bloqueado = lotes.predeterminadosBloqueados();
+                      if (bloqueado
+                          && (config.operarios() != registro.getOperarios()
+                              || config.bultosHora() != registro.getBultosHora())) {
+                        throw new ConflictoException(
+                            SimulacionSantaPredeterminadosService.MENSAJE_BLOQUEADOS);
+                      }
                       List<String> orden = config.ordenComoTexto();
                       registro.setOperarios(config.operarios());
                       registro.setBultosHora(config.bultosHora());
@@ -86,7 +96,7 @@ public class SimulacionSantaConfiguracionService {
                       registros.save(registro);
                       lotes.guardarUbicaciones(id, config.ubicaciones());
                       return SimulacionSantaRespuestas.configuracion(
-                          id, config, actor, registro.getConfiguradoEn());
+                          id, config, actor, registro.getConfiguradoEn(), bloqueado);
                     }));
     return ApiResponse.ok("Configuración guardada.", datos);
   }
@@ -147,51 +157,6 @@ public class SimulacionSantaConfiguracionService {
                       return SimulacionSantaRespuestas.registro(registros.save(registro));
                     }));
     return ApiResponse.ok("Envío actualizado.", datos);
-  }
-
-  /** Los predeterminados (los de fábrica si la fila no existe). */
-  public ApiResponse<ConfiguracionResponse> predeterminados() {
-    var datos =
-        transacciones.consultar(
-            () -> {
-              PredeterminadosGuardados guardados = lotes.predeterminados(false);
-              if (guardados == null) {
-                return SimulacionSantaRespuestas.configuracion(
-                    null, ConfiguracionSanta.fabrica(), null, null);
-              }
-              return SimulacionSantaRespuestas.configuracion(
-                  null,
-                  ConfiguracionSanta.guardada(
-                      guardados.operarios(),
-                      guardados.bultosHora(),
-                      guardados.ordenClusters(),
-                      guardados.ubicaciones()),
-                  guardados.actualizadoPor(),
-                  guardados.actualizadoEn());
-            });
-    return ApiResponse.ok("Predeterminados de Santa Anita.", datos);
-  }
-
-  /** Reemplaza los predeterminados: los registros nuevos nacen con ellos; los existentes no cambian. */
-  public ApiResponse<ConfiguracionResponse> guardarPredeterminados(ConfiguracionRequest req) {
-    ConfiguracionSanta config = ConfiguracionSanta.desde(req);
-    Long actor = ActorActual.id();
-    // Microsegundos: lo que guarda TIMESTAMPTZ, así la respuesta coincide con una lectura posterior.
-    Instant ahora = Instant.now().truncatedTo(ChronoUnit.MICROS);
-    transacciones.ejecutar(
-        () -> {
-          lotes.guardarPredeterminados(
-              config.operarios(),
-              config.bultosHora(),
-              config.ordenComoTexto(),
-              config.ubicaciones(),
-              actor,
-              ahora);
-          return null;
-        });
-    return ApiResponse.ok(
-        "Predeterminados guardados: los registros nuevos nacen con ellos.",
-        SimulacionSantaRespuestas.configuracion(null, config, actor, ahora));
   }
 
   // ------------------------------------------------------------------

@@ -51,9 +51,14 @@ public final class SimulacionSantaRespuestas {
    * Configuración de un registro (registroId) o de los predeterminados (registroId null).
    *
    * @param actualizadoPor null en los predeterminados de fábrica
+   * @param bloqueado el candado global de operarios y bultos por hora
    */
   public static ConfiguracionResponse configuracion(
-      Long registroId, ConfiguracionSanta c, Long actualizadoPor, Instant actualizadoEn) {
+      Long registroId,
+      ConfiguracionSanta c,
+      Long actualizadoPor,
+      Instant actualizadoEn,
+      boolean bloqueado) {
     List<RampaConfig> rampas =
         c.rampas().stream()
             .map((r) -> new RampaConfig(r.numero(), r.cluster(), r.capacidad(), r.posiciones()))
@@ -71,7 +76,8 @@ public final class SimulacionSantaRespuestas {
         rampas,
         pasillos,
         actualizadoPor,
-        actualizadoEn);
+        actualizadoEn,
+        bloqueado);
   }
 
   /** La configuración guardada en un registro (sin sus ubicaciones, que van aparte). */

@@ -70,6 +70,8 @@ export interface ConfiguracionSanta {
   pasillos: PasilloConfig[];
   actualizadoPor: number | null;
   actualizadoEn: string | null;
+  /** Candado global: operarios y productividad bloqueados para todos los registros. */
+  bloqueado: boolean;
 }
 
 export interface ConfiguracionSantaRequest {

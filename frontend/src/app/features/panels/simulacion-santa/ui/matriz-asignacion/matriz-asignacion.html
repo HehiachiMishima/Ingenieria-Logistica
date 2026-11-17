@@ -1,0 +1,105 @@
+@if (editable() && seleccion().size > 0) {
+  <div class="mover" role="group" aria-label="Mover las fichas elegidas">
+    <span class="mover__texto"><b>{{ seleccion().size }}</b> elegidas · mover a</span>
+    @for (d of destinos; track $index) {
+      <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" [style.--cl]="colorCluster(d)" (click)="moverSeleccion(d)">
+        <i class="mover__punto" aria-hidden="true"></i>{{ d ? 'C' + d : 'Sin cluster' }}
+      </button>
+    }
+    <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm" (click)="limpiar()">Limpiar</button>
+  </div>
+}
+
+<div class="tablero" appArrastreFichas [validar]="validar" [grupo]="grupo" (soltar)="soltar($event)" (pasando)="paso.set($event)">
+  @for (col of columnas(); track $index) {
+    <section
+      class="columna"
+      [class.columna--libre]="!col.cluster"
+      [style.--cl]="col.color"
+      [attr.data-cluster]="col.cluster ?? ''"
+      [attr.aria-label]="col.cluster ? 'Cluster ' + col.cluster : 'Sin cluster'"
+    >
+      <header class="columna__cabeza">
+        <span class="columna__nombre">
+          @if (col.cluster) {
+            <i class="columna__punto" aria-hidden="true"></i>C{{ col.cluster }}
+          } @else {
+            Sin cluster
+          }
+        </span>
+        @if (col.resumen; as r) {
+          <span
+            class="saldo"
+            [class.saldo--mal]="col.faltan > 0"
+            [class.saldo--justo]="col.faltan <= 0 && col.nivel === 'justo'"
+            [title]="col.faltan > 0 ? 'Faltan ' + entero(col.faltan) + ' posiciones' : 'Sobran ' + entero(-col.faltan) + ' posiciones'"
+          >
+            {{ col.faltan > 0 ? '−' + entero(col.faltan) : '+' + entero(-col.faltan) }}
+          </span>
+        }
+      </header>
+
+      @if (col.cluster && col.resumen; as r) {
+        <p class="columna__datos">{{ entero(r.paletas) }} pal · {{ entero(r.posiciones) }} pos · {{ col.ocupacion }} %</p>
+        <div class="llenar" role="group" [attr.aria-label]="'Qué llena primero el cluster ' + col.cluster">
+          <span class="llenar__lbl">Llenar</span>
+          @for (o of ordenes; track o.id) {
+            <button
+              type="button"
+              class="llenar__btn"
+              [attr.aria-pressed]="orden()[col.cluster - 1] === o.id"
+              [disabled]="!editable()"
+              (click)="fijarOrden(col.cluster, o.id)"
+            >
+              {{ o.id === 'RAMPAS_PRIMERO' ? 'Rampas' : 'Pasillos' }}
+            </button>
+          }
+        </div>
+      } @else {
+        <p class="columna__datos">No se usan en la simulación.</p>
+      }
+
+      <!-- responsive:ok scroll vertical propio de cada cluster: las fichas de abajo quedan recortadas a propósito -->
+      <div
+        class="columna__cuerpo"
+        tabindex="0"
+        data-responsive-ignore
+        [attr.aria-label]="'Fichas de ' + (col.cluster ? 'C' + col.cluster : 'sin cluster')"
+      >
+        @for (g of [{ tipo: 'R', fichas: col.rampas }, { tipo: 'P', fichas: col.pasillos }]; track g.tipo) {
+          @if (g.fichas.length > 0) {
+            <p class="grupo">{{ g.tipo === 'R' ? 'Rampas' : 'Pasillos' }} · {{ g.fichas.length }}</p>
+            <div class="fichas">
+              @for (f of g.fichas; track f.clave) {
+                <div
+                  class="ficha"
+                  role="button"
+                  tabindex="0"
+                  [class.ficha--p]="f.tipo === 'P'"
+                  [class.ficha--cambiada]="f.cambiada"
+                  [class.ficha--elegida]="elegida(f.clave)"
+                  [class.ficha--atenuada]="!coincide(f.clave)"
+                  [style.--oc.%]="llenado(f)"
+                  [attr.draggable]="editable()"
+                  [attr.data-ficha]="f.clave"
+                  [attr.aria-pressed]="elegida(f.clave)"
+                  [attr.aria-label]="etiqueta(f)"
+                  [title]="etiqueta(f)"
+                  (click)="alternar(f, $event)"
+                  (keydown)="alTeclado(f, $event)"
+                >
+                  {{ f.numero }}
+                </div>
+              }
+            </div>
+          }
+        }
+        @if (col.rampas.length === 0 && col.pasillos.length === 0) {
+          <p class="columna__vacia">{{ col.cluster ? 'Suelta aquí rampas o pasillos' : 'Suelta aquí para liberar' }}</p>
+        }
+      </div>
+    </section>
+  }
+</div>
+
+<p class="estado" aria-live="polite">{{ mensaje() }}</p>

@@ -1,20 +1,17 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  DestroyRef,
   ElementRef,
-  afterNextRender,
   afterRenderEffect,
   computed,
-  inject,
   input,
   output,
-  signal,
   viewChild,
 } from '@angular/core';
 import { Cluster, Lado, PaletaSimulacion } from '../../models/santa.model';
-import { BLOQUE, BloquePasillos as Bloque, clavePosicion } from '../../plano/plano-santa';
+import { BLOQUE, BloquePasillos as Bloque, clavePosicion, tamanoPaleta } from '../../plano/plano-santa';
 import { colorCluster, etiquetaCluster } from '../../santa-formato';
+import { anchoDelHost } from '../ancho-host';
 import { Paleta } from '../paleta/paleta';
 
 export interface PasilloVista {
@@ -76,16 +73,12 @@ const SEP = 6;
 const JUNTO = 4;
 const ARRIBA = 64;
 const ABAJO = 34;
-const PALETA_MIN = 64;
-const PROPORCION = 0.82;
-/** Ancho del bloque en «paletas»: 12 columnas + 5 calles (0,4) + la ancha (0,52) + central (0,7). */
-const ANCHO_EN_PALETAS = 12 + 5 * 0.4 + 0.52 + 0.7;
 
 /**
  * Ventana de un bloque de 6 pasillos en modo compacto: el orden y los lados de
- * cada rack son los del plano, pero las calles se reducen para que las paletas
- * sean grandes. Se ajusta al ancho y baja con scroll vertical; la fila 1 (abajo)
- * es la que está junto al andén.
+ * cada rack son los del plano, pero las calles se reducen. La paleta tiene el
+ * tamaño M ({@link tamanoPaleta}), el mismo que en las rampas: el bloque entra
+ * a lo ancho y baja con scroll vertical; la fila 1 (abajo) está junto al andén.
  */
 @Component({
   selector: 'app-bloque-pasillos',
@@ -99,25 +92,15 @@ export class BloquePasillos {
   readonly pasillos = input.required<PasilloVista[]>();
   readonly paletas = input.required<Map<string, PaletaSimulacion>>();
   readonly seleccionada = input<number | null>(null);
-  readonly zoom = input(1);
   readonly seleccionar = output<PaletaSimulacion>();
 
   private readonly scroll = viewChild.required<ElementRef<HTMLElement>>('scroll');
-  private readonly ancho = signal(0);
+  private readonly ancho = anchoDelHost();
 
   readonly colorCluster = colorCluster;
   readonly etiquetaCluster = etiquetaCluster;
 
   constructor() {
-    const destroyRef = inject(DestroyRef);
-    afterNextRender(() => {
-      const el = this.scroll().nativeElement;
-      const medir = () => this.ancho.set(el.clientWidth);
-      const observador = new ResizeObserver(medir);
-      observador.observe(el);
-      medir();
-      destroyRef.onDestroy(() => observador.disconnect());
-    });
     // Al abrir un bloque se muestra la fila 1 (abajo, junto al andén): ahí empieza el llenado.
     afterRenderEffect({
       write: () => {
@@ -129,9 +112,7 @@ export class BloquePasillos {
   }
 
   readonly g = computed(() => {
-    const porAncho = (this.ancho() - 2 * MARGEN - 4 * JUNTO) / ANCHO_EN_PALETAS;
-    const pw = Math.round(Math.max(PALETA_MIN, porAncho) * this.zoom());
-    const ph = Math.round(pw * PROPORCION);
+    const { ancho: pw, alto: ph } = tamanoPaleta(this.ancho());
     const calle = Math.round(pw * 0.4);
     const calleAncha = Math.round(pw * 0.52);
     const central = Math.round(pw * 0.7);

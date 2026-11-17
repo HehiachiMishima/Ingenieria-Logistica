@@ -122,7 +122,7 @@ public class SimulacionSantaLotesRepository {
         jdbc.query(
             """
             SELECT operarios, bultos_hora, orden_cluster1, orden_cluster2, orden_cluster3,
-                   actualizado_por, actualizado_en
+                   actualizado_por, actualizado_en, bloqueado
             FROM simulacion_santa.predeterminados
             WHERE id = 1
             """
@@ -141,6 +141,7 @@ public class SimulacionSantaLotesRepository {
                       rs.getString("orden_cluster3")),
                   rs.getObject("actualizado_por", Long.class),
                   en == null ? null : en.toInstant(),
+                  rs.getBoolean("bloqueado"),
                   List.of());
             });
     if (fila == null) {
@@ -160,32 +161,49 @@ public class SimulacionSantaLotesRepository {
         fila.ordenClusters(),
         fila.actualizadoPor(),
         fila.actualizadoEn(),
+        fila.bloqueado(),
         ubicaciones);
   }
 
   /**
-   * Guarda los predeterminados (crea la fila si falta: el UPSERT la bloquea hasta el commit) y
-   * reemplaza sus 43 ubicaciones.
+   * Si operarios y bultos por hora están bloqueados para todos los registros (false si falta la
+   * fila). Lectura simple, sin FOR SHARE: quien configura un registro ya tiene su fila FOR UPDATE
+   * y bloquear espera por ella para aplicarle los valores, así que un bloqueo simultáneo igual
+   * termina aplicándose (y no hay abrazo mortal entre las dos filas).
+   */
+  public boolean predeterminadosBloqueados() {
+    Boolean bloqueado =
+        jdbc.query(
+            "SELECT bloqueado FROM simulacion_santa.predeterminados WHERE id = 1",
+            rs -> rs.next() ? rs.getBoolean(1) : null);
+    return Boolean.TRUE.equals(bloqueado);
+  }
+
+  /**
+   * Guarda los predeterminados con su candado (crea la fila si falta: el UPSERT la bloquea hasta
+   * el commit) y reemplaza sus 43 ubicaciones.
    */
   public void guardarPredeterminados(
       int operarios,
       int bultosHora,
       List<String> ordenClusters,
       List<UbicacionGuardada> ubicaciones,
+      boolean bloqueado,
       Long actor,
       Instant ahora) {
     jdbc.update(
         """
         INSERT INTO simulacion_santa.predeterminados
             (id, operarios, bultos_hora, orden_cluster1, orden_cluster2, orden_cluster3,
-             actualizado_por, actualizado_en)
-        VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+             bloqueado, actualizado_por, actualizado_en)
+        VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (id) DO UPDATE SET
             operarios = EXCLUDED.operarios,
             bultos_hora = EXCLUDED.bultos_hora,
             orden_cluster1 = EXCLUDED.orden_cluster1,
             orden_cluster2 = EXCLUDED.orden_cluster2,
             orden_cluster3 = EXCLUDED.orden_cluster3,
+            bloqueado = EXCLUDED.bloqueado,
             actualizado_por = EXCLUDED.actualizado_por,
             actualizado_en = EXCLUDED.actualizado_en
         """,
@@ -194,6 +212,7 @@ public class SimulacionSantaLotesRepository {
         ordenClusters.get(0),
         ordenClusters.get(1),
         ordenClusters.get(2),
+        bloqueado,
         actor,
         OffsetDateTime.ofInstant(ahora, ZoneOffset.UTC));
     jdbc.batchUpdate(
@@ -211,6 +230,54 @@ public class SimulacionSantaLotesRepository {
           ps.setObject(3, u.cluster() == null ? null : u.cluster().shortValue(), Types.SMALLINT);
           ps.setObject(4, u.posiciones() == null ? null : u.posiciones().shortValue(), Types.SMALLINT);
         });
+  }
+
+  /**
+   * Abre operarios y bultos por hora para cambiarlos; los valores se conservan. Sin efecto si ya
+   * estaban abiertos o falta la fila (entonces no hay nada bloqueado).
+   *
+   * @return si la fila estaba bloqueada y se abrió
+   */
+  public boolean desbloquearPredeterminados(Long actor, Instant ahora) {
+    return jdbc.update(
+            """
+            UPDATE simulacion_santa.predeterminados
+            SET bloqueado = false, actualizado_por = ?, actualizado_en = ?
+            WHERE id = 1 AND bloqueado
+            """,
+            actor,
+            OffsetDateTime.ofInstant(ahora, ZoneOffset.UTC))
+        > 0;
+  }
+
+  /**
+   * Lleva operarios y bultos por hora a los registros PENDIENTE (envío 0) que tengan otros; los
+   * EN_CURSO y COMPLETO conservan los suyos. Una sentencia, sin recorrer registros: cuenta como
+   * un cambio de configuración de cada registro tocado. Si alguien está configurando o moviendo
+   * el envío de un registro, la sentencia espera su commit y vuelve a evaluar el estado.
+   *
+   * @return cuántos registros recibieron los valores
+   */
+  public int aplicarPredeterminados(int operarios, int bultosHora, Long actor, Instant ahora) {
+    OffsetDateTime en = OffsetDateTime.ofInstant(ahora, ZoneOffset.UTC);
+    // Q: registros pendientes (idx_registros_estado): WHERE estado = 'PENDIENTE'.
+    return jdbc.update(
+        """
+        UPDATE simulacion_santa.registros
+        SET operarios = ?, bultos_hora = ?,
+            configurado_por = ?, configurado_en = ?,
+            actualizado_por = ?, actualizado_en = ?
+        WHERE estado = 'PENDIENTE'
+          AND (operarios <> ? OR bultos_hora <> ?)
+        """,
+        operarios,
+        bultosHora,
+        actor,
+        en,
+        actor,
+        en,
+        operarios,
+        bultosHora);
   }
 
   private static UbicacionGuardada ubicacion(ResultSet rs) throws SQLException {

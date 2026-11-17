@@ -1,20 +1,17 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  DestroyRef,
   ElementRef,
-  afterNextRender,
   computed,
-  inject,
   input,
   output,
-  signal,
   viewChild,
 } from '@angular/core';
 import { Icon } from '../../../../../shared/ui/icon/icon';
 import { Cluster, Lado, PaletaSimulacion } from '../../models/santa.model';
-import { celdaRampaHabilitada, clavePosicion } from '../../plano/plano-santa';
+import { celdaRampaHabilitada, clavePosicion, tamanoPaleta } from '../../plano/plano-santa';
 import { colorCluster } from '../../santa-formato';
+import { anchoDelHost } from '../ancho-host';
 import { Paleta } from '../paleta/paleta';
 
 /** Rampa tal como se dibuja: cluster y posiciones del borrador, capacidad del plano. */
@@ -43,21 +40,17 @@ interface RampaDibujo {
   celdas: CeldaVista[];
 }
 
-/** Rampas que se ven completas al abrir (15–20, las que están bajo los pasillos). */
-const RAMPAS_EN_PANTALLA = 6;
 /** Filas del rack más alto (rampas de 14 posiciones). */
 const FILAS = 7;
 const SEP = 6;
 const ARRIBA = 8;
-const PALETA_MIN = 72;
-/** Proporción de la paleta: 1,00 m de fondo por 1,20 m de ancho. */
-const PROPORCION = 0.82;
 
 /**
- * Ventana «Rampas» en modo compacto: las calles entre racks se reducen para
- * que las paletas sean grandes. Al abrir se ven las rampas 15–20; el resto se
- * recorre con scroll horizontal (y vertical si el zoom lo pide). Cada puerta
- * tiene su rampa niveladora y su letrero con el número.
+ * Ventana «Rampas» en modo compacto: las calles entre racks se reducen y la
+ * paleta tiene el tamaño M ({@link tamanoPaleta}), el mismo que en los
+ * pasillos. Al abrir se ven las rampas 15–20; el resto se recorre con scroll
+ * horizontal (y vertical si la pantalla es baja). Cada puerta tiene su rampa
+ * niveladora y su letrero.
  */
 @Component({
   selector: 'app-anden-rampas',
@@ -70,39 +63,15 @@ export class AndenRampas {
   readonly rampas = input.required<RampaVista[]>();
   readonly paletas = input.required<Map<string, PaletaSimulacion>>();
   readonly seleccionada = input<number | null>(null);
-  /** 1 = M, 1,25 = L, 1,5 = XL. */
-  readonly zoom = input(1);
   readonly seleccionar = output<PaletaSimulacion>();
 
   private readonly scroll = viewChild.required<ElementRef<HTMLElement>>('scroll');
-  private readonly alto = signal(0);
-  private readonly ancho = signal(0);
+  private readonly ancho = anchoDelHost();
 
   readonly colorCluster = colorCluster;
 
-  constructor() {
-    const destroyRef = inject(DestroyRef);
-    afterNextRender(() => {
-      const el = this.scroll().nativeElement;
-      const medir = () => {
-        this.alto.set(el.clientHeight);
-        this.ancho.set(el.clientWidth);
-      };
-      const observador = new ResizeObserver(medir);
-      observador.observe(el);
-      medir();
-      destroyRef.onDestroy(() => observador.disconnect());
-    });
-  }
-
   readonly g = computed(() => {
-    // Paleta: la que deja ver 6 rampas a lo ancho, sin pasar 1,2 veces la que entra a lo alto.
-    const porAncho = (this.ancho() / RAMPAS_EN_PANTALLA - 30) / 2;
-    const porAlto = ((this.alto() - 70) / (FILAS + 0.8) - SEP) / PROPORCION;
-    // Hasta un 15 % más grande que lo que entra a lo alto: se prefiere paleta grande a no tener scroll.
-    const base = Math.max(PALETA_MIN, Math.min(porAncho, porAlto * 1.15));
-    const pw = Math.round(base * this.zoom());
-    const ph = Math.round(pw * PROPORCION);
+    const { ancho: pw, alto: ph } = tamanoPaleta(this.ancho());
     const calle = Math.max(24, Math.round(pw / 3));
     const unidad = 2 * pw + SEP + calle;
     const puertaAncho = Math.round(pw * 1.5);

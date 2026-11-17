@@ -149,7 +149,9 @@ Si la base ya estaba instalada antes del panel **Simulación Santa Anita**, apli
 re-ejecutable (`IF NOT EXISTS`, `ON CONFLICT DO NOTHING`): crea el esquema
 `simulacion_santa`, sus tablas e índices, el trigger de `actualizado_en`, los
 predeterminados de fábrica, los 7 permisos del panel (el rol `ADMINISTRADOR` los recibe
-por trigger) y los privilegios de `atlas_app` si existe.
+por trigger) y los privilegios de `atlas_app` si existe. En una base que ya tenía el panel,
+agrega la columna `predeterminados.bloqueado` (candado de operarios y bultos/hora):
+aplicarla antes de arrancar el backend que la usa.
 
 ```bash
 psql "host=<host> port=5432 dbname=<base> user=<usuario> sslmode=require" -v ON_ERROR_STOP=1 -f backend/migracion_simulacion_santa.sql
@@ -368,11 +370,13 @@ Base: `/api`
 | `POST` | `/simulacion-santa/registros/validar` (multipart `archivo`) | `CREAR_REGISTRO_SIMULACION_SANTA` — lee el Excel sin guardar (filas válidas, totales y hasta 50 errores) |
 | `POST` | `/simulacion-santa/registros` (multipart `archivo`, `nombre`) | `CREAR_REGISTRO_SIMULACION_SANTA` — guarda las filas válidas y copia los predeterminados; idempotente ante un reintento |
 | `PUT` / `DELETE` | `/simulacion-santa/registros/{id}` | `MODIFICAR_REGISTRO_…` (renombrar) / `ELIMINAR_REGISTRO_SIMULACION_SANTA` |
-| `GET` / `PUT` | `/simulacion-santa/registros/{id}/configuracion` | `VER_CONFIGURACION_…` / `MODIFICAR_CONFIGURACION_SIMULACION_SANTA` — operarios, bultos/hora, orden de llenado y las 19 rampas y 24 pasillos |
+| `GET` / `PUT` | `/simulacion-santa/registros/{id}/configuracion` | `VER_CONFIGURACION_…` / `MODIFICAR_CONFIGURACION_SIMULACION_SANTA` — operarios, bultos/hora, orden de llenado y las 19 rampas y 24 pasillos; `bloqueado` = candado global. Con candado, cambiar operarios o bultos/hora da 409 (clusters, posiciones y orden sí se guardan) |
 | `GET` | `/simulacion-santa/registros/{id}/simulacion?envio=` | `VER_CONFIGURACION_SIMULACION_SANTA` — ubicación de cada paleta, estados y KPIs del envío (por defecto el actual) |
 | `POST` | `/simulacion-santa/registros/{id}/simulacion/previsualizar?envio=` | `VER_CONFIGURACION_SIMULACION_SANTA` — la misma simulación con la configuración del cuerpo, sin guardar |
 | `PUT` | `/simulacion-santa/registros/{id}/envio` | `MODIFICAR_CONFIGURACION_SIMULACION_SANTA` — envío en curso (0 a 3) |
-| `GET` / `PUT` | `/simulacion-santa/predeterminados` | `VER_CONFIGURACION_…` / `MODIFICAR_CONFIGURACION_SIMULACION_SANTA` — configuración con que nace cada registro |
+| `GET` | `/simulacion-santa/predeterminados` | `VER_CONFIGURACION_SIMULACION_SANTA` — configuración con que nace cada registro y su candado (`bloqueado`) |
+| `PUT` | `/simulacion-santa/predeterminados/bloquear` (cuerpo `ConfiguracionRequest`) | `MODIFICAR_CONFIGURACION_SIMULACION_SANTA` — en una transacción: guarda todo como predeterminados, bloquea operarios y bultos/hora para todos los registros y los lleva a los PENDIENTE (EN_CURSO y COMPLETO conservan los suyos) |
+| `PUT` | `/simulacion-santa/predeterminados/desbloquear` | `MODIFICAR_CONFIGURACION_SIMULACION_SANTA` — abre operarios y bultos/hora; los valores se conservan |
 
 ---
 

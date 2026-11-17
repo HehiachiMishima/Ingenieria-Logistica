@@ -94,7 +94,16 @@ export class SantaApi {
     return this.api.get<ConfiguracionSanta>(`${BASE}/predeterminados`);
   }
 
-  guardarPredeterminados(peticion: ConfiguracionSantaRequest): Observable<ConfiguracionSanta> {
-    return this.api.put<ConfiguracionSanta>(`${BASE}/predeterminados`, peticion);
+  /**
+   * Bloquea operarios y productividad para todos los registros: se aplican a los
+   * pendientes y los nuevos nacen con esta configuración completa.
+   */
+  bloquearPredeterminados(peticion: ConfiguracionSantaRequest): Observable<ConfiguracionSanta> {
+    return this.api.put<ConfiguracionSanta>(`${BASE}/predeterminados/bloquear`, peticion);
+  }
+
+  /** Abre operarios y productividad para cambiarlos (los valores se conservan). */
+  desbloquearPredeterminados(): Observable<ConfiguracionSanta> {
+    return this.api.put<ConfiguracionSanta>(`${BASE}/predeterminados/desbloquear`, {});
   }
 }

@@ -1,4 +1,13 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  computed,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { PERMISOS } from '../../../../../core/config/permisos';
 import { SesionStore } from '../../../../../core/services/sesion';
@@ -20,7 +29,11 @@ import {
 } from '../../santa-formato';
 import { AndenRampas, RampaVista } from '../../ui/anden-rampas/anden-rampas';
 import { BloquePasillos, PasilloVista } from '../../ui/bloque-pasillos/bloque-pasillos';
-import { MovimientoUbicaciones, TableroClusters } from '../../ui/tablero-clusters/tablero-clusters';
+import {
+  FichaAsignacion,
+  MatrizAsignacion,
+  MovimientoFichas,
+} from '../../ui/matriz-asignacion/matriz-asignacion';
 
 type Ventana = 'rampas' | '1-6' | '7-12' | '13-18' | '19-24';
 
@@ -33,16 +46,26 @@ const VENTANAS: { id: Ventana; etiqueta: string }[] = [
   { id: '19-24', etiqueta: '19–24' },
 ];
 
-const ZOOMS = [
-  { valor: 1, etiqueta: 'M' },
-  { valor: 1.25, etiqueta: 'L' },
-  { valor: 1.5, etiqueta: 'XL' },
-];
-
+/**
+ * Configuración de Santa Anita: una sola página con el plano arriba (alto de una
+ * pantalla) y Asignar debajo. Los dos leen el mismo store, así que lo que se
+ * arrastra abajo se ve arriba como vista previa. Como el plano tiene su propio
+ * scroll, se pasa de una sección a otra con los botones «Asignar» y «Plano».
+ */
 @Component({
   selector: 'app-santa-configuracion',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon, Modal, EmptyState, HasPermiso, AndenRampas, BloquePasillos, TableroClusters],
+  imports: [
+    NgTemplateOutlet,
+    RouterLink,
+    Icon,
+    Modal,
+    EmptyState,
+    HasPermiso,
+    AndenRampas,
+    BloquePasillos,
+    MatrizAsignacion,
+  ],
   providers: [ConfiguracionSantaStore],
   host: { '(document:keydown)': 'atajo($event)' },
   templateUrl: './configuracion.html',
@@ -54,9 +77,11 @@ export class SantaConfiguracion {
   private readonly route = inject(ActivatedRoute);
   private readonly sesion = inject(SesionStore);
 
+  private readonly seccionPlano = viewChild<ElementRef<HTMLElement>>('seccionPlano');
+  private readonly seccionAsignar = viewChild<ElementRef<HTMLElement>>('seccionAsignar');
+
   readonly permisos = PERMISOS;
   readonly ventanas = VENTANAS;
-  readonly zooms = ZOOMS;
   readonly clusters = CLUSTERS;
   readonly envios = [1, 2, 3];
   readonly entero = entero;
@@ -66,16 +91,21 @@ export class SantaConfiguracion {
   readonly etiquetaEstadoRegistro = etiquetaEstadoRegistro;
 
   readonly ventana = signal<Ventana>('rampas');
-  readonly zoom = signal(1);
   readonly paletaElegida = signal<PaletaSimulacion | null>(null);
-  readonly asignarAbierto = signal(false);
   readonly leyendaAbierta = signal(false);
   readonly confirmarGuardar = signal(false);
   readonly confirmarReinicio = signal(false);
+  /** Lista de paletas sin ubicación desplegada (la abre el aviso del plano). */
+  readonly faltanAbierto = signal(false);
+  /** Búsqueda y filtro de Asignar. */
+  readonly busqueda = signal('');
+  readonly soloCambios = signal(false);
 
   readonly puedeModificar = computed(() =>
     this.sesion.tienePermiso(PERMISOS.MODIFICAR_CONFIGURACION_SIMULACION_SANTA),
   );
+  /** Operarios y productividad editables: con permiso y sin candado. */
+  readonly operacionEditable = computed(() => this.puedeModificar() && !this.store.bloqueado());
 
   readonly bloque = computed(() => BLOQUES.find((b) => b.id === this.ventana()) ?? null);
   readonly envioActual = computed(() => this.store.registro()?.envioActual ?? 0);
@@ -92,6 +122,51 @@ export class SantaConfiguracion {
   });
 
   readonly pasillosVista = computed<PasilloVista[]>(() => this.store.borrador()?.pasillos ?? []);
+
+  /** Paletas ubicadas en cada rampa / pasillo según la simulación visible. */
+  private readonly ocupacion = computed(() => {
+    const conteo = new Map<string, number>();
+    for (const p of this.store.simulacionVisible()?.paletas ?? []) {
+      if (p.ubicacion) {
+        const clave = `${p.ubicacion.tipo === 'RAMPA' ? 'R' : 'P'}${p.ubicacion.numero}`;
+        conteo.set(clave, (conteo.get(clave) ?? 0) + 1);
+      }
+    }
+    return conteo;
+  });
+
+  /** Fichas de la matriz de asignación: cluster del borrador vs el guardado. */
+  readonly fichas = computed<FichaAsignacion[]>(() => {
+    const config = this.store.configuracion();
+    if (!config) {
+      return [];
+    }
+    const guardadoR = new Map(config.rampas.map((r) => [r.numero, r.cluster]));
+    const guardadoP = new Map(config.pasillos.map((p) => [p.numero, p.cluster]));
+    const ocupacion = this.ocupacion();
+    return [
+      ...this.rampasVista().map((r) => ({
+        clave: `R${r.numero}`,
+        tipo: 'R' as const,
+        numero: r.numero,
+        cluster: r.cluster,
+        posiciones: r.posiciones,
+        ocupadas: ocupacion.get(`R${r.numero}`) ?? 0,
+        cambiada: guardadoR.get(r.numero) !== r.cluster,
+      })),
+      ...this.pasillosVista().map((p) => ({
+        clave: `P${p.numero}`,
+        tipo: 'P' as const,
+        numero: p.numero,
+        cluster: p.cluster,
+        posiciones: 24,
+        ocupadas: ocupacion.get(`P${p.numero}`) ?? 0,
+        cambiada: guardadoP.get(p.numero) !== p.cluster,
+      })),
+    ];
+  });
+
+  readonly cambiosDeCluster = computed(() => this.fichas().filter((f) => f.cambiada).length);
 
   readonly kpis = computed(() => this.store.simulacionVisible()?.kpis ?? null);
   readonly avance = computed(() => {
@@ -122,9 +197,33 @@ export class SantaConfiguracion {
     this.ventana.set(ventana);
   }
 
-  /** Teclas 1 a 5: cambian de ventana (si no se está escribiendo ni hay un modal abierto). */
+  /* ---------- navegación entre secciones ---------- */
+
+  irAAsignar(abrirFaltan = false): void {
+    if (abrirFaltan) {
+      this.faltanAbierto.set(true);
+    }
+    this.desplazar(this.seccionAsignar());
+  }
+
+  irAlPlano(): void {
+    this.desplazar(this.seccionPlano());
+  }
+
+  private desplazar(seccion: ElementRef<HTMLElement> | undefined): void {
+    const suave = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+    seccion?.nativeElement.scrollIntoView({ behavior: suave ? 'smooth' : 'auto', block: 'start' });
+  }
+
+  /** El plano se ve en pantalla (las teclas 1 a 5 solo actúan entonces). */
+  private planoEnPantalla(): boolean {
+    const r = this.seccionPlano()?.nativeElement.getBoundingClientRect();
+    return !!r && r.bottom > window.innerHeight * 0.35 && r.top < window.innerHeight * 0.65;
+  }
+
+  /** Teclas 1 a 5 en el plano: cambian de ventana (si no se está escribiendo). */
   atajo(evento: KeyboardEvent): void {
-    if (this.asignarAbierto() || evento.ctrlKey || evento.metaKey || evento.altKey) {
+    if (evento.ctrlKey || evento.metaKey || evento.altKey) {
       return;
     }
     const objetivo = evento.target as HTMLElement | null;
@@ -132,7 +231,7 @@ export class SantaConfiguracion {
       return;
     }
     const indice = Number(evento.key) - 1;
-    if (indice >= 0 && indice < VENTANAS.length) {
+    if (indice >= 0 && indice < VENTANAS.length && this.planoEnPantalla()) {
       this.ventana.set(VENTANAS[indice].id);
     }
   }
@@ -166,8 +265,15 @@ export class SantaConfiguracion {
 
   /* ---------- asignación ---------- */
 
-  mover(evento: MovimientoUbicaciones): void {
-    this.store.mover(evento.tipo, evento.numeros, evento.cluster);
+  moverFichas(m: MovimientoFichas): void {
+    const rampas = m.claves.filter((c) => c.startsWith('R')).map((c) => Number(c.slice(1)));
+    const pasillos = m.claves.filter((c) => c.startsWith('P')).map((c) => Number(c.slice(1)));
+    if (rampas.length) {
+      this.store.mover('RAMPA', rampas, m.cluster);
+    }
+    if (pasillos.length) {
+      this.store.mover('PASILLO', pasillos, m.cluster);
+    }
   }
 
   cambiarOrden(evento: { cluster: Cluster; orden: OrdenLlenado }): void {
@@ -190,6 +296,11 @@ export class SantaConfiguracion {
     if (b) {
       this.store.fijarOperacion(b.operarios, Number(valor));
     }
+  }
+
+  restablecer(): void {
+    this.store.descartar();
+    this.soloCambios.set(false);
   }
 
   guardar(): void {
