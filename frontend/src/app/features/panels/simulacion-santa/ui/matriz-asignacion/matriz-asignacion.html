@@ -10,7 +10,7 @@
   </div>
 }
 
-<div class="tablero" appArrastreFichas [validar]="validar" [grupo]="grupo" (soltar)="soltar($event)" (pasando)="paso.set($event)">
+<div class="tablero" appArrastreFichas [validar]="validar" [grupo]="grupo" (soltar)="soltar($event)">
   @for (col of columnas(); track $index) {
     <section
       class="columna"
@@ -101,5 +101,3 @@
     </section>
   }
 </div>
-
-<p class="estado" aria-live="polite">{{ mensaje() }}</p>

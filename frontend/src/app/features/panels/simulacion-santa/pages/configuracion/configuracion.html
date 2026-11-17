@@ -31,11 +31,27 @@
     #seccionAsignar
     class="asignar"
     [class.asignar--cargando]="!store.borrador() && !store.error()"
-    aria-labelledby="titulo-asignar"
+    aria-label="Asignar clusters"
   >
-  <div class="parametros">
-      @if (store.borrador(); as b) {
-        <div class="parametros__campos">
+    <div class="parametros">
+      <div class="parametros__campos">
+        <!-- El registro queda fuera del @if: con el registro cargando o con error se puede elegir otro. -->
+        <div class="parametros__campo parametros__campo--registro">
+          <label class="ui-label" for="santa-registro">Registro</label>
+          <select
+            id="santa-registro"
+            class="ui-select"
+            [value]="store.registroId() ?? ''"
+            (change)="elegirRegistro($any($event.target).value)"
+          >
+            @for (r of store.registros(); track r.id) {
+              <option [value]="r.id" [selected]="r.id === store.registroId()">
+                {{ r.nombre }} · {{ etiquetaEstadoRegistro(r.estado) }}
+              </option>
+            }
+          </select>
+        </div>
+        @if (store.borrador(); as b) {
           <div class="parametros__campo">
             <label class="ui-label" for="santa-operarios">Operarios</label>
             <input
@@ -98,6 +114,33 @@
               </button>
             </div>
           }
+        }
+      </div>
+
+      @if (store.borrador()) {
+        <div class="parametros__posiciones" role="group" aria-labelledby="titulo-posiciones">
+          <span class="ui-label" id="titulo-posiciones" title="Capacidad del plano: 10 en las rampas 15–18 y 25; 14 en las demás">
+            Posiciones por rampa
+          </span>
+          <div class="posiciones">
+            @for (r of rampasVista(); track r.numero) {
+              <label class="posiciones__item" [style.--cl]="colorCluster(r.cluster)">
+                <span class="posiciones__rampa">R{{ r.numero }}</span>
+                <input
+                  type="number"
+                  class="ui-input posiciones__input"
+                  min="0"
+                  [max]="r.capacidad"
+                  inputmode="numeric"
+                  [disabled]="!puedeModificar()"
+                  [value]="r.posiciones"
+                  [attr.aria-label]="'Posiciones habilitadas de la rampa ' + r.numero"
+                  (change)="fijarPosiciones(r.numero, $any($event.target).value)"
+                />
+                <span class="posiciones__cap">/ {{ r.capacidad }}</span>
+              </label>
+            }
+          </div>
         </div>
       }
 
@@ -195,30 +238,6 @@
         (mover)="moverFichas($event)"
         (cambiarOrden)="cambiarOrden($event)"
       />
-
-      <section class="tarjeta tarjeta--asignar" aria-labelledby="titulo-posiciones">
-        <h3 class="tarjeta__titulo" id="titulo-posiciones">Posiciones por rampa</h3>
-        <p class="tarjeta__nota">Capacidad del plano: 10 en las rampas 15–18 y 25; 14 en las demás.</p>
-        <div class="posiciones">
-          @for (r of rampasVista(); track r.numero) {
-            <label class="posiciones__item" [style.--cl]="colorCluster(r.cluster)">
-              <span class="posiciones__rampa">R{{ r.numero }}</span>
-              <input
-                type="number"
-                class="ui-input posiciones__input"
-                min="0"
-                [max]="r.capacidad"
-                inputmode="numeric"
-                [disabled]="!puedeModificar()"
-                [value]="r.posiciones"
-                [attr.aria-label]="'Posiciones habilitadas de la rampa ' + r.numero"
-                (change)="fijarPosiciones(r.numero, $any($event.target).value)"
-              />
-              <span class="posiciones__cap">/ {{ r.capacidad }}</span>
-            </label>
-          }
-        </div>
-      </section>
     } @else {
       <div class="loading"><span class="ui-spinner"></span> Cargando la configuración…</div>
     }
@@ -226,18 +245,6 @@
   <!-- ===================== Plano (alto de una pantalla) ===================== -->
   <section #seccionPlano class="espacio" aria-label="Plano de la simulación">
     <div class="barra" role="toolbar" aria-label="Controles de la simulación">
-      <label class="barra__registro">
-        <!-- oculto a propósito: etiqueta del select para lectores de pantalla -->
-        <span class="solo-lectores" data-responsive-ignore>Registro</span>
-        <select class="ui-select" [value]="store.registroId() ?? ''" (change)="elegirRegistro($any($event.target).value)">
-          @for (r of store.registros(); track r.id) {
-            <option [value]="r.id" [selected]="r.id === store.registroId()">
-              {{ r.nombre }} · {{ etiquetaEstadoRegistro(r.estado) }}
-            </option>
-          }
-        </select>
-      </label>
-
       <div class="seg" role="group" aria-label="Ventana del plano">
         @for (v of ventanas; track v.id; let i = $index) {
           <button

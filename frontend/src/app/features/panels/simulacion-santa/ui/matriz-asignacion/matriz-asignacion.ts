@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 import { Cluster, ClusterSimulacion, OrdenLlenado } from '../../models/santa.model';
 import { CLUSTERS, ORDENES_LLENADO, colorCluster, entero, porcentaje } from '../../santa-formato';
-import { ArrastreFichas, DestinoFichas, PasoFichas, TipoFicha } from './arrastre-fichas.directive';
+import { ArrastreFichas, DestinoFichas, TipoFicha } from './arrastre-fichas.directive';
 
 /** Una rampa o un pasillo como ficha del tablero. */
 export interface FichaAsignacion {
@@ -69,7 +69,6 @@ export class MatrizAsignacion {
 
   readonly seleccion = signal<ReadonlySet<string>>(new Set());
   private readonly ultima = signal<string | null>(null);
-  readonly paso = signal<PasoFichas | null>(null);
 
   private readonly porClave = computed(() => new Map(this.fichas().map((f) => [f.clave, f])));
 
@@ -113,27 +112,6 @@ export class MatrizAsignacion {
         nivel: ocupacion > 100 ? 'mal' : ocupacion > 85 ? 'justo' : 'bien',
       };
     });
-  });
-
-  readonly mensaje = computed(() => {
-    const p = this.paso();
-    if (!p) {
-      return this.seleccion().size > 0
-        ? `${this.seleccion().size} elegidas: arrástralas a un cluster o usa «Mover a».`
-        : 'Arrastra rampas y pasillos entre clusters. Clic para elegir varias (Shift para un rango).';
-    }
-    if (p.motivo) {
-      return p.motivo;
-    }
-    if (p.cluster === null) {
-      return 'Soltar aquí: quedan sin cluster (no se usan en la simulación).';
-    }
-    const suma = p.claves
-      .map((c) => this.porClave().get(c))
-      .filter((f): f is FichaAsignacion => !!f && f.cluster !== p.cluster)
-      .reduce((s, f) => s + f.posiciones, 0);
-    const actual = this.clusters().find((c) => c.cluster === p.cluster)?.posiciones ?? 0;
-    return `Soltar en C${p.cluster}: +${entero(suma)} posiciones (${entero(actual + suma)} en total).`;
   });
 
   /** Solo se rechaza soltar donde ya están todas (no cambiaría nada). */

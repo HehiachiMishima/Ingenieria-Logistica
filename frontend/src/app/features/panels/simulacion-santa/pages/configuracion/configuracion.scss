@@ -16,15 +16,6 @@
   padding: var(--space-2) var(--space-3);
   margin-bottom: var(--space-3);
 
-  &__registro {
-    flex: 0 1 220px;
-    min-width: 150px;
-
-    .ui-select {
-      min-height: 36px;
-    }
-  }
-
   &__envio {
     display: inline-flex;
     align-items: center;
@@ -146,10 +137,6 @@
   &--cargando {
     min-height: 820px;
   }
-
-  &__titulo {
-    margin: 0 0 var(--space-3);
-  }
 }
 
 /* El chevron gira para indicar hacia dónde está la otra sección. */
@@ -225,9 +212,22 @@
     gap: var(--space-1);
     min-width: min(100%, 170px);
 
-    .ui-input {
+    &--registro {
+      flex-grow: 2;
+      min-width: min(100%, 240px);
+    }
+
+    .ui-input,
+    .ui-select {
       height: 38px;
     }
+  }
+
+  /* Posiciones por rampa: fila completa de la tarjeta, bajo los campos. */
+  &__posiciones {
+    display: grid;
+    gap: var(--space-2);
+    padding-top: var(--space-3);
   }
 
   &__acciones {
@@ -272,10 +272,6 @@
   margin-left: auto;
 }
 
-.tarjeta--asignar {
-  margin-top: var(--space-4);
-}
-
 .faltan {
   padding: var(--space-2) var(--space-4);
 
@@ -310,25 +306,6 @@
     min-width: 26px;
     margin-right: var(--space-1);
     text-align: center;
-  }
-}
-
-.tarjeta {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  min-width: 0;
-  padding: var(--space-5);
-
-  &__titulo,
-  &__nota {
-    margin: 0;
-  }
-
-  &__acciones {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
   }
 }
 
@@ -629,14 +606,6 @@
   }
 }
 
-.asignar__titulo {
-  font-family: var(--font-display);
-  font-size: var(--fs-xl);
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: var(--text);
-}
-
 /* Bloqueado: el botón (ahora «Desbloquear») toma el acento, como en Supply Chain. */
 .boton--activo,
 .candado--activo {
@@ -674,26 +643,8 @@ app-matriz-asignacion {
   }
 }
 
-.tarjeta {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-
-  &__titulo {
-    font-family: var(--font-display);
-    font-size: var(--fs-lg);
-    font-weight: 800;
-    color: var(--text);
-  }
-
-  &__nota {
-    font-size: var(--fs-sm);
-    color: var(--text-3);
-
-    b {
-      color: var(--text);
-    }
-  }
+.parametros__posiciones {
+  border-top: 1px solid var(--border);
 }
 
 .posiciones {
