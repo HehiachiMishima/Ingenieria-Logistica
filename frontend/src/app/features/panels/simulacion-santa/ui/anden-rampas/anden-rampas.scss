@@ -1,0 +1,102 @@
+/* ---------- estructura ---------- */
+:host {
+  position: relative;
+  display: block;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+
+  /* jus:ok colores de material del andén (plancha antideslizante, franja de seguridad, letrero) */
+  --plancha: #8e959c;
+  --plancha-claro: #b9c0c6;
+  --plancha-medio: #a7aeb5;
+  --franja: #f5c518;
+  --letrero: #d2141c;
+  --marco: #b8bfc7;
+}
+
+.patio {
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.lienzo {
+  position: relative;
+
+  > .linea,
+  > .puerta,
+  > .letrero {
+    position: absolute;
+  }
+}
+
+.linea {
+  top: 0;
+  width: 0;
+}
+
+.letrero {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.flecha {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  transform: translateY(-50%);
+
+  &--izq {
+    left: var(--space-2);
+  }
+
+  &--der {
+    right: var(--space-2);
+  }
+}
+
+/* ---------- apariencia ---------- */
+.patio {
+  border-radius: var(--radius-lg);
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--ring);
+  }
+}
+
+.linea {
+  border-left: 2px dashed color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.puerta {
+  border-left: 7px solid var(--franja);
+  border-right: 7px solid var(--franja);
+  border-top: 4px solid var(--cl);
+  border-radius: var(--radius-xs);
+  background-color: var(--plancha);
+  background-image:
+    repeating-linear-gradient(45deg, transparent 0 6px, var(--plancha-claro) 6px 8px),
+    repeating-linear-gradient(-45deg, transparent 0 6px, var(--plancha-medio) 6px 8px);
+
+  &--sin-cluster {
+    opacity: 0.55;
+  }
+}
+
+.letrero {
+  border: 3px solid var(--marco);
+  border-radius: var(--radius-xs);
+  background: var(--letrero);
+  font-family: var(--font-display);
+  font-weight: 800;
+  color: var(--brand-contrast);
+}
+
+.flecha {
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  box-shadow: var(--shadow-sm);
+}

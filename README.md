@@ -24,6 +24,7 @@ cada usuario. Su nombre es un acróstico:
 | Administración | `/admin` | Dashboard, Usuarios, Roles, Permisos | `PANEL_ADMIN` |
 | Bitácora | `/bitacora` | Incidencias, Control (centros, sistemas, áreas, responsables), Dashboard | `PANEL_BITACORA` |
 | Simulación | `/simulacion` | Registro (Excel), Configuración (clusters, chutes, balanceo), Dashboard | `PANEL_SIMULACION` |
+| Simulación Santa Anita | `/simulacion-santa` | Registro (Excel de despacho), Configuración (clusters por rampa y pasillo, operarios y simulación por envío) | `PANEL_SIMULACION_SANTA` |
 | Malla Operativa | `/malla` | Malla (turnos, flujos de proceso, olas, zonas, capacidad) | `PANEL_MALLA` |
 | Análisis | `/analisis` | Resumen | `PANEL_ANALISIS` |
 | Trazabilidad | `/trazabilidad` | Resumen | `PANEL_TRAZABILIDAD` |
@@ -79,6 +80,7 @@ La ruta raíz de cada panel redirige a su primer módulo accesible con
 │       ├── admin/              # Panel Administración (usuarios, roles, permisos, resolución)
 │       ├── bitacora/           # Panel Bitácora (incidencias + catálogos de control)
 │       ├── simulacion/         # Panel Simulación (Excel, configuración, balanceo, dashboard)
+│       ├── simulacionsanta/    # Panel Simulación Santa Anita (Excel de despacho, rampas y pasillos, envíos)
 │       ├── malla/              # Panel Malla Operativa (entrega protegida del tablero)
 │       └── common/             # Transversal: config, security, exception, support, web
 └── frontend/src/app/
@@ -129,7 +131,7 @@ se instala con `backend/postgresql.sql` y los `.sql` no entran en la imagen.
 
 | Paso | Archivo | Notas |
 | --- | --- | --- |
-| 1 | `postgresql.sql` | Instalación completa en **una transacción**. ⚠️ Borra y recrea los esquemas `comun`, `seguridad`, `bitacora`, `simulacion` y `malla`. |
+| 1 | `postgresql.sql` | Instalación completa en **una transacción**. ⚠️ Borra y recrea los esquemas `comun`, `seguridad`, `bitacora`, `simulacion`, `malla` y `simulacion_santa`. |
 | 2 | **Arrancar el backend una vez** | Crea el usuario semilla `USER_ADMIN` con BCrypt y le asigna `USER_ROL`. |
 | 3 | `datos.sql` *(opcional)* | 53 incidencias de ejemplo de Bitácora. Re-ejecutable (omite tickets existentes). |
 
@@ -140,6 +142,18 @@ Si la base **ya estaba instalada** antes de los tickets abiertos, aplicar en est
 | --- | --- | --- |
 | `migracion_tickets_abiertos.sql` | Con el backend **detenido** | Agrega `cerrado_en` (fin opcional = abierta), sus reglas y el índice de abiertas; rellena las existentes como cerradas. |
 | `migracion_bitacora_indices.sql` | Con el backend encendido | Índices de reincidencias y de responsable + fechas. |
+
+Si la base ya estaba instalada antes del panel **Simulación Santa Anita**, aplicar
+`migracion_simulacion_santa.sql` **antes** de arrancar el backend que trae el panel
+(con `ddl-auto=validate` no arranca si falta el esquema). Corre en una transacción y es
+re-ejecutable (`IF NOT EXISTS`, `ON CONFLICT DO NOTHING`): crea el esquema
+`simulacion_santa`, sus tablas e índices, el trigger de `actualizado_en`, los
+predeterminados de fábrica, los 7 permisos del panel (el rol `ADMINISTRADOR` los recibe
+por trigger) y los privilegios de `atlas_app` si existe.
+
+```bash
+psql "host=<host> port=5432 dbname=<base> user=<usuario> sslmode=require" -v ON_ERROR_STOP=1 -f backend/migracion_simulacion_santa.sql
+```
 
 ```bash
 psql "host=<host> port=5432 dbname=<base> user=<usuario> sslmode=require" -v ON_ERROR_STOP=1 -f backend/postgresql.sql
@@ -154,9 +168,12 @@ Organización y decisiones del esquema:
 | `bitacora` | Catálogos (centro, sistema, área, responsable, tipo) e `incidencias`. |
 | `simulacion` | Registros Excel, clusters, chutes, parámetros, rutas, lanzamientos e historial de balanceo. |
 | `malla` | Centros, turnos, flujos, olas, zonas, capacidad, dotación, historial de cambios y reglas. |
+| `simulacion_santa` | Cargas del Excel de despacho de Santa Anita (`registros`, con totales precalculados, envío en curso y configuración), sus `filas` (una paleta por ruta + local), `ubicaciones` por registro (cluster de cada rampa 15–33 y pasillo 1–24, posiciones habilitadas por rampa) y `predeterminados` (+ `predeterminados_ubicaciones`) con que nace cada registro. El plano físico es una constante del backend (`PlanoSantaAnita`). |
 
-- La conexión lleva `currentSchema=seguridad,bitacora,simulacion,malla,public`,
-  así el backend consulta las tablas sin prefijo.
+- La conexión lleva `currentSchema=seguridad,bitacora,simulacion,malla,simulacion_santa,public`,
+  así el backend consulta las tablas sin prefijo. Santa Anita escribe siempre el
+  esquema (`simulacion_santa.`): su tabla `predeterminados` comparte nombre con la de
+  Simulación, que va antes en el `search_path`.
 - Ids `GENERATED ALWAYS AS IDENTITY`; instantes en `TIMESTAMPTZ` (UTC) y
   `actualizado_en` mantenido por trigger en cada `UPDATE`.
 - Nombres, logins, emails y códigos usan la colación ICU `comun.ci`: comparan
@@ -346,6 +363,16 @@ Base: `/api`
 | `GET` | `/incidencias/analitica` | `VER_DASHBOARD` — KPIs, Pareto de sistemas, matriz centro × sistema, tipos, tendencia y horas |
 | `GET` | `/admin/analitica` | `DASHBOARD_ADMIN` — cuentas, roles, permisos, cobertura por panel y altas |
 | `GET` | `/malla/vista` | `VER_MALLA` — HTML autónomo de la malla (`text/html`, `no-store`) |
+| `GET` | `/simulacion-santa/registros?pagina&tamano&texto&estados` | `VER_REGISTRO_SIMULACION_SANTA` — cargas paginadas, recientes primero (`estados` repetido o separado por coma) |
+| `GET` | `/simulacion-santa/registros/opciones`, `/simulacion-santa/registros/{id}` | `VER_REGISTRO_…` o `VER_CONFIGURACION_SIMULACION_SANTA` — los 200 más recientes / un registro |
+| `POST` | `/simulacion-santa/registros/validar` (multipart `archivo`) | `CREAR_REGISTRO_SIMULACION_SANTA` — lee el Excel sin guardar (filas válidas, totales y hasta 50 errores) |
+| `POST` | `/simulacion-santa/registros` (multipart `archivo`, `nombre`) | `CREAR_REGISTRO_SIMULACION_SANTA` — guarda las filas válidas y copia los predeterminados; idempotente ante un reintento |
+| `PUT` / `DELETE` | `/simulacion-santa/registros/{id}` | `MODIFICAR_REGISTRO_…` (renombrar) / `ELIMINAR_REGISTRO_SIMULACION_SANTA` |
+| `GET` / `PUT` | `/simulacion-santa/registros/{id}/configuracion` | `VER_CONFIGURACION_…` / `MODIFICAR_CONFIGURACION_SIMULACION_SANTA` — operarios, bultos/hora, orden de llenado y las 19 rampas y 24 pasillos |
+| `GET` | `/simulacion-santa/registros/{id}/simulacion?envio=` | `VER_CONFIGURACION_SIMULACION_SANTA` — ubicación de cada paleta, estados y KPIs del envío (por defecto el actual) |
+| `POST` | `/simulacion-santa/registros/{id}/simulacion/previsualizar?envio=` | `VER_CONFIGURACION_SIMULACION_SANTA` — la misma simulación con la configuración del cuerpo, sin guardar |
+| `PUT` | `/simulacion-santa/registros/{id}/envio` | `MODIFICAR_CONFIGURACION_SIMULACION_SANTA` — envío en curso (0 a 3) |
+| `GET` / `PUT` | `/simulacion-santa/predeterminados` | `VER_CONFIGURACION_…` / `MODIFICAR_CONFIGURACION_SIMULACION_SANTA` — configuración con que nace cada registro |
 
 ---
 

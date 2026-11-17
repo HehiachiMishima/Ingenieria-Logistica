@@ -1,0 +1,55 @@
+@let geo = g();
+<div
+  #scroll
+  class="patio"
+  tabindex="0"
+  role="region"
+  [attr.aria-label]="bloque().etiqueta + '. La fila 1, abajo, está junto al andén.'"
+>
+  <div class="lienzo" [style.width.px]="geo.anchoTotal" [style.height.px]="geo.altoTotal">
+    @for (r of geo.racks; track $index) {
+      <div class="rack" [style.left.px]="r.x - 3" [style.width.px]="r.ancho + 6" [style.height.px]="geo.altoRacks + 4"></div>
+    }
+
+    <div class="central" [style.left.px]="geo.central.x" [style.width.px]="geo.central.ancho" [style.height.px]="geo.altoRacks">
+      <!-- texto vertical a propósito: su ancho es el alto de la línea, no está aplastado -->
+      <span class="central__texto" data-responsive-ignore>Pasillo central</span>
+    </div>
+
+    @for (calle of geo.calles; track calle.numero) {
+      <div class="cadena" aria-hidden="true" [style.left.px]="calle.centro - geo.letreroAncho / 2 + 10"></div>
+      <div class="cadena" aria-hidden="true" [style.left.px]="calle.centro + geo.letreroAncho / 2 - 12"></div>
+      <div
+        class="letrero"
+        [style.left.px]="calle.centro - geo.letreroAncho / 2"
+        [style.width.px]="geo.letreroAncho"
+        [style.--cl]="colorCluster(calle.cluster)"
+        [title]="'Pasillo ' + calle.numero + ' · ' + etiquetaCluster(calle.cluster)"
+      >
+        <span class="letrero__palabra">PASILLO</span>
+        <span class="letrero__numero">{{ calle.numero }}</span>
+      </div>
+    }
+
+    @for (col of geo.columnas; track $index) {
+      <div class="columna" title="Columna de la estructura" [style.left.px]="col.x" [style.top.px]="col.y"></div>
+    }
+
+    @for (c of geo.celdas; track c.clave) {
+      <app-paleta
+        [x]="c.x"
+        [y]="c.y"
+        [ancho]="geo.pw"
+        [alto]="geo.ph"
+        [paleta]="c.paleta"
+        [cluster]="c.cluster"
+        [habilitada]="c.cluster !== null"
+        [lugar]="lugar(c)"
+        [elegida]="c.paleta !== null && c.paleta.id === seleccionada()"
+        (elegir)="seleccionar.emit($event)"
+      />
+    }
+
+    <div class="aviso">↓ Andén · la fila 1 está junto a las rampas 15–20</div>
+  </div>
+</div>

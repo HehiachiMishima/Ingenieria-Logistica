@@ -1,0 +1,30 @@
+@if (paleta(); as p) {
+  <button
+    type="button"
+    class="paleta"
+    [class.paleta--completa]="p.estado === 'COMPLETA'"
+    [class.paleta--elegida]="elegida()"
+    [title]="titulo()"
+    [attr.aria-label]="titulo()"
+    [attr.aria-pressed]="elegida()"
+    (click)="elegir.emit(p)"
+  >
+    @for (c of cajas(); track $index) {
+      <i class="caja" [style.left.%]="c.x" [style.top.%]="c.y"></i>
+    }
+    <span class="cluster">C{{ p.cluster }}</span>
+    @if (p.estado === 'COMPLETA') {
+      <span class="listo" aria-hidden="true">✓</span>
+    }
+    @if (conTexto()) {
+      <span class="etiqueta">
+        <b>{{ p.ruta }}</b>
+        @if (conAvance()) {
+          {{ separador() }}{{ p.recibidos }}/{{ p.total }}
+        }
+      </span>
+    }
+  </button>
+} @else {
+  <div class="hueco" [class.hueco--off]="!habilitada()" [title]="titulo()"></div>
+}

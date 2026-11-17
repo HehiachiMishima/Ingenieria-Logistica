@@ -1,0 +1,144 @@
+/* ---------- estructura ---------- */
+:host {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+
+  /* jus:ok colores de material del almacén (letrero colgante y cadenas) */
+  --letrero: #d2141c;
+  --letrero-borde: #7a1a12;
+  --cadena: #8b8f95;
+}
+
+.patio {
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.lienzo {
+  position: relative;
+  margin: 0 auto;
+
+  > .rack,
+  > .central,
+  > .cadena,
+  > .letrero,
+  > .columna,
+  > .aviso {
+    position: absolute;
+  }
+}
+
+.rack,
+.central {
+  top: 60px;
+}
+
+.central {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &__texto {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    white-space: nowrap; /* responsive:ok texto vertical dentro del pasillo central */
+  }
+}
+
+.cadena {
+  top: 0;
+  width: 0;
+  height: 14px;
+}
+
+.letrero {
+  top: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  box-sizing: border-box;
+  line-height: 1.05;
+}
+
+.columna {
+  width: 8px;
+  height: 8px;
+}
+
+.aviso {
+  left: 0;
+  right: 0;
+  bottom: 8px;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- apariencia ---------- */
+.patio {
+  border-radius: var(--radius-lg);
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--ring);
+  }
+}
+
+.rack {
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+}
+
+.central {
+  border-left: 2px dashed var(--border-strong);
+  border-right: 2px dashed var(--border-strong);
+
+  &__texto {
+    font-size: var(--fs-xs);
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+}
+
+.cadena {
+  border-left: 2px dashed var(--cadena);
+}
+
+.letrero {
+  border: 2px solid var(--letrero-borde);
+  border-bottom: 5px solid var(--cl);
+  border-radius: var(--radius-xs);
+  background: var(--letrero);
+  font-family: var(--font-display);
+  color: var(--brand-contrast);
+
+  &__palabra {
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+  }
+
+  &__numero {
+    font-size: var(--fs-lg);
+    font-weight: 800;
+  }
+}
+
+.columna {
+  border-radius: 1px;
+  background: var(--text);
+}
+
+.aviso {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--text-3);
+}

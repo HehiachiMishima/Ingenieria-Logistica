@@ -40,8 +40,12 @@ import org.springframework.util.StringUtils;
  */
 public class ConexionBaseDatos implements EnvironmentPostProcessor, Ordered {
 
-    /** Esquemas de la aplicación, en el orden del search_path. */
-    static final String ESQUEMAS = "seguridad,bitacora,simulacion,malla,public";
+    /**
+     * Esquemas de la aplicación, en el orden del search_path. simulacion_santa va
+     * después de simulacion: ambos tienen una tabla «predeterminados» y Simulación la
+     * consulta sin prefijo (Santa Anita siempre escribe el esquema).
+     */
+    static final String ESQUEMAS = "seguridad,bitacora,simulacion,malla,simulacion_santa,public";
 
     private static final String FUENTE = "conexion-base-datos";
     private static final int PUERTO_POR_DEFECTO = 5432;

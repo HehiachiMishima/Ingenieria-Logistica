@@ -1,0 +1,56 @@
+@let geo = g();
+<div
+  #scroll
+  class="patio"
+  tabindex="0"
+  role="region"
+  aria-label="Andén de Santa Anita: rampas 15 a 33. Usa Re Pág y Av Pág para recorrerlo."
+  (keydown)="alTeclado($event)"
+>
+  <div class="lienzo" [style.width.px]="geo.anchoTotal" [style.height.px]="geo.altoTotal">
+    @for (d of geo.dibujo; track d.rampa.numero) {
+      <div class="linea" [style.left.px]="d.linea.x" [style.height.px]="d.linea.alto"></div>
+      @for (c of d.celdas; track c.clave) {
+        <app-paleta
+          [x]="c.x"
+          [y]="c.y"
+          [ancho]="geo.pw"
+          [alto]="geo.ph"
+          [paleta]="c.paleta"
+          [cluster]="d.rampa.cluster"
+          [habilitada]="c.habilitada"
+          [lugar]="lugar(d.rampa.numero, c)"
+          [elegida]="c.paleta !== null && c.paleta.id === seleccionada()"
+          (elegir)="seleccionar.emit($event)"
+        />
+      }
+      <div
+        class="puerta"
+        [class.puerta--sin-cluster]="d.rampa.cluster === null"
+        [style.left.px]="d.puerta.x"
+        [style.top.px]="d.puerta.y"
+        [style.width.px]="d.puerta.ancho"
+        [style.height.px]="d.puerta.alto"
+        [style.--cl]="colorCluster(d.rampa.cluster)"
+        [title]="'Rampa ' + d.rampa.numero + ' · ' + d.rampa.posiciones + ' de ' + d.rampa.capacidad + ' posiciones'"
+      ></div>
+      <div
+        class="letrero"
+        [style.left.px]="d.letrero.x"
+        [style.top.px]="d.letrero.y"
+        [style.width.px]="d.letrero.ancho"
+        [style.height.px]="d.letrero.alto"
+        [style.font-size.px]="geo.fuenteLetrero"
+      >
+        {{ d.rampa.numero }}
+      </div>
+    }
+  </div>
+</div>
+
+<button type="button" class="flecha flecha--izq ui-icon-btn" aria-label="Rampas anteriores" (click)="mover(-1)">
+  <ui-icon name="chevronLeft" [size]="20" />
+</button>
+<button type="button" class="flecha flecha--der ui-icon-btn" aria-label="Rampas siguientes" (click)="mover(1)">
+  <ui-icon name="chevronRight" [size]="20" />
+</button>

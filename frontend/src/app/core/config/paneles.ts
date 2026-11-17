@@ -201,6 +201,34 @@ export const PANEL_PICKING: PanelDef = {
   ],
 };
 
+export const PANEL_SIMULACION_SANTA: PanelDef = {
+  id: 'simulacion-santa',
+  nombre: 'Simulación Santa Anita',
+  descripcion: 'Despacho de Santa Anita: rampas 15–33, pasillos 1–24 y avance por envío.',
+  icono: 'almacen',
+  ruta: '/simulacion-santa',
+  permiso: PERMISOS.PANEL_SIMULACION_SANTA,
+  acento: 'var(--accent)',
+  modulos: [
+    {
+      id: 'registro',
+      nombre: 'Registro',
+      descripcion: 'Carga y administración de los Excel de despacho.',
+      icono: 'almacen',
+      ruta: 'registro',
+      permiso: PERMISOS.VER_REGISTRO_SIMULACION_SANTA,
+    },
+    {
+      id: 'configuracion',
+      nombre: 'Configuración',
+      descripcion: 'Clusters por rampa y pasillo, y simulación de los envíos en el plano.',
+      icono: 'control',
+      ruta: 'configuracion',
+      permiso: PERMISOS.VER_CONFIGURACION_SIMULACION_SANTA,
+    },
+  ],
+};
+
 /**
  * Paneles que todavía no tienen módulos con lógica propia: misma estructura
  * que los paneles reales (permiso, módulos, acento) para que su acceso se
@@ -310,6 +338,7 @@ export const PANELES: PanelDef[] = [
   PANEL_ADMIN,
   PANEL_BITACORA,
   PANEL_SIMULACION,
+  PANEL_SIMULACION_SANTA,
   PANEL_MALLA,
   PANEL_PICKING,
   PANEL_ANALISIS,

@@ -1,0 +1,231 @@
+/* ---------- estructura ---------- */
+.ui-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.celda-texto {
+  display: block;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.celda-sub {
+  display: block;
+  max-width: 280px;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clusters {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+
+  &__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap; /* responsive:ok «C1 62», el contenedor hace wrap */
+
+    i {
+      width: 9px;
+      height: 9px;
+      flex: none;
+      border-radius: 50%;
+    }
+  }
+}
+
+.archivo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+
+  &__icono {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    flex: none;
+  }
+
+  &__datos {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  &__nombre {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.revision {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+
+  &__dato {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    padding: var(--space-3);
+  }
+}
+
+.resumen {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  gap: var(--space-2) var(--space-4);
+  margin: 0 0 var(--space-4);
+
+  &__fila {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    min-width: 0;
+    padding: var(--space-2) 0;
+  }
+
+  dt,
+  dd {
+    margin: 0;
+  }
+}
+
+.errores {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+
+  &__titulo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0 0 var(--space-2);
+  }
+
+  &__lista {
+    max-height: 180px;
+    margin: 0;
+    padding-left: var(--space-5);
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+  }
+}
+
+.spinner-btn {
+  width: 16px;
+  height: 16px;
+}
+
+/* ---------- apariencia ---------- */
+.celda-sub {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+
+  &__aviso {
+    color: var(--warning);
+    font-weight: 700;
+  }
+}
+
+.clusters__item {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--text-2);
+
+  i {
+    background: var(--cl);
+  }
+}
+
+.archivo {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+
+  &__icono {
+    border-radius: var(--radius);
+    color: var(--success);
+    background: var(--success-soft);
+  }
+
+  &__nombre {
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  &__meta {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+  }
+}
+
+.revision__dato {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.revision__valor {
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  font-weight: 800;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+
+  &--ok {
+    color: var(--success);
+  }
+
+  &--mal {
+    color: var(--danger);
+  }
+}
+
+.revision__etiqueta {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.resumen__fila {
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm);
+
+  dt {
+    color: var(--text-2);
+  }
+
+  dd {
+    font-weight: 700;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.errores {
+  background: var(--warning-soft);
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--border));
+  border-radius: var(--radius);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+
+  &__titulo {
+    font-weight: 700;
+    color: var(--warning);
+  }
+}

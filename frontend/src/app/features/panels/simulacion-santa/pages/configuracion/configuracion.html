@@ -1,0 +1,340 @@
+<h1 class="solo-lectores">Configuración · Simulación Santa Anita</h1>
+
+@if (store.cargandoRegistros()) {
+  <div class="loading"><span class="ui-spinner"></span> Cargando registros…</div>
+} @else if (store.registros().length === 0) {
+  <div class="table-card">
+    <ui-empty
+      icono="almacen"
+      titulo="Aún no hay registros"
+      mensaje="Sube un Excel de despacho en Registro para simularlo aquí."
+    >
+      <a
+        *hasPermiso="permisos.VER_REGISTRO_SIMULACION_SANTA"
+        class="ui-btn ui-btn--primary ui-btn--sm"
+        routerLink="/simulacion-santa/registro"
+      >
+        Ir a Registro
+      </a>
+    </ui-empty>
+  </div>
+} @else {
+  <div class="espacio">
+  <!-- ===================== Barra única ===================== -->
+  <div class="barra" role="toolbar" aria-label="Controles de la simulación">
+    <label class="barra__registro">
+      <span class="solo-lectores">Registro</span>
+      <select class="ui-select" [value]="store.registroId() ?? ''" (change)="elegirRegistro($any($event.target).value)">
+        @for (r of store.registros(); track r.id) {
+          <option [value]="r.id" [selected]="r.id === store.registroId()">
+            {{ r.nombre }} · {{ etiquetaEstadoRegistro(r.estado) }}
+          </option>
+        }
+      </select>
+    </label>
+
+    <div class="seg" role="group" aria-label="Ventana del plano">
+      @for (v of ventanas; track v.id; let i = $index) {
+        <button
+          type="button"
+          class="seg__btn"
+          [attr.aria-pressed]="ventana() === v.id"
+          [title]="'Tecla ' + (i + 1)"
+          (click)="irA(v.id)"
+        >
+          {{ v.etiqueta }}
+        </button>
+      }
+    </div>
+
+    <div class="barra__envio" role="group" aria-label="Envíos">
+      <span class="puntos" [attr.aria-label]="envioActual() + ' de 3 envíos recibidos'">
+        @for (n of envios; track n) {
+          <i
+            class="puntos__p"
+            [class.puntos__p--hecho]="n <= envioActual()"
+            [title]="'Envío ' + n + ': ' + entero(kpis()?.bultosEnvios?.[n - 1] ?? 0) + ' bultos'"
+          ></i>
+        }
+      </span>
+      @if (puedeModificar()) {
+        <button
+          type="button"
+          class="ui-btn ui-btn--primary ui-btn--sm"
+          [disabled]="store.cambiandoEnvio() || envioActual() >= 3"
+          (click)="recibirSiguiente()"
+        >
+          {{ envioActual() >= 3 ? 'Completo' : 'Recibir ' + (envioActual() + 1) }}
+        </button>
+        <button
+          type="button"
+          class="ui-icon-btn"
+          title="Reiniciar envíos"
+          aria-label="Reiniciar envíos"
+          [disabled]="store.cambiandoEnvio() || envioActual() === 0"
+          (click)="confirmarReinicio.set(true)"
+        >
+          <ui-icon name="refresh" [size]="18" />
+        </button>
+      }
+    </div>
+
+    @if (kpis(); as k) {
+      <div class="avance" [title]="entero(k.bultosRecibidos) + ' de ' + entero(k.bultosTotal) + ' bultos'">
+        <span class="avance__barra"><i [style.width.%]="avance()"></i></span>
+        <b>{{ avance() }} %</b>
+        <span class="avance__min">· {{ decimal(k.minutosRestantes) }} min</span>
+      </div>
+      @if (k.sinUbicar > 0) {
+        <button type="button" class="alerta" (click)="asignarAbierto.set(true)">
+          <ui-icon name="alertTriangle" [size]="15" /> {{ entero(k.sinUbicar) }} sin ubicar
+        </button>
+      }
+    }
+
+    <div class="barra__fin">
+      <div class="seg seg--chico" role="group" aria-label="Tamaño de las paletas">
+        @for (z of zooms; track z.valor) {
+          <button type="button" class="seg__btn" [attr.aria-pressed]="zoom() === z.valor" (click)="zoom.set(z.valor)">
+            {{ z.etiqueta }}
+          </button>
+        }
+      </div>
+      <button
+        type="button"
+        class="ui-icon-btn"
+        aria-label="Leyenda"
+        title="Leyenda"
+        [attr.aria-expanded]="leyendaAbierta()"
+        aria-controls="santa-leyenda"
+        (click)="leyendaAbierta.set(!leyendaAbierta())"
+      >
+        <ui-icon name="info" [size]="18" />
+      </button>
+      <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="asignarAbierto.set(true)">
+        <ui-icon name="control" [size]="16" /> Asignar
+        @if (store.hayCambios()) {
+          <span class="punto-cambios" title="Cambios sin guardar"></span>
+        }
+      </button>
+    </div>
+  </div>
+
+  @if (leyendaAbierta()) {
+    <ul class="leyenda" id="santa-leyenda" aria-label="Leyenda">
+      <li><i class="leyenda__muestra leyenda__muestra--paleta"></i>Paleta asignada</li>
+      <li><i class="leyenda__muestra leyenda__muestra--cajas"></i>Bultos recibidos (cada caja = 25 %)</li>
+      <li><i class="leyenda__muestra leyenda__muestra--ok">✓</i>Completa</li>
+      <li><i class="leyenda__muestra leyenda__muestra--libre"></i>Hueco libre (borde del cluster)</li>
+      <li><i class="leyenda__muestra leyenda__muestra--off"></i>Deshabilitado</li>
+      @for (c of clusters; track c) {
+        <li><i class="leyenda__muestra leyenda__muestra--cl" [style.--cl]="colorCluster(c)"></i>C{{ c }}</li>
+      }
+    </ul>
+  }
+
+  <!-- ===================== Plano ===================== -->
+  @if (store.error()) {
+    <div class="table-card">
+      <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="store.error()!">
+        <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="store.recargar()">
+          <ui-icon name="refresh" [size]="16" /> Reintentar
+        </button>
+      </ui-empty>
+    </div>
+  } @else if (store.cargando() && !store.configuracion()) {
+    <div class="loading"><span class="ui-spinner"></span> Cargando el plano…</div>
+  } @else {
+    <section class="plano" [class.plano--refrescando]="store.previsualizando()" aria-label="Plano de Santa Anita">
+      @if (store.hayCambios()) {
+        <span class="previa">Vista previa · cambios sin guardar</span>
+      }
+      @if (ventana() === 'rampas') {
+        <app-anden-rampas
+          [rampas]="rampasVista()"
+          [paletas]="store.paletasPorPosicion()"
+          [seleccionada]="paletaElegida()?.id ?? null"
+          [zoom]="zoom()"
+          (seleccionar)="elegirPaleta($event)"
+        />
+      } @else if (bloque(); as b) {
+        <app-bloque-pasillos
+          [bloque]="b"
+          [pasillos]="pasillosVista()"
+          [paletas]="store.paletasPorPosicion()"
+          [seleccionada]="paletaElegida()?.id ?? null"
+          [zoom]="zoom()"
+          (seleccionar)="elegirPaleta($event)"
+        />
+      }
+
+      @if (paletaElegida(); as p) {
+        <div class="detalle" role="status">
+          <span class="detalle__cl" [style.--cl]="colorCluster(p.cluster)">C{{ p.cluster }}</span>
+          <div class="detalle__texto">
+            <b>Ruta {{ p.ruta }}</b>
+            <span class="detalle__local">{{ p.local }}</span>
+            <span>{{ textoUbicacion(p) }}</span>
+            <span>
+              {{ entero(p.recibidos) }}/{{ entero(p.total) }} bultos · {{ etiquetaEstadoPaleta(p.estado) }}
+              ({{ p.envios[0] }} · {{ p.envios[1] }} · {{ p.envios[2] }})
+            </span>
+          </div>
+          <button type="button" class="ui-icon-btn" aria-label="Cerrar detalle" (click)="paletaElegida.set(null)">
+            <ui-icon name="close" [size]="16" />
+          </button>
+        </div>
+      }
+    </section>
+  }
+  </div>
+}
+
+<!-- ===================== Asignar clusters ===================== -->
+<ui-modal
+  [abierto]="asignarAbierto()"
+  ancho="xxl"
+  titulo="Asignar clusters"
+  subtitulo="Los cambios se ven en el plano como vista previa hasta que los guardes."
+  (cerrar)="asignarAbierto.set(false)"
+>
+  @if (store.borrador(); as b) {
+    @if (!puedeModificar()) {
+      <p class="nota"><ui-icon name="lock" [size]="16" /> Solo lectura: no tienes permiso para cambiar la configuración.</p>
+    }
+
+    @if (sinUbicar().length > 0) {
+      <details class="faltan">
+        <summary>
+          <ui-icon name="alertTriangle" [size]="16" />
+          {{ entero(sinUbicar().length) }} paletas sin ubicación: asigna más rampas o pasillos a su cluster.
+        </summary>
+        <ul class="faltan__lista">
+          @for (p of sinUbicar(); track p.id) {
+            <li><span class="faltan__cl" [style.--cl]="colorCluster(p.cluster)">C{{ p.cluster }}</span> {{ p.ruta }} · {{ p.local }}</li>
+          }
+        </ul>
+      </details>
+    }
+
+    <app-tablero-clusters
+      [rampas]="rampasVista()"
+      [pasillos]="pasillosVista()"
+      [clusters]="store.simulacionVisible()?.clusters ?? []"
+      [orden]="b.ordenClusters"
+      [editable]="puedeModificar()"
+      (mover)="mover($event)"
+      (cambiarOrden)="cambiarOrden($event)"
+    />
+
+    <div class="tarjetas">
+      <section class="tarjeta" aria-labelledby="titulo-posiciones">
+        <h2 class="tarjeta__titulo" id="titulo-posiciones">Posiciones por rampa</h2>
+        <p class="tarjeta__nota">Capacidad del plano: 10 en las rampas 15–18 y 25; 14 en las demás.</p>
+        <div class="posiciones">
+          @for (r of rampasVista(); track r.numero) {
+            <label class="posiciones__item" [style.--cl]="colorCluster(r.cluster)">
+              <span class="posiciones__rampa">R{{ r.numero }}</span>
+              <input
+                type="number"
+                class="ui-input posiciones__input"
+                min="0"
+                [max]="r.capacidad"
+                inputmode="numeric"
+                [disabled]="!puedeModificar()"
+                [value]="r.posiciones"
+                [attr.aria-label]="'Posiciones habilitadas de la rampa ' + r.numero"
+                (change)="fijarPosiciones(r.numero, $any($event.target).value)"
+              />
+              <span class="posiciones__cap">/ {{ r.capacidad }}</span>
+            </label>
+          }
+        </div>
+      </section>
+
+      <section class="tarjeta" aria-labelledby="titulo-operacion">
+        <h2 class="tarjeta__titulo" id="titulo-operacion">Operación</h2>
+        <div class="operacion">
+          <label class="ui-field">
+            <span class="ui-label">Operarios</span>
+            <input type="number" class="ui-input" min="1" max="99" inputmode="numeric" [disabled]="!puedeModificar()"
+              [value]="b.operarios" (change)="fijarOperarios($any($event.target).value)" />
+          </label>
+          <label class="ui-field">
+            <span class="ui-label">Bultos por hora y operario</span>
+            <input type="number" class="ui-input" min="1" max="9999" inputmode="numeric" [disabled]="!puedeModificar()"
+              [value]="b.bultosHora" (change)="fijarBultosHora($any($event.target).value)" />
+          </label>
+        </div>
+        <p class="tarjeta__nota">Capacidad: <b>{{ entero(b.operarios * b.bultosHora) }}</b> bultos por hora.</p>
+        @if (puedeModificar()) {
+          <div class="tarjeta__acciones">
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="store.usarPredeterminados()">
+              Usar predeterminados
+            </button>
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="store.guardarComoPredeterminados()">
+              Guardar como predeterminados
+            </button>
+          </div>
+        }
+      </section>
+    </div>
+  }
+
+  <div modal-footer class="modal-foot">
+    @if (store.hayCambios() && puedeModificar()) {
+      <span class="modal-foot__estado">
+        {{ store.previsualizando() ? 'Calculando la vista previa…' : 'Cambios sin guardar' }}
+      </span>
+      <button type="button" class="ui-btn ui-btn--ghost" (click)="store.descartar()">Descartar</button>
+      <button type="button" class="ui-btn ui-btn--primary" [disabled]="store.guardando()" (click)="guardar()">
+        @if (store.guardando()) {
+          <span class="ui-spinner spinner-btn"></span>
+        }
+        Guardar
+      </button>
+    } @else {
+      <button type="button" class="ui-btn ui-btn--ghost" (click)="asignarAbierto.set(false)">Cerrar</button>
+    }
+  </div>
+</ui-modal>
+
+<ui-modal
+  [abierto]="confirmarGuardar()"
+  ancho="sm"
+  [compacto]="true"
+  titulo="Guardar configuración"
+  (cerrar)="confirmarGuardar.set(false)"
+>
+  <div class="confirm">
+    <span class="confirm__icon"><ui-icon name="alertTriangle" [size]="22" /></span>
+    <div class="confirm__text">
+      <p class="confirm__title">Este cambio deja {{ entero(store.perdidaPorGuardar()) }} paletas más sin ubicación.</p>
+      <p class="confirm__desc">¿Guardarlo de todas formas?</p>
+    </div>
+  </div>
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="confirmarGuardar.set(false)">Cancelar</button>
+    <button type="button" class="ui-btn ui-btn--primary" (click)="guardarIgual()">Guardar igual</button>
+  </div>
+</ui-modal>
+
+<ui-modal
+  [abierto]="confirmarReinicio()"
+  ancho="sm"
+  [compacto]="true"
+  titulo="Reiniciar envíos"
+  (cerrar)="confirmarReinicio.set(false)"
+>
+  <div class="confirm">
+    <span class="confirm__icon"><ui-icon name="refresh" [size]="22" /></span>
+    <div class="confirm__text">
+      <p class="confirm__title">¿Volver al envío 0?</p>
+      <p class="confirm__desc">Se pierde el avance de los envíos; la configuración no cambia.</p>
+    </div>
+  </div>
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="confirmarReinicio.set(false)">Cancelar</button>
+    <button type="button" class="ui-btn ui-btn--danger" (click)="reiniciar()">Reiniciar</button>
+  </div>
+</ui-modal>

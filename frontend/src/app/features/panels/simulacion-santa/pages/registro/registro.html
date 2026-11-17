@@ -1,0 +1,413 @@
+<header class="page-head">
+  <div>
+    <h1 class="page-head__title">Registro · Santa Anita</h1>
+    <p class="page-head__sub">
+      Sube el Excel de despacho y administra las cargas que se simulan en el plano.
+    </p>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="ui-search toolbar__grow">
+    <ui-icon name="search" [size]="18" />
+    <input
+      type="search"
+      class="ui-input"
+      placeholder="Buscar por nombre o archivo…"
+      aria-label="Buscar registros"
+      [value]="store.texto()"
+      (input)="store.buscar($any($event.target).value)"
+    />
+  </div>
+  <button
+    type="button"
+    class="ui-btn ui-btn--secondary"
+    [attr.aria-expanded]="filtrosAbierto()"
+    aria-controls="santa-registro-filtros"
+    (click)="filtrosAbierto.set(!filtrosAbierto())"
+  >
+    <ui-icon name="filtro" [size]="18" />
+    Filtros
+    @if (chips().length > 0) {
+      <span class="filtros-badge">{{ chips().length }}</span>
+    }
+  </button>
+  <button
+    type="button"
+    class="ui-btn ui-btn--secondary ui-btn--sm"
+    (click)="store.recargar()"
+    [disabled]="store.cargando()"
+  >
+    <ui-icon name="refresh" [size]="16" />
+    Actualizar
+  </button>
+  <button
+    *hasPermiso="permisos.CREAR_REGISTRO_SIMULACION_SANTA"
+    type="button"
+    class="ui-btn ui-btn--primary"
+    (click)="abrirSelectorArchivo()"
+  >
+    <ui-icon name="plus" [size]="18" />
+    Subir Excel
+  </button>
+  <input
+    #inputArchivo
+    type="file"
+    accept=".xlsx,.xls,.csv"
+    hidden
+    (change)="elegirArchivo($event)"
+  />
+</div>
+
+<ui-filtros-activos
+  [chips]="chips()"
+  (quitar)="quitarFiltro($event)"
+  (limpiar)="store.limpiarFiltros()"
+/>
+
+<ui-panel-filtros
+  id="santa-registro-filtros"
+  [abierto]="filtrosAbierto()"
+  [activos]="chips().length"
+  titulo="Filtrar registros"
+  (cerrar)="filtrosAbierto.set(false)"
+  (limpiar)="store.limpiarFiltros()"
+>
+  <section class="filtro-seccion">
+    <h3 class="filtro-seccion__titulo"><ui-icon name="power" [size]="15" /> Estado</h3>
+    <p class="filtro-nota">Según los envíos ya recibidos.</p>
+    <div class="ui-rango" role="group" aria-label="Estado">
+      @for (estado of estadosFiltro; track estado.id) {
+        <button
+          type="button"
+          class="ui-rango__btn"
+          [class.ui-rango__btn--on]="estaEstado(estado.id)"
+          [attr.aria-pressed]="estaEstado(estado.id)"
+          (click)="store.alternarEstado(estado.id)"
+        >
+          {{ estado.etiqueta }}
+        </button>
+      }
+    </div>
+  </section>
+</ui-panel-filtros>
+
+<div class="table-card" [class.table-card--refrescando]="store.refrescando()">
+  @if (store.cargaInicial()) {
+    <div class="loading"><span class="ui-spinner"></span> Cargando registros…</div>
+  } @else if (store.error()) {
+    <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="store.error()!">
+      <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="store.recargar()">
+        <ui-icon name="refresh" [size]="16" /> Reintentar
+      </button>
+    </ui-empty>
+  } @else if (store.items().length === 0) {
+    <ui-empty
+      icono="almacen"
+      [titulo]="store.hayFiltros() ? 'Sin resultados' : 'Aún no hay registros'"
+      [mensaje]="
+        store.hayFiltros()
+          ? 'Ningún registro coincide con la búsqueda o los filtros.'
+          : 'Sube el Excel de despacho para simularlo en el plano de Santa Anita.'
+      "
+    >
+      @if (store.hayFiltros()) {
+        <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="store.limpiarFiltros()">
+          Limpiar filtros
+        </button>
+      }
+    </ui-empty>
+  } @else {
+    <div class="ui-table-wrap">
+      <table class="ui-table">
+        <thead>
+          <tr>
+            <th>Registro</th>
+            <th class="num">Paletas</th>
+            <th class="num">Rutas</th>
+            <th class="num">Envío 1</th>
+            <th class="num">Envío 2</th>
+            <th class="num">Envío 3</th>
+            <th>Por cluster</th>
+            <th>Estado</th>
+            <th>Creado</th>
+            <th>Creado por</th>
+            <th class="col-actions">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (r of store.items(); track r.id) {
+            <tr>
+              <td>
+                <span class="ui-table__primary celda-texto" [title]="r.nombre">{{ r.nombre }}</span>
+                <span class="celda-sub" [title]="r.nombreArchivo">
+                  {{ r.nombreArchivo }}
+                  @if (r.filasOmitidas > 0) {
+                    · <span class="celda-sub__aviso">{{ entero(r.filasOmitidas) }} omitidas</span>
+                  }
+                </span>
+              </td>
+              <td class="num">{{ entero(r.paletas) }}</td>
+              <td class="num">{{ entero(r.rutas) }}</td>
+              <td class="num">{{ entero(r.bultosEnvios[0]) }}</td>
+              <td class="num">{{ entero(r.bultosEnvios[1]) }}</td>
+              <td class="num">{{ entero(r.bultosEnvios[2]) }}</td>
+              <td>
+                <span class="clusters">
+                  @for (c of clusters; track c; let i = $index) {
+                    <span class="clusters__item" [style.--cl]="colorCluster(c)" [title]="'Cluster ' + c">
+                      <i aria-hidden="true"></i>C{{ c }} {{ entero(r.paletasCluster[i]) }}
+                    </span>
+                  }
+                </span>
+              </td>
+              <td>
+                <span
+                  class="ui-badge"
+                  [class.ui-badge--success]="r.estado === 'COMPLETO'"
+                  [class.ui-badge--info]="r.estado === 'EN_CURSO'"
+                  [class.ui-badge--neutral]="r.estado === 'PENDIENTE'"
+                >
+                  {{ etiquetaEstado(r.estado) }} · {{ r.envioActual }}/3
+                </span>
+              </td>
+              <td class="u-muted">{{ r.creadoEn | date: 'dd/MM/yyyy HH:mm' }}</td>
+              <td class="u-muted">{{ r.creadoPor | actorLabel }}</td>
+              <td>
+                <div class="row-actions">
+                  <button
+                    *hasPermiso="permisos.VER_CONFIGURACION_SIMULACION_SANTA"
+                    type="button"
+                    class="ui-icon-btn"
+                    title="Abrir en configuración"
+                    [attr.aria-label]="'Abrir ' + r.nombre + ' en configuración'"
+                    (click)="abrirConfiguracion(r)"
+                  >
+                    <ui-icon name="engranaje" [size]="18" />
+                  </button>
+                  <button
+                    *hasPermiso="permisos.MODIFICAR_REGISTRO_SIMULACION_SANTA"
+                    type="button"
+                    class="ui-icon-btn"
+                    title="Renombrar"
+                    [attr.aria-label]="'Renombrar ' + r.nombre"
+                    (click)="abrirEditar(r)"
+                  >
+                    <ui-icon name="edit" [size]="18" />
+                  </button>
+                  <button
+                    *hasPermiso="permisos.ELIMINAR_REGISTRO_SIMULACION_SANTA"
+                    type="button"
+                    class="ui-icon-btn ui-icon-btn--danger"
+                    title="Eliminar"
+                    [attr.aria-label]="'Eliminar ' + r.nombre"
+                    (click)="aEliminar.set(r)"
+                  >
+                    <ui-icon name="trash" [size]="18" />
+                  </button>
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <ui-paginador
+      [pagina]="paginaActual()"
+      [total]="store.total()"
+      [porPagina]="store.porPagina()"
+      (paginaCambia)="store.irAPagina($event)"
+      (porPaginaCambia)="store.cambiarPorPagina($event)"
+    />
+  }
+</div>
+
+<!-- Carga: revisión del archivo y guardado de las filas válidas -->
+<ui-modal
+  [abierto]="store.fase() !== 'cerrada'"
+  ancho="lg"
+  titulo="Subir Excel de despacho"
+  subtitulo="Primero se revisa el archivo; solo se guardan las filas válidas."
+  (cerrar)="store.cerrarCarga()"
+>
+  @if (store.archivo(); as archivo) {
+    <div class="archivo">
+      <span class="archivo__icono"><ui-icon name="almacen" [size]="20" /></span>
+      <div class="archivo__datos">
+        <span class="archivo__nombre" [title]="archivo.name">{{ archivo.name }}</span>
+        <span class="archivo__meta">{{ tamanoArchivo(archivo) }}</span>
+      </div>
+    </div>
+  }
+
+  @switch (store.fase()) {
+    @case ('revisando') {
+      <div class="loading"><span class="ui-spinner"></span> Revisando el archivo…</div>
+    }
+    @case ('fallo') {
+      <ui-empty icono="alerta" titulo="No se pudo leer el archivo" [mensaje]="store.falloRevision() ?? ''" />
+    }
+    @default {
+      @if (store.revision(); as rev) {
+        <div class="revision">
+          <div class="revision__dato">
+            <span class="revision__valor revision__valor--ok">{{ entero(rev.filasValidas) }}</span>
+            <span class="revision__etiqueta">filas válidas de {{ entero(rev.filasLeidas) }}</span>
+          </div>
+          <div class="revision__dato">
+            <span class="revision__valor" [class.revision__valor--mal]="rev.totalErrores > 0">
+              {{ entero(rev.totalErrores) }}
+            </span>
+            <span class="revision__etiqueta">con error (no se guardan)</span>
+          </div>
+          <div class="revision__dato">
+            <span class="revision__valor">{{ entero(rev.rutas) }}</span>
+            <span class="revision__etiqueta">rutas</span>
+          </div>
+          <div class="revision__dato">
+            <span class="revision__valor">{{ entero(rev.bultos) }}</span>
+            <span class="revision__etiqueta">bultos</span>
+          </div>
+        </div>
+
+        <dl class="resumen">
+          @for (e of [0, 1, 2]; track e) {
+            <div class="resumen__fila">
+              <dt>Envío {{ e + 1 }}</dt>
+              <dd>{{ entero(rev.bultosEnvios[e]) }} bultos</dd>
+            </div>
+          }
+          @for (c of clusters; track c; let i = $index) {
+            <div class="resumen__fila">
+              <dt><span class="clusters__item" [style.--cl]="colorCluster(c)"><i aria-hidden="true"></i>C{{ c }}</span></dt>
+              <dd>{{ entero(rev.paletasCluster[i]) }} paletas</dd>
+            </div>
+          }
+        </dl>
+
+        @if (rev.errores.length > 0) {
+          <div class="errores">
+            <p class="errores__titulo">
+              <ui-icon name="alertTriangle" [size]="16" /> Filas que no se guardarán
+            </p>
+            <ul class="errores__lista">
+              @for (err of rev.errores; track $index) {
+                <li><b>Fila {{ err.fila }}</b> · {{ err.mensaje }}</li>
+              }
+            </ul>
+            @if (erroresOcultos() > 0) {
+              <p class="hint">y {{ entero(erroresOcultos()) }} más.</p>
+            }
+          </div>
+        }
+
+        <div class="ui-field">
+          <label class="ui-label" for="santa-nombre">Nombre del registro <span class="ui-required">*</span></label>
+          <input
+            id="santa-nombre"
+            class="ui-input"
+            maxlength="150"
+            [class.ui-input--invalid]="!store.nombreValido()"
+            [value]="store.nombre()"
+            (input)="store.nombre.set($any($event.target).value)"
+          />
+          @if (!store.nombreValido()) {
+            <span class="ui-error">Escribe un nombre de hasta 150 caracteres.</span>
+          }
+        </div>
+      }
+    }
+  }
+
+  <p class="hint">
+    Columnas: RUTA, LOCAL, CLUSTER (1, 2 o 3) y 1 ENVÍO, 2 ENVÍO, 3 ENVÍO (bultos enteros).
+    Cada fila es una paleta. Se aceptan .xlsx, .xls y .csv de hasta 10 MB.
+  </p>
+
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="store.cerrarCarga()">Cancelar</button>
+    <button
+      type="button"
+      class="ui-btn ui-btn--primary"
+      (click)="store.guardarCarga()"
+      [disabled]="!store.puedeGuardar() || store.fase() === 'guardando'"
+    >
+      @if (store.fase() === 'guardando') {
+        <span class="ui-spinner spinner-btn"></span>
+      }
+      Guardar {{ entero(store.revision()?.filasValidas ?? 0) }} paletas
+    </button>
+  </div>
+</ui-modal>
+
+<!-- Renombrar -->
+<ui-modal
+  [abierto]="editando() !== null"
+  ancho="sm"
+  titulo="Renombrar registro"
+  subtitulo="Solo cambia el nombre; las paletas y la configuración se conservan."
+  (cerrar)="editando.set(null)"
+>
+  <div class="ui-field">
+    <label class="ui-label" for="santa-renombrar">Nombre <span class="ui-required">*</span></label>
+    <input
+      id="santa-renombrar"
+      class="ui-input"
+      maxlength="150"
+      [class.ui-input--invalid]="nombreEdicionTocado() && !nombreEdicionValido()"
+      [value]="nombreEdicion()"
+      (input)="nombreEdicion.set($any($event.target).value)"
+      (keydown.enter)="guardarNombre()"
+    />
+    @if (nombreEdicionTocado() && !nombreEdicionValido()) {
+      <span class="ui-error">Escribe un nombre de hasta 150 caracteres.</span>
+    }
+  </div>
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="editando.set(null)">Cancelar</button>
+    <button
+      type="button"
+      class="ui-btn ui-btn--primary"
+      (click)="guardarNombre()"
+      [disabled]="store.guardandoNombre()"
+    >
+      @if (store.guardandoNombre()) {
+        <span class="ui-spinner spinner-btn"></span>
+      }
+      Guardar
+    </button>
+  </div>
+</ui-modal>
+
+<!-- Eliminar -->
+<ui-modal
+  [abierto]="aEliminar() !== null"
+  ancho="sm"
+  [compacto]="true"
+  titulo="Eliminar registro"
+  (cerrar)="aEliminar.set(null)"
+>
+  @if (aEliminar(); as registro) {
+    <div class="confirm">
+      <span class="confirm__icon"><ui-icon name="trash" [size]="22" /></span>
+      <div class="confirm__text">
+        <p class="confirm__title">¿Eliminar «{{ registro.nombre }}»?</p>
+        <p class="confirm__desc">Se borran también sus paletas y su configuración. No se puede deshacer.</p>
+      </div>
+    </div>
+  }
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="aEliminar.set(null)">Cancelar</button>
+    <button
+      type="button"
+      class="ui-btn ui-btn--danger"
+      (click)="confirmarEliminar()"
+      [disabled]="store.eliminando()"
+    >
+      @if (store.eliminando()) {
+        <span class="ui-spinner spinner-btn"></span>
+      }
+      Eliminar
+    </button>
+  </div>
+</ui-modal>
