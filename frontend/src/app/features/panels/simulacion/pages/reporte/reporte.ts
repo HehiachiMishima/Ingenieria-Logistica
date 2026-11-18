@@ -29,6 +29,8 @@ interface FichaVista {
 
 /** Una celda ya lista para dibujar: sus fichas y los bultos de cada día. */
 interface CeldaVista {
+  operariosLxv: number | null;
+  operariosMjs: number | null;
   bloqueado: boolean;
   buff: boolean;
   rutas: FichaVista[];
@@ -233,6 +235,8 @@ export class SimulacionReporteEjecutivo {
           rutas: rutas.map(ficha),
           lxv: x && trabajaLxv ? x.bultosLxv : null,
           mjs: x && trabajaMjs ? x.bultosMjs : null,
+          operariosLxv: x?.operariosLxv ?? null,
+          operariosMjs: x?.operariosMjs ?? null,
           fondoLxv: null,
           fondoMjs: null,
         };

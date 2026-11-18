@@ -131,7 +131,7 @@ class SimulacionReporteTest {
     rutas.add(ruta(1L, "3001", 1L, "10", "LXV", "10"));
     rutas.add(ruta(2L, "3002", 1L, "10", "LXV", "2"));
     rutas.add(ruta(3L, "3003", 2L, "10", "LXV", null));
-    DistribucionResponse d = SimulacionReporte.armar(configuracion(), rutas, Instant.now());
+    DistribucionResponse d = SimulacionReporte.armar(configuracion(2), configuracion(3), rutas, Instant.now());
 
     Map<String, DistribucionResponse.Ruta> porCodigo = new HashMap<>();
     d.clusters().getFirst().celdas().forEach((c) -> c.rutas().forEach((r) -> porCodigo.put(r.codigo(), r)));
@@ -146,6 +146,8 @@ class SimulacionReporteTest {
   void lasFilasDeBultosMuestranCadaDiaYUnGuionDondeElChuteNoTrabaja() throws Exception {
     try (XSSFWorkbook libro = abrir()) {
       Sheet hoja = libro.getSheet("Distribución");
+      assertEquals(2, filaQueEmpieza(hoja, "OPERARIOS L-X-V").getCell(1).getNumericCellValue());
+      assertEquals(3, filaQueEmpieza(hoja, "OPERARIOS M-J-S").getCell(1).getNumericCellValue());
       Row lxv = filaQueEmpieza(hoja, "BULTOS L-X-V");
       Row mjs = filaQueEmpieza(hoja, "BULTOS M-J-S");
       assertEquals(119, (int) lxv.getCell(1).getNumericCellValue());
@@ -196,7 +198,7 @@ class SimulacionReporteTest {
     rutas.add(ruta(2L, "3001", 1L, "20", "LXV"));
     rutas.add(ruta(3L, "2028", 1L, "99.10", "DIARIA"));
     rutas.add(ruta(4L, "3002", 2L, "50", "LXV"));
-    return SimulacionReporte.armar(configuracion(), rutas, Instant.parse("2026-11-14T15:00:00Z"));
+    return SimulacionReporte.armar(configuracion(2), configuracion(3), rutas, Instant.parse("2026-11-14T15:00:00Z"));
   }
 
   private static XSSFWorkbook abrir() throws Exception {
@@ -204,7 +206,7 @@ class SimulacionReporteTest {
         new ByteArrayInputStream(DistribucionExcel.escribir(distribucion(), DistribucionExcel.Marcas.NINGUNA)));
   }
 
-  private static ConfiguracionSimulacionResponse configuracion() {
+  private static ConfiguracionSimulacionResponse configuracion(int operarios) {
     ArchivoSimulacionResponse archivo =
         new ArchivoSimulacionResponse(
             10L, "Proyección enero", "enero.xlsx", null, "#1d63ed", "FINALIZADO", 4, 2,
@@ -220,7 +222,7 @@ class SimulacionReporteTest {
         List.of(
             new ChuteParametroResponse(2L, "2", 1, List.of(1L), false, true),
             new ChuteParametroResponse(1L, "1", 1, List.of(1L), false, false)),
-        List.of(),
+        List.of(new oracle.simulacion.response.CargaSimulacionResponse(1L, 1L, 1, CIEN, CIEN, CIEN, 1, operarios)),
         List.of("20", "19"));
   }
 

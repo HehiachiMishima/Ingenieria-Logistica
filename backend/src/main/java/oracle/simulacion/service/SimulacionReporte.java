@@ -57,7 +57,8 @@ public class SimulacionReporte {
   public DistribucionResponse distribucion(Long archivoId) {
     ConfiguracionSimulacionResponse cfg = servicio.obtener(archivoId, Balanceo.LXV).datos();
     List<RutaSimulacionResponse> rutas = servicio.todasLasRutas(archivoId).datos();
-    return armar(cfg, rutas, Instant.now());
+    var mjs = servicio.obtener(archivoId, Balanceo.MJS).datos();
+    return armar(cfg, mjs, rutas, Instant.now());
   }
 
   /** El Excel de la distribución. */
@@ -93,9 +94,22 @@ public class SimulacionReporte {
     return LXV.equals(valor) || MJS.equals(valor) ? valor : DIARIA;
   }
 
+  private record Puesto(Long cluster, Long chute) {}
+
+  private static Map<Puesto, Integer> operarios(ConfiguracionSimulacionResponse cfg) {
+    Map<Puesto, Integer> cantidades = new HashMap<>();
+    for (var fila : cfg.carga()) {
+      cantidades.put(new Puesto(fila.clusterId(), fila.chuteId()), fila.operarios());
+    }
+    return cantidades;
+  }
+
   /** Arma la distribución con la configuración y las rutas ya leídas (sin acceso a la base). */
   static DistribucionResponse armar(
-      ConfiguracionSimulacionResponse cfg, List<RutaSimulacionResponse> rutas, Instant generado) {
+      ConfiguracionSimulacionResponse cfg, ConfiguracionSimulacionResponse cfgMjs,
+      List<RutaSimulacionResponse> rutas, Instant generado) {
+    var operariosLxv = operarios(cfg);
+    var operariosMjs = operarios(cfgMjs);
     // Chutes del plano en orden natural, con los bloqueados (sin id) en su lugar.
     List<DistribucionResponse.Chute> chutes = new ArrayList<>();
     Set<Long> conocidos = new HashSet<>();
@@ -165,7 +179,9 @@ public class SimulacionReporte {
           lista.add(
               new DistribucionResponse.Ruta(r.codigoRuta(), f, grupo, grupo == null ? null : colores.get(grupo), b));
         }
-        celdas.add(new DistribucionResponse.Celda(chuteId, List.copyOf(lista), entero(lxv), entero(mjs)));
+        var puesto = new Puesto(c.id(), chuteId);
+        celdas.add(new DistribucionResponse.Celda(chuteId, List.copyOf(lista), entero(lxv), entero(mjs),
+            operariosLxv.get(puesto), operariosMjs.get(puesto)));
         clusterLxv = clusterLxv.add(lxv);
         clusterMjs = clusterMjs.add(mjs);
         if (chuteId != null) {

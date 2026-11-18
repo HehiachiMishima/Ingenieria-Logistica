@@ -558,6 +558,8 @@ export interface RutaDistribucion {
 
 /** Un chute con rutas del cluster: sus rutas (diarias, L-X-V, M-J-S) y los bultos de cada día. */
 export interface CeldaDistribucion {
+  operariosLxv: number | null;
+  operariosMjs: number | null;
   chuteId: number | null;
   rutas: RutaDistribucion[];
   bultosLxv: number;

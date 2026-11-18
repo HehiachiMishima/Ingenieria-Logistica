@@ -143,6 +143,18 @@
                   </td>
                 }
               </tr>
+              @for (dia of ['L-X-V', 'M-J-S']; track dia) {
+                <tr class="dist__total">
+                  <th scope="row" class="dist__total-rotulo">Operarios {{ dia }}</th>
+                  @for (x of c.celdas; track $index) {
+                    <td [class.dist__celda--bloq]="x.bloqueado">
+                      @if (!x.bloqueado) {
+                        {{ (dia === 'L-X-V' ? x.operariosLxv : x.operariosMjs) ?? '—' }}
+                      }
+                    </td>
+                  }
+                </tr>
+              }
             </tbody>
           </table>
         }

@@ -415,7 +415,18 @@ final class DistribucionExcel {
 
     // Bultos de cada día por chute (diarias + rutas del día).
     int f = totales(fin + 1, "BULTOS L-X-V", c.bultosLxv(), celdas, true, AZUL, "DCE7FD");
-    return totales(f, "BULTOS M-J-S", c.bultosMjs(), celdas, false, AMBAR, "FCE3BF");
+    f = totales(f, "BULTOS M-J-S", c.bultosMjs(), celdas, false, AMBAR, "FCE3BF");
+    for (boolean lxv : new boolean[] {true, false}) {
+      Row fila = fila(f++, 17);
+      celda(fila, 0, lxv ? "OPERARIOS L-X-V" : "OPERARIOS M-J-S", resumen);
+      for (int i = 0; i < d.chutes().size(); i++) {
+        var chute = d.chutes().get(i);
+        var x = celdas.get(chute.id());
+        Integer cantidad = x == null ? null : (lxv ? x.operariosLxv() : x.operariosMjs());
+        celda(fila, i + 1, chute.bloqueado() ? null : cantidad == null ? "—" : cantidad, resumen);
+      }
+    }
+    return f;
   }
 
   /** La ficha de una ruta: número del grupo, código, bultos y letra de la frecuencia, cada uno en su color. */

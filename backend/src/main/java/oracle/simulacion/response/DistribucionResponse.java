@@ -35,7 +35,8 @@ public record DistribucionResponse(
    * Un chute con rutas del cluster: las rutas (diarias, luego L-X-V y M-J-S) y los bultos de cada
    * día, redondeados al entero (diarias + rutas de ese día).
    */
-  public record Celda(Long chuteId, List<Ruta> rutas, long bultosLxv, long bultosMjs) {}
+  public record Celda(Long chuteId, List<Ruta> rutas, long bultosLxv, long bultosMjs,
+      Integer operariosLxv, Integer operariosMjs) {}
 
   /** Un cluster: cuántas rutas tiene de cada frecuencia, sus bultos por día y sus celdas. */
   public record Cluster(
