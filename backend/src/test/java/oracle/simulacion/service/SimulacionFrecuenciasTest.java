@@ -1321,6 +1321,94 @@ class SimulacionFrecuenciasTest {
         () -> historialServicio.historialCambios(10L, Balanceo.MJS, 5L, 1, 25));
   }
 
+  @Test
+  void cargarTresClustersExigeAsignarYCerrarEnOrdenSinRelanzarRutas() {
+    var archivo = archivo();
+    archivo.setBalanceoGuardado(true);
+    archivo.setEstado(ArchivoExcel.ESTADO_PROYECCION);
+    List<Long> ids = List.of(1L, 2L, 3L);
+    List<ParametroCluster> parametros = new ArrayList<>();
+    for (long id : ids) {
+      for (Balanceo b : Balanceo.values()) {
+        parametros.add(parametro(b, id, ParametroCluster.ESTADO_PENDIENTE));
+      }
+    }
+    preparar(parametros, List.of(base(1L, false)), List.of());
+    when(archivoRepo.bloquear(10L)).thenReturn(Optional.of(archivo));
+    when(archivoRepo.findById(10L)).thenReturn(Optional.of(archivo));
+    when(clusterRepo.findAllById(any())).thenReturn(ids.stream().map(id -> cluster(id, "CL" + id)).toList());
+    when(rutaRepo.cargaPorArchivo(10L)).thenReturn(List.of(
+        carga("DIARIA", 1L, 1L, "100"), carga("LXV", 2L, 1L, "100"), carga("MJS", 3L, 1L, "100")));
+    org.mockito.Mockito.doAnswer(inv -> {
+      for (var p : parametros) {
+        String b = p.getId().getBalanceo();
+        long id = p.getId().getClusterId();
+        if (b.equals("DIA") || (id == 2 && b.equals("LXV")) || (id == 3 && b.equals("MJS"))) {
+          p.setEstado(ParametroCluster.ESTADO_RUTAS);
+        }
+      }
+      return null;
+    }).when(lotes).cargarBalanceoRutas(10L);
+
+    servicio.cargarBalanceoRutas(10L);
+    for (long id : ids) {
+      var equipo = BalanceoRequest.conOperarios(1);
+      servicio.balancear(10L, Balanceo.LXV, id, FaseBalanceo.OPERARIOS, equipo);
+      if (id < 3) {
+        assertThrows(ConflictoException.class,
+            () -> servicio.balancear(10L, Balanceo.LXV, id + 1, FaseBalanceo.OPERARIOS, equipo));
+      }
+      servicio.cerrar(10L, Balanceo.LXV, id);
+    }
+    assertEquals(ArchivoExcel.ESTADO_FINALIZADO, archivo.getEstado());
+  }
+
+  @Test
+  void permiteGuardarLaDistribucionOriginalSinAvanzarElTrabajoActual() {
+    var parametros = List.of(parametro(Balanceo.DIA, CL1, "PENDIENTE"),
+        parametro(Balanceo.LXV, CL1, "PENDIENTE"), parametro(Balanceo.MJS, CL1, "PENDIENTE"));
+    preparar(parametros, List.of(base(1L, false)), List.of());
+    when(clusterRepo.findAllById(any())).thenReturn(List.of(cluster(CL1, "CL1")));
+    when(rutaRepo.cargaPorArchivo(10L)).thenReturn(List.of(carga("DIARIA", CL1, 1L, "100")));
+    servicio.guardarBalanceoRutas(10L);
+    verify(lotes).guardarBalanceoRutas(10L, true);
+    assertTrue(parametros.stream().allMatch(p -> p.getEstado().equals("PENDIENTE")));
+  }
+
+  @Test
+  void noSobrescribeElGuardadoSiFaltaBalancearUnaFrecuencia() {
+    preparar(List.of(parametro(Balanceo.DIA, CL1, "RUTAS"), parametro(Balanceo.LXV, CL1, "RUTAS"),
+        parametro(Balanceo.MJS, CL1, "PENDIENTE")), List.of(), List.of());
+    when(rutaRepo.cargaPorArchivo(10L)).thenReturn(List.of(carga("MJS", CL1, 1L, "100")));
+    when(lotes.clusterSinRestablecer(10L)).thenReturn(Optional.of("CL1"));
+    var error = assertThrows(ConflictoException.class, () -> servicio.guardarBalanceoRutas(10L));
+    assertTrue(error.getMessage().contains("CL1 (M-J-S)"));
+    verify(lotes, never()).guardarBalanceoRutas(anyLong(), org.mockito.ArgumentMatchers.anyBoolean());
+  }
+
+  @Test
+  void rechazaUnPredeterminadoAnteriorIncompleto() {
+    var archivo = archivo();
+    archivo.setBalanceoGuardado(true);
+    preparar(List.of(parametro(Balanceo.DIA, CL1, "PENDIENTE")), List.of(), List.of());
+    when(archivoRepo.bloquear(10L)).thenReturn(Optional.of(archivo));
+    when(archivoRepo.findById(10L)).thenReturn(Optional.of(archivo));
+    when(rutaRepo.cargaPorArchivo(10L)).thenReturn(List.of(carga("DIARIA", CL1, 1L, "100")));
+    assertThrows(ConflictoException.class, () -> servicio.cargarBalanceoRutas(10L));
+    verify(archivoRepo, never()).save(any());
+  }
+
+  @Test
+  void noCargaMientrasQuedeUnClusterSinRestablecer() {
+    var archivo = archivo();
+    archivo.setBalanceoGuardado(true);
+    when(archivoRepo.bloquear(10L)).thenReturn(Optional.of(archivo));
+    when(lotes.clusterSinRestablecer(10L)).thenReturn(Optional.of("CL2"));
+    var error = assertThrows(ConflictoException.class, () -> servicio.cargarBalanceoRutas(10L));
+    assertTrue(error.getMessage().contains("CL2"));
+    verify(lotes, never()).cargarBalanceoRutas(10L);
+  }
+
   // ---------------- Ayudas ----------------
 
   private void preparar(

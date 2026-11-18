@@ -242,6 +242,7 @@ export interface ConfiguracionSimulacion {
   balanceo?: Balanceo;
   /** Algún cluster ya se balanceó (en cualquier balanceo): el buff ya no cambia. */
   buffBloqueado?: boolean;
+  balanceoGuardado?: boolean;
 }
 
 /** Página de rutas por keyset: `siguiente` es el cursor de la próxima; `total` solo en la primera. */

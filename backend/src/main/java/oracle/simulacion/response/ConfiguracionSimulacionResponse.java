@@ -25,7 +25,7 @@ public record ConfiguracionSimulacionResponse(
     /** Balanceo de esta configuración: LXV, MJS o DIA. */
     String balanceo,
     /** Algún cluster ya se balanceó (en cualquier balanceo): el buff de los chutes ya no cambia. */
-    boolean buffBloqueado) {
+    boolean buffBloqueado, boolean balanceoGuardado) {
 
   public ConfiguracionSimulacionResponse(
       ArchivoSimulacionResponse archivo,
@@ -39,7 +39,7 @@ public record ConfiguracionSimulacionResponse(
       List<String> chutesBloqueados) {
     this(
         archivo, velocidadBase, operariosMaximos, operariosPorChute, topePorChute, clusters, chutes,
-        carga, chutesBloqueados, "LXV", false);
+        carga, chutesBloqueados, "LXV", false, false);
   }
 
 

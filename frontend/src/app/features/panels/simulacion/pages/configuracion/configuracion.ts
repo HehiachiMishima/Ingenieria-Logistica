@@ -2168,6 +2168,7 @@ export class SimulacionConfiguracion {
     // Los filtros pertenecen al registro: solo se limpian al cambiar de registro,
     // no al recargar el mismo con «Actualizar».
     if (id !== this.seleccionado()) {
+      this.accionBalanceoGuardado.set(null);
       this.reiniciarFiltros();
       this.rutasMatriz.set([]);
       this.rutasCargadas.set(0);
@@ -2224,6 +2225,7 @@ export class SimulacionConfiguracion {
             this.aplicarConfiguracion(dia);
             this.aplicarConfiguracion(mjs);
             this.aplicarConfiguracion(lxv);
+            this.actualizarEstadoEnLista(id, lxv.archivo.estado);
             // Tras un paso, la planilla se mantiene hasta tener la nueva.
             this.recargarRutas(!inicial);
           }
@@ -3213,6 +3215,29 @@ export class SimulacionConfiguracion {
       this.directorio.cargar();
       this.historialAbierto.set(true);
     }
+  }
+
+  readonly accionBalanceoGuardado = signal<'guardar' | 'cargar' | null>(null);
+
+  elegirBalanceoGuardado(accion: 'guardar' | 'cargar'): void {
+    if (!this.ocupado() && !this.avisarCambiosSinGuardar(accion + ' el balanceo de rutas')) {
+      this.accionBalanceoGuardado.set(accion);
+    }
+  }
+
+  aplicarBalanceoGuardado(): void {
+    const id = this.seleccionado();
+    const accion = this.accionBalanceoGuardado();
+    if (!id || !accion || this.ocupado()) return;
+    this.restableciendo.set(true);
+    this.api.balanceoGuardado(id, accion)
+      .pipe(finalize(() => this.restableciendo.set(false)), takeUntilDestroyed(this.destroyRef))
+      .subscribe({ next: () => {
+        this.accionBalanceoGuardado.set(null);
+        this.notificaciones.exito(accion === 'guardar' ? 'Balanceo guardado' : 'Balanceo cargado',
+          'Distribución de rutas del archivo.');
+        if (this.seleccionado() === id) this.cargarConfiguracion(id);
+      } });
   }
 
   confirmarRestablecer(): void {

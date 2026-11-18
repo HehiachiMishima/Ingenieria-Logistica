@@ -143,6 +143,9 @@ Si la base **ya estaba instalada** antes de los tickets abiertos, aplicar en est
 | `migracion_tickets_abiertos.sql` | Con el backend **detenido** | Agrega `cerrado_en` (fin opcional = abierta), sus reglas y el índice de abiertas; rellena las existentes como cerradas. |
 | `migracion_bitacora_indices.sql` | Con el backend encendido | Índices de reincidencias y de responsable + fechas. |
 
+Para habilitar el balanceo de rutas guardado por archivo en **Simulación Titan**, aplica
+`backend/migracion_balanceo_rutas.sql` a las bases existentes antes de actualizar el backend.
+
 Si la base ya estaba instalada antes del panel **Simulación Santa Anita**, aplicar
 `migracion_simulacion_santa.sql` **antes** de arrancar el backend que trae el panel
 (con `ddl-auto=validate` no arranca si falta el esquema). Corre en una transacción y es

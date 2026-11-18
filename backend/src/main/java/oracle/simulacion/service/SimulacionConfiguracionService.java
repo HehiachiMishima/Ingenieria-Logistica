@@ -1058,6 +1058,69 @@ public class SimulacionConfiguracionService {
         aConfiguracion(ctx));
   }
 
+  public ApiResponse<Void> guardarBalanceoRutas(Long id) {
+    return escribir("guardarBalanceoRutas id=" + id, () -> {
+      var ctx = contexto(id, true);
+      boolean distribucionOriginal = lotes.clusterSinRestablecer(id).isEmpty();
+      validarDistribucionRutas(ctx, distribucionOriginal);
+      var archivo = ctx.archivo();
+      lotes.guardarBalanceoRutas(id, distribucionOriginal);
+      tocar(archivo, ActorActual.id());
+      return null;
+    }, "Balanceo de rutas guardado.");
+  }
+
+  public ApiResponse<Void> cargarBalanceoRutas(Long id) {
+    return escribir("cargarBalanceoRutas id=" + id, () -> {
+      var archivo = bloquearParaBalanceoGuardado(id);
+      if (!archivo.isBalanceoGuardado()) {
+        throw new ConflictoException("Este archivo aún no tiene un balanceo de rutas guardado.");
+      }
+      lotes.clusterSinRestablecer(id).ifPresent(nombre -> {
+        throw new ConflictoException("Restablece todos los clusters antes de cargar. "
+            + nombre + " todavía tiene trabajo en curso o cerrado.");
+      });
+      lotes.cargarBalanceoRutas(id);
+      var ctx = contexto(id, false);
+      // Comprueba también los estados guardados con versiones anteriores. Ante un fallo,
+      // la transacción revierte la recuperación completa.
+      validarDistribucionRutas(ctx, false);
+      actualizarEstado(ctx);
+      tocar(archivo, ActorActual.id());
+      return null;
+    }, "Balanceo de rutas cargado.");
+  }
+
+  private void validarDistribucionRutas(Contexto ctx, boolean distribucionOriginal) {
+    var carga = rutasPorFrecuencia(rutaRepo.cargaPorArchivo(ctx.archivo().getId()));
+    if (carga.isEmpty()) {
+      throw new ConflictoException("El archivo no tiene rutas para asignar operarios.");
+    }
+    var clusters = new LinkedHashSet<>(orden(ctx));
+    clusters.addAll(ctx.clusters().keySet());
+    clusters.addAll(carga.keySet());
+    for (Long id : clusters) {
+      String nombre = ctx.nombreCluster(id);
+      long[] rutas = carga.get(id);
+      if (rutas == null) {
+        throw new ConflictoException(nombre + " no tiene rutas para asignar operarios.");
+      }
+      for (Balanceo b : List.of(Balanceo.DIA, Balanceo.LXV, Balanceo.MJS)) {
+        var parametro = ctx.parametro(b, id);
+        boolean requerido = b == Balanceo.DIA || rutas[b == Balanceo.LXV ? 1 : 2] > 0;
+        if (parametro == null || (!distribucionOriginal && requerido && pendiente(parametro))) {
+          throw new ConflictoException("Balanceo de rutas incompleto en " + nombre + " ("
+              + b.etiqueta() + "). Completa el balanceo antes de guardarlo como predeterminado.");
+        }
+      }
+    }
+  }
+
+  private ArchivoExcel bloquearParaBalanceoGuardado(Long id) {
+    return archivoRepo.bloquear(id).orElseThrow(() ->
+        new RecursoNoEncontradoException("No existe el registro con id " + id + "."));
+  }
+
   /**
    * Todo el registro vuelve a la proyección en los tres balanceos y en una sola transacción:
    * rutas, operarios, lanzamientos, historial y tramos.
@@ -3561,7 +3624,7 @@ public class SimulacionConfiguracionService {
         cargaResponse,
         plano.nombresBloqueados(),
         ctx.balanceo().name(),
-        buffBloqueado(ctx));
+        buffBloqueado(ctx), ctx.archivo().isBalanceoGuardado());
   }
 
   private static Map<Long, BigDecimal> limites(Contexto ctx) {

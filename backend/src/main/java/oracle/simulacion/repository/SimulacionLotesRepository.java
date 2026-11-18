@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Predicate;
 import oracle.simulacion.model.Balanceo;
 import oracle.simulacion.model.HistorialBalanceo;
@@ -36,6 +37,104 @@ public class SimulacionLotesRepository {
 
   public SimulacionLotesRepository(JdbcTemplate jdbc) {
     this.jdbc = jdbc;
+  }
+
+  /** Al aceptar la proyección original, sus rutas quedan listas para operarios solo en la copia. */
+  public void guardarBalanceoRutas(Long id, boolean distribucionOriginal) {
+    jdbc.update("""
+        UPDATE simulacion.archivos_excel SET balanceo_guardado = jsonb_build_object(
+            'rutas', (SELECT coalesce(jsonb_agg(to_jsonb(s)), '[]'::jsonb) FROM (
+                SELECT id, cluster_id, chute_id
+                FROM simulacion.rutas_proyeccion WHERE archivo_id = ? AND (movida OR cluster_cambiado)) s),
+            'clusters', (SELECT coalesce(jsonb_agg(to_jsonb(s)), '[]'::jsonb) FROM (
+                SELECT cluster_id, balanceo, chute_desde_id, chute_hasta_id,
+                       CASE WHEN ? OR estado <> 'PENDIENTE' THEN 'RUTAS' ELSE 'PENDIENTE' END AS estado
+                FROM simulacion.parametros_clusters WHERE archivo_id = ?) s),
+            'grupos', (SELECT coalesce(jsonb_agg(to_jsonb(s)), '[]'::jsonb) FROM (
+                SELECT archivo_id, cluster_id, grupo, prioridad, chute_desde_id, chute_hasta_id
+                FROM simulacion.parametros_grupos WHERE archivo_id = ?) s),
+            'lanzamientos', (SELECT coalesce(jsonb_agg(to_jsonb(s)), '[]'::jsonb) FROM (
+                SELECT id, archivo_id, balanceo, cluster_id, fase, mensaje, rutas, separaciones, creado_por,
+                       creado_en
+                FROM simulacion.lanzamientos_balanceo WHERE archivo_id = ? AND fase = 'RUTAS') s),
+            'historial', (SELECT coalesce(jsonb_agg(to_jsonb(s)), '[]'::jsonb) FROM (
+                SELECT id, archivo_id, balanceo, lanzamiento_id, tipo_accion, ruta_id, chute_origen_id,
+                       chute_destino_id, cluster_origen_id, cluster_destino_id, cluster_trabajo_id, motivo,
+                       creado_por, creado_en
+                FROM simulacion.historial_balanceo WHERE archivo_id = ? AND tipo_accion IN ('MOVER_RUTA', 'CAMBIAR_CLUSTER')) s)) WHERE id = ?
+        """, id, distribucionOriginal, id, id, id, id, id);
+  }
+
+  public Optional<String> clusterSinRestablecer(Long id) {
+    return jdbc.queryForList("""
+        SELECT c.nombre FROM simulacion.clusters c
+        WHERE c.id IN (
+          SELECT cluster_id FROM simulacion.parametros_clusters
+           WHERE archivo_id = ? AND estado <> 'PENDIENTE'
+          UNION ALL SELECT cluster_id FROM simulacion.rutas_proyeccion
+           WHERE archivo_id = ? AND (movida OR cluster_cambiado)
+          UNION ALL SELECT cluster_id FROM simulacion.operarios_ola WHERE archivo_id = ?
+        ) ORDER BY c.id LIMIT 1
+        """, String.class, id, id, id).stream().findFirst();
+  }
+
+  // El archivo ya está bloqueado por el servicio. Las filas de historial conservan sus ids
+  // porque restablecer un cluster deshace los movimientos en orden inverso.
+  public void cargarBalanceoRutas(Long id) {
+    jdbc.update("DELETE FROM simulacion.historial_balanceo WHERE archivo_id = ?", id);
+    jdbc.update("DELETE FROM simulacion.lanzamientos_balanceo WHERE archivo_id = ?", id);
+    jdbc.update("DELETE FROM simulacion.operarios_ola WHERE archivo_id = ?", id);
+    jdbc.update("DELETE FROM simulacion.parametros_grupos WHERE archivo_id = ?", id);
+    jdbc.update("""
+        UPDATE simulacion.rutas_proyeccion SET cluster_id = cluster_original_id, chute_id = chute_original_id
+        WHERE archivo_id = ? AND (movida OR cluster_cambiado)
+        """, id);
+    jdbc.update("""
+        UPDATE simulacion.rutas_proyeccion r SET cluster_id = s.cluster_id, chute_id = s.chute_id
+        FROM simulacion.archivos_excel a,
+             jsonb_populate_recordset(NULL::simulacion.rutas_proyeccion, a.balanceo_guardado -> 'rutas') s
+        WHERE a.id = ? AND r.archivo_id = a.id AND r.id = s.id
+        """, id);
+    jdbc.update("""
+        UPDATE simulacion.parametros_clusters p
+        SET estado = s.estado,
+            chute_desde_id = s.chute_desde_id, chute_hasta_id = s.chute_hasta_id, operarios_ola = NULL
+        FROM simulacion.archivos_excel a,
+             jsonb_populate_recordset(NULL::simulacion.parametros_clusters, a.balanceo_guardado -> 'clusters') s
+        WHERE a.id = ? AND p.archivo_id = a.id AND p.cluster_id = s.cluster_id AND p.balanceo = s.balanceo
+        """, id);
+    jdbc.update("""
+        INSERT INTO simulacion.parametros_grupos (
+            archivo_id, cluster_id, grupo, prioridad, chute_desde_id, chute_hasta_id)
+        SELECT s.archivo_id, s.cluster_id, s.grupo, s.prioridad, s.chute_desde_id, s.chute_hasta_id
+        FROM simulacion.archivos_excel a,
+             jsonb_populate_recordset(NULL::simulacion.parametros_grupos, a.balanceo_guardado -> 'grupos') s
+        WHERE a.id = ?
+        """, id);
+    jdbc.update("""
+        INSERT INTO simulacion.lanzamientos_balanceo (
+            id, archivo_id, balanceo, cluster_id, fase, mensaje, rutas, separaciones, creado_por,
+            creado_en)
+        OVERRIDING SYSTEM VALUE
+        SELECT s.id, s.archivo_id, s.balanceo, s.cluster_id, s.fase, s.mensaje, s.rutas,
+               s.separaciones, s.creado_por, s.creado_en
+        FROM simulacion.archivos_excel a,
+             jsonb_populate_recordset(NULL::simulacion.lanzamientos_balanceo, a.balanceo_guardado -> 'lanzamientos') s
+        WHERE a.id = ?
+        """, id);
+    jdbc.update("""
+        INSERT INTO simulacion.historial_balanceo (
+            id, archivo_id, balanceo, lanzamiento_id, tipo_accion, ruta_id, chute_origen_id,
+            chute_destino_id, cluster_origen_id, cluster_destino_id, cluster_trabajo_id, motivo,
+            creado_por, creado_en)
+        OVERRIDING SYSTEM VALUE
+        SELECT s.id, s.archivo_id, s.balanceo, s.lanzamiento_id, s.tipo_accion, s.ruta_id,
+               s.chute_origen_id, s.chute_destino_id, s.cluster_origen_id, s.cluster_destino_id,
+               s.cluster_trabajo_id, s.motivo, s.creado_por, s.creado_en
+        FROM simulacion.archivos_excel a,
+             jsonb_populate_recordset(NULL::simulacion.historial_balanceo, a.balanceo_guardado -> 'historial') s
+        WHERE a.id = ?
+        """, id);
   }
 
   /** Ids de los clusters por clave de nombre; crea los que falten. */

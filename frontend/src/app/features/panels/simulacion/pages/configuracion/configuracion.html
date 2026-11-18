@@ -172,8 +172,14 @@
       {{ minimizado() ? 'Expandir clusters' : 'Minimizar clusters' }}
     </button>
     <button *hasPermiso="permisos.MODIFICAR_CONFIGURACION_SIMULACION" type="button"
+      class="ui-btn ui-btn--secondary ui-btn--sm" (click)="elegirBalanceoGuardado('guardar')"
+      [disabled]="ocupado()">Guardar balanceo de rutas</button>
+    <button *hasPermiso="permisos.MODIFICAR_CONFIGURACION_SIMULACION" type="button"
+      class="ui-btn ui-btn--secondary ui-btn--sm" (click)="elegirBalanceoGuardado('cargar')"
+      [disabled]="ocupado() || !cfg.balanceoGuardado">Cargar balanceo guardado</button>
+    <button *hasPermiso="permisos.MODIFICAR_CONFIGURACION_SIMULACION" type="button"
       class="ui-btn ui-btn--secondary ui-btn--sm" (click)="confirmarRestablecer()"
-      [disabled]="ocupado() || finalizado()">
+      [disabled]="ocupado() || (finalizado() && !cfg.balanceoGuardado)">
       <ui-icon name="refresh" [size]="16" />
       Restablecer todo
     </button>
@@ -782,6 +788,27 @@
     <button type="button" class="ui-btn ui-btn--primary" (click)="confirmarOperarios()"
       [disabled]="ocupado() || !vistaOperarios()?.valida">
       <ui-icon name="play" [size]="14" /> Asignar
+    </button>
+  </div>
+</ui-modal>
+
+<ui-modal [abierto]="accionBalanceoGuardado() !== null" ancho="sm" [compacto]="true"
+  [titulo]="accionBalanceoGuardado() === 'guardar' ? 'Guardar balanceo de rutas' : 'Cargar balanceo guardado'"
+  (cerrar)="accionBalanceoGuardado.set(null)">
+  <p class="confirm__desc">
+    @if (accionBalanceoGuardado() === 'guardar') {
+      Se guardará la distribución actual de {{ config()?.archivo?.nombreRegistro }}. Puedes usar la distribución
+      original del Excel o la de todos los clusters ya balanceados. Al cargarla, el siguiente paso será asignar operarios.
+      @if (config()?.balanceoGuardado) { Reemplazará el balanceo guardado de este archivo. }
+    } @else {
+      Se recuperarán las rutas guardadas de {{ config()?.archivo?.nombreRegistro }}.
+      Todos los clusters deben estar restablecidos. Asigna operarios al primero y ciérralo para continuar con el siguiente.
+    }
+  </p>
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="accionBalanceoGuardado.set(null)">Cancelar</button>
+    <button type="button" class="ui-btn ui-btn--primary" [disabled]="ocupado()" (click)="aplicarBalanceoGuardado()">
+      {{ accionBalanceoGuardado() === 'guardar' ? 'Guardar' : 'Cargar' }}
     </button>
   </div>
 </ui-modal>

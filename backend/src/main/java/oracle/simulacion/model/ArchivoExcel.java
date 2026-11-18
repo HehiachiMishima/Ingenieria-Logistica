@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import lombok.Getter;
 import lombok.Setter;
 import oracle.common.model.Auditable;
+import org.hibernate.annotations.Formula;
 
 /** Registro de un archivo Excel cargado para simulación. */
 @Entity
@@ -43,6 +44,9 @@ public class ArchivoExcel extends Auditable {
 
   @Column(name = "estado", length = 20, nullable = false)
   private String estado;
+
+  @Formula("(balanceo_guardado IS NOT NULL)")
+  private boolean balanceoGuardado;
 
   // Totales del Excel: el balanceo solo cambia chutes, así que no varían y la
   // lista de registros los lee de aquí en lugar de sumar todas sus rutas.

@@ -212,6 +212,10 @@ export class SimulacionApi {
   }
 
   /** Todo el registro vuelve a la proyección (los tres balanceos, en una sola operación). */
+  balanceoGuardado(id: number, accion: 'guardar' | 'cargar'): Observable<void> {
+    return this.api.post<void>(`/simulacion/registros/${id}/balanceo-guardado/${accion}`);
+  }
+
   restablecer(id: number): Observable<void> {
     return this.api.post<void>(`/simulacion/registros/${id}/restablecer`);
   }

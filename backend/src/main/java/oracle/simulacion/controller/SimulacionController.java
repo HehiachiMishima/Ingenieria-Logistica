@@ -247,6 +247,18 @@ public class SimulacionController {
     return configuracionService.restablecerCluster(id, Balanceo.de(balanceo), clusterId);
   }
 
+  @PostMapping("/{id}/balanceo-guardado/guardar")
+  @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
+  public ApiResponse<Void> guardarBalanceoRutas(@PathVariable Long id) {
+    return configuracionService.guardarBalanceoRutas(id);
+  }
+
+  @PostMapping("/{id}/balanceo-guardado/cargar")
+  @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
+  public ApiResponse<Void> cargarBalanceoRutas(@PathVariable Long id) {
+    return configuracionService.cargarBalanceoRutas(id);
+  }
+
   /** Todo el registro vuelve a la proyección, en los tres balanceos y en una sola transacción. */
   @PostMapping("/{id}/restablecer")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
