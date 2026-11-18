@@ -103,7 +103,7 @@ export const PANEL_BITACORA: PanelDef = {
 
 export const PANEL_SIMULACION: PanelDef = {
   id: 'simulacion',
-  nombre: 'Simulación Supply Chain',
+  nombre: 'Simulación Titan',
   descripcion: 'Proyección de rutas, balanceo por chutes y análisis de tiempos.',
   icono: 'engranaje',
   ruta: '/simulacion',
