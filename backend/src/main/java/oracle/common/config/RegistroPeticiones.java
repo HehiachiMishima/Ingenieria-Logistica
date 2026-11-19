@@ -35,6 +35,12 @@ public class RegistroPeticiones extends OncePerRequestFilter {
     public static final String MDC_CORRELACION = "correlationId";
     private static final int MAX_LARGO_CORRELACION = 128;
 
+    private final oracle.admin.observabilidad.TrazaApi traza;
+
+    public RegistroPeticiones(oracle.admin.observabilidad.TrazaApi traza) {
+        this.traza = traza;
+    }
+
     @Override
     protected void doFilterInternal(
             HttpServletRequest peticion, HttpServletResponse respuesta, FilterChain cadena)
@@ -43,10 +49,20 @@ public class RegistroPeticiones extends OncePerRequestFilter {
         String correlacion = resolverCorrelacion(peticion);
         MDC.put(MDC_CORRELACION, correlacion);
         respuesta.setHeader(CABECERA_CORRELACION, correlacion);
+        boolean completada = false;
         try {
             cadena.doFilter(peticion, respuesta);
+            completada = true;
         } finally {
             registrar(peticion, respuesta, inicio);
+            try {
+                if (peticion.getRequestURI().startsWith(peticion.getContextPath() + "/api/") && !"OPTIONS".equals(peticion.getMethod())) {
+                    traza.completar(peticion, completada ? respuesta.getStatus() : 500,
+                        (System.nanoTime() - inicio) / 1_000_000L, correlacion);
+                }
+            } catch (org.springframework.dao.DataAccessException ex) {
+                log.warn("No se pudo registrar el intento administrativo {}", correlacion, ex);
+            }
             MDC.remove(MDC_CORRELACION);
         }
     }

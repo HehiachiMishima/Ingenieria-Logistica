@@ -62,6 +62,18 @@ export const PANEL_ADMIN: PanelDef = {
       ruta: 'permisos',
       permiso: PERMISOS.VER_PERMISOS,
     },
+    {
+      id: 'auditoria', nombre: 'Auditoría', descripcion: 'Cambios administrativos y de distribución Titan.',
+      icono: 'bitacora', ruta: 'auditoria', permiso: PERMISOS.VER_AUDITORIA,
+    },
+    {
+      id: 'monitoreo', nombre: 'Monitoreo', descripcion: 'Volumen, errores y tiempos de respuesta por API.',
+      icono: 'dashboard', ruta: 'monitoreo', permiso: PERMISOS.VER_MONITOREO,
+    },
+    {
+      id: 'actividad', nombre: 'Actividad', descripcion: 'Peticiones y acciones de cada usuario.',
+      icono: 'reloj', ruta: 'actividad', permiso: PERMISOS.VER_ACTIVIDAD,
+    },
   ],
 };
 

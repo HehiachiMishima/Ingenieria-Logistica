@@ -1,0 +1,77 @@
+// Piezas comunes de las tablas de Monitoreo, Actividad y Auditoría. El resto (page-head,
+// toolbar, table-card, ui-table, ui-badge, ui-paginador…) viene del sistema de diseño.
+
+:host {
+  display: block;
+  min-width: 0;
+}
+
+// --- estructura -------------------------------------------------------------------------
+
+.obs-celda {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+// Rutas largas: parten en varias líneas antes de obligar a desplazar la tabla.
+.obs-ruta {
+  min-width: 24ch;
+  overflow-wrap: anywhere;
+}
+
+.obs-fecha {
+  white-space: nowrap;
+}
+
+.obs-correlacion {
+  display: inline-block;
+  max-width: 14ch;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  user-select: all;
+}
+
+.obs-pie {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.toolbar__fin {
+  margin-left: auto;
+}
+
+// --- apariencia -------------------------------------------------------------------------
+
+.obs-ruta {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+
+.obs-correlacion {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.obs-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.obs-fuerte {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.obs-nota {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}

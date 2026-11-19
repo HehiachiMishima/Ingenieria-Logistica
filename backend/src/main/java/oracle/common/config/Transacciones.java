@@ -34,7 +34,11 @@ public class Transacciones {
     }
 
     public <T> T ejecutar(Supplier<T> trabajo) {
-        return escritura.execute(estado -> trabajo.get());
+        return escritura.execute(estado -> {
+            T resultado = trabajo.get();
+            oracle.admin.observabilidad.EventoAdministrativo.registrarCambio(resultado);
+            return resultado;
+        });
     }
 
     public <T> T consultar(Supplier<T> trabajo) {

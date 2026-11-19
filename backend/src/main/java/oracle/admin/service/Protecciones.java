@@ -13,13 +13,13 @@ final class Protecciones {
     /**
      * Permisos base: inmutables. No se pueden modificar (ni siquiera su campo
      * 'activo') ni eliminar. Espejo de trg_permisos_base_update / _delete.
-     * Son los 14 de gestion + PANEL_ADMIN + DASHBOARD_ADMIN.
+     * Incluye los permisos de gestión, el panel, el dashboard y las consultas administrativas.
      */
     static final Set<String> PERMISOS_BASE = Set.of(
             "ASIGNAR_ROLES", "VER_ROLES", "CREAR_ROLES", "MODIFICAR_ROLES", "ELIMINAR_ROLES",
             "ASIGNAR_PERMISOS", "VER_PERMISOS", "CREAR_PERMISOS", "MODIFICAR_PERMISOS", "ELIMINAR_PERMISOS",
             "VER_USUARIOS", "CREAR_USUARIOS", "MODIFICAR_USUARIOS", "ELIMINAR_USUARIOS",
-            "PANEL_ADMIN", "DASHBOARD_ADMIN");
+            "PANEL_ADMIN", "DASHBOARD_ADMIN", "VER_AUDITORIA", "VER_MONITOREO", "VER_ACTIVIDAD");
 
     /** True si el nombre corresponde a un permiso base (protegido por los triggers). */
     static boolean esPermisoBase(String nombre) {

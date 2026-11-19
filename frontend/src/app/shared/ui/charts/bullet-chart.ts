@@ -22,10 +22,10 @@ export interface ItemBullet {
   template: `
     <div class="bu">
       <ul class="bu__leyenda" aria-hidden="true">
-        <li><i class="bu__z bu__z--ok"></i>≤ promedio</li>
+        <li><i class="bu__z bu__z--ok"></i>≤ {{ nombreReferencia() }}</li>
         <li><i class="bu__z bu__z--warn"></i>hasta 1,5×</li>
         <li><i class="bu__z bu__z--mal"></i>crítico</li>
-        <li><i class="bu__ref"></i>promedio: <strong>{{ textoReferencia() }}</strong></li>
+        <li><i class="bu__ref"></i>{{ nombreReferencia() }}: <strong>{{ textoReferencia() }}</strong></li>
       </ul>
       <ol class="bu__filas">
         @for (f of filas(); track f.etiqueta; let i = $index) {
@@ -94,6 +94,14 @@ export class BulletChart {
   readonly referencia = input<number>(0);
   readonly textoReferencia = input<string>('—');
   readonly maximo = input<number>(8);
+  /** Cómo se llama la referencia en la leyenda («promedio», «meta»…). */
+  readonly nombreReferencia = input<string>('promedio');
+  /** Texto del semáforo para dentro, por encima y crítico. */
+  readonly textosEstado = input<readonly [string, string, string]>([
+    'Dentro del promedio',
+    'Por encima del promedio',
+    'Crítico',
+  ]);
 
   private readonly escala = computed(() => {
     const max = Math.max(this.referencia() * 1.6, ...this.items().map((i) => i.valor));
@@ -105,6 +113,7 @@ export class BulletChart {
 
   readonly filas = computed(() => {
     const ref = this.referencia();
+    const [textoOk, textoAviso, textoMal] = this.textosEstado();
     return [...this.items()]
       .sort((a, b) => b.valor - a.valor)
       .slice(0, this.maximo())
@@ -114,7 +123,7 @@ export class BulletChart {
         return {
           ...i,
           estado,
-          estadoTexto: estado === 'ok' ? 'Dentro del promedio' : estado === 'warn' ? 'Por encima del promedio' : 'Crítico',
+          estadoTexto: estado === 'ok' ? textoOk : estado === 'warn' ? textoAviso : textoMal,
           pct: (i.valor / this.escala()) * 100,
           delta: ref ? `${rel > 0 ? '+' : ''}${porcentaje(rel)}` : '',
         };

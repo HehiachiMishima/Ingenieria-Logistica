@@ -16,6 +16,7 @@ Thumbs.db
 *.log
 *.sql
 !/backend/migracion_balanceo_rutas.sql
+!/backend/migracion_observabilidad_admin.sql
 # --- Datos desechables del panel Picking (los trae el SFTP) ---
 /data/
 /backend/data/

@@ -32,6 +32,21 @@ export const ADMIN_ROUTES: Routes = [
         canActivate: [permisoGuard(PERMISOS.VER_PERMISOS)],
         loadComponent: () => import('./pages/permisos/permisos').then((m) => m.Permisos),
       },
+      {
+        path: 'auditoria',
+        canActivate: [permisoGuard(PERMISOS.VER_AUDITORIA)],
+        loadComponent: () => import('./pages/auditoria/auditoria').then((m) => m.Auditoria),
+      },
+      {
+        path: 'monitoreo',
+        canActivate: [permisoGuard(PERMISOS.VER_MONITOREO)],
+        loadComponent: () => import('./pages/monitoreo/monitoreo').then((m) => m.Monitoreo),
+      },
+      {
+        path: 'actividad',
+        canActivate: [permisoGuard(PERMISOS.VER_ACTIVIDAD)],
+        loadComponent: () => import('./pages/actividad/actividad').then((m) => m.Actividad),
+      },
     ],
   },
 ];

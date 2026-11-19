@@ -1,0 +1,14 @@
+@use '../observabilidad';
+
+// --- apariencia -------------------------------------------------------------------------
+
+// Botón de filtro activado (Fuera de meta, Solo errores).
+.ui-btn[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.obs-pie--arriba {
+  margin: 0 0 var(--space-3);
+}

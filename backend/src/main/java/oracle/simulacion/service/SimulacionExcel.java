@@ -69,6 +69,9 @@ import org.xml.sax.XMLReader;
  * PROMEDIO/LINEAS. La cabecera se busca en las primeras {@value #FILAS_BUSCAR_CABECERA} filas
  * (puede haber un título encima).
  *
+ * <p>COD son los locales de la ruta: con varias filas se cuentan los COD distintos; si la ruta viene
+ * en una sola fila, su COD ya es la cantidad de locales (ver {@code Acumulado#conteoCod}).
+ *
  * <p>La misma ruta puede aparecer con tipos distintos (una ruta B2C y la misma ruta B2B), pero no
  * puede repetirse dos veces con el mismo tipo ni cambiar de cluster, chute o grupo dentro del mismo
  * tipo. Los grupos que solo difieren en mayúsculas, tildes o espacios son el mismo grupo.
@@ -92,6 +95,11 @@ public final class SimulacionExcel {
   static final int MAX_COLUMNAS = 50;
   /** Longitud de codigo_ruta y de los nombres de cluster/chute en la BD. */
   static final int MAX_TEXTO = 50;
+  /**
+   * Tope de locales de una ruta de una sola fila: {@value #MAX_FILAS} rutas por este tope caben en
+   * el INTEGER de total_cod.
+   */
+  static final int MAX_LOCALES = 10_000;
   /** Máximo de DECIMAL(12,2), en céntimos. */
   private static final long MAX_CENTIMOS = 999_999_999_999L;
   static final BigDecimal MAX_VALOR = BigDecimal.valueOf(MAX_CENTIMOS, 2);
@@ -107,6 +115,8 @@ public final class SimulacionExcel {
 
   private static final String[] COLUMNAS_OBLIGATORIAS = {"RUTA", "CLUSTER", "CHUTE", "GRUPO", "FRECUENCIA", "TIPO", "BULTOS"};
   private static final Pattern MARCAS = Pattern.compile("\\p{M}+");
+  /** Número con signo o decimales («-5», «12.5», «1,5»): no es el código de un local. */
+  private static final Pattern NUMERO = Pattern.compile("[+-]?\\d+(?:[.,]\\d+)*");
   private static final Pattern ESPACIOS = Pattern.compile("[\\s\\u00A0\\u2007\\u202F\\uFEFF]+");
   private static final Charset WINDOWS_1252 = Charset.forName("windows-1252");
   private static final char[] SEPARADORES_CSV = {',', ';', '\t', '|'};
@@ -141,6 +151,7 @@ public final class SimulacionExcel {
       BigDecimal bultos,
       BigDecimal unidades,
       BigDecimal lineas,
+      /** Locales de la ruta (ver {@code Acumulado#conteoCod}). */
       int conteoCod) {}
 
   public record Analisis(List<FilaRuta> rutas, BigDecimal totalBultos) {}
@@ -878,7 +889,7 @@ public final class SimulacionExcel {
     }
   }
 
-  /** Totales de una ruta en céntimos; los COD se cuentan sin repetir. */
+  /** Totales de una ruta en céntimos y sus locales (ver {@link #conteoCod()}). */
   private static final class Acumulado {
     private final String ruta;
     private final String cluster;
@@ -895,6 +906,9 @@ public final class SimulacionExcel {
     private long lineas;
     /** El primer COD se guarda suelto: el conjunto solo se crea si aparece un segundo distinto. */
     private String primerCod;
+    /** El primer COD tal como vino y su fila: con una sola fila es la cantidad de locales. */
+    private String primerCodValor;
+    private int filaPrimerCod;
     private Set<String> cods;
     private int filas;
 
@@ -941,6 +955,8 @@ public final class SimulacionExcel {
         String claveCod = clave(cod);
         if (primerCod == null) {
           primerCod = claveCod;
+          primerCodValor = cod;
+          filaPrimerCod = numero;
         } else if (cods != null) {
           cods.add(claveCod);
         } else if (!primerCod.equals(claveCod)) {
@@ -953,7 +969,6 @@ public final class SimulacionExcel {
     }
 
     FilaRuta aFila() {
-      int conteo = primerCod == null ? filas : cods == null ? 1 : cods.size();
       return new FilaRuta(
           ruta,
           cluster,
@@ -965,7 +980,41 @@ public final class SimulacionExcel {
           BigDecimal.valueOf(bultos, 2),
           BigDecimal.valueOf(unidades, 2),
           BigDecimal.valueOf(lineas, 2),
-          conteo);
+          conteoCod());
+    }
+
+    /**
+     * Locales de la ruta. Con varias filas se cuentan los COD distintos (sin COD, las filas). Si la
+     * ruta viene en una sola fila, su COD ya es la cantidad de locales: se toma tal cual (un entero
+     * de 1 a {@value SimulacionExcel#MAX_LOCALES}); si trae letras es el código de un local y
+     * cuenta 1.
+     */
+    private int conteoCod() {
+      if (primerCod == null) {
+        return filas;
+      }
+      if (filas > 1) {
+        return cods == null ? 1 : cods.size();
+      }
+      String cod = primerCodValor;
+      if (!NUMERO.matcher(cod).matches()) {
+        return 1;
+      }
+      long valor = 0;
+      for (int i = 0; i < cod.length() && valor <= MAX_LOCALES; i++) {
+        char c = cod.charAt(i);
+        valor = c >= '0' && c <= '9' ? valor * 10 + (c - '0') : -1;
+        if (valor < 0) {
+          break;
+        }
+      }
+      if (valor < 1 || valor > MAX_LOCALES) {
+        throw ArchivoInvalidoException.contenido(
+            "Fila " + filaPrimerCod + ": la ruta " + ruta + " (" + tipo + ") viene en una sola fila,"
+                + " así que su COD es la cantidad de locales; \"" + recortar(cod)
+                + "\" debe ser un número entero de 1 a " + MAX_LOCALES + ".");
+      }
+      return (int) valor;
     }
 
     private long acotar(long valor, String columna, int numero) {

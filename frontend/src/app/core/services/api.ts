@@ -1,4 +1,4 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpContext, HttpParams } from '@angular/common/http';
 import { Service, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
 import { environment } from '../../../environments/environment';
@@ -9,9 +9,9 @@ export class Api {
   private readonly http = inject(HttpClient);
   private readonly base = environment.apiUrl.replace(/\/+$/, '');
 
-  get<T>(ruta: string, params?: Record<string, unknown>): Observable<T> {
+  get<T>(ruta: string, params?: Record<string, unknown>, context?: HttpContext): Observable<T> {
     return this.http
-      .get<ApiResponse<T>>(this.url(ruta), { params: this.aParams(params) })
+      .get<ApiResponse<T>>(this.url(ruta), { params: this.aParams(params), context })
       .pipe(map(this.desempaquetar));
   }
 

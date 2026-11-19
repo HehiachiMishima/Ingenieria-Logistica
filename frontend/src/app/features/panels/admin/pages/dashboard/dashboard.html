@@ -35,6 +35,13 @@
         </div>
       }
     </section>
+  } @else if (cargando() && !datos()) {
+    <!-- Mismo alto que la lectura ejecutiva: al llegar los datos no empuja los KPIs (CLS). -->
+    <section class="dash-insights" aria-hidden="true">
+      @for (i of [1, 2, 3]; track i) {
+        <div class="dash-insight"><span class="ui-skeleton admin-insight-esqueleto"></span></div>
+      }
+    </section>
   }
 
   <section class="dash-kpis" aria-label="Indicadores clave">
@@ -159,3 +166,5 @@
     </article>
   </div>
 }
+
+<app-tablero-operacion [cuentasActivas]="kpis()?.usuariosActivos ?? null" />

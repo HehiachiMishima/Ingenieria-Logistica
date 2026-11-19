@@ -1,0 +1,192 @@
+<header class="page-head">
+  <div>
+    <h1 class="page-head__title">Monitoreo</h1>
+    <p class="page-head__sub">
+      APIs del período, primero las críticas: p95 sobre {{ meta * 1.5 }} ms o más del 5 % con error.
+      @if (corte(); as c) {
+        <span class="obs-nota">· Actualizado {{ c | date: 'HH:mm' }}</span>
+      }
+    </p>
+  </div>
+  <button type="button" class="ui-btn ui-btn--secondary" (click)="cargar()" [disabled]="cargando()">
+    <ui-icon name="refresh" [size]="16" />
+    Actualizar
+  </button>
+</header>
+
+<div class="toolbar">
+  <div class="ui-search toolbar__grow">
+    <ui-icon name="search" [size]="18" />
+    <input
+      type="search"
+      class="ui-input"
+      aria-label="Buscar API"
+      placeholder="Buscar API por ruta o método…"
+      [value]="busqueda()"
+      (input)="buscar($any($event.target).value)"
+    />
+  </div>
+  <app-selector-periodo [opciones]="periodos" [valor]="dias()" (cambio)="cambiarPeriodo($event)" />
+  <button
+    type="button"
+    class="ui-btn ui-btn--secondary ui-btn--sm"
+    [attr.aria-pressed]="soloFueraDeMeta()"
+    (click)="alternarFueraDeMeta()"
+  >
+    <ui-icon name="alertTriangle" [size]="16" />
+    Fuera de meta
+    @if (fueraDeMeta() > 0) {
+      <span class="filtros-badge">{{ fueraDeMeta() }}</span>
+    }
+  </button>
+</div>
+
+<div class="table-card" [class.table-card--refrescando]="cargando() && filas().length > 0">
+  @if (cargando() && !cargada()) {
+    <div class="loading"><span class="ui-spinner"></span> Cargando APIs…</div>
+  } @else if (error()) {
+    <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="error()!">
+      <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="cargar()">
+        <ui-icon name="refresh" [size]="16" /> Reintentar
+      </button>
+    </ui-empty>
+  } @else if (filas().length === 0) {
+    <ui-empty
+      icono="activity"
+      [titulo]="busqueda() || soloFueraDeMeta() ? 'Sin resultados' : 'Sin peticiones en el período'"
+      [mensaje]="
+        busqueda() || soloFueraDeMeta()
+          ? 'Ninguna API coincide con la búsqueda o el filtro.'
+          : 'Las APIs aparecen aquí en cuanto reciben peticiones.'
+      "
+    />
+  } @else {
+    <div class="ui-table-wrap">
+      <table class="ui-table">
+        <thead>
+          <tr>
+            <th>API</th>
+            <th class="obs-num">Peticiones</th>
+            <th class="obs-num">Errores</th>
+            <th class="obs-num">% error</th>
+            <th class="obs-num">Tiempo p95</th>
+            <th>Estado</th>
+            <th class="col-actions">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (e of paginadas(); track e.metodo + ' ' + e.ruta) {
+            <tr>
+              <td>
+                <span class="obs-celda">
+                  <span class="ui-badge" [class]="badgeMetodo(e.metodo)">{{ e.metodo }}</span>
+                  <span class="obs-ruta">{{ e.ruta }}</span>
+                </span>
+              </td>
+              <td class="obs-num">{{ e.peticiones | number }}</td>
+              <td class="obs-num">{{ e.errores | number }}</td>
+              <td class="obs-num" [class.obs-fuerte]="e.porcentaje > 2">{{ e.porcentaje | number: '1.0-1' }} %</td>
+              <td class="obs-num" [class.obs-fuerte]="e.p95 > meta">{{ e.p95 | number }} ms</td>
+              <td>
+                <span class="ui-badge" [class]="badgeNivel[e.nivel]">
+                  <span class="ui-dot"></span> {{ textoNivel[e.nivel] }}
+                </span>
+              </td>
+              <td>
+                <div class="row-actions">
+                  <button
+                    type="button"
+                    class="ui-icon-btn"
+                    title="Ver peticiones"
+                    [attr.aria-label]="'Ver peticiones de ' + e.metodo + ' ' + e.ruta"
+                    (click)="abrir(e)"
+                  >
+                    <ui-icon name="ver" [size]="18" />
+                  </button>
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <ui-paginador
+      [pagina]="pagina()"
+      [total]="filas().length"
+      [porPagina]="porPagina()"
+      (paginaCambia)="pagina.set($event)"
+      (porPaginaCambia)="cambiarPorPagina($event)"
+    />
+  }
+</div>
+
+<ui-modal
+  [abierto]="detalle() !== null"
+  ancho="xl"
+  titulo="Peticiones de la API"
+  [subtitulo]="detalle() ? detalle()!.metodo + ' ' + detalle()!.ruta : ''"
+  (cerrar)="cerrarDetalle()"
+>
+  <div class="obs-pie obs-pie--arriba">
+    <button
+      type="button"
+      class="ui-btn ui-btn--secondary ui-btn--sm"
+      [attr.aria-pressed]="soloErrores()"
+      (click)="alternarErrores()"
+    >
+      <ui-icon name="alertTriangle" [size]="16" />
+      Solo errores
+    </button>
+    <span class="obs-nota">Las más recientes primero. El detalle se conserva 30 días.</span>
+  </div>
+
+  <div class="table-card" [class.table-card--refrescando]="peticiones.cargando() && peticiones.filas().length > 0">
+    @if (peticiones.cargando() && !peticiones.cargada()) {
+      <div class="loading"><span class="ui-spinner"></span> Cargando peticiones…</div>
+    } @else if (peticiones.error()) {
+      <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="peticiones.error()!">
+        <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="peticiones.reiniciar()">
+          <ui-icon name="refresh" [size]="16" /> Reintentar
+        </button>
+      </ui-empty>
+    } @else if (peticiones.filas().length === 0) {
+      <ui-empty
+        icono="activity"
+        [titulo]="soloErrores() ? 'Sin errores' : 'Sin peticiones'"
+        [mensaje]="soloErrores() ? 'Esta API no tuvo errores en el período.' : 'No hay peticiones guardadas en el período.'"
+      />
+    } @else {
+      <div class="ui-table-wrap">
+        <table class="ui-table">
+          <thead>
+            <tr>
+              <th>Fecha y hora</th>
+              <th>Estado</th>
+              <th class="obs-num">Duración</th>
+              <th>ID de correlación</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (p of peticiones.filas(); track p.id) {
+              <tr>
+                <td class="obs-fecha">{{ p.fecha | date: 'dd/MM/yyyy HH:mm:ss' }}</td>
+                <td><span class="ui-badge" [class]="badgeEstado(p.estado)">HTTP {{ p.estado }}</span></td>
+                <td class="obs-num">{{ p.duracion_ms | number }} ms</td>
+                <td><span class="obs-correlacion" [title]="p.correlacion">{{ p.correlacion }}</span></td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <app-paginador-cursor
+        [pagina]="peticiones.pagina()"
+        [hayAnterior]="peticiones.hayAnterior()"
+        [haySiguiente]="peticiones.haySiguiente()"
+        [cargando]="peticiones.cargando()"
+        (anterior)="peticiones.anterior()"
+        (siguiente)="peticiones.siguiente()"
+      />
+    }
+  </div>
+</ui-modal>

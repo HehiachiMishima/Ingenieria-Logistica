@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
+import java.util.Map;
+import java.util.stream.Collectors;
 import oracle.simulacion.model.TipoRuta;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
@@ -363,6 +365,60 @@ class SimulacionExcelTest {
     assertEquals(1, analisis.rutas().size());
     assertEquals(2, analisis.rutas().get(0).conteoCod());
     assertEquals("15.00", analisis.totalBultos().toPlainString());
+  }
+
+  @Test
+  void conUnaSolaFilaElCodEsLaCantidadDeLocales() {
+    String csv =
+        "COD,RUTA,CLUSTER,CHUTE,GRUPO,FRECUENCIA,TIPO,BULTOS\n"
+            // Una sola fila: el COD es la cantidad de locales.
+            + "25,1001,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n"
+            + "007,1002,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n"
+            + SimulacionExcel.MAX_LOCALES + ",1003,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n"
+            // Con letras es el código de un local; sin COD cuentan las filas.
+            + "L25,1004,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n"
+            + ",1005,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n"
+            // Varias filas: se cuentan los COD distintos, como siempre.
+            + "25,1006,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n"
+            + "25,1006,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n"
+            + "25,1007,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n"
+            + "30,1007,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n";
+
+    Map<String, Integer> locales =
+        SimulacionExcel.analizar(csv(csv)).rutas().stream()
+            .collect(
+                Collectors.toMap(
+                    SimulacionExcel.FilaRuta::codigoRuta, SimulacionExcel.FilaRuta::conteoCod));
+
+    assertEquals(
+        Map.of(
+            "1001", 25,
+            "1002", 7,
+            "1003", SimulacionExcel.MAX_LOCALES,
+            "1004", 1,
+            "1005", 1,
+            "1006", 1,
+            "1007", 2),
+        locales);
+  }
+
+  @Test
+  void conUnaSolaFilaRechazaUnCodQueNoEsUnaCantidadValida() {
+    String[] invalidos = {"-5", "0", "12.5", "12,5", String.valueOf(SimulacionExcel.MAX_LOCALES + 1)};
+    for (String cod : invalidos) {
+      String csv =
+          "COD,RUTA,CLUSTER,CHUTE,GRUPO,FRECUENCIA,TIPO,BULTOS\n"
+              + "A1,1000,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n"
+              + "\"" + cod + "\",3030,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n";
+
+      ConflictoException error =
+          assertThrows(ConflictoException.class, () -> SimulacionExcel.analizar(csv(csv)), cod);
+
+      // Indica la fila y la ruta para corregir el archivo.
+      assertTrue(
+          error.getMessage().startsWith("Fila 3: la ruta 3030") && error.getMessage().contains(cod),
+          error.getMessage());
+    }
   }
 
   @Test

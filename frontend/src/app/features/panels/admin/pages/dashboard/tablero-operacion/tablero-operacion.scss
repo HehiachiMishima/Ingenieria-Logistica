@@ -1,0 +1,222 @@
+@use 'breakpoints' as bp;
+
+:host {
+  display: block;
+  min-width: 0;
+}
+
+// --- estructura -------------------------------------------------------------------------
+
+.op {
+  margin-top: var(--space-8);
+}
+
+.op__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.op__textos {
+  min-width: 0;
+  flex: 1 1 18rem;
+}
+
+// 3 cuadros resumen en escritorio; uno por fila en tablet y celular.
+.op__resumen {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+
+  @include bp.down(lg) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.op-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-4) var(--space-5);
+}
+
+.op-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.op-card__titulo {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.op-card__icono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+}
+
+.op-card__hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.op-card__pie {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: auto 0 0;
+  padding-top: var(--space-3);
+
+  div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.op-card__ir {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--space-1);
+  min-height: 44px;
+}
+
+.op-card__esqueleto {
+  display: block;
+  height: 120px;
+}
+
+.op-lectura {
+  margin: var(--space-3) 0 0;
+}
+
+// --- apariencia -------------------------------------------------------------------------
+
+.op__titulo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+
+  ui-icon {
+    color: var(--brand);
+  }
+}
+
+.op__sub {
+  margin: var(--space-1) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+
+.op__resumen--cargando .op-card {
+  opacity: 0.6;
+  transition: opacity 160ms ease;
+}
+
+.op-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+}
+
+.op-card__titulo {
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  color: var(--text);
+}
+
+.op-card__icono {
+  border-radius: var(--radius);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.op-card__numero {
+  font-family: var(--font-display);
+  font-size: var(--fs-3xl);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.op-card__etiqueta {
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+
+.op-card__pie {
+  border-top: 1px solid var(--border);
+
+  dt {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+  }
+
+  dd {
+    font-size: var(--fs-md);
+    font-weight: 700;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.op-card__ir {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--accent);
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.op-card__vacio {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+
+.op-lectura {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+// Los dos mapas de Auditoría van lado a lado solo en escritorio ancho (como los pares 7/5).
+.dash-card.op-par {
+  @include bp.down(xl) {
+    grid-column: span 12;
+  }
+}

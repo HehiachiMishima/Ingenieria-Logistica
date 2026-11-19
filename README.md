@@ -143,6 +143,16 @@ Si la base **ya estaba instalada** antes de los tickets abiertos, aplicar en est
 | `migracion_tickets_abiertos.sql` | Con el backend **detenido** | Agrega `cerrado_en` (fin opcional = abierta), sus reglas y el índice de abiertas; rellena las existentes como cerradas. |
 | `migracion_bitacora_indices.sql` | Con el backend encendido | Índices de reincidencias y de responsable + fechas. |
 
+Para habilitar Auditoría, Monitoreo y Actividad en una base existente, aplica
+`backend/migracion_observabilidad_admin.sql` antes de desplegar. El historial comienza
+con el despliegue. Las trazas HTTP se conservan 30 días por defecto
+(`app.monitoreo.retencion-dias`). Los eventos de auditoría se conservan al purgar las trazas.
+Las métricas `atlas.trazas.pendientes` y `atlas.trazas.descartadas` permiten detectar acumulación
+o pérdida de trazas HTTP.
+La migración crea también los resúmenes por hora (`bitacora.peticiones_hora` y
+`bitacora.actividad_hora`) que leen los KPIs y gráficos de Monitoreo y Actividad, y los rellena con
+las trazas existentes; aplícala con el backend detenido. Los resúmenes se conservan 100 días (12 semanas de adopción en el Dashboard).
+
 Para habilitar el balanceo de rutas guardado por archivo en **Simulación Titan**, aplica
 `backend/migracion_balanceo_rutas.sql` a las bases existentes antes de actualizar el backend.
 

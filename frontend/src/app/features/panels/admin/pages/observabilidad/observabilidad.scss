@@ -1,0 +1,18 @@
+:host { display: block; min-width: 0; }
+.filtros, .detalle, nav { display: flex; flex-wrap: wrap; align-items: end; gap: .75rem; }
+.filtros, .detalle { margin-block: 1rem; }
+.filtros label { display: grid; gap: .35rem; font-weight: 600; min-width: 0; flex: 1 1 10rem; }
+.filtros .check { display: flex; align-items: center; min-height: 44px; }
+.filtros .ui-input { width: 100%; min-width: 0; font-size: 1rem; }
+.resultados { border: 1px solid var(--border); border-radius: .75rem; padding-inline: 1rem; background: var(--surface); }
+.resultados > p, nav { margin-block: 1rem; }
+.fila { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto; gap: .75rem; align-items: center; padding-block: .9rem; }
+.fila + .fila { border-top: 1px solid var(--border); }
+.evento { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.fila small { display: block; font-size: .82rem; margin-top: .25rem; color: var(--text-2); }
+.fila, .detalle { overflow-wrap: anywhere; }
+button, select, input:not([type=checkbox]) { min-height: 44px; }
+@media (max-width: 48rem) {
+  .fila { grid-template-columns: minmax(0, 1fr); }
+  .fila button { justify-self: start; }
+}

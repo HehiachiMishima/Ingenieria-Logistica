@@ -1,0 +1,164 @@
+<header class="page-head">
+  <div>
+    <h1 class="page-head__title">Auditoría</h1>
+    <p class="page-head__sub">
+      Registro inmutable de cambios administrativos y de distribución Titan: quién, qué y con qué resultado.
+      @if (corte(); as c) {
+        <span class="obs-nota">· Actualizado {{ c | date: 'HH:mm' }}</span>
+      }
+    </p>
+  </div>
+  <button type="button" class="ui-btn ui-btn--secondary" (click)="lista.reiniciar()" [disabled]="lista.cargando()">
+    <ui-icon name="refresh" [size]="16" />
+    Actualizar
+  </button>
+</header>
+
+<div class="toolbar">
+  <app-selector-periodo [opciones]="periodos" [valor]="filtros().dias" (cambio)="cambiarPeriodo($event)" />
+  <button
+    type="button"
+    class="ui-btn ui-btn--secondary ui-btn--sm toolbar__fin"
+    [attr.aria-expanded]="filtrosAbierto()"
+    aria-controls="auditoria-filtros"
+    (click)="filtrosAbierto.set(true)"
+  >
+    <ui-icon name="filtro" [size]="16" />
+    Filtros
+    @if (filtrosActivos() > 0) {
+      <span class="filtros-badge">{{ filtrosActivos() }}</span>
+    }
+  </button>
+</div>
+
+<ui-filtros-activos [chips]="chips()" (quitar)="quitarFiltro($event)" (limpiar)="limpiar()" />
+
+<ui-panel-filtros
+  id="auditoria-filtros"
+  [abierto]="filtrosAbierto()"
+  [activos]="filtrosActivos()"
+  titulo="Filtrar auditoría"
+  (cerrar)="filtrosAbierto.set(false)"
+  (limpiar)="limpiar()"
+>
+  <section class="filtro-seccion">
+    <h3 class="filtro-seccion__titulo"><ui-icon name="shieldCheck" [size]="15" /> Resultado</h3>
+    <div class="ui-rango" role="group" aria-label="Resultado">
+      @for (r of resultados; track r) {
+        <button
+          type="button"
+          class="ui-rango__btn"
+          [class.ui-rango__btn--on]="filtros().resultado === r"
+          [attr.aria-pressed]="filtros().resultado === r"
+          (click)="aplicarResultado(r)"
+        >
+          {{ r || 'Todos' }}
+        </button>
+      }
+    </div>
+    <span class="filtro-nota">Los indicadores y gráficos de control están en el Dashboard.</span>
+  </section>
+  <section class="filtro-seccion">
+    <h3 class="filtro-seccion__titulo"><ui-icon name="user" [size]="15" /> Quién y qué</h3>
+    <div class="ui-field">
+      <label class="ui-label" for="auditoria-usuario">Nombre de usuario exacto</label>
+      <input
+        id="auditoria-usuario"
+        name="usuario"
+        class="ui-input"
+        placeholder="Todos"
+        autocomplete="off"
+        [value]="filtros().usuario"
+        (change)="aplicarTexto('usuario', $any($event.target).value)"
+        (keydown.enter)="aplicarTexto('usuario', $any($event.target).value)"
+      />
+    </div>
+    <div class="ui-field">
+      <label class="ui-label" for="auditoria-registro">ID del registro</label>
+      <input
+        id="auditoria-registro"
+        name="registro"
+        class="ui-input"
+        placeholder="Todos (p. ej. 345 o 77/4)"
+        autocomplete="off"
+        [value]="filtros().registro"
+        (change)="aplicarTexto('registro', $any($event.target).value)"
+        (keydown.enter)="aplicarTexto('registro', $any($event.target).value)"
+      />
+    </div>
+  </section>
+</ui-panel-filtros>
+
+<div class="table-card" [class.table-card--refrescando]="lista.cargando() && lista.filas().length > 0">
+  @if (lista.cargando() && !lista.cargada()) {
+    <div class="loading"><span class="ui-spinner"></span> Cargando auditoría…</div>
+  } @else if (lista.error()) {
+    <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="lista.error()!">
+      <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="lista.reiniciar()">
+        <ui-icon name="refresh" [size]="16" /> Reintentar
+      </button>
+    </ui-empty>
+  } @else if (lista.filas().length === 0) {
+    <ui-empty
+      icono="bitacora"
+      [titulo]="filtrosActivos() ? 'Sin resultados' : 'Sin cambios'"
+      [mensaje]="filtrosActivos() ? 'Ningún cambio coincide con los filtros.' : 'Aún no hay cambios en el período.'"
+    />
+  } @else {
+    <div class="ui-table-wrap">
+      <table class="ui-table">
+        <thead>
+          <tr>
+            <th>Fecha y hora</th>
+            <th>Usuario</th>
+            <th>Acción</th>
+            <th>Registro</th>
+            <th>Resultado</th>
+            <th>Petición</th>
+            <th>ID de correlación</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (e of lista.filas(); track e.id) {
+            <tr>
+              <td class="obs-fecha">{{ e.fecha | date: 'dd/MM/yyyy HH:mm:ss' }}</td>
+              <td>
+                <div class="ui-person">
+                  <span class="ui-avatar">{{ iniciales(e.usuario) }}</span>
+                  <span class="ui-table__primary" [title]="e.usuario ?? ''">{{ e.usuario || 'Anónimo' }}</span>
+                </div>
+              </td>
+              <td>
+                <span class="ui-table__primary">{{ e.accion }}</span>
+                <span class="u-muted"> · {{ e.entidad }}</span>
+              </td>
+              <td><span class="u-mono">{{ e.registro || '—' }}</span></td>
+              <td>
+                <span class="ui-badge" [class]="badgeResultado[e.resultado ?? ''] ?? 'ui-badge--neutral'">
+                  <span class="ui-dot"></span> {{ e.resultado }}
+                </span>
+              </td>
+              <td>
+                @if (e.estado != null) {
+                  <span class="ui-badge" [class]="badgeEstado(e.estado)">HTTP {{ e.estado }}</span>
+                  <span class="u-muted"> {{ e.duracion_ms | number }} ms</span>
+                } @else {
+                  <span class="u-muted" title="La traza HTTP ya se purgó; el evento se conserva">Purgada</span>
+                }
+              </td>
+              <td><span class="obs-correlacion" [title]="e.correlacion">{{ e.correlacion }}</span></td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <app-paginador-cursor
+      [pagina]="lista.pagina()"
+      [hayAnterior]="lista.hayAnterior()"
+      [haySiguiente]="lista.haySiguiente()"
+      [cargando]="lista.cargando()"
+      (anterior)="lista.anterior()"
+      (siguiente)="lista.siguiente()"
+    />
+  }
+</div>

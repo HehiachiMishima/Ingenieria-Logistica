@@ -21,7 +21,7 @@ export interface CeldaCalor {
   selector: 'ui-heatmap',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="hm">
+    <div class="hm" [style.--hm]="color()">
       <div class="hm__scroll">
         <table class="hm__tabla">
           <thead>
@@ -30,7 +30,9 @@ export interface CeldaCalor {
               @for (c of columnas(); track c) {
                 <th class="hm__col" [title]="c"><span>{{ c }}</span></th>
               }
-              <th class="hm__total-h">Total</th>
+              @if (conTotales()) {
+                <th class="hm__total-h">Total</th>
+              }
             </tr>
           </thead>
           <tbody>
@@ -40,20 +42,24 @@ export interface CeldaCalor {
                 @for (v of f.valores; track $index; let j = $index) {
                   <td
                     class="hm__celda"
-                    [class.hm__celda--pico]="v > 0 && v === f.pico"
+                    [class.hm__celda--pico]="v > 0 && v === f.pico && !f.marcas[j]"
+                    [class.hm__celda--alerta]="f.marcas[j]"
                     [class.hm__celda--fuerte]="v / maximo() > 0.5"
                     [style.--i]="v / maximo()"
-                    [attr.title]="f.fila + ' · ' + columnas()[j] + ': ' + v"
+                    [attr.title]="f.fila + ' · ' + columnas()[j] + ': ' + v + (f.marcas[j] ? ' · ' + textoMarca() : '')"
                     (mouseenter)="foco.set({ fila: f.fila, columna: columnas()[j], valor: v, total: f.total })"
                     (mouseleave)="foco.set(null)"
                   >
                     {{ v > 0 ? v : '' }}
                   </td>
                 }
-                <td class="hm__total">{{ f.totalTexto }}</td>
+                @if (conTotales()) {
+                  <td class="hm__total">{{ f.totalTexto }}</td>
+                }
               </tr>
             }
           </tbody>
+          @if (conTotales()) {
           <tfoot>
             <tr>
               <th class="hm__fila">Total</th>
@@ -63,10 +69,14 @@ export interface CeldaCalor {
               <td class="hm__total hm__total--gran">{{ granTotal() }}</td>
             </tr>
           </tfoot>
+          }
         </table>
       </div>
       <div class="hm__pie">
         <span class="hm__escala"><i></i> menos <b></b> más</span>
+        @if (marcar() && textoMarca()) {
+          <span class="hm__escala"><em></em> {{ textoMarca() }}</span>
+        }
         @if (foco(); as f) {
           <span class="hm__foco">
             <strong>{{ f.fila }}</strong> · {{ f.columna }}: <strong>{{ f.valor }}</strong>
@@ -108,7 +118,7 @@ export interface CeldaCalor {
       text-align: center;
       font-weight: 700;
       color: var(--text-2);
-      background: color-mix(in srgb, var(--brand) calc(var(--i) * 85%), var(--surface));
+      background: color-mix(in srgb, var(--hm, var(--brand)) calc(var(--i) * 85%), var(--surface));
       border-bottom: 1px solid var(--surface);
       border-right: 1px solid var(--surface);
       transition: outline-color var(--transition-fast);
@@ -119,14 +129,16 @@ export interface CeldaCalor {
     .hm__celda--fuerte { color: #fff; }
     .hm__celda:hover { outline-color: var(--accent); }
     .hm__celda--pico { box-shadow: inset 0 0 0 2px var(--text); }
+    .hm__celda--alerta { color: #fff; background: var(--danger); box-shadow: inset 0 0 0 2px var(--text); }
     .hm__total { text-align: center; font-weight: 800; color: var(--text); background: var(--surface-2); padding: 0 8px; }
     .hm__total--gran { color: #fff; background: var(--chrome-bg-2); }
     tfoot .hm__fila { background: var(--surface-2); }
     .hm__pie { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: var(--space-3); font-size: var(--fs-xs); color: var(--text-3); }
     .hm__escala { display: inline-flex; align-items: center; gap: 6px; }
     .hm__escala i, .hm__escala b { display: inline-block; width: 18px; height: 10px; border-radius: 3px; }
-    .hm__escala i { background: color-mix(in srgb, var(--brand) 10%, var(--surface)); border: 1px solid var(--border); }
-    .hm__escala b { background: var(--brand); }
+    .hm__escala i { background: color-mix(in srgb, var(--hm, var(--brand)) 10%, var(--surface)); border: 1px solid var(--border); }
+    .hm__escala b { background: var(--hm, var(--brand)); }
+    .hm__escala em { display: inline-block; width: 18px; height: 10px; border-radius: 3px; background: var(--danger); box-shadow: inset 0 0 0 1px var(--text); }
     .hm__foco strong { color: var(--text); }
   `,
 })
@@ -136,6 +148,15 @@ export class Heatmap {
   readonly maxColumnas = input<number>(10);
   readonly tituloFilas = input<string>('Fila');
   readonly tituloColumnas = input<string>('Columna');
+  /** false = filas y columnas en el orden en que llegan (días, horas…), sin agrupar en «Otros». */
+  readonly ordenar = input<boolean>(true);
+  /** Color de la escala de intensidad (por defecto, el de marca). */
+  readonly color = input<string>('var(--brand)');
+  /** false = sin fila ni columna de totales (p. ej. cuando la celda es un p95 y sumarlos no tiene sentido). */
+  readonly conTotales = input<boolean>(true);
+  /** Celdas a resaltar como alerta (fondo de peligro y borde); su nombre va en `textoMarca`. */
+  readonly marcar = input<((fila: string, columna: string, valor: number) => boolean) | null>(null);
+  readonly textoMarca = input<string>('');
 
   readonly foco = signal<{ fila: string; columna: string; valor: number; total: number } | null>(null);
 
@@ -148,6 +169,9 @@ export class Heatmap {
   }
 
   private seleccion(clave: 'fila' | 'columna', maximo: number): { visibles: string[]; hayOtros: boolean } {
+    if (!this.ordenar()) {
+      return { visibles: [...this.totales(clave).keys()], hayOtros: false };
+    }
     const orden = [...this.totales(clave).entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
     return { visibles: orden.slice(0, maximo), hayOtros: orden.length > maximo };
   }
@@ -171,9 +195,11 @@ export class Heatmap {
         valores[i][j] += c.valor;
       }
     }
+    const marcar = this.marcar();
     return filas.map((fila, i) => {
       const total = valores[i].reduce((a, b) => a + b, 0);
-      return { fila, valores: valores[i], pico: Math.max(...valores[i]), total, totalTexto: entero(total) };
+      const marcas = valores[i].map((v, j) => !!marcar && v > 0 && marcar(fila, columnas[j], v));
+      return { fila, valores: valores[i], marcas, pico: Math.max(...valores[i]), total, totalTexto: entero(total) };
     });
   });
 

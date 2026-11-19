@@ -1,0 +1,67 @@
+<header class="page-head">
+  <div>
+    <h1 class="page-head__title">{{ modulo.nombre }}</h1>
+    <p class="page-head__sub">{{ modulo.descripcion }}</p>
+  </div>
+</header>
+<form class="filtros" (ngSubmit)="buscar()">
+  <label>Período
+    <select name="dias" class="ui-input" [(ngModel)]="dias">
+      <option [ngValue]="1">Últimas 24 horas</option>
+      <option [ngValue]="7">Últimos 7 días</option>
+      <option [ngValue]="30">Últimos 30 días</option>
+      @if (modo === 'auditoria') { <option [ngValue]="90">Últimos 90 días</option> }
+    </select>
+  </label>
+  @if (modo !== 'monitoreo') {
+    <label>Usuario <input class="ui-input" name="usuario" placeholder="Todos" [(ngModel)]="usuario" /></label>
+  }
+  @if (modo === 'auditoria') {
+    <label>ID del registro <input class="ui-input" name="registro" placeholder="Todos" [(ngModel)]="registro" /></label>
+  }
+  @if (detalle()) {
+    <label class="check"><input type="checkbox" name="errores" [(ngModel)]="soloErrores" /> Solo errores</label>
+  }
+  <button class="ui-btn ui-btn--primary" type="submit">Consultar</button>
+</form>
+@if (detalle(); as endpoint) {
+  <div class="detalle">
+    <button class="ui-btn ui-btn--secondary" (click)="abrir(null)">Volver a endpoints</button>
+    <strong>{{ endpoint.metodo }} {{ endpoint.ruta }}</strong>
+  </div>
+}
+<section class="resultados" aria-label="Resultados" [attr.aria-busy]="cargando()">
+  @if (cargando()) { <p role="status">Consultando…</p> }
+  @else if (error()) {
+    <p role="alert">No se pudo completar la consulta.</p>
+    <button class="ui-btn ui-btn--secondary" (click)="buscar()">Reintentar</button>
+  } @else if (datos().endpoints; as endpoints) {
+    @for (e of endpoints; track e.metodo + e.ruta) {
+      <article class="fila">
+        <div><strong>{{ e.metodo }} {{ e.ruta }}</strong><small>{{ e.peticiones }} peticiones</small></div>
+        <div><span>{{ e.errores }} errores ({{ e.porcentaje }} %)</span><small>Tiempo p95 · {{ e.p95 }} ms</small></div>
+        <button class="ui-btn ui-btn--secondary" (click)="abrir(e)">Ver peticiones</button>
+      </article>
+    } @empty { <p role="status">Sin peticiones en el período seleccionado.</p> }
+  } @else {
+    @for (e of datos().filas; track e.id) {
+      <article class="fila evento">
+        <div>
+          <strong>{{ e.accion || e.metodo }} {{ e.entidad || e.ruta }} {{ e.registro }}</strong>
+          <small>{{ e.fecha | date:'dd/MM/yyyy HH:mm:ss':'-0500' }} @if (modo !== 'monitoreo') { · {{ e.usuario || 'Anónimo' }} }</small>
+        </div>
+        <div>
+          <span>{{ e.resultado }} @if (e.estado) { HTTP {{ e.estado }} · {{ e.duracion_ms }} ms }</span>
+          @if (e.accion && e.ruta) { <small>{{ e.metodo }} {{ e.ruta }}</small> }
+          <small>ID de correlación · {{ e.correlacion }}</small>
+        </div>
+      </article>
+    } @empty { <p role="status">Sin registros para estos filtros.</p> }
+    @if (anteriores().length || datos().siguiente) {
+      <nav aria-label="Paginación">
+        <button class="ui-btn ui-btn--secondary" [disabled]="!anteriores().length" (click)="paginar(false)">Anterior</button>
+        <button class="ui-btn ui-btn--secondary" [disabled]="!datos().siguiente" (click)="paginar(true)">Siguiente</button>
+      </nav>
+    }
+  }
+</section>

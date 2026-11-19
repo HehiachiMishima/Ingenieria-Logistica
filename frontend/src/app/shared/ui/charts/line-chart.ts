@@ -91,6 +91,8 @@ export interface SerieLinea {
       display: flex;
       flex-wrap: wrap;
       gap: 6px 14px;
+      /* La etiqueta superior del eje Y sobresale media línea: con texto grande pisaba la leyenda. */
+      margin-bottom: var(--space-2);
       font-size: var(--fs-xs);
       color: var(--text-2);
     }

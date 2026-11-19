@@ -13,24 +13,9 @@ import { Kpi } from '../../../../../shared/ui/charts/kpi';
 import { LineChart, SerieLinea } from '../../../../../shared/ui/charts/line-chart';
 import { EmptyState } from '../../../../../shared/ui/empty-state/empty-state';
 import { Icon } from '../../../../../shared/ui/icon/icon';
+import { COLOR_PANEL, NOMBRE_PANEL } from '../../ui/paneles-admin';
+import { TableroOperacion } from './tablero-operacion/tablero-operacion';
 
-const NOMBRE_PANEL: Record<string, string> = {
-  PANEL_ADMIN: 'Administración',
-  PANEL_BITACORA: 'Bitácora',
-  PANEL_SIMULACION: 'Simulación',
-  PANEL_SIMULACION_SANTA: 'Santa Anita',
-  PANEL_MALLA: 'Malla',
-  PANEL_PICKING: 'Picking',
-};
-
-const COLOR_PANEL: Record<string, string> = {
-  PANEL_ADMIN: 'var(--violet)',
-  PANEL_BITACORA: 'var(--brand)',
-  PANEL_SIMULACION: 'var(--cyan)',
-  PANEL_SIMULACION_SANTA: 'var(--accent)',
-  PANEL_MALLA: 'var(--success)',
-  PANEL_PICKING: 'var(--warning)',
-};
 
 /** Meta del índice de gobierno: desde aquí el acceso se considera sano. */
 const META_GOBIERNO = 0.9;
@@ -59,7 +44,7 @@ interface Alerta {
 @Component({
   selector: 'app-admin-dashboard',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [BarChart, DatePipe, EmptyState, GaugeChart, Icon, Kpi, LineChart, RouterLink],
+  imports: [BarChart, DatePipe, EmptyState, GaugeChart, Icon, Kpi, LineChart, RouterLink, TableroOperacion],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.scss',
 })

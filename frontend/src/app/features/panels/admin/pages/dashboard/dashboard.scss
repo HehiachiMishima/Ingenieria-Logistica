@@ -142,3 +142,10 @@
     color: var(--success);
   }
 }
+
+/* Esqueleto de la lectura ejecutiva mientras carga (reserva su alto). */
+.admin-insight-esqueleto {
+  display: block;
+  width: 100%;
+  height: 46px;
+}
