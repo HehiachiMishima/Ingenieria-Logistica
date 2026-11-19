@@ -498,35 +498,32 @@
                   (mousedown)="presionarRuta($event)" (contextmenu)="menuRuta($event, ruta.id)"
                   (click)="clicRuta($event, ruta.id)" (keydown.enter)="clicRuta($event, ruta.id)"
                   (keydown.space)="clicRuta($event, ruta.id)">
-                  @if (celda.grupo !== null) {
-                  <!-- Pestaña del grupo: su número sobre su color (el aria-label de la ruta ya lo dice). -->
-                  <span class="matriz-ruta__pestana" [class.matriz-ruta__pestana--corta]="celda.grupo.length <= 2"
-                    aria-hidden="true" [title]="'Grupo ' + celda.grupo">{{ celda.grupo }}</span>
-                  }
-                  <span class="matriz-ruta__codigo">{{ ruta.codigoRuta }}</span>
-                  <span class="matriz-ruta__bultos" [title]="celda.bultos + ' bultos'">
-                    <ng-container [ngTemplateOutlet]="cajaBulto" />{{ celda.bultos }}
+                  <!-- Ficha en dos filas. Arriba: tipo (B2C/B2B: la misma ruta puede venir como las
+                       dos), días y bultos. Abajo: grupo y número de ruta centrado. El aria-label de
+                       la ruta ya lo dice todo, por eso las piezas de color van aria-hidden. -->
+                  <span class="matriz-ruta__datos">
+                    <span class="matriz-ruta__pestana-tipo" [attr.data-tipo]="ruta.tipo" aria-hidden="true">{{ ruta.tipo }}</span>
+                    <span class="matriz-ruta__frecuencia" [attr.data-frecuencia]="celda.frecuencia.tipo"
+                      [class.matriz-ruta__frecuencia--fija]="celda.frecuencia.fija" aria-hidden="true">{{ celda.frecuencia.dias }}</span>
+                    <span class="matriz-ruta__bultos" [title]="celda.bultos + ' bultos'">
+                      <ng-container [ngTemplateOutlet]="cajaBulto" />{{ celda.bultos }}
+                    </span>
                   </span>
-                  @if (celda.cambioCluster) {
-                  <small class="cluster-original" [title]="'Cluster original: ' + ruta.clusterOriginal">
-                    ← {{ ruta.clusterOriginal }}
-                  </small>
-                  }
-                  <!-- Pestaña vertical del tipo (B2C/B2B), pegada a la de frecuencia: la misma ruta
-                       puede venir como B2C y como B2B, y así se distinguen sin abrir el detalle. -->
-                  <span class="matriz-ruta__pestana-tipo" [attr.data-tipo]="ruta.tipo" aria-hidden="true">
-                    <span class="matriz-ruta__pestana-tipo-texto">{{ ruta.tipo }}</span>
+                  <span class="matriz-ruta__fila-ruta">
+                    <!-- Pestaña del grupo: su número sobre su color; sin grupo queda gris y vacía,
+                         así el número de ruta sigue centrado. -->
+                    <span class="matriz-ruta__pestana" [class.matriz-ruta__pestana--vacia]="celda.grupo === null"
+                      [class.matriz-ruta__pestana--corta]="celda.grupo !== null && celda.grupo.length <= 2"
+                      aria-hidden="true" [attr.title]="celda.grupo !== null ? 'Grupo ' + celda.grupo : null">{{ celda.grupo }}</span>
+                    <span class="matriz-ruta__caja-codigo" [class.matriz-ruta__caja-codigo--lado]="guardando || celda.cambioCluster">
+                      <span class="matriz-ruta__codigo" [attr.data-frecuencia]="celda.frecuencia.tipo">{{ ruta.codigoRuta }}</span>
+                      @if (guardando) {
+                      <span class="ui-spinner matriz-ruta__spinner" aria-label="Guardando"></span>
+                      } @else if (celda.cambioCluster) {
+                      <small class="cluster-original" [title]="'Cluster original: ' + ruta.clusterOriginal">{{ ruta.clusterOriginal }}</small>
+                      }
+                    </span>
                   </span>
-                  @if (guardando) {
-                  <span class="ui-spinner matriz-ruta__spinner" aria-label="Guardando"></span>
-                  } @else {
-                  <!-- Pestaña vertical de la frecuencia, como la del grupo pero en el borde derecho
-                       (no le quita ancho al código). Sus días completos van en el title de la ruta. -->
-                  <span class="matriz-ruta__frecuencia" [attr.data-frecuencia]="celda.frecuencia.tipo"
-                    [class.matriz-ruta__frecuencia--fija]="celda.frecuencia.fija" aria-hidden="true">
-                    <span class="matriz-ruta__frecuencia-texto">{{ celda.frecuencia.texto }}</span>
-                  </span>
-                  }
                 </div>
                 }
               </td>

@@ -346,13 +346,18 @@
  */
 .mz {
   --mz-label: 240px;
-  /* 156 px de la ficha + 17 px de la pestaña de tipo (16 px y 1 px de separación). */
-  --mz-col: 173px;
+  /* Ficha de dos filas: tipo (32 px), días (44 px) y bultos de hasta 5 cifras con su caja. */
+  --mz-col: 156px;
+  /* Alto de las filas de totales. */
   --mz-fila: 42px;
+  /* Alto de una ficha de ruta: 22 px (tipo · días · bultos) + 1 px + 27 px (grupo · ruta). */
+  --mz-fila-ruta: 50px;
+  /* Línea entre rutas y entre chutes: más marcada que las internas de la ficha. */
+  --mz-separador: var(--border-strong);
   /* Filas visibles: las fija MIN_FILAS (configuracion.ts) vía [style.--mz-filas]. */
   --mz-filas: 4;
-  /* Cada fila mide su alto + 1 px de borde; la cabecera, 40 px. */
-  --mz-alto: calc(((var(--mz-fila) + 1px) * var(--mz-filas)) + 40px);
+  /* Cada fila de rutas mide su alto + 3 px de línea; la cabecera, 40 px. */
+  --mz-alto: calc(((var(--mz-fila-ruta) + 3px) * var(--mz-filas)) + 40px);
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -532,23 +537,6 @@
   }
 }
 
-/* Ruta con su ficha abierta. */
-.matriz-ruta--activa {
-  box-shadow: inset 0 0 0 2px var(--cluster-color, var(--accent));
-  background: color-mix(in srgb, var(--cluster-color, var(--accent)) 8%, transparent);
-}
-
-/* Ruta elegida para moverla con otras (Ctrl/⌘+clic): borde y fondo del acento. */
-.matriz-ruta--elegida {
-  box-shadow: inset 0 0 0 2px var(--accent);
-  background: var(--accent-soft);
-}
-
-.matriz-ruta:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
 .mz-panel__spinner {
   width: 14px;
   height: 14px;
@@ -636,12 +624,23 @@
 }
 
 .matriz__celda {
-  height: var(--mz-fila);
+  height: var(--mz-fila-ruta);
   background: var(--surface);
   transition: background-color var(--transition-fast);
 
   &:hover {
     background: var(--table-hover);
+  }
+}
+
+/* Cada ruta separada de la de abajo (3 px) y de la del chute vecino (2 px). */
+.mz-tabla td.matriz__celda {
+  border-right: 2px solid var(--mz-separador);
+  border-bottom: 3px solid var(--mz-separador);
+
+  &.mz-der {
+    border-right: 0;
+    border-left: 2px solid var(--mz-separador);
   }
 }
 
@@ -651,71 +650,7 @@
   background: repeating-linear-gradient(45deg, var(--surface-2) 0 4px, var(--surface) 4px 8px);
 }
 
-/* Ruta: código, etiqueta de tipo, cluster de origen y asa ⋮⋮. */
-.matriz-ruta {
-  position: relative;
-  display: flex;
-  align-items: center;
-  /* Separación y margen justos: el código y la pastilla de bultos caben sin recortarse. */
-  gap: 4px;
-  min-width: 0;
-  height: 100%;
-  min-height: var(--mz-fila);
-  /* 35 px a la derecha: las pestañas de tipo (16 px) y de frecuencia (14 px) y sus separaciones. */
-  padding: 0 35px 0 var(--space-2);
-  white-space: nowrap;
-  /* El ancho lo fija la columna, no el contenido: una ruta con mucho texto no
-     ensancha su columna (cada cluster es otra tabla y se desalinearían). */
-  contain: inline-size;
-
-  /* Columnas angostas: 1 px menos entre elementos para que entre la pestaña de grupo. */
-  @include bp.down(md) {
-    gap: 3px;
-  }
-}
-
-.matriz-ruta__codigo {
-  /* Se recorta solo si ya no queda nada más que encoger (código muy largo). */
-  flex: 0 1 auto;
-  min-width: 3ch;
-  overflow: hidden;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  color: var(--text);
-}
-
-/* Bultos de la ruta (redondeados hacia arriba): pastilla kraft con la caja a color.
-   Nunca se recorta; lo que se encoge si falta espacio es «← CLx». */
-.matriz-ruta__bultos {
-  --kraft: #c8894a;
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 7px 2px 4px;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  line-height: 1.25;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-  background: color-mix(in srgb, var(--kraft) 16%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--kraft) 45%, var(--border));
-  user-select: none;
-
-  /* Columnas angostas (tablet y celular): un poco más compacta para que el
-     código no se recorte con montos de 4 o 5 cifras. */
-  @include bp.down(md) {
-    gap: 3px;
-    padding: 1px 4px 1px 3px;
-    font-size: 0.7rem;
-
-    .caja-bulto {
-      width: 14px;
-      height: 14px;
-    }
-  }
-}
+/* La ficha de cada ruta (dos filas) está en configuracion-ficha.scss. */
 
 /* Caja de cartón: caras kraft, cinta clara y contorno marrón (se ve en ambos temas). */
 .caja-bulto {
@@ -748,80 +683,6 @@
     stroke-width: 1.5;
     stroke-linecap: round;
   }
-}
-
-/* Grupo de la ruta (todo cluster con grupos, aunque sea uno): pestaña pegada al borde
-   izquierdo, del color del grupo, con su número en blanco. Usa el margen
-   izquierdo de la ruta (margen negativo), así ocupa solo unos píxeles más.
-   El color se oscurece un poco para que el blanco se lea en todos los tonos. */
-.matriz-ruta__pestana {
-  display: inline-flex;
-  flex: 0 100 auto;
-  align-items: center;
-  justify-content: center;
-  align-self: stretch;
-  min-width: 14px;
-  max-width: 6ch;
-  /* Deja 1 px del borde izquierdo libre para el contorno de la ruta activa. */
-  margin: 5px 0 5px -7px;
-  padding: 0 2px;
-  overflow: hidden;
-  border-radius: 0 4px 4px 0;
-  font-size: 0.75rem;
-  font-weight: 800;
-  line-height: 1;
-  color: #fff;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-  background: color-mix(in srgb, var(--grupo-color, var(--accent)) 82%, #000);
-  user-select: none;
-
-  /* Nombres de 1 o 2 caracteres (números de grupo): nunca se recortan. */
-  &--corta {
-    flex: none;
-  }
-
-  @include bp.down(md) {
-    padding: 0 1px;
-  }
-
-  /* Nombres largos: se acortan con «…» antes que el código, dejando 2 letras. */
-  &:not(&--corta) {
-    min-width: calc(2ch + 12px);
-  }
-}
-
-
-.matriz-ruta .cluster-original {
-  /* Es lo primero que se acorta: la columna nunca crece (los clusters son tablas
-     distintas y se desalinearían). El cluster original sigue en la ficha y el rayado. */
-  flex: 0 1000 auto;
-  min-width: 0;
-  overflow: hidden;
-  font-size: 0.66rem;
-  text-overflow: ellipsis;
-}
-
-/* Ruta con otro chute o cluster que en el Excel: fondo rayado suave. */
-.matriz-ruta--movida {
-  background: repeating-linear-gradient(
-    -45deg,
-    transparent 0 6px,
-    color-mix(in srgb, var(--accent) 7%, transparent) 6px 12px
-  );
-}
-
-.matriz-ruta--guardando {
-  opacity: 0.55;
-}
-
-/* En el lugar de la pestaña de frecuencia (14 px al borde), sin pisar la de tipo. */
-.matriz-ruta__spinner {
-  position: absolute;
-  right: 0;
-  width: 14px;
-  height: 14px;
 }
 
 /* Arrastre: la ruta tomada se atenúa y la columna destino se resalta. */
@@ -954,7 +815,6 @@
 @include bp.down(md) {
   .mz {
     --mz-label: 200px;
-    --mz-col: 157px;
   }
 }
 

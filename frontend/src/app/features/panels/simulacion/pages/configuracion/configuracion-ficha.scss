@@ -1,0 +1,250 @@
+/*
+ * Ficha de una ruta en la matriz. Archivo aparte: el componente pasaba el presupuesto de estilos
+ * por archivo. Ocupa toda la celda en dos filas:
+ *   arriba (22 px): tipo · días · bultos;
+ *   abajo: grupo · número de ruta, centrado en toda la ficha.
+ * Los bloques se separan con 1 px suave; entre rutas va la línea marcada de la celda
+ * (--mz-separador, en configuracion.scss).
+ */
+.matriz-ruta {
+  position: relative;
+  display: grid;
+  grid-template-rows: 22px minmax(0, 1fr);
+  gap: 1px;
+  min-width: 0;
+  height: 100%;
+  min-height: var(--mz-fila-ruta);
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap; /* responsive:ok cada pieza tiene ancho fijo o se acorta con «…» */
+  /* El ancho lo fija la columna, no el contenido: una ruta con mucho texto no
+     ensancha su columna (cada cluster es otra tabla y se desalinearían). */
+  contain: inline-size;
+  background: color-mix(in srgb, var(--border) 55%, var(--surface));
+}
+
+.matriz-ruta__datos,
+.matriz-ruta__fila-ruta {
+  display: flex;
+  gap: 1px;
+  min-width: 0;
+}
+
+.matriz-ruta__pestana-tipo,
+.matriz-ruta__frecuencia,
+.matriz-ruta__bultos {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+}
+
+/* Tipo: B2C en verde (blanco 5,5:1 en claro; tinta sobre verde claro 6:1 en oscuro) y B2B en el
+   dorado Atlas con azul marino (10:1 en los dos temas). */
+.matriz-ruta__pestana-tipo {
+  width: 32px;
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+  color: var(--surface);
+  background: color-mix(in srgb, var(--success) 80%, #000);
+
+  &[data-tipo='B2B'] {
+    color: #0b1f3a;
+    background: #f7c400;
+  }
+}
+
+/* Días con el color de su balanceo: L-X-V azul, M-J-S naranja, diaria gris (más oscura si ya
+   está balanceada). */
+.matriz-ruta__frecuencia {
+  width: 44px;
+  font-size: 0.68rem;
+  color: #fff;
+  background: #475569;
+
+  &[data-frecuencia='LXV'] {
+    background: #1d4ed8;
+  }
+
+  &[data-frecuencia='MJS'] {
+    background: #c2410c;
+  }
+
+  &--fija {
+    background: #334155;
+  }
+}
+
+/* Bultos (redondeados hacia arriba) con la caja kraft: toman el resto de la fila y nunca se
+   recortan (caben 5 cifras). */
+.matriz-ruta__bultos {
+  --kraft: #c8894a;
+  flex: 1 1 auto;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 3px;
+  font-size: 0.75rem;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--kraft) 16%, var(--surface));
+
+  .caja-bulto {
+    width: 15px;
+    height: 15px;
+  }
+}
+
+/* Grupo: su número en blanco sobre su color, oscurecido un poco para que se lea en todos los
+   tonos. Sin grupo queda gris y vacía. Los nombres largos se acortan con «…» (2 letras mínimo). */
+.matriz-ruta__pestana {
+  flex: 0 100 auto;
+  align-content: center;
+  min-width: calc(2ch + 8px);
+  max-width: 6ch;
+  padding: 0 3px;
+  overflow: hidden;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #fff;
+  text-align: center;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--grupo-color, var(--accent)) 82%, #000);
+  user-select: none;
+
+  /* Números de grupo (1 o 2 caracteres): nunca se recortan. */
+  &--corta,
+  &--vacia {
+    flex: none;
+    min-width: 24px;
+  }
+
+  &--vacia {
+    background: color-mix(in srgb, var(--text-3) 55%, var(--surface));
+  }
+}
+
+.matriz-ruta__caja-codigo {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+  background: var(--surface);
+
+  /* Número centrado en toda la ficha: a la derecha queda un hueco igual a la pestaña del grupo
+     (24 px + 1 px). Es lo primero que cede si un código largo no cabe. Con cluster original o
+     guardando, ese lado lo ocupa la marca. */
+  &::after {
+    content: '';
+    flex: 0 1000 25px;
+  }
+
+  &--lado::after {
+    content: none;
+  }
+}
+
+/* Número de ruta con el color de su frecuencia (más claro en el tema oscuro). */
+.matriz-ruta__codigo {
+  flex: 1 1 auto;
+  align-self: stretch;
+  align-content: center;
+  min-width: 3ch;
+  overflow: hidden;
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  text-align: center;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+
+  &[data-frecuencia='LXV'] {
+    color: light-dark(#1d4ed8, #93c5fd);
+  }
+
+  &[data-frecuencia='MJS'] {
+    color: light-dark(#c2410c, #fdba74);
+  }
+}
+
+/* Cluster original (la ruta viene de otro): lo primero que se acorta, la columna nunca crece.
+   El nombre completo sigue en el title, en el detalle y en el rayado. */
+.matriz-ruta .cluster-original {
+  flex: 0 1000 auto;
+  min-width: 0;
+  max-width: 50%;
+  margin-right: 3px;
+  padding: 2px 3px;
+  overflow: hidden;
+  border-radius: 3px;
+  font-size: 0.6rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  background: var(--surface-2);
+}
+
+.matriz-ruta__spinner {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  margin-right: 5px;
+}
+
+/* ---------- Estados ----------
+   El contorno va encima de los bloques de color (outline, no el inset de antes, que quedaría
+   debajo); el tono de fondo, en la caja del número. */
+.matriz__celda:hover .matriz-ruta__caja-codigo {
+  background-color: var(--table-hover);
+}
+
+/* Ruta con otro chute o cluster que en el Excel: rayado suave en la caja del número (solo la
+   imagen: el color de fondo sigue siendo el del estado, también al pasar el mouse). */
+.matriz-ruta--movida .matriz-ruta__caja-codigo {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0 6px,
+    color-mix(in srgb, var(--accent) 9%, transparent) 6px 12px
+  );
+}
+
+/* Ruta con su ficha abierta. */
+.matriz-ruta--activa {
+  outline: 2px solid var(--cluster-color, var(--accent));
+  outline-offset: -2px;
+
+  &.matriz-ruta .matriz-ruta__caja-codigo {
+    background-color: color-mix(in srgb, var(--cluster-color, var(--accent)) 8%, var(--surface));
+  }
+}
+
+/* Ruta elegida para moverla con otras (Ctrl/⌘+clic): contorno y fondo del acento (al 8 %: el
+   número naranja sigue en 4,6:1). */
+.matriz-ruta--elegida {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+
+  &.matriz-ruta .matriz-ruta__caja-codigo {
+    background-color: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  }
+}
+
+.matriz-ruta:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.matriz-ruta--guardando {
+  opacity: 0.55;
+}
+
+/* Arrastre: la columna destino (o prohibida) se marca también sobre las fichas que ya tiene. */
+.matriz__celda--destino > .matriz-ruta {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.matriz__celda--prohibido > .matriz-ruta {
+  outline: 2px solid var(--danger);
+  outline-offset: -2px;
+}

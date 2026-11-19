@@ -109,7 +109,7 @@ interface CeldaRuta {
   grupoColor: string | null;
   /** Bultos redondeados hacia arriba y con miles («1.250»), para la pastilla. */
   bultos: string;
-  /** Pestaña de su frecuencia (al estilo de la del grupo, en el borde derecho). */
+  /** Su frecuencia: el bloque de días de la ficha y el color del número de ruta. */
   frecuencia: PestanaFrecuencia;
 }
 
@@ -188,7 +188,7 @@ interface BloqueMatriz {
  * Filas de cada bloque: también su alto visible (el SCSS lo toma de
  * --mz-filas). Con más rutas, la tabla crece y se recorre con scroll vertical.
  */
-const MIN_FILAS = 4;
+const MIN_FILAS = 3;
 
 /**
  * Dónde se dibuja la ficha de detalle: junto a su ancla (abajo o arriba,
@@ -301,7 +301,7 @@ interface EstadoRutasMatriz {
     HorasPipe,
 ],
   templateUrl: './configuracion.html',
-  styleUrls: ['./configuracion.scss', './configuracion-panel.scss', './configuracion-pestanas.scss'],
+  styleUrls: ['./configuracion.scss', './configuracion-panel.scss', './configuracion-ficha.scss'],
 })
 export class SimulacionConfiguracion {
   private readonly api = inject(SimulacionApi);
@@ -3405,13 +3405,13 @@ export function textoFrecuencia(frecuencia: string | null | undefined, dias?: st
   return frecuencia === 'LXV' ? 'L-X-V' : frecuencia === 'MJS' ? 'M-J-S' : 'L-M-X-J-V-S';
 }
 
-/** Pestaña de frecuencia de una ruta: texto corto, color de su balanceo y título completo. */
+/** Frecuencia de una ruta en su ficha: días, color de su balanceo y título completo. */
 export interface PestanaFrecuencia {
-  /** D (toda la semana), LXV, MJS o sus días sin guiones si son parciales («LX», «V»). */
-  texto: string;
+  /** «Diaria» (toda diaria, también la de días mezclados) o sus días: «L-X-V», «M-J-S», «L-X»… */
+  dias: string;
   tipo: 'D' | 'LXV' | 'MJS';
   titulo: string;
-  /** Diaria ya balanceada (paso Diarias): pestaña más oscura. */
+  /** Diaria ya balanceada (paso Diarias): bloque de días más oscuro. */
   fija: boolean;
 }
 
@@ -3423,12 +3423,11 @@ function esDiaria(ruta: RutaSimulacion): boolean {
 function pestanaFrecuencia(ruta: RutaSimulacion): PestanaFrecuencia {
   const dias = textoFrecuencia(ruta.frecuencia, ruta.dias);
   const diaria = esDiaria(ruta);
-  // La pestaña apila una letra por línea y caben 3: toda diaria (también la de
-  // días mezclados, p. ej. L-M) es «D»; sus días van en el título de la ruta.
-  const corto = diaria ? 'D' : dias.replaceAll('-', '');
+  // Toda diaria (también la de días mezclados, p. ej. L-M) se lee «Diaria»; sus días van en el
+  // título de la ruta.
   const fija = diaria && !!ruta.diariaFija;
   return {
-    texto: corto,
+    dias: diaria ? 'Diaria' : dias,
     tipo: diaria ? 'D' : ruta.frecuencia === 'MJS' ? 'MJS' : 'LXV',
     titulo: `Frecuencia ${dias}${diaria ? ' (diaria' + (fija ? ', ya balanceada)' : ')') : ''}`,
     fija,
