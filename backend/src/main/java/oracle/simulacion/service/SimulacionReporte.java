@@ -177,7 +177,8 @@ public class SimulacionReporte {
           porFrecuencia[FRECUENCIAS.indexOf(f)]++;
           String grupo = r.grupo() == null || r.grupo().isBlank() ? null : r.grupo();
           lista.add(
-              new DistribucionResponse.Ruta(r.codigoRuta(), f, grupo, grupo == null ? null : colores.get(grupo), b));
+              new DistribucionResponse.Ruta(
+                  r.codigoRuta(), f, grupo, grupo == null ? null : colores.get(grupo), b, r.tipo()));
         }
         var puesto = new Puesto(c.id(), chuteId);
         celdas.add(new DistribucionResponse.Celda(chuteId, List.copyOf(lista), entero(lxv), entero(mjs),

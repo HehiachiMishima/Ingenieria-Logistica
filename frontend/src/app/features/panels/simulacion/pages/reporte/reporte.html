@@ -59,9 +59,12 @@
             <span class="dist__ficha-grupo" style="background: #7c3aed">1</span>
             <span class="dist__ficha-codigo dist__ruta--lxv">3013</span>
             <span class="dist__ficha-bultos"><i></i>465</span>
+            <span class="dist__ficha-tipo" data-tipo="B2C"><span>B2C</span></span>
             <span class="dist__ficha-frecuencia dist__ficha-frecuencia--l">L</span>
           </span>
-          <span>grupo (con su color) · número de ruta con el color de su frecuencia · bultos · frecuencia:</span>
+          <span>grupo (con su color) · número de ruta con el color de su frecuencia · bultos · tipo:</span>
+          <span><b class="dist__tipo-muestra" data-tipo="B2C">B2C</b> <b class="dist__tipo-muestra" data-tipo="B2B">B2B</b></span>
+          <span>· frecuencia:</span>
           <span><b class="dist__ruta--diaria">D</b> diaria (sale los dos días)</span>
           <span><b class="dist__ruta--lxv">L</b> L-X-V</span>
           <span><b class="dist__ruta--mjs">M</b> M-J-S</span>
@@ -106,6 +109,10 @@
                           <span class="dist__ficha-grupo" [style.background]="r.color">{{ r.grupo }}</span>
                           <span class="dist__ficha-codigo {{ r.clase }}">{{ r.codigo }}</span>
                           <span class="dist__ficha-bultos"><i aria-hidden="true"></i>{{ r.bultos }}</span>
+                          @if (r.tipo) {
+                            <!-- Pestaña vertical del tipo, pegada a la de frecuencia (como la planilla). -->
+                            <span class="dist__ficha-tipo" [attr.data-tipo]="r.tipo"><span>{{ r.tipo }}</span></span>
+                          }
                           <span class="dist__ficha-frecuencia dist__ficha-frecuencia--{{ r.letra.toLowerCase() }}">
                             {{ r.letra }}
                           </span>
@@ -161,7 +168,8 @@
 
         <p class="dist__nota">
           Cada ficha muestra el grupo (número sobre su color), el número de ruta con el color de su frecuencia, sus
-          bultos redondeados hacia arriba y la letra de la frecuencia (D diaria, L L-X-V, M M-J-S). Una diaria sale una
+          bultos redondeados hacia arriba, su tipo (B2C en verde, B2B en dorado) y la letra de la frecuencia (D diaria,
+          L L-X-V, M M-J-S). Una diaria sale una
           sola vez y trabaja los dos días. Las filas de bultos suman por chute la carga de cada día (diarias + rutas de
           ese día), redondeada al entero.
         </p>

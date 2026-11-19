@@ -4,7 +4,7 @@
 /*
  * Frecuencia de la ruta: pestaña vertical pegada al borde derecho, al estilo de
  * la del grupo (que va en el izquierdo). Las dos pestañas ocupan el espacio reservado a
- * la derecha de la ruta (33 px), así no le quitan ancho al código. Las letras se apilan una
+ * la derecha de la ruta (35 px), así no le quitan ancho al código. Las letras se apilan una
  * bajo otra: D = diaria, LXV, MJS o los días de una parcial (LX, XV, V…); como
  * máximo 3 letras, que caben en los 32 px de alto de la pestaña.
  */
@@ -54,22 +54,28 @@
   word-break: break-all;
 }
 
-/* Pestaña vertical del tipo, a la izquierda de la de frecuencia (1 px entre ambas). El texto va
-   girado y se lee de abajo arriba («B2C» apilado letra por letra se lee mal). B2C en gris; B2B
-   invertido (el color del texto como fondo): resalta en tema claro y oscuro sin usar los colores
-   de grupo ni de frecuencia, que ya significan otra cosa. Comparte el resto con la de frecuencia. */
+/* Pestaña vertical del tipo, a la izquierda de la de frecuencia (1 px entre ambas), un poco más
+   grande que ella para que se note: 16 × 34 px y letra de 0.68rem. El texto va girado y se lee de
+   abajo arriba («B2C» apilado letra por letra se lee mal). B2C en verde (el de la insignia del
+   detalle, oscurecido para que el texto pase AA) y B2B en el dorado Atlas, que no usan ni los
+   grupos ni las frecuencias. Comparte el resto con la de frecuencia. */
 .matriz-ruta__pestana-tipo {
+  top: 4px;
   right: 15px;
+  bottom: 4px;
   align-items: center;
+  width: 16px;
   border-radius: 4px;
-  color: var(--text-2);
-  background: var(--surface-3);
-  box-shadow: inset 0 0 0 1px var(--border);
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+  /* Blanco sobre verde en tema claro (5,5:1) y tinta oscura sobre verde claro en el oscuro (6:1). */
+  color: var(--surface);
+  background: color-mix(in srgb, var(--success) 80%, #000);
 
   &[data-tipo='B2B'] {
-    color: var(--surface);
-    background: var(--text);
-    box-shadow: none;
+    /* Azul marino sobre dorado: 10:1 en los dos temas. */
+    color: #0b1f3a;
+    background: #f7c400;
   }
 }
 

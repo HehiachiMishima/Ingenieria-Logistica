@@ -346,8 +346,8 @@
  */
 .mz {
   --mz-label: 240px;
-  /* 156 px de la ficha + 15 px de la pestaña de tipo (14 px y 1 px de separación). */
-  --mz-col: 171px;
+  /* 156 px de la ficha + 17 px de la pestaña de tipo (16 px y 1 px de separación). */
+  --mz-col: 173px;
   --mz-fila: 42px;
   /* Filas visibles: las fija MIN_FILAS (configuracion.ts) vía [style.--mz-filas]. */
   --mz-filas: 4;
@@ -661,8 +661,8 @@
   min-width: 0;
   height: 100%;
   min-height: var(--mz-fila);
-  /* 33 px a la derecha: las pestañas de tipo y de frecuencia (14 px cada una) y sus separaciones. */
-  padding: 0 33px 0 var(--space-2);
+  /* 35 px a la derecha: las pestañas de tipo (16 px) y de frecuencia (14 px) y sus separaciones. */
+  padding: 0 35px 0 var(--space-2);
   white-space: nowrap;
   /* El ancho lo fija la columna, no el contenido: una ruta con mucho texto no
      ensancha su columna (cada cluster es otra tabla y se desalinearían). */
@@ -954,7 +954,7 @@
 @include bp.down(md) {
   .mz {
     --mz-label: 200px;
-    --mz-col: 155px;
+    --mz-col: 157px;
   }
 }
 

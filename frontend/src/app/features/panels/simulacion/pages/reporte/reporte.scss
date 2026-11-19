@@ -23,6 +23,8 @@
   --d-navy-suave: #e8edf4;
   --d-guion: #cbd5e1;
   --d-oro: #f7c400;
+  // Tipo B2C (el verde de la pestaña de la planilla); el B2B va en --d-oro.
+  --d-verde: #15803d;
   --d-cafe: #7a4a1c;
   --d-cafe-suave: #f6ecdf;
   --d-kraft: #c8894a;
@@ -384,11 +386,12 @@
 
 .dist__ficha--muestra {
   display: inline-flex;
-  width: 112px;
+  width: 124px;
   margin: 0;
 }
 
 .dist__ficha-grupo,
+.dist__ficha-tipo,
 .dist__ficha-frecuencia {
   display: flex;
   flex: none;
@@ -453,6 +456,35 @@
 
 .dist__ficha-frecuencia--m {
   background: var(--d-ambar);
+}
+
+// Tipo de la ruta: pestaña vertical pegada a la de frecuencia (1 px), con el texto girado como en
+// la planilla. B2C en verde con texto blanco; B2B en dorado Atlas con texto azul marino.
+.dist__ficha-tipo {
+  width: 11px;
+  margin-right: -2px;
+  font-size: 7.5px;
+  line-height: 1;
+  background: var(--d-verde);
+
+  span {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+  }
+}
+
+// Muestra del tipo en la leyenda, en horizontal y con sus colores.
+.dist__tipo-muestra {
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--d-verde);
+  color: #ffffff;
+}
+
+.dist__ficha-tipo[data-tipo='B2B'],
+.dist__tipo-muestra[data-tipo='B2B'] {
+  background: var(--d-oro);
+  color: var(--d-navy);
 }
 
 .dist__total td {

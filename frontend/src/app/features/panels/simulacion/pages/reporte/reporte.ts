@@ -16,12 +16,14 @@ import { SimulacionApi } from '../../data/simulacion.api';
 import { DistribucionSimulacion, FrecuenciaRuta, RutaDistribucion } from '../../data/simulacion.model';
 import { formatearEntero } from '../../simulacion-formato';
 
-/** Una ficha lista para dibujar: grupo con su color, código, bultos y pestaña de frecuencia. */
+/** Una ficha lista para dibujar: grupo con su color, código, bultos, tipo y pestaña de frecuencia. */
 interface FichaVista {
   codigo: string;
   grupo: string | null;
   color: string;
   bultos: string;
+  /** B2C o B2B (null si no vino): pestaña vertical verde o dorada, como la planilla. */
+  tipo: string | null;
   letra: string;
   clase: string;
   titulo: string;
@@ -68,10 +70,11 @@ const FRECUENCIA: Record<FrecuenciaRuta, { letra: string; nombre: string }> = {
 const SIN_GRUPO = '#94a3b8';
 
 // Anchos de la hoja (px): la columna de rótulos, un chute bloqueado y un chute con fichas (una
-// ficha en una línea necesita ~112 px). Al imprimir, la hoja se ajusta al ancho de la página A3.
+// ficha en una línea necesita ~124 px: ~112 más la pestaña de tipo). Al imprimir, la hoja se
+// ajusta al ancho de la página A3.
 const ANCHO_ROTULO = 120;
 const ANCHO_BLOQUEADO = 26;
-const ANCHO_CHUTE = 116;
+const ANCHO_CHUTE = 128;
 const ANCHO_MINIMO = 1200;
 /** Ancho útil de A3 horizontal con márgenes de 8 mm (404 mm a 96 ppp), con holgura. */
 const ANCHO_IMPRIMIBLE = 1520;
@@ -84,9 +87,10 @@ function ficha(r: RutaDistribucion): FichaVista {
     grupo: r.grupo,
     color: r.color ?? SIN_GRUPO,
     bultos,
+    tipo: r.tipo?.trim() || null,
     letra: f.letra,
     clase: CLASE[r.frecuencia],
-    titulo: `Ruta ${r.codigo} · ${r.grupo !== null ? `grupo ${r.grupo} · ` : ''}${bultos} bultos · ${f.nombre}`,
+    titulo: `Ruta ${r.codigo}${r.tipo ? ` ${r.tipo}` : ''} · ${r.grupo !== null ? `grupo ${r.grupo} · ` : ''}${bultos} bultos · ${f.nombre}`,
   };
 }
 

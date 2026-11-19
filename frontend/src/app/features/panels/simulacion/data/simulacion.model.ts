@@ -555,6 +555,8 @@ export interface RutaDistribucion {
   grupo: string | null;
   color: string | null;
   bultos: number;
+  /** B2C o B2B: la misma ruta puede venir con los dos. */
+  tipo: 'B2C' | 'B2B' | string | null;
 }
 
 /** Un chute con rutas del cluster: sus rutas (diarias, L-X-V, M-J-S) y los bultos de cada día. */

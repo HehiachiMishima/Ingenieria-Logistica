@@ -63,6 +63,8 @@ final class DistribucionExcel {
   static final String AZUL = "1D63ED";
   static final String AMBAR = "B45309";
   static final String TINTA = "0F172A";
+  /** Tipo B2C: el verde de la pestaña de la planilla. El B2B lleva la barra en ORO y el texto en NAVY. */
+  static final String VERDE = "15803D";
   /** Bultos: texto café sobre el tono kraft de la caja, como la píldora de la pantalla. */
   static final String CAFE = "7A4A1C";
   private static final String KRAFT = "C8894A";
@@ -131,14 +133,34 @@ final class DistribucionExcel {
     };
   }
 
-  /** Texto de la ficha: «1  3013   ■ 465   D» (grupo, código, bultos hacia arriba y frecuencia). */
+  /**
+   * Texto de la ficha: «1  3013   ■ 465  ▐B2C  D» (grupo, código, bultos hacia arriba, tipo con su
+   * barra de color y frecuencia). Sin tipo queda como antes: «1  3013   ■ 465   D».
+   */
   static String textoFicha(DistribucionResponse.Ruta r) {
     return (r.grupo() == null ? "" : r.grupo() + "  ")
         + r.codigo()
         + "   ■ "
         + String.format(Locale.US, "%,d", r.bultos().setScale(0, RoundingMode.CEILING).longValue())
-        + "   "
+        + (tieneTipo(r) ? "  " + BARRA_TIPO + r.tipo() + "  " : "   ")
         + letraFrecuencia(r.frecuencia());
+  }
+
+  /** Barra vertical que hace de pestaña del tipo, pegada a su texto (media celda derecha). */
+  static final char BARRA_TIPO = '▐';
+
+  private static boolean tieneTipo(DistribucionResponse.Ruta r) {
+    return r.tipo() != null && !r.tipo().isBlank();
+  }
+
+  /** Color de la barra del tipo: verde la B2C, dorado la B2B (como la pestaña de la planilla). */
+  static String colorBarraTipo(String tipo) {
+    return "B2B".equals(tipo) ? ORO : VERDE;
+  }
+
+  /** Texto del tipo: verde la B2C; azul marino la B2B (el dorado sobre blanco no se lee). */
+  static String colorTextoTipo(String tipo) {
+    return "B2B".equals(tipo) ? NAVY : VERDE;
   }
 
   private void hoja(Marcas marcas) {
@@ -146,7 +168,8 @@ final class DistribucionExcel {
     hoja.setZoom(90);
     hoja.setColumnWidth(0, 19 * 256);
     for (int i = 0; i < d.chutes().size(); i++) {
-      hoja.setColumnWidth(i + 1, (d.chutes().get(i).bloqueado() ? 5 : 15) * 256);
+      // 17 caracteres: la ficha con su tipo («▐B2C») cabe sin achicarse en Excel de Mac.
+      hoja.setColumnWidth(i + 1, (d.chutes().get(i).bloqueado() ? 5 : 17) * 256);
     }
     int r = encabezado(marcas);
     r = indicadores(r);
@@ -335,6 +358,12 @@ final class DistribucionExcel {
     t.append("  ·  ", fuente(9, false, GRIS));
     t.append("■", fuente(9, true, KRAFT));
     t.append(" bultos", fuente(9, true, CAFE));
+    t.append("  ·  tipo  ", fuente(9, false, GRIS));
+    t.append(String.valueOf(BARRA_TIPO), fuente(10, false, VERDE));
+    t.append("B2C", fuente(9, true, VERDE));
+    t.append("  ", fuente(9, false, GRIS));
+    t.append(String.valueOf(BARRA_TIPO), fuente(10, false, ORO));
+    t.append("B2B", fuente(9, true, NAVY));
     t.append("      Cabecera roja = chute con buff   ·   Columna gris = bloqueado", fuente(9, false, GRIS));
     celda(fila(r, 18), 0, t, estilo("leyenda", null, fuente(9, false, GRIS), HorizontalAlignment.LEFT, null, false));
     unir(r, r, 0, ultima);
@@ -429,7 +458,7 @@ final class DistribucionExcel {
     return f;
   }
 
-  /** La ficha de una ruta: número del grupo, código, bultos y letra de la frecuencia, cada uno en su color. */
+  /** La ficha de una ruta: número del grupo, código, bultos, tipo y letra de la frecuencia, cada uno en su color. */
   private XSSFRichTextString ficha(DistribucionResponse.Ruta r) {
     String texto = textoFicha(r);
     String frecuencia = colorFrecuencia(r.frecuencia());
@@ -446,7 +475,14 @@ final class DistribucionExcel {
     t.applyFont(finCodigo, caja, fuente(8, false, CAFE));
     t.applyFont(caja, caja + 1, fuente(7, false, KRAFT));
     int letra = texto.length() - 1;
-    t.applyFont(caja + 1, letra, fuente(8, true, CAFE));
+    int barra = tieneTipo(r) ? texto.indexOf(BARRA_TIPO, caja) : -1;
+    t.applyFont(caja + 1, barra < 0 ? letra : barra, fuente(8, true, CAFE));
+    if (barra >= 0) {
+      int finTipo = barra + 1 + r.tipo().length();
+      t.applyFont(barra, barra + 1, fuente(9, false, colorBarraTipo(r.tipo())));
+      t.applyFont(barra + 1, finTipo, fuente(7, true, colorTextoTipo(r.tipo())));
+      t.applyFont(finTipo, letra, fuente(8, false, CAFE));
+    }
     t.applyFont(letra, texto.length(), fuente(8, true, frecuencia));
     return t;
   }
@@ -550,7 +586,8 @@ final class DistribucionExcel {
     XSSFCellStyle s = estilo("nota", null, fuente(8, false, GRIS), HorizontalAlignment.LEFT, null, true);
     celda(fila(r, 30), 0,
         "Cada ficha muestra el grupo (número y borde de su color), el número de ruta con el color de su frecuencia, sus"
-            + " bultos redondeados hacia arriba y la letra de la frecuencia (D diaria, L L-X-V, M M-J-S). Una diaria sale"
+            + " bultos redondeados hacia arriba, su tipo (B2C en verde, B2B en dorado) y la letra de la frecuencia"
+            + " (D diaria, L L-X-V, M M-J-S). Una diaria sale"
             + " una sola vez y trabaja los dos días. Las filas de bultos suman por chute la carga de cada día (diarias +"
             + " rutas de ese día), redondeada al entero.",
         s);

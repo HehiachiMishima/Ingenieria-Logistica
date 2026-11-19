@@ -53,6 +53,8 @@ class SimulacionReporteTest {
     assertEquals("A", diaria.grupo());
     assertEquals("#7c3aed", diaria.color(), "primer grupo del cluster: primer color de la paleta");
     assertEquals(0, new BigDecimal("99.10").compareTo(diaria.bultos()));
+    assertEquals("B2C", diaria.tipo());
+    assertEquals("B2B", chute1.rutas().getLast().tipo(), "cada ruta lleva su tipo");
   }
 
   @Test
@@ -100,12 +102,15 @@ class SimulacionReporteTest {
     try (XSSFWorkbook libro = abrir()) {
       Sheet hoja = libro.getSheet("Distribución");
       // 99,10 bultos se muestran hacia arriba, como en la pantalla.
-      XSSFCell diaria = buscar(hoja, "A  2028   ■ 100   D");
+      XSSFCell diaria = buscar(hoja, "A  2028   ■ 100  ▐B2C  D");
       assertNotNull(diaria, textos(hoja).toString());
       XSSFRichTextString texto = diaria.getRichStringCellValue();
       assertEquals("FF7C3AED", color(texto, "A"), "número del grupo con su color");
       assertEquals("FF" + DistribucionExcel.TINTA, color(texto, "2028"));
       assertEquals("FF" + DistribucionExcel.CAFE, color(texto, " 100"));
+      // El tipo: barra y texto en verde para B2C.
+      assertEquals("FF" + DistribucionExcel.VERDE, color(texto, "▐"));
+      assertEquals("FF" + DistribucionExcel.VERDE, color(texto, "B2C"));
       assertEquals("FF" + DistribucionExcel.TINTA, color(texto, "D"));
       // Borde izquierdo grueso del color del grupo, como la pestaña de la ficha.
       assertEquals(BorderStyle.THICK, diaria.getCellStyle().getBorderLeft());
@@ -113,12 +118,15 @@ class SimulacionReporteTest {
       // Si la columna se dibuja más angosta (Excel en Windows), la ficha se achica en vez de cortarse.
       assertTrue(diaria.getCellStyle().getShrinkToFit(), "la ficha no se corta: reduce hasta ajustar");
 
-      XSSFCell lxv = buscar(hoja, "A  3001   ■ 20   L");
-      XSSFCell mjs = buscar(hoja, "A  4001   ■ 31   M");
+      XSSFCell lxv = buscar(hoja, "A  3001   ■ 20  ▐B2C  L");
+      XSSFCell mjs = buscar(hoja, "A  4001   ■ 31  ▐B2B  M");
       assertNotNull(lxv);
       assertNotNull(mjs);
       assertEquals("FF" + DistribucionExcel.AZUL, color(lxv.getRichStringCellValue(), "3001"));
       assertEquals("FF" + DistribucionExcel.AMBAR, color(mjs.getRichStringCellValue(), "4001"));
+      // B2B: barra dorada y texto azul marino (el dorado sobre blanco no se lee).
+      assertEquals("FF" + DistribucionExcel.ORO, color(mjs.getRichStringCellValue(), "▐"));
+      assertEquals("FF" + DistribucionExcel.NAVY, color(mjs.getRichStringCellValue(), "B2B"));
       // Las tres fichas del chute 1 van una debajo de otra en su columna.
       assertEquals(diaria.getColumnIndex(), mjs.getColumnIndex());
       assertEquals(diaria.getRowIndex() + 2, mjs.getRowIndex());
@@ -139,7 +147,11 @@ class SimulacionReporteTest {
     assertEquals("#0891b2", porCodigo.get("3001").color());
     assertNull(porCodigo.get("3003").grupo(), "sin grupo no lleva color");
     assertNull(porCodigo.get("3003").color());
-    assertEquals("3003   ■ 10   L", DistribucionExcel.textoFicha(porCodigo.get("3003")));
+    assertEquals("3003   ■ 10  ▐B2C  L", DistribucionExcel.textoFicha(porCodigo.get("3003")));
+    // Sin tipo, la ficha queda como antes.
+    assertEquals(
+        "3003   ■ 10   L",
+        DistribucionExcel.textoFicha(new DistribucionResponse.Ruta("3003", "LXV", null, null, BigDecimal.TEN, null)));
   }
 
   @Test
@@ -194,7 +206,7 @@ class SimulacionReporteTest {
   /** CL1: diaria + L-X-V + M-J-S en el chute 1 y una L-X-V en el 2. CL2 sin rutas. */
   private static DistribucionResponse distribucion() {
     List<RutaSimulacionResponse> rutas = new ArrayList<>();
-    rutas.add(ruta(1L, "4001", 1L, "30.60", "MJS"));
+    rutas.add(ruta(1L, "4001", 1L, "30.60", "MJS", "A", "B2B"));
     rutas.add(ruta(2L, "3001", 1L, "20", "LXV"));
     rutas.add(ruta(3L, "2028", 1L, "99.10", "DIARIA"));
     rutas.add(ruta(4L, "3002", 2L, "50", "LXV"));
@@ -238,8 +250,13 @@ class SimulacionReporteTest {
 
   private static RutaSimulacionResponse ruta(
       Long id, String codigo, Long chute, String bultos, String frecuencia, String grupo) {
+    return ruta(id, codigo, chute, bultos, frecuencia, grupo, "B2C");
+  }
+
+  private static RutaSimulacionResponse ruta(
+      Long id, String codigo, Long chute, String bultos, String frecuencia, String grupo, String tipo) {
     return new RutaSimulacionResponse(id, chute, String.valueOf(chute), chute, String.valueOf(chute), 1L, "CL1", 1L,
-        "CL1", false, codigo, "B2C", new BigDecimal(bultos), CIEN, BigDecimal.TEN, 4, grupo, frecuencia, false);
+        "CL1", false, codigo, tipo, new BigDecimal(bultos), CIEN, BigDecimal.TEN, 4, grupo, frecuencia, false);
   }
 
   private static List<String> textos(Sheet hoja) {

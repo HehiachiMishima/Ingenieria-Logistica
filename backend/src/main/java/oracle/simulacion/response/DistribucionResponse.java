@@ -27,9 +27,11 @@ public record DistribucionResponse(
 
   /**
    * Una ruta en su celda, como la ficha de la pantalla: código, frecuencia (DIARIA, LXV o MJS), su
-   * grupo con el color de la cuadrícula (#rrggbb; null sin grupo) y sus bultos.
+   * grupo con el color de la cuadrícula (#rrggbb; null sin grupo), sus bultos y su tipo (B2C o
+   * B2B: la misma ruta puede venir con los dos).
    */
-  public record Ruta(String codigo, String frecuencia, String grupo, String color, BigDecimal bultos) {}
+  public record Ruta(
+      String codigo, String frecuencia, String grupo, String color, BigDecimal bultos, String tipo) {}
 
   /**
    * Un chute con rutas del cluster: las rutas (diarias, luego L-X-V y M-J-S) y los bultos de cada
