@@ -9,6 +9,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import { mensajeDeError } from '../../../../../core/errors/error.util';
@@ -16,15 +17,21 @@ import { SimulacionApi } from '../../data/simulacion.api';
 import { DistribucionSimulacion, FrecuenciaRuta, RutaDistribucion } from '../../data/simulacion.model';
 import { formatearEntero } from '../../simulacion-formato';
 
-/** Una ficha lista para dibujar: grupo con su color, código, bultos, tipo y pestaña de frecuencia. */
+/**
+ * Una ficha lista para dibujar, como la de la planilla: arriba tipo, días y bultos; abajo grupo con
+ * su color y código.
+ */
 interface FichaVista {
   codigo: string;
   grupo: string | null;
   color: string;
   bultos: string;
-  /** B2C o B2B (null si no vino): pestaña vertical verde o dorada, como la planilla. */
+  /** B2C o B2B (null si no vino): bloque verde o dorado, como la planilla. */
   tipo: string | null;
-  letra: string;
+  /** Días del bloque de frecuencia: Diaria, L-X-V o M-J-S. */
+  dias: string;
+  /** Clase del bloque de días (su color). */
+  claseDias: string;
   clase: string;
   titulo: string;
 }
@@ -59,18 +66,18 @@ const CLASE: Record<FrecuenciaRuta, string> = {
   MJS: 'dist__ruta--mjs',
 };
 
-/** Letra de la pestaña de frecuencia (como la planilla) y su nombre para el title. */
-const FRECUENCIA: Record<FrecuenciaRuta, { letra: string; nombre: string }> = {
-  DIARIA: { letra: 'D', nombre: 'Diaria' },
-  LXV: { letra: 'L', nombre: 'L-X-V' },
-  MJS: { letra: 'M', nombre: 'M-J-S' },
+/** Días del bloque de frecuencia (como la planilla) y el color de ese bloque. */
+const FRECUENCIA: Record<FrecuenciaRuta, { dias: string; clase: string }> = {
+  DIARIA: { dias: 'Diaria', clase: 'dist__ficha-dias--d' },
+  LXV: { dias: 'L-X-V', clase: 'dist__ficha-dias--l' },
+  MJS: { dias: 'M-J-S', clase: 'dist__ficha-dias--m' },
 };
 
 /** Pestaña de una ruta sin grupo: gris neutro. */
 const SIN_GRUPO = '#94a3b8';
 
-// Anchos de la hoja (px): la columna de rótulos, un chute bloqueado y un chute con fichas (una
-// ficha en una línea necesita ~124 px: ~112 más la pestaña de tipo). Al imprimir, la hoja se
+// Anchos de la hoja (px): la columna de rótulos, un chute bloqueado y un chute con fichas (la
+// fila de tipo · días · bultos de 5 cifras necesita ~118 px con su marco). Al imprimir, la hoja se
 // ajusta al ancho de la página A3.
 const ANCHO_ROTULO = 120;
 const ANCHO_BLOQUEADO = 26;
@@ -88,9 +95,10 @@ function ficha(r: RutaDistribucion): FichaVista {
     color: r.color ?? SIN_GRUPO,
     bultos,
     tipo: r.tipo?.trim() || null,
-    letra: f.letra,
+    dias: f.dias,
+    claseDias: f.clase,
     clase: CLASE[r.frecuencia],
-    titulo: `Ruta ${r.codigo}${r.tipo ? ` ${r.tipo}` : ''} · ${r.grupo !== null ? `grupo ${r.grupo} · ` : ''}${bultos} bultos · ${f.nombre}`,
+    titulo: `Ruta ${r.codigo}${r.tipo ? ` ${r.tipo}` : ''} · ${r.grupo !== null ? `grupo ${r.grupo} · ` : ''}${bultos} bultos · ${f.dias}`,
   };
 }
 
@@ -105,14 +113,15 @@ function fondo(valor: number | null, maximo: number, tono: string): string | nul
 /**
  * Distribución de rutas por cluster y chute para imprimir o guardar como PDF (A3 horizontal): el
  * mismo diseño que el Excel, con la banda ATLAS. Un bloque por cluster con todos los chutes; cada
- * ruta es una ficha como la de la planilla (grupo, código, bultos y frecuencia) y, abajo, los
- * bultos de cada día. Al cargar abre
+ * ruta es una ficha enmarcada como la de la planilla (arriba tipo, días y bultos; abajo grupo y
+ * código) y, abajo, los bultos de cada día. Al cargar abre
  * el diálogo de impresión (salvo con ?imprimir=no).
  */
 @Component({
   selector: 'app-simulacion-reporte',
   changeDetection: ChangeDetectionStrategy.OnPush,
   encapsulation: ViewEncapsulation.None,
+  imports: [NgTemplateOutlet],
   templateUrl: './reporte.html',
   styleUrl: './reporte.scss',
 })

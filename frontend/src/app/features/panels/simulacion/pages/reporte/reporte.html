@@ -56,18 +56,23 @@
         <div class="dist__leyenda">
           <b>Ficha de cada ruta:</b>
           <span class="dist__ficha dist__ficha--muestra" aria-hidden="true">
-            <span class="dist__ficha-grupo" style="background: #7c3aed">1</span>
-            <span class="dist__ficha-codigo dist__ruta--lxv">3013</span>
-            <span class="dist__ficha-bultos"><i></i>465</span>
-            <span class="dist__ficha-tipo" data-tipo="B2C"><span>B2C</span></span>
-            <span class="dist__ficha-frecuencia dist__ficha-frecuencia--l">L</span>
+            <span class="dist__ficha-fila">
+              <span class="dist__ficha-tipo" data-tipo="B2C">B2C</span>
+              <span class="dist__ficha-dias dist__ficha-dias--l">L-X-V</span>
+              <span class="dist__ficha-bultos"><ng-container [ngTemplateOutlet]="caja" />465</span>
+            </span>
+            <span class="dist__ficha-fila">
+              <span class="dist__ficha-grupo" style="background: #7c3aed">1</span>
+              <span class="dist__ficha-codigo dist__ruta--lxv">3013</span>
+            </span>
           </span>
-          <span>grupo (con su color) · número de ruta con el color de su frecuencia · bultos · tipo:</span>
+          <span>arriba: tipo</span>
           <span><b class="dist__tipo-muestra" data-tipo="B2C">B2C</b> <b class="dist__tipo-muestra" data-tipo="B2B">B2B</b></span>
-          <span>· frecuencia:</span>
-          <span><b class="dist__ruta--diaria">D</b> diaria (sale los dos días)</span>
-          <span><b class="dist__ruta--lxv">L</b> L-X-V</span>
-          <span><b class="dist__ruta--mjs">M</b> M-J-S</span>
+          <span>· días:</span>
+          <span><b class="dist__ruta--diaria">Diaria</b> (sale los dos días)</span>
+          <span><b class="dist__ruta--lxv">L-X-V</b></span>
+          <span><b class="dist__ruta--mjs">M-J-S</b></span>
+          <span>· bultos · abajo: grupo (con su color) y número de ruta con el color de su frecuencia</span>
           <span class="dist__leyenda-sep">Cabecera roja = chute con buff · Columna gris = bloqueado</span>
         </div>
 
@@ -105,16 +110,19 @@
                     [class.dist__celda--vacia]="!x.bloqueado && x.rutas.length === 0">
                     @if (!x.bloqueado) {
                       @for (r of x.rutas; track $index) {
+                        <!-- Ficha enmarcada en dos filas, como la planilla: tipo · días · bultos,
+                             y grupo · número de ruta centrado. -->
                         <span class="dist__ficha" [title]="r.titulo">
-                          <span class="dist__ficha-grupo" [style.background]="r.color">{{ r.grupo }}</span>
-                          <span class="dist__ficha-codigo {{ r.clase }}">{{ r.codigo }}</span>
-                          <span class="dist__ficha-bultos"><i aria-hidden="true"></i>{{ r.bultos }}</span>
-                          @if (r.tipo) {
-                            <!-- Pestaña vertical del tipo, pegada a la de frecuencia (como la planilla). -->
-                            <span class="dist__ficha-tipo" [attr.data-tipo]="r.tipo"><span>{{ r.tipo }}</span></span>
-                          }
-                          <span class="dist__ficha-frecuencia dist__ficha-frecuencia--{{ r.letra.toLowerCase() }}">
-                            {{ r.letra }}
+                          <span class="dist__ficha-fila">
+                            @if (r.tipo) {
+                              <span class="dist__ficha-tipo" [attr.data-tipo]="r.tipo">{{ r.tipo }}</span>
+                            }
+                            <span class="dist__ficha-dias {{ r.claseDias }}">{{ r.dias }}</span>
+                            <span class="dist__ficha-bultos"><ng-container [ngTemplateOutlet]="caja" />{{ r.bultos }}</span>
+                          </span>
+                          <span class="dist__ficha-fila">
+                            <span class="dist__ficha-grupo" [style.background]="r.color">{{ r.grupo }}</span>
+                            <span class="dist__ficha-codigo {{ r.clase }}">{{ r.codigo }}</span>
                           </span>
                         </span>
                       } @empty {
@@ -167,9 +175,9 @@
         }
 
         <p class="dist__nota">
-          Cada ficha muestra el grupo (número sobre su color), el número de ruta con el color de su frecuencia, sus
-          bultos redondeados hacia arriba, su tipo (B2C en verde, B2B en dorado) y la letra de la frecuencia (D diaria,
-          L L-X-V, M M-J-S). Una diaria sale una
+          Cada ficha va enmarcada y tiene dos filas: arriba su tipo (B2C en verde, B2B en dorado), sus días (Diaria,
+          L-X-V o M-J-S, con el color de su frecuencia) y sus bultos redondeados hacia arriba; abajo, el grupo (número
+          sobre su color) y el número de ruta con el color de su frecuencia. Una diaria sale una
           sola vez y trabaja los dos días. Las filas de bultos suman por chute la carga de cada día (diarias + rutas de
           ese día), redondeada al entero.
         </p>
@@ -177,3 +185,13 @@
     </div>
   }
 </main>
+
+<!-- Caja de bultos, la misma de la planilla (tapa, frente, lado y cinta). -->
+<ng-template #caja>
+  <svg class="dist__caja" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+    <path class="dist__caja-tapa" d="M8 1.5 14.5 4.5 8 7.5 1.5 4.5Z" />
+    <path class="dist__caja-frente" d="M1.5 4.5 8 7.5V14.5L1.5 11.5Z" />
+    <path class="dist__caja-lado" d="M8 7.5 14.5 4.5V11.5L8 14.5Z" />
+    <path class="dist__caja-cinta" d="M4.75 3 11.25 6V13" />
+  </svg>
+</ng-template>

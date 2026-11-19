@@ -350,10 +350,13 @@
   --mz-col: 156px;
   /* Alto de las filas de totales. */
   --mz-fila: 42px;
-  /* Alto de una ficha de ruta: 22 px (tipo · días · bultos) + 1 px + 27 px (grupo · ruta). */
-  --mz-fila-ruta: 50px;
-  /* Línea entre rutas y entre chutes: más marcada que las internas de la ficha. */
-  --mz-separador: var(--border-strong);
+  /* Alto de una ficha de ruta: su marco de 2 px arriba y abajo + 22 px (tipo · días · bultos)
+     + 1 px + 27 px (grupo · ruta). */
+  --mz-fila-ruta: 54px;
+  /* Marco de cada ruta, en sus cuatro lados: azul pizarra, más claro en el tema oscuro. */
+  --mz-marco: light-dark(#5b6f8f, #5a76a6);
+  /* Respiro entre rutas y entre chutes: el fondo, así cada ruta se ve como un rectángulo aparte. */
+  --mz-separador: var(--surface);
   /* Filas visibles: las fija MIN_FILAS (configuracion.ts) vía [style.--mz-filas]. */
   --mz-filas: 4;
   /* Cada fila de rutas mide su alto + 3 px de línea; la cabecera, 40 px. */
@@ -633,7 +636,7 @@
   }
 }
 
-/* Cada ruta separada de la de abajo (3 px) y de la del chute vecino (2 px). */
+/* Cada ruta separada de la de abajo (3 px) y de la del chute vecino (2 px) por un respiro. */
 .mz-tabla td.matriz__celda {
   border-right: 2px solid var(--mz-separador);
   border-bottom: 3px solid var(--mz-separador);

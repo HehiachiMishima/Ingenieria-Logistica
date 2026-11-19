@@ -3,8 +3,8 @@
  * por archivo. Ocupa toda la celda en dos filas:
  *   arriba (22 px): tipo · días · bultos;
  *   abajo: grupo · número de ruta, centrado en toda la ficha.
- * Los bloques se separan con 1 px suave; entre rutas va la línea marcada de la celda
- * (--mz-separador, en configuracion.scss).
+ * Cada ruta lleva su marco de 2 px en sus cuatro lados (--mz-marco) y, entre rutas, un respiro
+ * del fondo (--mz-separador, en configuracion.scss). Los bloques se separan con 1 px suave.
  */
 .matriz-ruta {
   position: relative;
@@ -14,6 +14,7 @@
   min-width: 0;
   height: 100%;
   min-height: var(--mz-fila-ruta);
+  border: 2px solid var(--mz-marco);
   font-weight: 700;
   line-height: 1;
   white-space: nowrap; /* responsive:ok cada pieza tiene ancho fijo o se acorta con «…» */

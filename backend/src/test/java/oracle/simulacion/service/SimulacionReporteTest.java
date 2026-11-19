@@ -21,9 +21,11 @@ import oracle.simulacion.response.RutaSimulacionResponse;
 import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
+import org.apache.poi.ss.usermodel.HorizontalAlignment;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.xssf.usermodel.XSSFCell;
+import org.apache.poi.xssf.usermodel.XSSFCellStyle;
 import org.apache.poi.xssf.usermodel.XSSFRichTextString;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
@@ -101,35 +103,43 @@ class SimulacionReporteTest {
   void cadaRutaEsUnaFichaConSuGrupoSuFrecuenciaYSusBultos() throws Exception {
     try (XSSFWorkbook libro = abrir()) {
       Sheet hoja = libro.getSheet("Distribución");
-      // 99,10 bultos se muestran hacia arriba, como en la pantalla.
-      XSSFCell diaria = buscar(hoja, "A  2028   ■ 100  ▐B2C  D");
+      // Dos líneas, como la planilla: tipo · días · bultos (99,10 hacia arriba) y grupo · código,
+      // con espacios a la derecha que centran el código.
+      XSSFCell diaria = buscar(hoja, "▐B2C  Diaria  ■ 100\nA  2028    ");
       assertNotNull(diaria, textos(hoja).toString());
       XSSFRichTextString texto = diaria.getRichStringCellValue();
-      assertEquals("FF7C3AED", color(texto, "A"), "número del grupo con su color");
-      assertEquals("FF" + DistribucionExcel.TINTA, color(texto, "2028"));
-      assertEquals("FF" + DistribucionExcel.CAFE, color(texto, " 100"));
       // El tipo: barra y texto en verde para B2C.
       assertEquals("FF" + DistribucionExcel.VERDE, color(texto, "▐"));
       assertEquals("FF" + DistribucionExcel.VERDE, color(texto, "B2C"));
-      assertEquals("FF" + DistribucionExcel.TINTA, color(texto, "D"));
-      // Borde izquierdo grueso del color del grupo, como la pestaña de la ficha.
-      assertEquals(BorderStyle.THICK, diaria.getCellStyle().getBorderLeft());
-      assertEquals("FF7C3AED", diaria.getCellStyle().getLeftBorderXSSFColor().getARGBHex());
-      // Si la columna se dibuja más angosta (Excel en Windows), la ficha se achica en vez de cortarse.
-      assertTrue(diaria.getCellStyle().getShrinkToFit(), "la ficha no se corta: reduce hasta ajustar");
+      assertEquals("FF" + DistribucionExcel.TINTA, color(texto, "Diaria"));
+      assertEquals("FF" + DistribucionExcel.CAFE, color(texto, " 100"));
+      assertEquals("FF7C3AED", color(texto, "A  2028"), "número del grupo con su color");
+      assertEquals("FF" + DistribucionExcel.TINTA, color(texto, "2028"));
+      // Enmarcada en sus cuatro lados, centrada y en dos líneas.
+      XSSFCellStyle estilo = diaria.getCellStyle();
+      for (BorderStyle lado : List.of(estilo.getBorderTop(), estilo.getBorderRight(), estilo.getBorderBottom(), estilo.getBorderLeft())) {
+        assertEquals(BorderStyle.MEDIUM, lado);
+      }
+      assertEquals("FF" + DistribucionExcel.MARCO, estilo.getLeftBorderXSSFColor().getARGBHex());
+      assertEquals("FF" + DistribucionExcel.MARCO, estilo.getTopBorderXSSFColor().getARGBHex());
+      assertEquals(HorizontalAlignment.CENTER, estilo.getAlignment());
+      assertTrue(estilo.getWrapText(), "las dos líneas de la ficha");
 
-      XSSFCell lxv = buscar(hoja, "A  3001   ■ 20  ▐B2C  L");
-      XSSFCell mjs = buscar(hoja, "A  4001   ■ 31  ▐B2B  M");
+      XSSFCell lxv = buscar(hoja, "▐B2C  L-X-V  ■ 20\nA  3001    ");
+      XSSFCell mjs = buscar(hoja, "▐B2B  M-J-S  ■ 31\nA  4001    ");
       assertNotNull(lxv);
       assertNotNull(mjs);
+      assertEquals("FF" + DistribucionExcel.AZUL, color(lxv.getRichStringCellValue(), "L-X-V"));
       assertEquals("FF" + DistribucionExcel.AZUL, color(lxv.getRichStringCellValue(), "3001"));
       assertEquals("FF" + DistribucionExcel.AMBAR, color(mjs.getRichStringCellValue(), "4001"));
       // B2B: barra dorada y texto azul marino (el dorado sobre blanco no se lee).
       assertEquals("FF" + DistribucionExcel.ORO, color(mjs.getRichStringCellValue(), "▐"));
       assertEquals("FF" + DistribucionExcel.NAVY, color(mjs.getRichStringCellValue(), "B2B"));
-      // Las tres fichas del chute 1 van una debajo de otra en su columna.
+      // Las tres fichas del chute 1 van una debajo de otra, con una fila de respiro entre ellas.
       assertEquals(diaria.getColumnIndex(), mjs.getColumnIndex());
-      assertEquals(diaria.getRowIndex() + 2, mjs.getRowIndex());
+      assertEquals(diaria.getRowIndex() + 4, mjs.getRowIndex());
+      assertEquals(DistribucionExcel.ALTO_FICHA, hoja.getRow(lxv.getRowIndex()).getHeightInPoints());
+      assertEquals(DistribucionExcel.ALTO_RESPIRO, hoja.getRow(lxv.getRowIndex() + 1).getHeightInPoints());
     }
   }
 
@@ -147,10 +157,11 @@ class SimulacionReporteTest {
     assertEquals("#0891b2", porCodigo.get("3001").color());
     assertNull(porCodigo.get("3003").grupo(), "sin grupo no lleva color");
     assertNull(porCodigo.get("3003").color());
-    assertEquals("3003   ■ 10  ▐B2C  L", DistribucionExcel.textoFicha(porCodigo.get("3003")));
-    // Sin tipo, la ficha queda como antes.
+    // Sin grupo, la línea de la ruta es solo el código (ya va al centro).
+    assertEquals("▐B2C  L-X-V  ■ 10\n3003", DistribucionExcel.textoFicha(porCodigo.get("3003")));
+    // Sin tipo, la primera línea empieza en los días.
     assertEquals(
-        "3003   ■ 10   L",
+        "L-X-V  ■ 10\n3003",
         DistribucionExcel.textoFicha(new DistribucionResponse.Ruta("3003", "LXV", null, null, BigDecimal.TEN, null)));
   }
 

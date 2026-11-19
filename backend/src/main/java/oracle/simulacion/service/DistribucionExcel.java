@@ -42,10 +42,10 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
  * Hoja «Distribución» con estilo ejecutivo: encabezado de Farmacias Peruanas, banda de la marca
  * ATLAS (línea roja, isotipo y wordmark como en el login, línea dorada), indicadores, leyenda y un
  * bloque por cluster con todos los chutes en columnas (buff en rojo, bloqueados angostos en gris).
- * Cada ruta es una ficha como la de la pantalla, una por celda: borde grueso y número del color de
- * su grupo, código con el color de su frecuencia, bultos y la letra de la frecuencia. Debajo, los
- * bultos de cada día con una escala de color. Lista para imprimir: A3 horizontal, al ancho de una
- * página.
+ * Cada ruta es una ficha como la de la pantalla, una por celda, enmarcada y en dos líneas: arriba
+ * tipo, días y bultos; abajo grupo y número de ruta. Entre ruta y ruta, una fila angosta de
+ * respiro. Debajo, los bultos de cada día con una escala de color. Lista para imprimir: A3
+ * horizontal, al ancho de una página.
  */
 final class DistribucionExcel {
 
@@ -73,7 +73,11 @@ final class DistribucionExcel {
   private static final String GRIS_CLARO = "94A3B8";
   private static final String SUPERFICIE = "F5F7FB";
   private static final String BORDE = "D5DDE8";
-  private static final String BORDE_FICHA = "E2E8F0";
+  /** Marco de cada ficha, en sus cuatro lados: el azul pizarra de la planilla. */
+  static final String MARCO = "5B6F8F";
+  /** Alto (pt) de una ficha de dos líneas y de la fila de respiro entre fichas. */
+  static final float ALTO_FICHA = 30;
+  static final float ALTO_RESPIRO = 4;
   private static final String BLOQ = "E2E8F0";
   private static final String NAVY_SUAVE = "E8EDF4";
   private static final String GUION = "CBD5E1";
@@ -124,29 +128,34 @@ final class DistribucionExcel {
     };
   }
 
-  /** Letra de la pestaña de frecuencia: D, L o M. */
-  static String letraFrecuencia(String frecuencia) {
+  /** Días de la ficha, como en la planilla: Diaria, L-X-V o M-J-S. */
+  static String diasFrecuencia(String frecuencia) {
     return switch (frecuencia) {
-      case SimulacionReporte.LXV -> "L";
-      case SimulacionReporte.MJS -> "M";
-      default -> "D";
+      case SimulacionReporte.LXV -> "L-X-V";
+      case SimulacionReporte.MJS -> "M-J-S";
+      default -> "Diaria";
     };
   }
 
   /**
-   * Texto de la ficha: «1  3013   ■ 465  ▐B2C  D» (grupo, código, bultos hacia arriba, tipo con su
-   * barra de color y frecuencia). Sin tipo queda como antes: «1  3013   ■ 465   D».
+   * Texto de la ficha en dos líneas, como en la planilla:
+   * «▐B2C  L-X-V  ■ 465» (tipo con su barra, días y bultos hacia arriba) y «1  3013» (grupo y
+   * código). La línea del código lleva a la derecha tantos espacios como ocupa el grupo a la
+   * izquierda (en Arial un dígito mide dos espacios), así el código queda al centro de la ficha.
+   * Sin tipo, la primera línea empieza en los días.
    */
   static String textoFicha(DistribucionResponse.Ruta r) {
-    return (r.grupo() == null ? "" : r.grupo() + "  ")
-        + r.codigo()
-        + "   ■ "
-        + String.format(Locale.US, "%,d", r.bultos().setScale(0, RoundingMode.CEILING).longValue())
-        + (tieneTipo(r) ? "  " + BARRA_TIPO + r.tipo() + "  " : "   ")
-        + letraFrecuencia(r.frecuencia());
+    String datos = (tieneTipo(r) ? BARRA_TIPO + r.tipo() + "  " : "")
+        + diasFrecuencia(r.frecuencia())
+        + "  ■ "
+        + String.format(Locale.US, "%,d", r.bultos().setScale(0, RoundingMode.CEILING).longValue());
+    String ruta = r.grupo() == null
+        ? r.codigo()
+        : r.grupo() + "  " + r.codigo() + " ".repeat(2 * r.grupo().length() + 2);
+    return datos + "\n" + ruta;
   }
 
-  /** Barra vertical que hace de pestaña del tipo, pegada a su texto (media celda derecha). */
+  /** Barra vertical que hace de pestaña del tipo, pegada a su texto. */
   static final char BARRA_TIPO = '▐';
 
   private static boolean tieneTipo(DistribucionResponse.Ruta r) {
@@ -168,8 +177,9 @@ final class DistribucionExcel {
     hoja.setZoom(90);
     hoja.setColumnWidth(0, 19 * 256);
     for (int i = 0; i < d.chutes().size(); i++) {
-      // 17 caracteres: la ficha con su tipo («▐B2C») cabe sin achicarse en Excel de Mac.
-      hoja.setColumnWidth(i + 1, (d.chutes().get(i).bloqueado() ? 5 : 17) * 256);
+      // 18 caracteres: la línea «▐B2C  Diaria  ■ 12,345» cabe con holgura también en Excel de
+      // Windows, que dibuja la columna más angosta (con dos líneas no se puede «reducir hasta ajustar»).
+      hoja.setColumnWidth(i + 1, (d.chutes().get(i).bloqueado() ? 5 : 18) * 256);
     }
     int r = encabezado(marcas);
     r = indicadores(r);
@@ -347,23 +357,24 @@ final class DistribucionExcel {
 
   private int leyenda(int r) {
     XSSFRichTextString t = new XSSFRichTextString();
-    t.append("Ficha de cada ruta:   ", fuente(9, true, GRIS));
-    t.append("1", fuente(9, true, SimulacionReporte.PALETA_GRUPOS.getFirst().substring(1).toUpperCase(Locale.ROOT)));
-    t.append(" grupo (borde de su color)  ·  número de ruta con el color de su frecuencia:  ", fuente(9, false, GRIS));
-    t.append("Diaria (D)", fuente(9, true, TINTA));
-    t.append(" sale los dos días   ", fuente(9, false, GRIS));
-    t.append("L-X-V (L)", fuente(9, true, AZUL));
-    t.append("   ", fuente(9, false, GRIS));
-    t.append("M-J-S (M)", fuente(9, true, AMBAR));
+    t.append("Ficha de cada ruta (enmarcada):   arriba  ", fuente(9, true, GRIS));
+    t.append(String.valueOf(BARRA_TIPO), fuente(10, false, VERDE));
+    t.append("B2C", fuente(9, true, VERDE));
+    t.append(" ", fuente(9, false, GRIS));
+    t.append(String.valueOf(BARRA_TIPO), fuente(10, false, ORO));
+    t.append("B2B", fuente(9, true, NAVY));
+    t.append("  ·  días ", fuente(9, false, GRIS));
+    t.append("Diaria", fuente(9, true, TINTA));
+    t.append(" (sale los dos días) ", fuente(9, false, GRIS));
+    t.append("L-X-V", fuente(9, true, AZUL));
+    t.append(" ", fuente(9, false, GRIS));
+    t.append("M-J-S", fuente(9, true, AMBAR));
     t.append("  ·  ", fuente(9, false, GRIS));
     t.append("■", fuente(9, true, KRAFT));
     t.append(" bultos", fuente(9, true, CAFE));
-    t.append("  ·  tipo  ", fuente(9, false, GRIS));
-    t.append(String.valueOf(BARRA_TIPO), fuente(10, false, VERDE));
-    t.append("B2C", fuente(9, true, VERDE));
-    t.append("  ", fuente(9, false, GRIS));
-    t.append(String.valueOf(BARRA_TIPO), fuente(10, false, ORO));
-    t.append("B2B", fuente(9, true, NAVY));
+    t.append("   abajo  ", fuente(9, true, GRIS));
+    t.append("1", fuente(9, true, SimulacionReporte.PALETA_GRUPOS.getFirst().substring(1).toUpperCase(Locale.ROOT)));
+    t.append(" grupo (número de su color)  ·  número de ruta con el color de su frecuencia", fuente(9, false, GRIS));
     t.append("      Cabecera roja = chute con buff   ·   Columna gris = bloqueado", fuente(9, false, GRIS));
     celda(fila(r, 18), 0, t, estilo("leyenda", null, fuente(9, false, GRIS), HorizontalAlignment.LEFT, null, false));
     unir(r, r, 0, ultima);
@@ -389,13 +400,17 @@ final class DistribucionExcel {
       celda(cab, i + 1, ch.bloqueado() ? "BLOQ." : etiquetaChute(ch.nombre()), ch.bloqueado() ? cabBloq : ch.buff() ? cabBuff : cabNavy);
     }
 
-    // Una fila por ficha: tantas como rutas tenga el chute más cargado del cluster. Sin celdas
-    // unidas junto a las fichas: algunos visores alargan la pestaña del grupo por toda la unión.
+    // Una fila por ficha (tantas como rutas tenga el chute más cargado del cluster) y, entre ficha
+    // y ficha, una fila angosta de respiro: cada marco se ve aparte. Sin celdas unidas junto a las
+    // fichas: algunos visores alargan los bordes por toda la unión.
     int alto = Math.max(1, c.celdas().stream().mapToInt((x) -> x.rutas().size()).max().orElse(1));
     int primera = r + 1;
-    int fin = r + alto;
+    int fin = primera + 2 * (alto - 1);
     for (int k = 0; k < alto; k++) {
-      fila(primera + k, alto == 1 ? 38 : alto == 2 ? 24 : 18);
+      fila(primera + 2 * k, alto == 1 ? 38 : ALTO_FICHA);
+      if (k < alto - 1) {
+        fila(primera + 2 * k + 1, ALTO_RESPIRO);
+      }
     }
 
     // Resumen del cluster: rutas, diarias y rutas de cada día, repartidos y centrados en sus filas.
@@ -419,7 +434,10 @@ final class DistribucionExcel {
     XSSFCellStyle resumen = relleno("res", NAVY_SUAVE, fuente(9, false, NAVY), false);
     for (int k = 0; k < alto; k++) {
       int linea = k - desde;
-      celda(hoja.getRow(primera + k), 0, linea >= 0 && linea < lineas.size() ? lineas.get(linea) : null, resumen);
+      celda(hoja.getRow(primera + 2 * k), 0, linea >= 0 && linea < lineas.size() ? lineas.get(linea) : null, resumen);
+      if (k < alto - 1) {
+        celda(hoja.getRow(primera + 2 * k + 1), 0, null, resumen);
+      }
     }
 
     for (int i = 0; i < d.chutes().size(); i++) {
@@ -427,17 +445,19 @@ final class DistribucionExcel {
       int col = i + 1;
       boolean ultimaCol = col == ultima;
       DistribucionResponse.Celda x = ch.bloqueado() || ch.id() == null ? null : celdas.get(ch.id());
-      for (int k = 0; k < alto; k++) {
-        Row f = hoja.getRow(primera + k);
+      XSSFCellStyle hueco = relleno("hueco" + ch.buff(), ch.buff() ? ROJO_SUAVE : "FFFFFF", fuente(10, false, TINTA), ultimaCol);
+      for (int fila = primera; fila <= fin; fila++) {
+        Row f = hoja.getRow(fila);
+        int k = (fila - primera) / 2;
+        boolean respiro = (fila - primera) % 2 == 1;
         if (ch.bloqueado()) {
           celda(f, col, null, relleno("bloq", BLOQ, fuente(10, false, GUION), ultimaCol));
         } else if (x == null || x.rutas().isEmpty()) {
-          celda(f, col, k == (alto - 1) / 2 ? "—" : null, relleno("vacia", SUPERFICIE, fuente(10, false, GUION), ultimaCol));
-        } else if (k < x.rutas().size()) {
-          DistribucionResponse.Ruta ru = x.rutas().get(k);
-          celda(f, col, ficha(ru), estiloFicha(ru.color(), ch.buff(), ultimaCol));
+          celda(f, col, !respiro && k == (alto - 1) / 2 ? "—" : null, relleno("vacia", SUPERFICIE, fuente(10, false, GUION), ultimaCol));
+        } else if (!respiro && k < x.rutas().size()) {
+          celda(f, col, ficha(x.rutas().get(k)), estiloFicha(ch.buff()));
         } else {
-          celda(f, col, null, relleno("hueco" + ch.buff(), ch.buff() ? ROJO_SUAVE : "FFFFFF", fuente(10, false, TINTA), ultimaCol));
+          celda(f, col, null, hueco);
         }
       }
     }
@@ -458,55 +478,62 @@ final class DistribucionExcel {
     return f;
   }
 
-  /** La ficha de una ruta: número del grupo, código, bultos, tipo y letra de la frecuencia, cada uno en su color. */
+  /**
+   * La ficha de una ruta en dos líneas, cada pieza en su color: arriba la barra y el texto del tipo,
+   * los días y los bultos con su caja kraft; abajo el número del grupo y el código.
+   */
   private XSSFRichTextString ficha(DistribucionResponse.Ruta r) {
     String texto = textoFicha(r);
     String frecuencia = colorFrecuencia(r.frecuencia());
-    String grupo = r.color() == null ? GRIS : r.color().substring(1).toUpperCase(Locale.ROOT);
     XSSFRichTextString t = new XSSFRichTextString(texto);
+    // Línea de datos: ▐tipo · días · ■ bultos.
     int i = 0;
-    if (r.grupo() != null) {
-      t.applyFont(0, r.grupo().length(), fuente(8, true, grupo));
-      i = r.grupo().length() + 2;
+    if (tieneTipo(r)) {
+      t.applyFont(0, 1, fuente(9, false, colorBarraTipo(r.tipo())));
+      t.applyFont(1, 1 + r.tipo().length(), fuente(8, true, colorTextoTipo(r.tipo())));
+      i = 1 + r.tipo().length();
+      t.applyFont(i, i + 2, fuente(8, false, GRIS));
+      i += 2;
     }
-    int finCodigo = i + r.codigo().length();
-    t.applyFont(i, finCodigo, fuente(10, true, frecuencia));
-    int caja = texto.indexOf('■', finCodigo);
-    t.applyFont(finCodigo, caja, fuente(8, false, CAFE));
+    int finDias = i + diasFrecuencia(r.frecuencia()).length();
+    t.applyFont(i, finDias, fuente(8, true, frecuencia));
+    int caja = texto.indexOf('■', finDias);
+    t.applyFont(finDias, caja, fuente(8, false, GRIS));
     t.applyFont(caja, caja + 1, fuente(7, false, KRAFT));
-    int letra = texto.length() - 1;
-    int barra = tieneTipo(r) ? texto.indexOf(BARRA_TIPO, caja) : -1;
-    t.applyFont(caja + 1, barra < 0 ? letra : barra, fuente(8, true, CAFE));
-    if (barra >= 0) {
-      int finTipo = barra + 1 + r.tipo().length();
-      t.applyFont(barra, barra + 1, fuente(9, false, colorBarraTipo(r.tipo())));
-      t.applyFont(barra + 1, finTipo, fuente(7, true, colorTextoTipo(r.tipo())));
-      t.applyFont(finTipo, letra, fuente(8, false, CAFE));
+    int salto = texto.indexOf('\n', caja);
+    t.applyFont(caja + 1, salto + 1, fuente(8, true, CAFE));
+    // Línea de la ruta: grupo · código (y los espacios que lo centran).
+    int j = salto + 1;
+    if (r.grupo() != null) {
+      String grupo = r.color() == null ? GRIS : r.color().substring(1).toUpperCase(Locale.ROOT);
+      t.applyFont(j, j + r.grupo().length(), fuente(9, true, grupo));
+      j += r.grupo().length();
+      t.applyFont(j, j + 2, fuente(9, false, GRIS));
+      j += 2;
     }
-    t.applyFont(letra, texto.length(), fuente(8, true, frecuencia));
+    t.applyFont(j, j + r.codigo().length(), fuente(11, true, frecuencia));
+    if (j + r.codigo().length() < texto.length()) {
+      t.applyFont(j + r.codigo().length(), texto.length(), fuente(9, false, GRIS));
+    }
     return t;
   }
 
   /**
-   * Ficha: borde izquierdo grueso del color del grupo (gris sin grupo), fondo rosado en un buff. En
-   * las filas de fichas solo la última columna lleva borde derecho: el borde de la celda vecina
-   * taparía la pestaña del grupo de la siguiente. «Reducir hasta ajustar»: Excel en Windows dibuja
-   * la columna más angosta que en Mac y una ficha con bultos de 4 cifras perdería la letra del final;
-   * así se achica un poco en vez de cortarse (donde cabe, no cambia).
+   * Ficha: marco azul pizarra en sus cuatro lados (como la planilla), dos líneas centradas y fondo
+   * rosado en un buff. Con dos líneas Excel no puede «reducir hasta ajustar»: la columna deja
+   * holgura para Excel de Windows, que la dibuja más angosta.
    */
-  private XSSFCellStyle estiloFicha(String colorGrupo, boolean buff, boolean ultimaCol) {
-    String grupo = colorGrupo == null ? null : colorGrupo.substring(1).toUpperCase(Locale.ROOT);
+  private XSSFCellStyle estiloFicha(boolean buff) {
     return estilos.computeIfAbsent(
-        "ficha-" + grupo + "-" + buff + "-" + ultimaCol,
+        "ficha-" + buff,
         (k) -> {
-          XSSFCellStyle s = base(buff ? ROJO_SUAVE : "FFFFFF", fuente(10, true, TINTA), HorizontalAlignment.LEFT);
-          s.setIndention((short) 1);
-          s.setShrinkToFit(true);
-          bordes(s, BorderStyle.THIN, BORDE_FICHA, BorderStyle.THIN, BORDE_FICHA);
-          s.setBorderLeft(grupo == null ? BorderStyle.THIN : BorderStyle.THICK);
-          s.setLeftBorderColor(color(grupo == null ? BORDE : grupo));
-          s.setBorderRight(ultimaCol ? BorderStyle.THIN : BorderStyle.NONE);
-          s.setRightBorderColor(color(BORDE));
+          XSSFCellStyle s = base(buff ? ROJO_SUAVE : "FFFFFF", fuente(10, true, TINTA), HorizontalAlignment.CENTER);
+          s.setWrapText(true);
+          bordes(s, BorderStyle.MEDIUM, MARCO, BorderStyle.MEDIUM, MARCO);
+          s.setBorderLeft(BorderStyle.MEDIUM);
+          s.setBorderRight(BorderStyle.MEDIUM);
+          s.setLeftBorderColor(color(MARCO));
+          s.setRightBorderColor(color(MARCO));
           return s;
         });
   }
@@ -585,9 +612,9 @@ final class DistribucionExcel {
   private void nota(int r) {
     XSSFCellStyle s = estilo("nota", null, fuente(8, false, GRIS), HorizontalAlignment.LEFT, null, true);
     celda(fila(r, 30), 0,
-        "Cada ficha muestra el grupo (número y borde de su color), el número de ruta con el color de su frecuencia, sus"
-            + " bultos redondeados hacia arriba, su tipo (B2C en verde, B2B en dorado) y la letra de la frecuencia"
-            + " (D diaria, L L-X-V, M M-J-S). Una diaria sale"
+        "Cada ficha va enmarcada y tiene dos líneas: arriba su tipo (B2C en verde, B2B en dorado), sus días (Diaria,"
+            + " L-X-V o M-J-S, con el color de su frecuencia) y sus bultos redondeados hacia arriba; abajo, el grupo"
+            + " (número de su color) y el número de ruta con el color de su frecuencia. Una diaria sale"
             + " una sola vez y trabaja los dos días. Las filas de bultos suman por chute la carga de cada día (diarias +"
             + " rutas de ese día), redondeada al entero.",
         s);
