@@ -301,7 +301,7 @@ interface EstadoRutasMatriz {
     HorasPipe,
 ],
   templateUrl: './configuracion.html',
-  styleUrls: ['./configuracion.scss', './configuracion-panel.scss'],
+  styleUrls: ['./configuracion.scss', './configuracion-panel.scss', './configuracion-pestanas.scss'],
 })
 export class SimulacionConfiguracion {
   private readonly api = inject(SimulacionApi);

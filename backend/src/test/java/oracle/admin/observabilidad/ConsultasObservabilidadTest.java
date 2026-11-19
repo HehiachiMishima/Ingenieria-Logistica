@@ -113,18 +113,18 @@ class ConsultasObservabilidadTest {
                 INSERT INTO bitacora.peticiones(solicitud,actor_id,usuario,metodo,ruta,estado,duracion_ms,correlacion,ocurrido_en)
                 VALUES(?,1,?,'POST','/prueba',200,10,?,now()-interval '100 years')
                 """, solicitud, usuario, usuario);
-        var antes = consultas.auditoria(7, usuario, "345", null, null).datos().filas();
+        var antes = consultas.auditoria(7, usuario, "345", null, 1, 10).datos().contenido();
         assertThat(antes).hasSize(1);
         assertThat(antes.getFirst().get("estado")).isEqualTo(200);
         consultas.purgarPeticiones();
-        var despues = consultas.auditoria(7, usuario, "345", null, null).datos().filas();
+        var despues = consultas.auditoria(7, usuario, "345", null, 1, 10).datos().contenido();
         assertThat(despues).hasSize(1);
         assertThat(despues.getFirst()).containsEntry("usuario", usuario)
                 .containsEntry("resultado", "Éxito").containsEntry("estado", null);
     }
 
     @Test
-    void laActividadExcluyeLaSesionTecnicaYPaginaSinRepeticiones() {
+    void laActividadExcluyeLaSesionTecnicaYPaginaConTotal() {
         String usuario = UUID.randomUUID().toString();
         jdbc.update("""
                 INSERT INTO bitacora.peticiones(solicitud,actor_id,usuario,metodo,ruta,estado,duracion_ms,correlacion)
@@ -136,13 +136,19 @@ class ConsultasObservabilidadTest {
                     VALUES(gen_random_uuid(),1,?,'GET',?,200,1,'prueba')
                     """, usuario, ruta);
         }
-        var primera = consultas.actividad(1, usuario, null).datos();
-        var segunda = consultas.actividad(1, usuario, primera.siguiente()).datos();
-        assertThat(primera.filas()).hasSize(50).allMatch(f -> "/prueba".equals(f.get("ruta")));
-        assertThat(segunda.filas()).hasSize(1);
-        assertThat((Long) segunda.filas().getFirst().get("id")).isLessThan(primera.siguiente());
-        assertThat(segunda.siguiente()).isNull();
-        assertThatThrownBy(() -> consultas.actividad(91, usuario, null))
+        var primera = consultas.actividad(1, usuario, 1, 10).datos();
+        var ultima = consultas.actividad(1, usuario, 6, 10).datos();
+        assertThat(primera.contenido()).hasSize(10).allMatch(f -> "/prueba".equals(f.get("ruta")));
+        assertThat(primera.total()).isEqualTo(51);
+        assertThat(primera.totalPaginas()).isEqualTo(6);
+        assertThat(ultima.contenido()).hasSize(1);
+        assertThat((Long) ultima.contenido().getFirst().get("id"))
+                .isLessThan((Long) primera.contenido().getLast().get("id"));
+        assertThatThrownBy(() -> consultas.actividad(91, usuario, 1, 10))
+                .isInstanceOf(SolicitudInvalidaException.class);
+        assertThatThrownBy(() -> consultas.actividad(1, usuario, 1, 51))
+                .isInstanceOf(SolicitudInvalidaException.class);
+        assertThatThrownBy(() -> consultas.actividad(1, usuario, 1001, 10))
                 .isInstanceOf(SolicitudInvalidaException.class);
     }
 }

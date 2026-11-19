@@ -346,7 +346,8 @@
  */
 .mz {
   --mz-label: 240px;
-  --mz-col: 156px;
+  /* 156 px de la ficha + 15 px de la pestaña de tipo (14 px y 1 px de separación). */
+  --mz-col: 171px;
   --mz-fila: 42px;
   /* Filas visibles: las fija MIN_FILAS (configuracion.ts) vía [style.--mz-filas]. */
   --mz-filas: 4;
@@ -660,8 +661,8 @@
   min-width: 0;
   height: 100%;
   min-height: var(--mz-fila);
-  /* 18 px a la derecha: la pestaña de frecuencia (14 px) y su separación. */
-  padding: 0 18px 0 var(--space-2);
+  /* 33 px a la derecha: las pestañas de tipo y de frecuencia (14 px cada una) y sus separaciones. */
+  padding: 0 33px 0 var(--space-2);
   white-space: nowrap;
   /* El ancho lo fija la columna, no el contenido: una ruta con mucho texto no
      ensancha su columna (cada cluster es otra tabla y se desalinearían). */
@@ -815,9 +816,10 @@
   opacity: 0.55;
 }
 
+/* En el lugar de la pestaña de frecuencia (14 px al borde), sin pisar la de tipo. */
 .matriz-ruta__spinner {
   position: absolute;
-  right: 2px;
+  right: 0;
   width: 14px;
   height: 14px;
 }
@@ -952,7 +954,7 @@
 @include bp.down(md) {
   .mz {
     --mz-label: 200px;
-    --mz-col: 140px;
+    --mz-col: 155px;
   }
 }
 
@@ -1262,56 +1264,6 @@
       color: var(--text-2);
     }
   }
-}
-
-/*
- * Frecuencia de la ruta: pestaña vertical pegada al borde derecho, al estilo de
- * la del grupo (que va en el izquierdo). Ocupa el espacio reservado a la derecha
- * de la ruta (18 px), así no le quita ancho al código. Las letras se apilan una
- * bajo otra: D = diaria, LXV, MJS o los días de una parcial (LX, XV, V…); como
- * máximo 3 letras, que caben en los 32 px de alto de la pestaña.
- */
-.matriz-ruta__frecuencia {
-  position: absolute;
-  top: 5px;
-  right: 0;
-  bottom: 5px;
-  display: inline-flex;
-  flex-direction: column;
-  justify-content: center;
-  width: 14px;
-  overflow: hidden;
-  border-radius: 4px 0 0 4px;
-  font-size: 0.6rem;
-  font-weight: 800;
-  line-height: 1;
-  color: #fff;
-  background: #475569;
-  user-select: none;
-  pointer-events: none;
-
-  &[data-frecuencia='LXV'] {
-    background: #1d4ed8;
-  }
-
-  &[data-frecuencia='MJS'] {
-    background: #c2410c;
-  }
-
-  &--fija {
-    background: #334155;
-  }
-}
-
-/* Una letra por línea: min-content + break-all deja el texto del ancho de una
-   letra (si no, «LX» cabría junto en 14 px y «LXV» quedaría en dos líneas). */
-.matriz-ruta__frecuencia-texto {
-  width: min-content;
-  margin-inline: auto;
-  text-align: center;
-  /* La ruta es nowrap: sin esto «LXV» queda en una línea de 20 px y la pestaña lo corta. */
-  white-space: normal;
-  word-break: break-all;
 }
 
 /* ---------- Modales ejecutivos: rango de diarias y operarios ---------- */

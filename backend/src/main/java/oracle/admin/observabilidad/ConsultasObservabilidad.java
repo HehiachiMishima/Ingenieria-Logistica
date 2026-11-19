@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Set;
 import oracle.common.exception.SolicitudInvalidaException;
 import oracle.common.response.ApiResponse;
+import oracle.common.response.PaginaResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -18,7 +19,14 @@ public class ConsultasObservabilidad {
     private final JdbcTemplate jdbc;
     private final ResumenObservabilidad resumen;
     private final int retencion;
-    private static final int PAGINA = 50;
+    /** Mismo tamaño por defecto que el paginador estándar; máximo por petición. */
+    static final int TAMANO = 10;
+    static final int MAX_TAMANO = 50;
+    /**
+     * El total se cuenta hasta este tope: contar millones de trazas en cada página sería caro y
+     * nadie recorre más de 1 000 páginas. Con filtros (usuario, registro, período corto) el total es exacto.
+     */
+    static final int TOPE_TOTAL = 10_000;
     private static final Set<String> RESULTADOS = Set.of("Éxito", "Fallo", "Denegado");
 
     public ConsultasObservabilidad(JdbcTemplate jdbc, ResumenObservabilidad resumen,
@@ -29,68 +37,87 @@ public class ConsultasObservabilidad {
         retencion = dias;
     }
 
-    public record Pagina(List<Map<String,Object>> filas, Long siguiente) {}
-
+    /** Condiciones sobre la tabla base (alias), por igualdad y con el período obligatorio. */
     private static class Filtro {
-        final StringBuilder sql = new StringBuilder();
+        final StringBuilder where = new StringBuilder();
         final List<Object> args = new ArrayList<>();
-        Filtro(String consulta, String alias, int dias, Long antes) {
+        Filtro(String alias, int dias) {
             if (dias < 1 || dias > 90) throw new SolicitudInvalidaException("El período debe ser de 1 a 90 días.");
-            sql.append(consulta).append(" WHERE ").append(alias).append(".ocurrido_en >= now() - (? * interval '1 day')");
+            where.append(alias).append(".ocurrido_en >= now() - (? * interval '1 day')");
             args.add(dias);
-            if (antes != null) {
-                sql.append(" AND ").append(alias).append(".id < ?");
-                args.add(antes);
-            }
         }
         void igual(String columna, String valor) {
             if (valor != null && !valor.isBlank()) {
                 if (valor.length() > 250) throw new SolicitudInvalidaException("Filtro demasiado largo.");
-                sql.append(" AND ").append(columna).append(" = ?");
+                where.append(" AND ").append(columna).append(" = ?");
                 args.add(valor.strip());
             }
         }
+        /** Condición fija escrita en esta clase (nunca con datos del usuario). */
+        void y(String condicion) {
+            where.append(" AND ").append(condicion);
+        }
     }
 
-    private ApiResponse<Pagina> pagina(Filtro f, String alias) {
-        f.sql.append(" ORDER BY ").append(alias).append(".id DESC LIMIT ").append(PAGINA + 1);
-        var filas = jdbc.queryForList(f.sql.toString(), f.args.toArray());
-        boolean mas = filas.size() > PAGINA;
-        return ApiResponse.ok("Consulta completada.", new Pagina(mas ? filas.subList(0, PAGINA) : filas,
-            mas ? ((Number) filas.get(PAGINA - 1).get("id")).longValue() : null));
+    /**
+     * Página {@code pagina} de {@code tamano} filas, de la más reciente a la más antigua, y el total
+     * contado solo sobre la tabla base (las uniones son 1:1 por solicitud) hasta {@link #TOPE_TOTAL}.
+     */
+    private ApiResponse<PaginaResponse<Map<String, Object>>> pagina(String consulta, String base, String alias,
+                                                                    Filtro f, int pagina, int tamano) {
+        if (pagina < 1) throw new SolicitudInvalidaException("La página empieza en 1.");
+        if (tamano < 1 || tamano > MAX_TAMANO) {
+            throw new SolicitudInvalidaException("El tamaño de página debe ser de 1 a " + MAX_TAMANO + ".");
+        }
+        long desde = (long) (pagina - 1) * tamano;
+        if (desde >= TOPE_TOTAL) {
+            throw new SolicitudInvalidaException("Solo se recorren los " + TOPE_TOTAL
+                + " registros más recientes: acota el período o usa los filtros.");
+        }
+        // Q: <tabla>_fecha (ocurrido_en, id); el LIMIT corta el conteo en el tope.
+        Long total = jdbc.queryForObject("SELECT count(*) FROM (SELECT 1 FROM " + base + " WHERE " + f.where
+            + " LIMIT " + TOPE_TOTAL + ") c", Long.class, f.args.toArray());
+        List<Object> args = new ArrayList<>(f.args);
+        args.add(tamano);
+        args.add(desde);
+        var filas = jdbc.queryForList(consulta + " WHERE " + f.where + " ORDER BY " + alias + ".id DESC LIMIT ? OFFSET ?",
+            args.toArray());
+        return ApiResponse.ok("Consulta completada.", PaginaResponse.of(filas, total == null ? 0 : total, pagina, tamano));
     }
 
     @GetMapping("/auditoria")
     @PreAuthorize("hasAuthority('VER_AUDITORIA')")
-    public ApiResponse<Pagina> auditoria(@RequestParam(defaultValue="7") int dias,
+    public ApiResponse<PaginaResponse<Map<String, Object>>> auditoria(@RequestParam(defaultValue="7") int dias,
             @RequestParam(required=false) String usuario, @RequestParam(required=false) String registro,
-            @RequestParam(required=false) String resultado, @RequestParam(required=false) Long antes) {
+            @RequestParam(required=false) String resultado, @RequestParam(defaultValue="1") int pagina,
+            @RequestParam(defaultValue="" + TAMANO) int tamano) {
         if (resultado != null && !resultado.isBlank() && !RESULTADOS.contains(resultado)) {
             throw new SolicitudInvalidaException("Resultado no válido: usa Éxito, Fallo o Denegado.");
         }
-        var f = new Filtro("""
-            SELECT a.id,a.ocurrido_en AS fecha,a.usuario,a.accion,a.entidad,a.registro,a.resultado,
-                   a.correlacion,p.metodo,p.ruta,p.estado,p.duracion_ms
-            FROM bitacora.auditoria_eventos a LEFT JOIN bitacora.peticiones p USING(solicitud)
-            """, "a", dias, antes);
+        var f = new Filtro("a", dias);
         f.igual("a.usuario", usuario);
         f.igual("a.registro", registro);
         f.igual("a.resultado", resultado);
-        return pagina(f, "a");
+        return pagina("""
+            SELECT a.id,a.ocurrido_en AS fecha,a.usuario,a.accion,a.entidad,a.registro,a.resultado,
+                   a.correlacion,p.metodo,p.ruta,p.estado,p.duracion_ms
+            FROM bitacora.auditoria_eventos a LEFT JOIN bitacora.peticiones p USING(solicitud)
+            """, "bitacora.auditoria_eventos a", "a", f, pagina, tamano);
     }
 
     @GetMapping("/actividad")
     @PreAuthorize("hasAuthority('VER_ACTIVIDAD')")
-    public ApiResponse<Pagina> actividad(@RequestParam(defaultValue="7") int dias,
-            @RequestParam(required=false) String usuario, @RequestParam(required=false) Long antes) {
-        var f = new Filtro("""
+    public ApiResponse<PaginaResponse<Map<String, Object>>> actividad(@RequestParam(defaultValue="7") int dias,
+            @RequestParam(required=false) String usuario, @RequestParam(defaultValue="1") int pagina,
+            @RequestParam(defaultValue="" + TAMANO) int tamano) {
+        var f = new Filtro("p", dias);
+        f.y("p.actor_id IS NOT NULL AND p.ruta NOT IN (" + ColaPeticiones.RUTAS_TECNICAS + ")");
+        f.igual("p.usuario", usuario);
+        return pagina("""
             SELECT p.id,p.ocurrido_en AS fecha,p.usuario,p.metodo,p.ruta,p.estado,p.duracion_ms,
                    p.correlacion,a.accion,a.entidad,a.registro,a.resultado
             FROM bitacora.peticiones p LEFT JOIN bitacora.auditoria_eventos a USING(solicitud)
-            """, "p", dias, antes);
-        f.sql.append(" AND p.actor_id IS NOT NULL AND p.ruta NOT IN (").append(ColaPeticiones.RUTAS_TECNICAS).append(")");
-        f.igual("p.usuario", usuario);
-        return pagina(f, "p");
+            """, "bitacora.peticiones p", "p", f, pagina, tamano);
     }
 
     @GetMapping("/monitoreo")
@@ -122,16 +149,17 @@ public class ConsultasObservabilidad {
 
     @GetMapping("/monitoreo/peticiones")
     @PreAuthorize("hasAuthority('VER_MONITOREO')")
-    public ApiResponse<Pagina> peticiones(@RequestParam(defaultValue="1") int dias, @RequestParam String metodo,
-            @RequestParam String ruta, @RequestParam(defaultValue="false") boolean errores, @RequestParam(required=false) Long antes) {
-        var f = new Filtro("""
-            SELECT p.id,p.ocurrido_en AS fecha,p.metodo,p.ruta,p.estado,p.duracion_ms,p.correlacion
-            FROM bitacora.peticiones p
-            """, "p", dias, antes);
+    public ApiResponse<PaginaResponse<Map<String, Object>>> peticiones(@RequestParam(defaultValue="1") int dias,
+            @RequestParam String metodo, @RequestParam String ruta, @RequestParam(defaultValue="false") boolean errores,
+            @RequestParam(defaultValue="1") int pagina, @RequestParam(defaultValue="" + TAMANO) int tamano) {
+        var f = new Filtro("p", dias);
         f.igual("p.metodo", metodo);
         f.igual("p.ruta", ruta);
-        if (errores) f.sql.append(" AND p.estado >= 400");
-        return pagina(f, "p");
+        if (errores) f.y("p.estado >= 400");
+        return pagina("""
+            SELECT p.id,p.ocurrido_en AS fecha,p.metodo,p.ruta,p.estado,p.duracion_ms,p.correlacion
+            FROM bitacora.peticiones p
+            """, "bitacora.peticiones p", "p", f, pagina, tamano);
     }
 
     @Scheduled(initialDelayString="PT5M", fixedDelayString="PT1M")

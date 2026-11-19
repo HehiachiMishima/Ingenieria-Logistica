@@ -75,3 +75,17 @@
   font-size: var(--fs-xs);
   color: var(--text-3);
 }
+
+// Aviso bajo el paginador cuando el total llegó al tope que cuenta el backend.
+.obs-tope {
+  margin: 0;
+  padding: 0 var(--space-4) var(--space-3);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  background: var(--surface-2);
+}
+
+// Reserva el espacio del texto mientras no hay datos (evita saltos de diseño al cargar).
+.obs-oculto {
+  visibility: hidden;
+}

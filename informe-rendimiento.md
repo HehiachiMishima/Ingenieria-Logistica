@@ -26,12 +26,16 @@
 | p95 por día × franja del Dashboard (`peticiones_hora`) | 1 M trazas, 30 días | 73,0 ms | 200 ms | `BenchTablero.java` | 2026-11-19 |
 | Matriz usuario × registro del Dashboard | 200 000 eventos, 30 días | 109,7 ms | 200 ms | ídem | 2026-11-19 |
 | Intentos de cambio día × hora del Dashboard | 200 000 eventos, 30 días | 69,6 ms | 200 ms | ídem | 2026-11-19 |
+| Listado de Actividad por cursor (antes de la paginación estándar) | 1 M trazas, 30 días, primera página | 0,094 ms | 200 ms | `EXPLAIN (ANALYZE, BUFFERS)` en `BenchPaginas.java` | 2026-11-19 |
+| Conteo con tope de 10 000 en Actividad | 1 M trazas, 30 días | 17,4 ms | 200 ms | ídem | 2026-11-19 |
+| Página 1 000 de Actividad (OFFSET 9 990) | 1 M trazas, 30 días | 18,9 ms | 200 ms | ídem (`shared hit=31080`) | 2026-11-19 |
+| Página 1 000 de Auditoría (OFFSET 9 990) | 200 000 eventos, 90 días | 65,0 ms | 200 ms | ídem | 2026-11-19 |
 | Escritura de un lote de 500 trazas + resúmenes | 20 lotes, media | 44,5 ms | — | `BenchObservabilidad.java` con la sentencia real de `ColaPeticiones.INSERTAR` | 2026-11-19 |
 | Capacidad de la cola de trazas por instancia | 1 lote de 500 cada 250 ms | 1 700 trazas/s | — | Cálculo: 500 / (0,25 s + 0,0445 s) | 2026-11-19 |
 | Bundle inicial | `ng build` producción | 449,55 kB | 500 kB | `npx ng build --verbose` | 2026-11-19 |
 | Chunks perezosos de los tres módulos | `ng build` producción | 11,41 kB · 10,56 kB · 8,55 kB | — | ídem (monitoreo, auditoria, actividad) | 2026-11-19 |
 | p95 HTTP de los tres `/resumen` | servidor en marcha con carga | Pendiente | 200 ms | Levantar el backend con datos y ejecutar `k6 run` con 50 VUs sobre los tres `/resumen` y `/api/admin/monitoreo` | 2026-11-19 |
-| LCP /admin/dashboard (móvil) | Lighthouse ×3, mediana | Pendiente | 2,5 s | `npx lighthouse http://127.0.0.1:4287/admin/dashboard --preset=perf --output=json` con `node qa/observabilidad/servidor.mjs` | 2026-11-19 |
+| LCP /admin/dashboard (móvil) | Lighthouse ×3, mediana | Pendiente | 2,5 s | `npx lighthouse http://127.0.0.1:4287/admin/dashboard --preset=perf --output=json` con un servidor de pruebas que sirva `frontend/dist/frontend/browser` (la carpeta `frontend/qa` se retiró del repositorio) | 2026-11-19 |
 | Pool Hikari (`pending`, `acquire`) | carga nominal | Pendiente | 0 · 10 ms | `scripts/analyze_pool_health.sh -n 60 -i 5` contra Actuator con carga | 2026-11-19 |
 
 ## 3. Hallazgos
@@ -59,7 +63,8 @@
 | Interbloqueos entre instancias al sumar resúmenes | Base de datos | No aplicable | Las filas se escriben con `ORDER BY` de la clave en ambos `INSERT … ON CONFLICT` |
 | Peticiones del Dashboard | API | No aplicable | Tres resúmenes en paralelo, uno por módulo y solo si el usuario tiene su permiso; los módulos ya no piden resúmenes |
 | Bundle inicial | Frontend | No aplicable | 449,55 kB < 500 kB; los módulos quedaron en 8,5–11,4 kB y el Dashboard creció 0,84 kB comprimido |
-| Suscripciones sin limpieza | Frontend | No aplicable | `RecursoRemoto` usa `takeUntilDestroyed`; las páginas no hacen `subscribe` |
+| Suscripciones sin limpieza | Frontend | No aplicable | `RecursoRemoto` y `ListadoRemoto` usan `takeUntilDestroyed`; las páginas no hacen `subscribe` |
+| Paginación con OFFSET y total en Actividad, Auditoría y peticiones | Base de datos | No aplicable | Pedida para igualar el paginador estándar; el total se cuenta hasta 10 000 (17,4 ms) y la página más profunda permitida cuesta 18,9–65,0 ms, dentro de 200 ms; `ConsultasObservabilidad.java` rechaza páginas más allá del tope |
 | p95 HTTP con carga | API | Pendiente | Backend en marcha con datos + `k6` sobre los tres `/resumen` |
 | LCP / INP del Dashboard | Frontend | Pendiente | Lighthouse contra el servidor de QA; INP de campo con `web-vitals` |
 | Salud del pool Hikari | Backend | Pendiente | `analyze_pool_health.sh` con Actuator y carga |
@@ -85,9 +90,10 @@
 | Usuarios por semana del Dashboard, 12 semanas | 190,3 ms | 116,8 ms | −39 % | Mejora |
 | Usuarios por día del Dashboard, 30 días | 192,6 ms | 73,1 ms | −62 % | Mejora |
 | Buffers temporales de usuarios distintos | 2 067 | 0 | −100 % | Mejora |
+| Primera página de Actividad (consulta + total) | 0,094 ms | 17,4 ms | +17,3 ms | Regresión |
 | Capacidad de la cola de trazas por instancia | 1 700 trazas/s | 7 000 trazas/s (cálculo) | +312 % | Pendiente |
 | p95 HTTP de los tres `/resumen` | Pendiente | Pendiente | — | Pendiente |
 
 ## 7. Veredicto
 
-El Dashboard de operación no depende del volumen de trazas: lee resúmenes por hora que se llenan en la misma sentencia que guarda cada lote, y todas sus consultas quedan por debajo de 120 ms en el peor caso sintético (1 M trazas, 200 000 eventos, 300 usuarios activos cada hora). Lo único que derramaba a disco eran los usuarios distintos por día y semana; la agregación en dos niveles lo eliminó. PostgreSQL no es el cuello de botella en estas consultas. Falta medir el p95 HTTP con carga real, el LCP del Dashboard y la salud del pool con Actuator; el resumen diario de actividad solo hace falta si el uso real se acerca al peor caso.
+El Dashboard de operación no depende del volumen de trazas: lee resúmenes por hora que se llenan en la misma sentencia que guarda cada lote, y todas sus consultas quedan por debajo de 120 ms en el peor caso sintético (1 M trazas, 200 000 eventos, 300 usuarios activos cada hora). Lo único que derramaba a disco eran los usuarios distintos por día y semana; la agregación en dos niveles lo eliminó. PostgreSQL no es el cuello de botella en estas consultas. Pasar Actividad, Auditoría y el detalle de peticiones al paginador estándar (página + total) cuesta unos 17 ms por página por el conteo con tope de 10 000, y la página más profunda permitida 65 ms: es una regresión aceptada frente al cursor, dentro del umbral de 200 ms. Falta medir el p95 HTTP con carga real, el LCP del Dashboard y la salud del pool con Actuator; el resumen diario de actividad solo hace falta si el uso real se acerca al peor caso.

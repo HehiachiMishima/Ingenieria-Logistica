@@ -2,13 +2,13 @@ import { DatePipe, DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { EmptyState } from '../../../../../shared/ui/empty-state/empty-state';
 import { Icon } from '../../../../../shared/ui/icon/icon';
+import { Paginador } from '../../../../../shared/ui/paginador/paginador';
 import { ChipFiltro, FiltrosActivos } from '../../../../../shared/ui/panel-filtros/filtros-activos';
 import { PanelFiltros } from '../../../../../shared/ui/panel-filtros/panel-filtros';
 import { ObservabilidadApi } from '../../data/observabilidad.api';
 import { Evento, Periodo } from '../../data/observabilidad.model';
-import { ListaCursor } from '../../state/lista-cursor';
+import { ListadoPaginado } from '../../state/listado-paginado';
 import { PERIODOS_MONITOREO, badgeEstado, badgeMetodo, inicialesDe } from '../../ui/observabilidad.util';
-import { PaginadorCursor } from '../../ui/paginador-cursor';
 import { SelectorPeriodo } from '../../ui/selector-periodo';
 
 /**
@@ -18,7 +18,7 @@ import { SelectorPeriodo } from '../../ui/selector-periodo';
 @Component({
   selector: 'app-admin-actividad',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, DecimalPipe, EmptyState, FiltrosActivos, Icon, PaginadorCursor, PanelFiltros, SelectorPeriodo],
+  imports: [DatePipe, DecimalPipe, EmptyState, FiltrosActivos, Icon, Paginador, PanelFiltros, SelectorPeriodo],
   templateUrl: './actividad.html',
   styleUrl: './actividad.scss',
 })
@@ -34,8 +34,10 @@ export class Actividad {
   readonly usuario = signal('');
   readonly filtrosAbierto = signal(false);
 
-  readonly lista = new ListaCursor<Evento>((antes) => this.api.actividad(this.dias(), this.usuario(), antes));
-  readonly corte = computed(() => (this.lista.cargada() ? new Date() : null));
+  readonly lista = new ListadoPaginado<Evento>((pagina, tamano) =>
+    this.api.actividad(this.dias(), this.usuario(), pagina, tamano),
+  );
+  readonly corte = computed(() => (this.lista.listado.listo() ? new Date() : null));
 
   readonly chips = computed<ChipFiltro[]>(() =>
     this.usuario() ? [{ clave: 'usuario', etiqueta: 'Usuario', valor: this.usuario(), icono: 'user' }] : [],

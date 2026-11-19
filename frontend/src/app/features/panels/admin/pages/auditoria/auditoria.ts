@@ -2,13 +2,13 @@ import { DatePipe, DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { EmptyState } from '../../../../../shared/ui/empty-state/empty-state';
 import { Icon } from '../../../../../shared/ui/icon/icon';
+import { Paginador } from '../../../../../shared/ui/paginador/paginador';
 import { ChipFiltro, FiltrosActivos } from '../../../../../shared/ui/panel-filtros/filtros-activos';
 import { PanelFiltros } from '../../../../../shared/ui/panel-filtros/panel-filtros';
 import { ObservabilidadApi } from '../../data/observabilidad.api';
 import { Evento, FiltrosAuditoria, Periodo, ResultadoAuditoria } from '../../data/observabilidad.model';
-import { ListaCursor } from '../../state/lista-cursor';
+import { ListadoPaginado } from '../../state/listado-paginado';
 import { BADGE_RESULTADO, PERIODOS_AUDITORIA, badgeEstado, inicialesDe } from '../../ui/observabilidad.util';
-import { PaginadorCursor } from '../../ui/paginador-cursor';
 import { SelectorPeriodo } from '../../ui/selector-periodo';
 
 type ClaveFiltro = 'usuario' | 'registro' | 'resultado';
@@ -20,7 +20,7 @@ type ClaveFiltro = 'usuario' | 'registro' | 'resultado';
 @Component({
   selector: 'app-admin-auditoria',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, DecimalPipe, EmptyState, FiltrosActivos, Icon, PaginadorCursor, PanelFiltros, SelectorPeriodo],
+  imports: [DatePipe, DecimalPipe, EmptyState, FiltrosActivos, Icon, Paginador, PanelFiltros, SelectorPeriodo],
   templateUrl: './auditoria.html',
   styleUrl: './auditoria.scss',
 })
@@ -36,8 +36,8 @@ export class Auditoria {
   readonly filtros = signal<FiltrosAuditoria>({ dias: 7, usuario: '', registro: '', resultado: '' });
   readonly filtrosAbierto = signal(false);
 
-  readonly lista = new ListaCursor<Evento>((antes) => this.api.auditoria(this.filtros(), antes));
-  readonly corte = computed(() => (this.lista.cargada() ? new Date() : null));
+  readonly lista = new ListadoPaginado<Evento>((pagina, tamano) => this.api.auditoria(this.filtros(), pagina, tamano));
+  readonly corte = computed(() => (this.lista.listado.listo() ? new Date() : null));
 
   readonly chips = computed<ChipFiltro[]>(() => {
     const f = this.filtros();

@@ -3,11 +3,8 @@ export type Periodo = 1 | 7 | 30 | 90;
 
 export type ResultadoAuditoria = 'Éxito' | 'Fallo' | 'Denegado';
 
-/** Página por cursor: `siguiente` es el id desde el que se pide la próxima (null = no hay más). */
-export interface PaginaCursor<T> {
-  filas: T[];
-  siguiente: number | null;
-}
+/** Los listados cuentan su total solo hasta aquí (igual que el backend). */
+export const TOPE_TOTAL = 10_000;
 
 /** Fila de Auditoría, Actividad o de las peticiones de una API (campos según la consulta). */
 export interface Evento {

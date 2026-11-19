@@ -3,11 +3,11 @@ import { Service, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { Api } from '../../../../core/services/api';
 import { PETICION_SILENCIOSA } from '../../../../core/interceptors/error.interceptor';
+import { PaginaRemota } from '../../../../core/utils/listado-remoto';
 import {
   EndpointMonitoreo,
   Evento,
   FiltrosAuditoria,
-  PaginaCursor,
   Periodo,
   ResumenActividad,
   ResumenAuditoria,
@@ -16,7 +16,8 @@ import {
 
 /**
  * Consultas de Monitoreo, Actividad y Auditoría. Son silenciosas: cada pantalla
- * muestra el error en su lugar en vez de un aviso por petición.
+ * muestra el error en su lugar en vez de un aviso por petición. Los listados son
+ * páginas numeradas con total (PaginaResponse), como el resto de tablas del sistema.
  */
 @Service()
 export class ObservabilidadApi {
@@ -35,11 +36,12 @@ export class ObservabilidadApi {
     dias: Periodo,
     endpoint: Pick<EndpointMonitoreo, 'metodo' | 'ruta'>,
     soloErrores: boolean,
-    antes: number | null,
-  ): Observable<PaginaCursor<Evento>> {
-    return this.api.get<PaginaCursor<Evento>>(
+    pagina: number,
+    tamano: number,
+  ): Observable<PaginaRemota<Evento>> {
+    return this.api.get<PaginaRemota<Evento>>(
       '/admin/monitoreo/peticiones',
-      { dias, metodo: endpoint.metodo, ruta: endpoint.ruta, errores: soloErrores || undefined, antes },
+      { dias, metodo: endpoint.metodo, ruta: endpoint.ruta, errores: soloErrores || undefined, pagina, tamano },
       this.silenciosa,
     );
   }
@@ -48,8 +50,8 @@ export class ObservabilidadApi {
     return this.api.get<ResumenActividad>('/admin/actividad/resumen', { dias, usuario }, this.silenciosa);
   }
 
-  actividad(dias: Periodo, usuario: string, antes: number | null): Observable<PaginaCursor<Evento>> {
-    return this.api.get<PaginaCursor<Evento>>('/admin/actividad', { dias, usuario, antes }, this.silenciosa);
+  actividad(dias: Periodo, usuario: string, pagina: number, tamano: number): Observable<PaginaRemota<Evento>> {
+    return this.api.get<PaginaRemota<Evento>>('/admin/actividad', { dias, usuario, pagina, tamano }, this.silenciosa);
   }
 
   resumenAuditoria(f: FiltrosAuditoria): Observable<ResumenAuditoria> {
@@ -60,7 +62,7 @@ export class ObservabilidadApi {
     );
   }
 
-  auditoria(f: FiltrosAuditoria, antes: number | null): Observable<PaginaCursor<Evento>> {
-    return this.api.get<PaginaCursor<Evento>>('/admin/auditoria', { ...f, antes }, this.silenciosa);
+  auditoria(f: FiltrosAuditoria, pagina: number, tamano: number): Observable<PaginaRemota<Evento>> {
+    return this.api.get<PaginaRemota<Evento>>('/admin/auditoria', { ...f, pagina, tamano }, this.silenciosa);
   }
 }

@@ -493,7 +493,7 @@
                   [class.matriz-ruta--elegida]="elegida"
                   [title]="movible ? celda.titulo + '\nCtrl/⌘+clic: elegir varias · Mayús+clic: un tramo' : celda.titulo"
                   role="button" tabindex="0" aria-haspopup="dialog"
-                  [attr.aria-label]="(elegida ? 'Seleccionada. ' : '') + 'Detalle de la ruta ' + ruta.codigoRuta + ', ' + celda.bultos + ' bultos' + (celda.grupo !== null ? ', grupo ' + celda.grupo : '') + ', ' + celda.frecuencia.titulo"
+                  [attr.aria-label]="(elegida ? 'Seleccionada. ' : '') + 'Detalle de la ruta ' + ruta.codigoRuta + ' ' + ruta.tipo + ', ' + celda.bultos + ' bultos' + (celda.grupo !== null ? ', grupo ' + celda.grupo : '') + ', ' + celda.frecuencia.titulo"
                   [class.matriz-ruta--grupo]="celda.grupoColor !== null" [style.--grupo-color]="celda.grupoColor"
                   (mousedown)="presionarRuta($event)" (contextmenu)="menuRuta($event, ruta.id)"
                   (click)="clicRuta($event, ruta.id)" (keydown.enter)="clicRuta($event, ruta.id)"
@@ -504,7 +504,6 @@
                     aria-hidden="true" [title]="'Grupo ' + celda.grupo">{{ celda.grupo }}</span>
                   }
                   <span class="matriz-ruta__codigo">{{ ruta.codigoRuta }}</span>
-                  <!-- El tipo (B2C/B2B) está en la ficha al hacer clic y en el title. -->
                   <span class="matriz-ruta__bultos" [title]="celda.bultos + ' bultos'">
                     <ng-container [ngTemplateOutlet]="cajaBulto" />{{ celda.bultos }}
                   </span>
@@ -513,6 +512,11 @@
                     ← {{ ruta.clusterOriginal }}
                   </small>
                   }
+                  <!-- Pestaña vertical del tipo (B2C/B2B), pegada a la de frecuencia: la misma ruta
+                       puede venir como B2C y como B2B, y así se distinguen sin abrir el detalle. -->
+                  <span class="matriz-ruta__pestana-tipo" [attr.data-tipo]="ruta.tipo" aria-hidden="true">
+                    <span class="matriz-ruta__pestana-tipo-texto">{{ ruta.tipo }}</span>
+                  </span>
                   @if (guardando) {
                   <span class="ui-spinner matriz-ruta__spinner" aria-label="Guardando"></span>
                   } @else {

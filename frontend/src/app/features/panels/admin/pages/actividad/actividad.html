@@ -3,12 +3,11 @@
     <h1 class="page-head__title">Actividad</h1>
     <p class="page-head__sub">
       Peticiones de cada usuario, las más recientes primero. El detalle se conserva 30 días.
-      @if (corte(); as c) {
-        <span class="obs-nota">· Actualizado {{ c | date: 'HH:mm' }}</span>
-      }
+      <!-- Siempre presente (oculto mientras carga): al llegar los datos el encabezado no salta. -->
+      <span class="obs-nota" [class.obs-oculto]="!corte()">· Actualizado {{ corte() ? (corte() | date: 'HH:mm') : '--:--' }}</span>
     </p>
   </div>
-  <button type="button" class="ui-btn ui-btn--secondary" (click)="lista.reiniciar()" [disabled]="lista.cargando()">
+  <button type="button" class="ui-btn ui-btn--secondary" (click)="lista.listado.recargar()" [disabled]="lista.listado.cargando()">
     <ui-icon name="refresh" [size]="16" />
     Actualizar
   </button>
@@ -59,16 +58,16 @@
   </section>
 </ui-panel-filtros>
 
-<div class="table-card" [class.table-card--refrescando]="lista.cargando() && lista.filas().length > 0">
-  @if (lista.cargando() && !lista.cargada()) {
+<div class="table-card" [class.table-card--refrescando]="lista.listado.refrescando()">
+  @if (lista.listado.cargaInicial()) {
     <div class="loading"><span class="ui-spinner"></span> Cargando actividad…</div>
-  } @else if (lista.error()) {
-    <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="lista.error()!">
-      <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="lista.reiniciar()">
+  } @else if (lista.listado.error()) {
+    <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="lista.listado.error()!">
+      <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="lista.listado.recargar()">
         <ui-icon name="refresh" [size]="16" /> Reintentar
       </button>
     </ui-empty>
-  } @else if (lista.filas().length === 0) {
+  } @else if (lista.listado.items().length === 0) {
     <ui-empty
       icono="usuarios"
       [titulo]="usuario() ? 'Sin resultados' : 'Sin actividad'"
@@ -89,7 +88,7 @@
           </tr>
         </thead>
         <tbody>
-          @for (e of lista.filas(); track e.id) {
+          @for (e of lista.listado.items(); track e.id) {
             <tr>
               <td class="obs-fecha">{{ e.fecha | date: 'dd/MM/yyyy HH:mm:ss' }}</td>
               <td>
@@ -119,13 +118,15 @@
         </tbody>
       </table>
     </div>
-    <app-paginador-cursor
-      [pagina]="lista.pagina()"
-      [hayAnterior]="lista.hayAnterior()"
-      [haySiguiente]="lista.haySiguiente()"
-      [cargando]="lista.cargando()"
-      (anterior)="lista.anterior()"
-      (siguiente)="lista.siguiente()"
+    <ui-paginador
+      [pagina]="lista.paginaActual()"
+      [total]="lista.listado.total()"
+      [porPagina]="lista.porPagina()"
+      (paginaCambia)="lista.cambiarPagina($event)"
+      (porPaginaCambia)="lista.cambiarPorPagina($event)"
     />
+    @if (lista.enTope()) {
+      <p class="obs-tope">Se muestran los 10 000 registros más recientes: acota el período o filtra por usuario para ir más atrás.</p>
+    }
   }
 </div>

@@ -3,9 +3,8 @@
     <h1 class="page-head__title">Monitoreo</h1>
     <p class="page-head__sub">
       APIs del período, primero las críticas: p95 sobre {{ meta * 1.5 }} ms o más del 5 % con error.
-      @if (corte(); as c) {
-        <span class="obs-nota">· Actualizado {{ c | date: 'HH:mm' }}</span>
-      }
+      <!-- Siempre presente (oculto mientras carga): al llegar los datos el encabezado no salta. -->
+      <span class="obs-nota" [class.obs-oculto]="!corte()">· Actualizado {{ corte() ? (corte() | date: 'HH:mm') : '--:--' }}</span>
     </p>
   </div>
   <button type="button" class="ui-btn ui-btn--secondary" (click)="cargar()" [disabled]="cargando()">
@@ -141,16 +140,16 @@
     <span class="obs-nota">Las más recientes primero. El detalle se conserva 30 días.</span>
   </div>
 
-  <div class="table-card" [class.table-card--refrescando]="peticiones.cargando() && peticiones.filas().length > 0">
-    @if (peticiones.cargando() && !peticiones.cargada()) {
+  <div class="table-card" [class.table-card--refrescando]="peticiones.listado.refrescando()">
+    @if (peticiones.listado.cargaInicial()) {
       <div class="loading"><span class="ui-spinner"></span> Cargando peticiones…</div>
-    } @else if (peticiones.error()) {
-      <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="peticiones.error()!">
+    } @else if (peticiones.listado.error()) {
+      <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="peticiones.listado.error()!">
         <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="peticiones.reiniciar()">
           <ui-icon name="refresh" [size]="16" /> Reintentar
         </button>
       </ui-empty>
-    } @else if (peticiones.filas().length === 0) {
+    } @else if (peticiones.listado.items().length === 0) {
       <ui-empty
         icono="activity"
         [titulo]="soloErrores() ? 'Sin errores' : 'Sin peticiones'"
@@ -168,7 +167,7 @@
             </tr>
           </thead>
           <tbody>
-            @for (p of peticiones.filas(); track p.id) {
+            @for (p of peticiones.listado.items(); track p.id) {
               <tr>
                 <td class="obs-fecha">{{ p.fecha | date: 'dd/MM/yyyy HH:mm:ss' }}</td>
                 <td><span class="ui-badge" [class]="badgeEstado(p.estado)">HTTP {{ p.estado }}</span></td>
@@ -179,14 +178,16 @@
           </tbody>
         </table>
       </div>
-      <app-paginador-cursor
-        [pagina]="peticiones.pagina()"
-        [hayAnterior]="peticiones.hayAnterior()"
-        [haySiguiente]="peticiones.haySiguiente()"
-        [cargando]="peticiones.cargando()"
-        (anterior)="peticiones.anterior()"
-        (siguiente)="peticiones.siguiente()"
+      <ui-paginador
+        [pagina]="peticiones.paginaActual()"
+        [total]="peticiones.listado.total()"
+        [porPagina]="peticiones.porPagina()"
+        (paginaCambia)="peticiones.cambiarPagina($event)"
+        (porPaginaCambia)="peticiones.cambiarPorPagina($event)"
       />
+      @if (peticiones.enTope()) {
+        <p class="obs-tope">Se muestran las 10 000 peticiones más recientes: acota el período o activa Solo errores.</p>
+      }
     }
   </div>
 </ui-modal>

@@ -8,7 +8,7 @@ import { Modal } from '../../../../../shared/ui/modal/modal';
 import { Paginador } from '../../../../../shared/ui/paginador/paginador';
 import { ObservabilidadApi } from '../../data/observabilidad.api';
 import { EndpointMonitoreo, Evento, Periodo } from '../../data/observabilidad.model';
-import { ListaCursor } from '../../state/lista-cursor';
+import { ListadoPaginado } from '../../state/listado-paginado';
 import {
   BADGE_NIVEL,
   META_P95_MS,
@@ -19,7 +19,6 @@ import {
   badgeMetodo,
   nivelApi,
 } from '../../ui/observabilidad.util';
-import { PaginadorCursor } from '../../ui/paginador-cursor';
 import { SelectorPeriodo } from '../../ui/selector-periodo';
 
 const ORDEN_NIVEL: Record<Nivel, number> = { riesgo: 0, aviso: 1, ok: 2 };
@@ -31,7 +30,7 @@ const ORDEN_NIVEL: Record<Nivel, number> = { riesgo: 0, aviso: 1, ok: 2 };
 @Component({
   selector: 'app-admin-monitoreo',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, DecimalPipe, EmptyState, Icon, Modal, Paginador, PaginadorCursor, SelectorPeriodo],
+  imports: [DatePipe, DecimalPipe, EmptyState, Icon, Modal, Paginador, SelectorPeriodo],
   templateUrl: './monitoreo.html',
   styleUrl: './monitoreo.scss',
 })
@@ -84,11 +83,11 @@ export class Monitoreo {
   // --- Peticiones de una API (modal) ---
   readonly detalle = signal<EndpointMonitoreo | null>(null);
   readonly soloErrores = signal(false);
-  readonly peticiones = new ListaCursor<Evento>((antes) => {
+  readonly peticiones = new ListadoPaginado<Evento>((pagina, tamano) => {
     const endpoint = this.detalle();
     return endpoint
-      ? this.api.peticiones(this.dias(), endpoint, this.soloErrores(), antes)
-      : of({ filas: [], siguiente: null });
+      ? this.api.peticiones(this.dias(), endpoint, this.soloErrores(), pagina, tamano)
+      : of({ contenido: [], total: 0, totalPaginas: 0 });
   });
 
   constructor() {
@@ -126,6 +125,8 @@ export class Monitoreo {
   abrir(endpoint: EndpointMonitoreo): void {
     this.detalle.set(endpoint);
     this.soloErrores.set(false);
+    // Sin filas de la API anterior mientras carga la nueva.
+    this.peticiones.listado.vaciar();
     this.peticiones.reiniciar();
   }
 
