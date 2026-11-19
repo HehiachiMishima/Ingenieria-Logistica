@@ -86,23 +86,6 @@
         }
       </div>
     </article>
-
-    <article class="dash-card dash-card--7" [class.dash-card--cargando]="cargando()">
-      <header class="dash-card__head">
-        <div class="dash-card__titulos">
-          <h2 class="dash-card__titulo"><ui-icon name="tendencia" [size]="18" /> ¿Cómo crece la base de usuarios?</h2>
-          <p class="dash-card__sub">Últimos 12 meses: cuentas registradas al cierre de cada mes y altas del mes.</p>
-        </div>
-      </header>
-      <div class="dash-card__body admin-medio">
-        @if (crecimiento().hay) {
-          <ui-linea [etiquetas]="crecimiento().etiquetas" [series]="crecimiento().series" [altura]="230" />
-        } @else {
-          <div class="dash-card__vacio">Sin cuentas registradas en el último año.</div>
-        }
-      </div>
-    </article>
-
     <article class="dash-card" [class.dash-card--cargando]="cargando()">
       <header class="dash-card__head">
         <div class="dash-card__titulos">

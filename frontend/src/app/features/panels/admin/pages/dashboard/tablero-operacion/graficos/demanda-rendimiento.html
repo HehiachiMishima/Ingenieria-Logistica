@@ -1,0 +1,67 @@
+@if (hayDatos()) {
+  <div class="dr__rejilla" role="img" [attr.aria-label]="resumen()" (pointerleave)="activa.set(null)">
+    <span class="dr__esquina" aria-hidden="true"></span>
+    @for (f of franjas; track f.largo) {
+      <span class="dr__columna" aria-hidden="true"><span class="dr__largo">{{ f.largo }}</span><span class="dr__corto">{{ f.corto }}</span></span>
+    }
+    @for (fila of filas(); track fila.nombre) {
+      <span class="dr__dia" aria-hidden="true">{{ fila.nombre }}</span>
+      @for (c of fila.celdas; track c.clave) {
+        <span
+          class="dr__celda"
+          [class.dr__celda--vacia]="!c.peticiones"
+          [class.dr__celda--activa]="activa()?.clave === c.clave"
+          [style.--p]="c.pct"
+          (pointerenter)="activa.set(c)"
+          (pointerdown)="activa.set(c)"
+        >
+          @if (c.lento) {
+            <i class="dr__marca"></i>
+          }
+        </span>
+      }
+    }
+  </div>
+  <p class="dr__eje" aria-hidden="true">Franjas de 4 horas (hora de Lima)</p>
+
+  <p class="dr__lectura" [class.dr__lectura--activa]="activa()" aria-live="polite">{{ lectura() }}</p>
+
+  <div class="dr__leyenda" aria-hidden="true">
+    <span>Menos peticiones</span>
+    <span class="dr__rampa">
+      @for (p of escala; track p) {
+        <i [style.--p]="p"></i>
+      }
+    </span>
+    <span>Más</span>
+    <span class="dr__leyenda-marca"><i class="dr__marca dr__marca--leyenda"></i> p95 sobre la meta ({{ entero(meta) }} ms)</span>
+  </div>
+
+  <div class="dr__sr">
+  <table>
+    <caption>Peticiones y p95 por día y franja de 4 horas</caption>
+    <thead>
+      <tr>
+        <th scope="col">Día</th>
+        @for (f of franjas; track f.largo) {
+          <th scope="col">{{ f.largo }} h</th>
+        }
+      </tr>
+    </thead>
+    <tbody>
+      @for (fila of filas(); track fila.nombre) {
+        <tr>
+          <th scope="row">{{ fila.nombre }}</th>
+          @for (c of fila.celdas; track c.clave) {
+            <td>
+              {{ c.peticiones ? entero(c.peticiones) + ' peticiones, p95 ' + entero(c.p95) + ' ms' + (c.lento ? ' (sobre la meta)' : '') : 'sin peticiones' }}
+            </td>
+          }
+        </tr>
+      }
+    </tbody>
+  </table>
+  </div>
+} @else {
+  <p class="dr__vacio">Sin peticiones en el período.</p>
+}

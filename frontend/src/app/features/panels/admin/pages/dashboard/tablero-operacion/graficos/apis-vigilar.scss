@@ -1,0 +1,197 @@
+// APIs a vigilar. Se acomoda al ancho de su tarjeta (container query), no al de la pantalla:
+// ancha, una fila por API; angosta, la ruta arriba y la barra con sus cifras debajo.
+:host {
+  display: block;
+  min-width: 0;
+  container-type: inline-size;
+}
+
+.av {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.av__fila {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(5rem, 1fr) 4.25rem 3.75rem 5.75rem;
+  align-items: center;
+  gap: var(--space-3);
+
+  &--cabecera {
+    padding-bottom: var(--space-1);
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--text-3);
+  }
+}
+
+.av__api {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.av__metodo {
+  flex: none;
+}
+
+.av__ruta {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// Pista de cada barra; la meta es una línea fina que, fila tras fila, forma una sola vertical.
+.av__pista {
+  position: relative;
+  height: 14px;
+
+  &--cabecera {
+    height: auto;
+    min-height: 1.2em;
+  }
+}
+
+.av__barra {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 0 4px 4px 0;
+  background: var(--g-monitoreo);
+
+  [data-nivel='aviso'] & {
+    background: var(--warning);
+  }
+
+  [data-nivel='riesgo'] & {
+    background: var(--danger);
+  }
+}
+
+.av__meta {
+  position: absolute;
+  top: -5px;
+  bottom: -5px;
+  width: 1px;
+  background: var(--text-3);
+}
+
+.av__meta-texto {
+  position: absolute;
+  bottom: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.av__num {
+  font-size: var(--fs-sm);
+  text-align: right;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+
+  &--fuerte {
+    font-weight: 800;
+    color: var(--text);
+  }
+
+  &--mal {
+    font-weight: 800;
+    color: var(--danger);
+  }
+}
+
+.av__estado-col {
+  display: flex;
+  justify-content: flex-end;
+}
+
+// El estado en palabras y con ícono (el color de la barra nunca es la única pista).
+.av__estado {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+
+  &[data-nivel='ok'] {
+    color: var(--success);
+    background: color-mix(in srgb, var(--success) 12%, transparent);
+  }
+
+  &[data-nivel='aviso'] {
+    color: var(--warning);
+    background: color-mix(in srgb, var(--warning) 14%, transparent);
+  }
+
+  &[data-nivel='riesgo'] {
+    color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+  }
+}
+
+.av__pie {
+  margin: var(--space-3) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.av__vacio {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 140px;
+  margin: 0;
+  font-size: var(--fs-sm);
+  text-align: center;
+  color: var(--text-3);
+}
+
+.u-oculto {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+// Tarjeta angosta: arriba la ruta con su estado; debajo la barra con p95 y errores.
+@container (max-width: 34rem) {
+  .av {
+    gap: var(--space-4);
+  }
+
+  // Columnas de ancho fijo: la pista mide lo mismo en todas las filas y la meta queda alineada.
+  .av__fila {
+    grid-template-columns: minmax(2.5rem, 1fr) 4.25rem 5.75rem;
+    gap: 6px var(--space-3);
+
+    &--cabecera {
+      display: none;
+    }
+  }
+
+  .av__api {
+    grid-column: 1 / 3;
+    grid-row: 1;
+  }
+
+  .av__estado-col {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .av__num {
+    min-width: 0;
+  }
+}

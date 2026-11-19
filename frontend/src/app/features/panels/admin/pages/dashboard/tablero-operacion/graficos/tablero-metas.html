@@ -1,0 +1,64 @@
+<div class="tm">
+  @for (t of vista(); track t.clave) {
+    <article class="tm__tarjeta">
+      <header class="tm__cabeza">
+        <span class="tm__etiqueta">{{ t.etiqueta }}</span>
+        @if (t.nivel; as nivel) {
+          <span class="tm__estado" [attr.data-nivel]="nivel">
+            <ui-icon [name]="iconoNivel[nivel]" [size]="12" />{{ textoNivel[nivel] }}
+          </span>
+        }
+      </header>
+      <strong class="tm__valor">{{ t.valor }}</strong>
+
+      @switch (t.tipo) {
+        @case ('tendencia') {
+          <div class="tm__tendencia" (pointerleave)="activo.set(null)">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><!-- responsive:ok trazo sin escala (vector-effect); el punto final es HTML -->
+              <polyline [attr.points]="t.trazo" />
+            </svg>
+            @if (t.marca; as p) {
+              <span class="tm__punto" [style.left.%]="p.x" [style.top.%]="p.y"></span>
+            }
+            <div class="tm__zonas">
+              @for (p of t.puntos; track $index) {
+                <span (pointerenter)="activo.set({ clave: t.clave, i: $index })"></span>
+              }
+            </div>
+          </div>
+          <p class="tm__lectura" aria-live="polite">{{ t.lectura }}</p>
+        }
+        @default {
+          <div class="tm__escala" role="img" [attr.aria-label]="t.aria">
+            <!-- El rótulo de la meta va sobre su marca; los extremos de la escala, debajo. -->
+            <div class="tm__meta-fila">
+              <span class="tm__meta-texto" [style.left.%]="t.metaPct" [class.tm__meta-texto--izq]="(t.metaPct ?? 0) > 70"
+                [class.tm__meta-texto--der]="(t.metaPct ?? 0) < 30">{{ t.metaTexto }}</span>
+            </div>
+            <div class="tm__pista" [class.tm__pista--bala]="t.tipo === 'bala'">
+              @for (b of t.bandas ?? []; track b.tono) {
+                <span class="tm__banda" [attr.data-tono]="b.tono" [style.left.%]="b.desde" [style.width.%]="b.ancho"></span>
+              }
+              <span class="tm__relleno" [class.tm__relleno--bala]="t.tipo === 'bala'" [style.width.%]="t.pct"></span>
+              <span class="tm__meta" [style.left.%]="t.metaPct"></span>
+            </div>
+            <div class="tm__rotulos">
+              <span>{{ t.desde }}</span>
+              <span>{{ t.hasta }}</span>
+            </div>
+          </div>
+        }
+      }
+
+      <p class="tm__pie">
+        @if (t.delta; as d) {
+          <span class="tm__delta" [class.tm__delta--bien]="d.bueno" [class.tm__delta--mal]="!d.bueno">{{ d.texto }}</span>
+          vs período anterior ·
+        }
+        {{ t.nota }}
+      </p>
+    </article>
+  } @empty {
+    <p class="tm__vacio">Sin datos en el período.</p>
+  }
+</div>

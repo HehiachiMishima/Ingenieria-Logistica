@@ -1,0 +1,168 @@
+<div class="pp__cifras">
+  @if (protagonista(); as p) {
+    <div class="pp__protagonista">
+      <span class="pp__grande">{{ p.valor }}</span>
+      <span class="pp__etiqueta">
+        {{ p.etiqueta }}
+        @if (p.delta; as d) {
+          <span class="pp__delta" [class.pp__delta--bien]="d.bueno" [class.pp__delta--mal]="!d.bueno">{{ d.texto }}</span>
+        }
+      </span>
+      @if (p.nivel; as nivel) {
+        <span class="pp__estado" [attr.data-nivel]="nivel">{{ p.textoNivel }}</span>
+      }
+    </div>
+  }
+  @for (c of cifras(); track c.etiqueta) {
+    <div class="pp__cifra">
+      <span class="pp__etiqueta">{{ c.etiqueta }}</span>
+      <strong class="pp__valor">{{ c.valor }}</strong>
+      <span class="pp__nota">
+        {{ c.nota }}
+        @if (c.delta; as d) {
+          · <span class="pp__delta" [class.pp__delta--bien]="d.bueno" [class.pp__delta--mal]="!d.bueno">{{ d.texto }}</span>
+        }
+      </span>
+    </div>
+  }
+</div>
+
+<div class="pp__lienzo" [style.min-height.px]="g()?.alto ?? 300">
+  @if (g(); as g) {
+    <svg
+      class="pp__svg"
+      [attr.width]="g.ancho"
+      [attr.height]="g.alto"
+      [attr.viewBox]="'0 0 ' + g.ancho + ' ' + g.alto"
+      role="img"
+      [attr.aria-label]="resumen()"
+      tabindex="0"
+      (pointermove)="mover($event)"
+      (pointerdown)="mover($event)"
+      (pointerleave)="activo.set(null)"
+      (keydown)="tecla($event)"
+      (blur)="activo.set(null)"
+    >
+      @for (p of g.paneles; track p.clave) {
+        <text class="pp__titulo-franja" [attr.x]="g.L" [attr.y]="p.y - 10">{{ p.titulo }}</text>
+        @if (p.aviso) {
+          <text class="pp__aviso" [attr.x]="g.ancho - g.R" [attr.y]="p.y - 10" text-anchor="end">{{ p.aviso }}</text>
+        }
+        @for (t of p.guias; track $index) {
+          <line
+            [class.pp__base]="t.base"
+            [class.pp__guia]="!t.base"
+            [attr.x1]="g.L"
+            [attr.x2]="g.ancho - g.R"
+            [attr.y1]="t.y"
+            [attr.y2]="t.y"
+          />
+          <text class="pp__tick" [attr.x]="g.L - 8" [attr.y]="t.y + 4" text-anchor="end">{{ t.texto }}</text>
+        }
+      }
+
+      <!-- Peticiones: columnas del color de Monitoreo; un punto rojo sobre los días con más del 2 % de error. -->
+      @for (c of g.columnas; track $index) {
+        @if (c) {
+          <path class="pp__columna" [attr.d]="c" />
+        }
+      }
+      @for (m of g.erroresAltos; track $index) {
+        <circle class="pp__alerta" [attr.cx]="m.x" [attr.cy]="m.y" r="4.5" />
+      }
+
+      <!-- p95 contra la meta: línea fina de referencia y puntos rojos donde la pasa. -->
+      @if (g.meta; as meta) {
+        <line class="pp__meta" [attr.x1]="g.L" [attr.x2]="g.ancho - g.R" [attr.y1]="meta.y" [attr.y2]="meta.y" />
+        @if (meta.texto) {
+          <text class="pp__tick pp__halo" [attr.x]="g.ancho - g.R" [attr.y]="meta.y - 6" text-anchor="end">{{ meta.texto }}</text>
+        }
+      }
+      @if (g.lineaP95) {
+        <path class="pp__linea pp__linea--monitoreo" [attr.d]="g.lineaP95" />
+      }
+      @for (m of g.lentos; track $index) {
+        <circle class="pp__alerta" [attr.cx]="m.x" [attr.cy]="m.y" r="4.5" />
+      }
+
+      <!-- Usuarios activos: línea y lavado de Actividad, con el último valor al final. -->
+      @if (g.areaUsuarios) {
+        <path class="pp__area" [attr.d]="g.areaUsuarios" />
+      }
+      @if (g.lineaUsuarios) {
+        <path class="pp__linea pp__linea--actividad" [attr.d]="g.lineaUsuarios" />
+      }
+      @if (g.fin; as f) {
+        <circle class="pp__punto pp__punto--actividad" [attr.cx]="f.x" [attr.cy]="f.y" r="4.5" />
+        <text class="pp__dato" [attr.x]="f.x + 9" [attr.y]="f.y + 4">{{ f.texto }}</text>
+      }
+
+      @for (e of g.ejeX; track e.i) {
+        <text class="pp__tick" [attr.x]="e.x" [attr.y]="g.ejeY" text-anchor="middle">{{ e.texto }}</text>
+      }
+
+      @if (lectura(); as l) {
+        <line class="pp__cruz" [attr.x1]="l.x" [attr.x2]="l.x" [attr.y1]="g.arriba" [attr.y2]="g.abajo" />
+        @if (l.marcaP95 !== null) {
+          <circle class="pp__punto pp__punto--monitoreo" [attr.cx]="l.x" [attr.cy]="l.marcaP95" r="4.5" />
+        }
+        @if (l.marcaUsuarios !== null) {
+          <circle class="pp__punto pp__punto--actividad" [attr.cx]="l.x" [attr.cy]="l.marcaUsuarios" r="4.5" />
+        }
+      }
+    </svg>
+
+    @if (lectura(); as l) {
+      <div class="pp__detalle" [class.pp__detalle--izq]="l.derecha && !l.ancho" [class.pp__detalle--ancho]="l.ancho"
+        [style.left.px]="l.ancho ? null : l.x" role="status">
+        <strong>{{ l.dia.larga }}</strong>
+        @if (l.dia.peticiones !== null) {
+          <span><i class="pp__clave pp__clave--monitoreo"></i>Peticiones: <b>{{ entero(l.dia.peticiones) }}</b></span>
+          <span [class.pp__mal]="l.errorAlto">
+            <i class="pp__clave pp__clave--vacia"></i>Tasa de error: <b>{{ l.dia.tasa === null ? '—' : porcentaje(l.dia.tasa) }}</b>
+            @if (l.errorAlto) {
+              ⚠
+            }
+          </span>
+          <span [class.pp__mal]="l.lento">
+            <i class="pp__clave pp__clave--monitoreo"></i>p95: <b>{{ l.dia.p95 === null ? '—' : entero(l.dia.p95) + ' ms' }}</b>
+            @if (l.lento) {
+              ⚠ sobre la meta
+            }
+          </span>
+        }
+        @if (l.dia.usuarios !== null) {
+          <span><i class="pp__clave pp__clave--actividad"></i>Usuarios activos: <b>{{ entero(l.dia.usuarios) }}</b></span>
+        }
+      </div>
+    }
+  } @else if (ancho() >= 200) {
+    <p class="pp__vacio">Sin datos en el período.</p>
+  }
+</div>
+
+<div class="pp__sr">
+<table>
+  <caption>Detalle por {{ porHora() ? 'hora' : 'día' }}</caption>
+  <thead>
+    <tr>
+      <th scope="col">{{ porHora() ? 'Hora' : 'Día' }}</th>
+      <th scope="col">Peticiones</th>
+      <th scope="col">Tasa de error</th>
+      <th scope="col">p95 (ms)</th>
+      <th scope="col">Usuarios activos</th>
+    </tr>
+  </thead>
+  <tbody>
+    @for (d of serie(); track d.periodo) {
+      <tr>
+        <th scope="row">{{ d.larga }}</th>
+        <td>{{ d.peticiones === null ? '—' : entero(d.peticiones) }}</td>
+        <td>{{ d.tasa === null ? '—' : porcentaje(d.tasa) }}</td>
+        <td>{{ d.p95 === null ? '—' : entero(d.p95) }}</td>
+        <td>{{ d.usuarios === null ? '—' : entero(d.usuarios) }}</td>
+      </tr>
+    }
+  </tbody>
+</table>
+</div>

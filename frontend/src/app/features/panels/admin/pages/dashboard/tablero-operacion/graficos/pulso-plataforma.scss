@@ -1,0 +1,314 @@
+// Pulso de la plataforma. Colores por rol: Monitoreo (--g-monitoreo), Actividad (--g-actividad) y
+// el rojo solo para lo que pasa la meta, siempre con ⚠ o texto (nunca el color solo).
+:host {
+  display: block;
+  min-width: 0;
+}
+
+// --- cifras ---------------------------------------------------------------------------------
+
+.pp__cifras {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-4) var(--space-8);
+  margin-bottom: var(--space-5);
+}
+
+.pp__protagonista {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+  margin-right: auto;
+}
+
+// Una sola cifra protagonista por vista, en la misma sans del sistema.
+.pp__grande {
+  font-size: clamp(2.5rem, 2rem + 2vw, 3.25rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--text);
+}
+
+.pp__cifra {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pp__etiqueta {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+.pp__valor {
+  font-size: var(--fs-xl);
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--text);
+}
+
+.pp__nota {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.pp__delta {
+  font-weight: 700;
+  white-space: nowrap;
+
+  &--bien {
+    color: var(--success);
+  }
+
+  &--mal {
+    color: var(--danger);
+  }
+}
+
+.pp__estado {
+  justify-self: start;
+  padding: 2px var(--space-2);
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+
+  &::before {
+    content: '● ';
+  }
+
+  &[data-nivel='ok'] {
+    color: var(--success);
+    background: color-mix(in srgb, var(--success) 12%, transparent);
+  }
+
+  &[data-nivel='aviso'] {
+    color: var(--warning);
+    background: color-mix(in srgb, var(--warning) 14%, transparent);
+  }
+
+  &[data-nivel='riesgo'] {
+    color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+  }
+}
+
+// --- gráfico --------------------------------------------------------------------------------
+
+.pp__lienzo {
+  position: relative;
+  min-width: 0;
+}
+
+.pp__svg {
+  display: block;
+  overflow: visible;
+  touch-action: pan-y;
+  border-radius: var(--radius-sm);
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 4px;
+  }
+
+  text {
+    font-family: inherit;
+  }
+}
+
+.pp__titulo-franja {
+  font-size: 12px;
+  font-weight: 700;
+  fill: var(--text-2);
+}
+
+.pp__tick {
+  font-size: 11px;
+  fill: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+// Halo del color de la superficie: el número se lee aunque pase sobre una línea.
+.pp__dato {
+  font-size: 11px;
+  font-weight: 700;
+  fill: var(--text);
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+// Anotación del peor caso, en la cabecera de la franja (estado en palabras, con ⚠).
+.pp__aviso {
+  font-size: 11px;
+  font-weight: 700;
+  fill: var(--danger);
+}
+
+// Guías recesivas: hairline sólida, la base un paso más marcada.
+.pp__guia {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.pp__base {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+.pp__meta {
+  stroke: var(--text-3);
+  stroke-width: 1;
+}
+
+.pp__columna {
+  fill: var(--g-monitoreo);
+}
+
+.pp__linea {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+
+  &--monitoreo {
+    stroke: var(--g-monitoreo);
+  }
+
+  &--actividad {
+    stroke: var(--g-actividad);
+  }
+}
+
+.pp__area {
+  fill: var(--g-actividad);
+  fill-opacity: 0.1;
+}
+
+// Puntos con anillo del color de la superficie: se leen aunque crucen una línea.
+.pp__punto,
+.pp__alerta {
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.pp__punto--monitoreo {
+  fill: var(--g-monitoreo);
+}
+
+.pp__punto--actividad {
+  fill: var(--g-actividad);
+}
+
+.pp__alerta {
+  fill: var(--danger);
+}
+
+.pp__cruz {
+  stroke: var(--text-3);
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+// Detalle del día: sigue a la línea de lectura y se voltea cerca del borde derecho.
+.pp__detalle {
+  position: absolute;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  color: var(--text-2);
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateX(14px);
+
+  &--izq {
+    transform: translateX(calc(-100% - 14px));
+  }
+
+  // Pantalla angosta: franja de lectura a todo el ancho, arriba del gráfico.
+  &--ancho {
+    right: 0;
+    left: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px var(--space-3);
+    white-space: normal;
+    transform: translateY(-4px);
+
+    strong {
+      flex-basis: 100%;
+    }
+  }
+
+  strong {
+    color: var(--text);
+  }
+
+  b {
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.pp__clave {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 2px;
+
+  &--monitoreo {
+    background: var(--g-monitoreo);
+  }
+
+  &--actividad {
+    background: var(--g-actividad);
+  }
+
+  &--vacia {
+    background: transparent;
+  }
+}
+
+.pp__mal b {
+  color: var(--danger);
+}
+
+.pp__vacio {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 140px;
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+
+// Vista de tabla para lectores de pantalla (el mismo dato que el gráfico).
+.pp__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+// Halo del color de la superficie para rótulos que pueden cruzarse con la línea.
+.pp__halo {
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}

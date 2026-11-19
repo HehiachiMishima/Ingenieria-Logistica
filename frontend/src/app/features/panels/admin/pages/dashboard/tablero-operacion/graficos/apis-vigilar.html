@@ -1,0 +1,41 @@
+@if (ranking(); as r) {
+  @if (r.filas.length) {
+    <div class="av" role="table" aria-label="APIs más lentas por p95 contra la meta">
+      <div class="av__fila av__fila--cabecera" role="row">
+        <span class="av__api" role="columnheader">API</span>
+        <span class="av__pista av__pista--cabecera" role="columnheader">
+          <span class="av__meta-texto" [style.left.%]="r.metaPct">{{ meta }}</span>
+          <span class="u-oculto">Tiempo p95 contra la meta</span>
+        </span>
+        <span class="av__num" role="columnheader">p95</span>
+        <span class="av__num" role="columnheader">Errores</span>
+        <span class="av__estado-col" role="columnheader">Estado</span>
+      </div>
+      @for (f of r.filas; track f.clave) {
+        <div class="av__fila" role="row" [attr.data-nivel]="f.nivel">
+          <span class="av__api" role="cell">
+            <span class="ui-badge {{ f.badge }} av__metodo">{{ f.metodo }}</span>
+            <span class="av__ruta" [title]="f.ruta + ' · ' + f.peticiones + ' peticiones'">{{ f.rutaCorta }}</span>
+          </span>
+          <span class="av__pista" role="cell" [attr.aria-label]="f.p95 + ' contra ' + meta">
+            <span class="av__barra" [style.width.%]="f.pct"></span>
+            <span class="av__meta" [style.left.%]="r.metaPct"></span>
+          </span>
+          <span class="av__num av__num--fuerte" role="cell">{{ f.p95 }}</span>
+          <span class="av__num" [class.av__num--mal]="f.errorAlto" role="cell">{{ f.error }}</span>
+          <span class="av__estado-col" role="cell">
+            <span class="av__estado" [attr.data-nivel]="f.nivel">
+              <ui-icon [name]="iconoNivel[f.nivel]" [size]="12" />{{ textoNivel[f.nivel] }}
+            </span>
+          </span>
+        </div>
+      }
+    </div>
+    <p class="av__pie">
+      Las {{ r.filas.length }} más lentas con al menos {{ minimo }} peticiones · la línea vertical es la meta
+      ({{ metaMs }}) · escala 0–{{ r.tope }}.
+    </p>
+  } @else {
+    <p class="av__vacio">Sin APIs con al menos {{ minimo }} peticiones en el período.</p>
+  }
+}

@@ -2,259 +2,100 @@
   <section class="op" aria-labelledby="op-titulo">
     <header class="op__head">
       <div class="op__textos">
-        <h2 id="op-titulo" class="op__titulo"><ui-icon name="radar" [size]="20" /> Operación y control</h2>
+        <h2 id="op-titulo" class="op__titulo"><ui-icon name="radar" [size]="20" /> Monitoreo y actividad</h2>
         <p class="op__sub">
-          Salud de la plataforma, uso y cambios: últimos {{ dias() }} días comparados con los {{ dias() }} anteriores.
+          Salud de las APIs y uso de la plataforma: últimos {{ dias() }} días comparados con los {{ dias() }} anteriores.
         </p>
       </div>
       <app-selector-periodo
         [opciones]="periodos"
         [valor]="dias()"
-        etiqueta="Período de operación y control"
+        etiqueta="Período de monitoreo y actividad"
         (cambio)="cambiarPeriodo($event)"
       />
     </header>
 
-    <!-- Un cuadro resumen por módulo -->
-    <div class="op__resumen" [class.op__resumen--cargando]="cargando()">
-      @if (verMonitoreo) {
-        <article class="op-card">
-          <header class="op-card__head">
-            <span class="op-card__icono"><ui-icon name="activity" [size]="18" /></span>
-            <h3 class="op-card__titulo">Monitoreo</h3>
-            @if (tarjetaMonitoreo(); as t) {
-              <span class="ui-badge" [class]="badgeNivel[t.nivel]"><span class="ui-dot"></span> {{ textoNivel[t.nivel] }}</span>
-            }
-          </header>
-          @if (tarjetaMonitoreo(); as t) {
-            <app-medidor-meta
-              etiqueta="Disponibilidad"
-              [valor]="t.disponibilidad.valor"
-              [fraccion]="t.disponibilidad.fraccion"
-              [meta]="t.disponibilidad.meta"
-              [nivel]="t.disponibilidad.nivel"
-              [nota]="t.disponibilidad.nota"
-            />
-            <app-medidor-meta
-              etiqueta="Tiempo de respuesta p95"
-              [valor]="t.p95.valor"
-              [fraccion]="t.p95.fraccion"
-              [meta]="t.p95.meta"
-              [nivel]="t.p95.nivel"
-              [nota]="t.p95.nota"
-            />
-            <dl class="op-card__pie">
-              <div><dt>Tasa de error</dt><dd>{{ t.tasaError }}</dd></div>
-              <div><dt>Peticiones</dt><dd>{{ t.peticiones }}</dd></div>
-            </dl>
-          } @else if (errorM()) {
-            <p class="op-card__vacio" role="alert">No se pudo cargar: {{ errorM() }}</p>
-          } @else if (m()) {
-            <p class="op-card__vacio">Sin peticiones en el período.</p>
-          } @else {
-            <span class="ui-skeleton op-card__esqueleto"></span>
-          }
-          <a class="op-card__ir" routerLink="/admin/monitoreo">Ver Monitoreo <ui-icon name="chevronRight" [size]="14" /></a>
-        </article>
-      }
+    @for (e of errores(); track e) {
+      <p class="op__error" role="alert"><ui-icon name="alertTriangle" [size]="16" /> No se pudo cargar {{ e }}</p>
+    }
 
-      @if (verActividad) {
-        <article class="op-card">
-          <header class="op-card__head">
-            <span class="op-card__icono"><ui-icon name="usuarios" [size]="18" /></span>
-            <h3 class="op-card__titulo">Actividad</h3>
-            @if (tarjetaActividad()?.cambio; as c) {
-              <span class="ui-badge" [class]="c.sube ? 'ui-badge--success' : 'ui-badge--warning'">{{ c.texto }}</span>
-            }
-          </header>
-          @if (tarjetaActividad(); as t) {
-            <div class="op-card__hero">
-              <span class="op-card__numero">{{ t.usuarios }}</span>
-              <span class="op-card__etiqueta">Usuarios activos · {{ t.adopcion }}</span>
-            </div>
-            <app-sparkline [valores]="t.serie" [etiqueta]="t.serieTexto" />
-            <dl class="op-card__pie">
-              <div><dt>Hora pico</dt><dd>{{ t.pico }}</dd></div>
-              <div><dt>Panel líder</dt><dd>{{ t.lider }}</dd></div>
-            </dl>
-          } @else if (errorA()) {
-            <p class="op-card__vacio" role="alert">No se pudo cargar: {{ errorA() }}</p>
-          } @else {
-            <span class="ui-skeleton op-card__esqueleto"></span>
-          }
-          <a class="op-card__ir" routerLink="/admin/actividad">Ver Actividad <ui-icon name="chevronRight" [size]="14" /></a>
-        </article>
-      }
-
-      @if (verAuditoria) {
-        <article class="op-card">
-          <header class="op-card__head">
-            <span class="op-card__icono"><ui-icon name="shieldCheck" [size]="18" /></span>
-            <h3 class="op-card__titulo">Auditoría</h3>
-            @if (tarjetaAuditoria(); as t) {
-              <span class="ui-badge" [class]="badgeNivel[t.nivel]"><span class="ui-dot"></span> {{ textoNivel[t.nivel] }}</span>
-            }
-          </header>
-          @if (tarjetaAuditoria(); as t) {
-            <app-medidor-meta
-              etiqueta="Cambios sin incidente"
-              [valor]="t.limpio.valor"
-              [fraccion]="t.limpio.fraccion"
-              [meta]="t.limpio.meta"
-              [nivel]="t.limpio.nivel"
-              [nota]="t.limpio.nota"
-            />
-            <app-medidor-meta
-              etiqueta="Accesos denegados"
-              [valor]="t.denegados.valor"
-              [fraccion]="t.denegados.fraccion"
-              [meta]="t.denegados.meta"
-              [nivel]="t.denegados.nivel"
-              [nota]="t.denegados.nota"
-            />
-            <dl class="op-card__pie">
-              <div><dt>Cambios aplicados</dt><dd>{{ t.cambios }}</dd></div>
-              <div><dt>Personas</dt><dd>{{ t.personas }}</dd></div>
-            </dl>
-          } @else if (errorU()) {
-            <p class="op-card__vacio" role="alert">No se pudo cargar: {{ errorU() }}</p>
-          } @else {
-            <span class="ui-skeleton op-card__esqueleto"></span>
-          }
-          <a class="op-card__ir" routerLink="/admin/auditoria">Ver Auditoría <ui-icon name="chevronRight" [size]="14" /></a>
-        </article>
-      }
-    </div>
-
-    <!-- Cuadros por pregunta: dos por módulo -->
     <div class="dash-grid">
+      <!-- 1 · Pulso de la plataforma -->
+      <article class="dash-card" [class.dash-card--cargando]="cargandoM() || cargandoA()">
+        <header class="dash-card__head">
+          <div class="dash-card__titulos">
+            <h3 class="dash-card__titulo"><ui-icon name="activity" [size]="18" /> Pulso de la plataforma</h3>
+            <p class="dash-card__sub">
+              Disponibilidad, tiempo de respuesta y uso por día. Pasa el mouse o usa las flechas para ver cada día.
+            </p>
+          </div>
+          @if (verMonitoreo) {
+            <a class="op__ir" routerLink="/admin/monitoreo">Monitoreo <ui-icon name="chevronRight" [size]="14" /></a>
+          }
+        </header>
+        <div class="dash-card__body">
+          @if (esperandoResumen()) {
+            <span class="ui-skeleton op__esqueleto op__esqueleto--pulso"></span>
+          } @else {
+            <app-pulso-plataforma [monitoreo]="m()" [actividad]="a()" [cuentasActivas]="cuentasActivas()" [dias]="dias()" />
+          }
+        </div>
+      </article>
+
+      <!-- 2 · ¿Cumplimos las metas? -->
+      <article class="dash-card" [class.dash-card--cargando]="cargandoM() || cargandoA()">
+        <header class="dash-card__head">
+          <div class="dash-card__titulos">
+            <h3 class="dash-card__titulo"><ui-icon name="checkCircleFilled" [size]="18" /> ¿Cumplimos las metas?</h3>
+            <p class="dash-card__sub">Cada indicador contra su meta y frente al período anterior; usuarios y acciones de las últimas 12 semanas.</p>
+          </div>
+          @if (verActividad) {
+            <a class="op__ir" routerLink="/admin/actividad">Actividad <ui-icon name="chevronRight" [size]="14" /></a>
+          }
+        </header>
+        <div class="dash-card__body">
+          @if (esperandoResumen()) {
+            <span class="ui-skeleton op__esqueleto op__esqueleto--metas"></span>
+          } @else {
+            <app-tablero-metas [monitoreo]="m()" [actividad]="a()" [cuentasActivas]="cuentasActivas()" />
+          }
+        </div>
+      </article>
+
       @if (verMonitoreo) {
-        <article class="dash-card dash-card--7" [class.dash-card--cargando]="cargando()">
+        <!-- 3 · ¿El sistema aguanta cuando más se usa? -->
+        <article class="dash-card dash-card--7" [class.dash-card--cargando]="cargandoM()">
           <header class="dash-card__head">
             <div class="dash-card__titulos">
-              <h3 class="dash-card__titulo"><ui-icon name="reloj" [size]="18" /> ¿A qué hora se degrada el sistema?</h3>
-              <p class="dash-card__sub">Tiempo p95 en ms por día y franja de 4 horas (hora de Lima).</p>
+              <h3 class="dash-card__titulo"><ui-icon name="reloj" [size]="18" /> ¿El sistema aguanta cuando más se usa?</h3>
+              <p class="dash-card__sub">Peticiones por día y franja de 4 horas; el punto rojo marca las franjas lentas.</p>
             </div>
           </header>
           <div class="dash-card__body">
-            @if (lecturaCalorMonitoreo()) {
-              <ui-heatmap
-                [celdas]="calorMonitoreo()"
-                [ordenar]="false"
-                [conTotales]="false"
-                color="var(--accent)"
-                [marcar]="marcarLento"
-                [textoMarca]="textoLento"
-                tituloFilas="Día"
-                tituloColumnas="Hora"
-              />
-              <p class="op-lectura">{{ lecturaCalorMonitoreo() }}</p>
+            @if (!m() && !errorM()) {
+              <span class="ui-skeleton op__esqueleto op__esqueleto--mapa"></span>
             } @else {
-              <div class="dash-card__vacio">Sin peticiones en el período.</div>
+              <app-demanda-rendimiento [celdas]="m()?.calor ?? null" />
             }
           </div>
         </article>
 
-        <article class="dash-card dash-card--5" [class.dash-card--cargando]="cargando()">
+        <!-- 4 · APIs a vigilar -->
+        <article class="dash-card dash-card--5" [class.dash-card--cargando]="cargandoApis()">
           <header class="dash-card__head">
             <div class="dash-card__titulos">
-              <h3 class="dash-card__titulo"><ui-icon name="tendencia" [size]="18" /> ¿Cumplimos la meta de respuesta?</h3>
-              <p class="dash-card__sub">Tiempo p95 de todas las APIs por día contra la meta.</p>
+              <h3 class="dash-card__titulo"><ui-icon name="alertTriangle" [size]="18" /> APIs a vigilar</h3>
+              <p class="dash-card__sub">Las más lentas contra la meta, con su tasa de error y su estado.</p>
             </div>
+            <a class="op__ir" routerLink="/admin/monitoreo">Todas <ui-icon name="chevronRight" [size]="14" /></a>
           </header>
           <div class="dash-card__body">
-            @if (tendenciaMonitoreo().hay) {
-              <ui-linea [etiquetas]="tendenciaMonitoreo().etiquetas" [series]="tendenciaMonitoreo().series" [altura]="200" [area]="false" [maxEtiquetas]="5" />
-              <p class="op-lectura">{{ tendenciaMonitoreo().lectura }}</p>
+            @if (errorApis(); as e) {
+              <p class="op__vacio" role="alert">No se pudo cargar: {{ e }}</p>
+            } @else if (!endpoints()) {
+              <span class="ui-skeleton op__esqueleto op__esqueleto--mapa"></span>
             } @else {
-              <div class="dash-card__vacio">Sin peticiones en el período.</div>
-            }
-          </div>
-        </article>
-      }
-
-      @if (verActividad) {
-        <article class="dash-card dash-card--7" [class.dash-card--cargando]="cargando()">
-          <header class="dash-card__head">
-            <div class="dash-card__titulos">
-              <h3 class="dash-card__titulo"><ui-icon name="calendario" [size]="18" /> ¿Cuándo se usa el sistema?</h3>
-              <p class="dash-card__sub">Acciones de los usuarios por día y franja de 4 horas (hora de Lima).</p>
-            </div>
-          </header>
-          <div class="dash-card__body">
-            @if (lecturaCalorActividad()) {
-              <ui-heatmap [celdas]="calorActividad()" [ordenar]="false" color="var(--accent)" tituloFilas="Día" tituloColumnas="Hora" />
-              <p class="op-lectura">{{ lecturaCalorActividad() }}</p>
-            } @else {
-              <div class="dash-card__vacio">Sin actividad en el período.</div>
-            }
-          </div>
-        </article>
-
-        <article class="dash-card dash-card--5" [class.dash-card--cargando]="cargando()">
-          <header class="dash-card__head">
-            <div class="dash-card__titulos">
-              <h3 class="dash-card__titulo"><ui-icon name="usuarios" [size]="18" /> ¿Crece la adopción?</h3>
-              <p class="dash-card__sub">Usuarios distintos por semana, últimas 12 semanas.</p>
-            </div>
-          </header>
-          <div class="dash-card__body">
-            @if (adopcion().hay) {
-              <ui-linea [etiquetas]="adopcion().etiquetas" [series]="adopcion().series" [altura]="200" [area]="false" [maxEtiquetas]="5" />
-              <p class="op-lectura">{{ adopcion().lectura }}</p>
-            } @else {
-              <div class="dash-card__vacio">Sin actividad en las últimas 12 semanas.</div>
-            }
-          </div>
-        </article>
-      }
-
-      @if (verAuditoria) {
-        <article class="dash-card dash-card--6 op-par" [class.dash-card--cargando]="cargando()">
-          <header class="dash-card__head">
-            <div class="dash-card__titulos">
-              <h3 class="dash-card__titulo"><ui-icon name="reloj" [size]="18" /> ¿Cuándo se hacen los cambios?</h3>
-              <p class="dash-card__sub">Intentos de cambio por día y franja de 4 horas; en rojo, fuera de horario.</p>
-            </div>
-          </header>
-          <div class="dash-card__body">
-            @if (lecturaCalorAuditoria()) {
-              <ui-heatmap
-                [celdas]="calorAuditoria()"
-                [ordenar]="false"
-                color="var(--accent)"
-                [marcar]="marcarFueraDeHorario"
-                [textoMarca]="textoFueraDeHorario"
-                tituloFilas="Día"
-                tituloColumnas="Hora"
-              />
-              <p class="op-lectura">{{ lecturaCalorAuditoria() }}</p>
-            } @else {
-              <div class="dash-card__vacio">Sin cambios en el período.</div>
-            }
-          </div>
-        </article>
-
-        <article class="dash-card dash-card--6 op-par" [class.dash-card--cargando]="cargando()">
-          <header class="dash-card__head">
-            <div class="dash-card__titulos">
-              <h3 class="dash-card__titulo"><ui-icon name="layers" [size]="18" /> ¿Quién cambia qué?</h3>
-              <p class="dash-card__sub">Cambios aplicados de las 8 personas más activas por tipo de registro.</p>
-            </div>
-          </header>
-          <div class="dash-card__body">
-            @if (lecturaMatriz()) {
-              <ui-heatmap
-                [celdas]="matriz()"
-                [maxFilas]="8"
-                [maxColumnas]="5"
-                color="var(--accent)"
-                tituloFilas="Usuario"
-                tituloColumnas="Registro"
-              />
-              <p class="op-lectura">{{ lecturaMatriz() }}</p>
-            } @else {
-              <div class="dash-card__vacio">Sin cambios aplicados en el período.</div>
+              <app-apis-vigilar [endpoints]="endpoints()" />
             }
           </div>
         </article>

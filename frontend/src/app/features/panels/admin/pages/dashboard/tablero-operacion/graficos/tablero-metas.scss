@@ -1,0 +1,264 @@
+// Tablero de metas: tarjetas iguales que se acomodan solas (5 en escritorio, 1 en celular).
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.tm {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12.5rem), 1fr));
+  gap: var(--space-3);
+}
+
+.tm__tarjeta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+}
+
+.tm__cabeza {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-2);
+}
+
+.tm__etiqueta {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+// El estado va en palabras con su ícono: el color nunca es la única pista.
+.tm__estado {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+
+  &[data-nivel='ok'] {
+    color: var(--success);
+    background: color-mix(in srgb, var(--success) 12%, transparent);
+  }
+
+  &[data-nivel='aviso'] {
+    color: var(--warning);
+    background: color-mix(in srgb, var(--warning) 14%, transparent);
+  }
+
+  &[data-nivel='riesgo'] {
+    color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+  }
+}
+
+.tm__valor {
+  font-size: var(--fs-2xl);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+// --- medidor y bala -------------------------------------------------------------------------
+
+.tm__escala {
+  margin-top: var(--space-1);
+}
+
+// Pista del mismo tono que el valor, un paso más claro.
+.tm__pista {
+  position: relative;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--g-monitoreo) 16%, var(--surface));
+
+  &--bala {
+    height: 16px;
+    border-radius: 4px;
+    background: transparent;
+  }
+}
+
+// Tramos de la bala: grises cada vez más oscuros hacia lo peor (en meta → atención → crítico).
+.tm__banda {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+
+  &:first-child {
+    border-radius: 4px 0 0 4px;
+  }
+
+  &:nth-last-child(3) {
+    border-radius: 0 4px 4px 0;
+  }
+
+  &[data-tono='bien'] {
+    background: color-mix(in srgb, var(--text-3) 10%, var(--surface));
+  }
+
+  &[data-tono='atencion'] {
+    background: color-mix(in srgb, var(--text-3) 22%, var(--surface));
+  }
+
+  &[data-tono='critico'] {
+    background: color-mix(in srgb, var(--text-3) 34%, var(--surface));
+  }
+}
+
+.tm__relleno {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: var(--radius-pill);
+  background: var(--g-monitoreo);
+
+  &--bala {
+    top: 5px;
+    bottom: 5px;
+    border-radius: 0 3px 3px 0;
+  }
+}
+
+.tm__meta {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--text);
+  box-shadow: 0 0 0 2px var(--surface-2);
+}
+
+.tm__rotulos {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 0.7rem;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+// Rótulo de la meta sobre su marca; cerca de un borde se alinea hacia adentro (no se sale).
+.tm__meta-fila {
+  position: relative;
+  height: 1.35em;
+  margin-bottom: 6px;
+  font-size: 0.7rem;
+}
+
+.tm__meta-texto {
+  position: absolute;
+  bottom: 0;
+  transform: translateX(-50%);
+  font-weight: 700;
+  color: var(--text-2);
+  white-space: nowrap;
+
+  &--izq {
+    transform: translateX(calc(-100% + 6px));
+  }
+
+  &--der {
+    transform: translateX(-6px);
+  }
+}
+
+// --- tendencia de 12 semanas -----------------------------------------------------------------
+
+.tm__tendencia {
+  position: relative;
+  height: 40px;
+  margin-top: var(--space-1);
+
+  svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  polyline {
+    fill: none;
+    stroke: var(--text-3);
+    stroke-width: 2;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+  }
+}
+
+// La semana leída (o la última) en el color de Actividad, con anillo de la superficie.
+.tm__punto {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--surface-2);
+  border-radius: 50%;
+  background: var(--g-actividad);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.tm__zonas {
+  position: absolute;
+  inset: -6px 0;
+  display: flex;
+
+  span {
+    flex: 1;
+    cursor: crosshair;
+  }
+}
+
+.tm__lectura {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+// --- pie ------------------------------------------------------------------------------------
+
+.tm__pie {
+  margin: auto 0 0;
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  color: var(--text-3);
+}
+
+.tm__delta {
+  font-weight: 700;
+  white-space: nowrap;
+
+  &--bien {
+    color: var(--success);
+  }
+
+  &--mal {
+    color: var(--danger);
+  }
+}
+
+.tm__vacio {
+  margin: 0;
+  padding: var(--space-6) 0;
+  font-size: var(--fs-sm);
+  text-align: center;
+  color: var(--text-3);
+}
