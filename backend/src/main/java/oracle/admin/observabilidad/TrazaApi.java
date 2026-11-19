@@ -10,6 +10,7 @@ import java.util.stream.Stream;
 import oracle.common.config.RegistroPeticiones;
 import oracle.common.support.ActorActual;
 import org.slf4j.MDC;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.method.HandlerMethod;
@@ -20,6 +21,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /** Conserva la identidad verificada antes de que Spring Security limpie el contexto. */
 @Component
+@Configuration
 public class TrazaApi implements WebMvcConfigurer, HandlerInterceptor {
     private static final String ACTOR = TrazaApi.class.getName() + ".actor";
     private static final String USUARIO = TrazaApi.class.getName() + ".usuario";
