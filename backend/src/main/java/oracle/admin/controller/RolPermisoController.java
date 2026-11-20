@@ -2,14 +2,18 @@ package oracle.admin.controller;
 
 import jakarta.validation.Valid;
 import oracle.admin.request.RolPermisoAsignarRequest;
+import oracle.admin.request.RolPermisosLoteRequest;
 import oracle.common.response.ApiResponse;
 import oracle.admin.response.PermisoResponse;
+import oracle.admin.response.PermisoTableroResponse;
 import oracle.admin.response.RolPermisoResponse;
+import oracle.admin.response.RolPermisosLoteResponse;
 import oracle.admin.response.RolResponse;
 import oracle.admin.service.RolPermisoService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -46,6 +50,21 @@ public class RolPermisoController {
     @PreAuthorize("hasAuthority('ASIGNAR_PERMISOS')")
     public ApiResponse<Void> quitar(@PathVariable Long rolId, @PathVariable Long permisoId) {
         return rolPermisoService.quitar(rolId, permisoId);
+    }
+
+    /** Catálogo completo con lo que el rol tiene y el uso de cada permiso (una sola consulta). */
+    @GetMapping("/roles/{rolId}/permisos/tablero")
+    @PreAuthorize("hasAuthority('VER_ROLES') and hasAuthority('VER_PERMISOS')")
+    public ApiResponse<List<PermisoTableroResponse>> tablero(@PathVariable Long rolId) {
+        return rolPermisoService.tablero(rolId);
+    }
+
+    /** Agrega y quita varios permisos del rol en una sola transacción. */
+    @PatchMapping("/roles/{rolId}/permisos")
+    @PreAuthorize("hasAuthority('ASIGNAR_PERMISOS')")
+    public ApiResponse<RolPermisosLoteResponse> actualizarLote(@PathVariable Long rolId,
+            @Valid @RequestBody RolPermisosLoteRequest peticion) {
+        return rolPermisoService.actualizarLote(rolId, peticion);
     }
 
     @GetMapping("/permisos/{permisoId}/roles")

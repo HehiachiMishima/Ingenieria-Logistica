@@ -1,14 +1,13 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { finalize, forkJoin } from 'rxjs';
+import { finalize } from 'rxjs';
 import { PERMISOS } from '../../../../../core/config/permisos';
 import { mensajeDeError } from '../../../../../core/errors/error.util';
 import { DirectorioUsuarios } from '../../../../../core/services/directorio-usuarios';
 import { Notificaciones } from '../../../../../core/services/notificaciones';
-import { PermisosApi } from '../../data/permisos.api';
 import { RolesApi } from '../../data/roles.api';
-import { Permiso } from '../../data/permiso.model';
+import { PermisoDelRol, RolPermisosLote } from '../../data/permiso.model';
 import { Rol } from '../../data/rol.model';
 import { HasPermiso } from '../../../../../shared/directives/has-permiso.directive';
 import { ColumnasRedimensionables } from '../../../../../shared/directives/columnas-redimensionables.directive';
@@ -21,7 +20,8 @@ import { PanelFiltros } from '../../../../../shared/ui/panel-filtros/panel-filtr
 import { RangoRapido } from '../../../../../shared/ui/panel-filtros/rango-rapido';
 import { ActorLabelPipe } from '../../../../../shared/pipes/actor-label.pipe';
 import { ListadoRegistros } from '../../state/listado-registros';
-import { ListaAsignacion } from '../../ui/lista-asignacion';
+import { SesionStore } from '../../../../../core/services/sesion';
+import { TableroPermisos } from '../../ui/tablero-permisos/tablero-permisos';
 
 @Component({
   selector: 'app-admin-roles',
@@ -39,7 +39,7 @@ import { ListaAsignacion } from '../../ui/lista-asignacion';
     PanelFiltros,
     FiltrosActivos,
     RangoRapido,
-    ListaAsignacion,
+    TableroPermisos,
   ],
   templateUrl: './roles.html',
   styleUrl: './roles.scss',
@@ -47,7 +47,7 @@ import { ListaAsignacion } from '../../ui/lista-asignacion';
 export class Roles {
   private readonly fb = inject(FormBuilder);
   private readonly rolesApi = inject(RolesApi);
-  private readonly permisosApi = inject(PermisosApi);
+  private readonly sesion = inject(SesionStore);
   private readonly notificaciones = inject(Notificaciones);
   private readonly directorio = inject(DirectorioUsuarios);
 
@@ -76,9 +76,14 @@ export class Roles {
   readonly rolPermisos = signal<Rol | null>(null);
   readonly cargandoPermisos = signal(false);
   readonly errorPermisos = signal<string | null>(null);
-  readonly catalogoPermisos = signal<Permiso[]>([]);
-  readonly permisosAsignados = signal<Set<number>>(new Set());
-  readonly cambiandoPermiso = signal<number | null>(null);
+  readonly tableroPermisos = signal<PermisoDelRol[]>([]);
+  readonly guardandoPermisos = signal(false);
+  readonly confirmarDescarte = signal(false);
+  readonly tablero = viewChild(TableroPermisos);
+  readonly cambiosPermisos = computed(() => this.tablero()?.totalCambios() ?? 0);
+  /** Permisos de quien edita: el tablero no deja otorgar otros (el backend también lo impide). */
+  readonly otorgables = this.sesion.permisos;
+  readonly rolProtegido = computed(() => this.rolPermisos()?.nombre.toUpperCase() === 'ADMINISTRADOR');
   /** Descarta la respuesta de un modal abierto antes (otro rol). */
   private solicitudPermisos = 0;
 
@@ -208,14 +213,13 @@ export class Roles {
     const solicitud = ++this.solicitudPermisos;
     const vigente = () => solicitud === this.solicitudPermisos;
     this.rolPermisos.set(rol);
-    this.permisosAsignados.set(new Set());
+    this.tableroPermisos.set([]);
     this.errorPermisos.set(null);
+    this.confirmarDescarte.set(false);
     this.permisosAbierto.set(true);
     this.cargandoPermisos.set(true);
-    forkJoin({
-      catalogo: this.permisosApi.listar(),
-      asignados: this.rolesApi.permisos(rol.id),
-    })
+    this.rolesApi
+      .tableroPermisos(rol.id)
       .pipe(
         finalize(() => {
           if (vigente()) {
@@ -224,12 +228,10 @@ export class Roles {
         }),
       )
       .subscribe({
-        next: ({ catalogo, asignados }) => {
-          if (!vigente()) {
-            return;
+        next: (permisos) => {
+          if (vigente()) {
+            this.tableroPermisos.set(permisos);
           }
-          this.catalogoPermisos.set(catalogo);
-          this.permisosAsignados.set(new Set(asignados.map((permiso) => permiso.id)));
         },
         error: (err: unknown) => {
           if (!vigente()) {
@@ -241,35 +243,64 @@ export class Roles {
       });
   }
 
-  alternarPermiso(permiso: Permiso): void {
-    const rol = this.rolPermisos();
-    if (!rol || this.cambiandoPermiso()) {
+  /** Cerrar con cambios sin guardar pide confirmación en el pie del diálogo. */
+  cerrarPermisos(): void {
+    if (this.guardandoPermisos()) {
       return;
     }
-    this.cambiandoPermiso.set(permiso.id);
-    const asignado = this.permisosAsignados().has(permiso.id);
-    const peticion$ = asignado
-      ? this.rolesApi.quitarPermiso(rol.id, permiso.id)
-      : this.rolesApi.asignarPermiso(rol.id, permiso.id);
-
-    peticion$.pipe(finalize(() => this.cambiandoPermiso.set(null))).subscribe({
-      next: () => {
-        this.permisosAsignados.update((set) => {
-          const copia = new Set(set);
-          if (asignado) {
-            copia.delete(permiso.id);
-          } else {
-            copia.add(permiso.id);
-          }
-          return copia;
-        });
-        this.notificaciones.info(
-          asignado ? 'Permiso quitado del rol' : 'Permiso asignado al rol',
-          permiso.nombre,
-        );
-      },
-      error: (err: unknown) =>
-        this.notificaciones.error('No se pudo actualizar', mensajeDeError(err)),
-    });
+    if (this.cambiosPermisos() > 0 && !this.confirmarDescarte()) {
+      this.confirmarDescarte.set(true);
+      return;
+    }
+    this.confirmarDescarte.set(false);
+    this.permisosAbierto.set(false);
+    this.solicitudPermisos++;
   }
+
+  descartarPermisos(): void {
+    this.tablero()?.descartar();
+    this.confirmarDescarte.set(false);
+  }
+
+  /** Guarda en una sola petición todo lo movido en el tablero. */
+  guardarPermisos(): void {
+    const rol = this.rolPermisos();
+    const tablero = this.tablero();
+    if (!rol || !tablero || this.guardandoPermisos() || tablero.totalCambios() === 0) {
+      return;
+    }
+    const cambios = tablero.cambios();
+    const solicitud = this.solicitudPermisos;
+    this.guardandoPermisos.set(true);
+    this.confirmarDescarte.set(false);
+    this.rolesApi
+      .actualizarPermisos(rol.id, cambios)
+      .pipe(finalize(() => this.guardandoPermisos.set(false)))
+      .subscribe({
+        next: (resultado) => {
+          if (solicitud === this.solicitudPermisos) {
+            const ahora = new Set(resultado.asignados);
+            this.tableroPermisos.update((permisos) =>
+              permisos.map((p) => {
+                const asignado = ahora.has(p.id);
+                const roles = p.roles + (asignado === p.asignado ? 0 : asignado ? 1 : -1);
+                return { ...p, asignado, roles };
+              }),
+            );
+          }
+          this.notificaciones.exito('Permisos del rol actualizados', resumenLote(rol.nombre, resultado));
+        },
+        error: (err: unknown) =>
+          this.notificaciones.error('No se pudieron guardar los permisos', mensajeDeError(err)),
+      });
+  }
+}
+
+/** «Supervisor · 3 agregados y 1 quitado». */
+function resumenLote(rol: string, { agregados, quitados }: RolPermisosLote): string {
+  const partes = [
+    agregados ? `${agregados} ${agregados === 1 ? 'agregado' : 'agregados'}` : '',
+    quitados ? `${quitados} ${quitados === 1 ? 'quitado' : 'quitados'}` : '',
+  ].filter(Boolean);
+  return `${rol} · ${partes.length ? partes.join(' y ') : 'sin cambios (ya estaban aplicados)'}`;
 }

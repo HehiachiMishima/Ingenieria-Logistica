@@ -334,29 +334,61 @@
   [abierto]="permisosAbierto()"
   titulo="Permisos del rol"
   [subtitulo]="rolPermisos()?.nombre ?? ''"
-  (cerrar)="permisosAbierto.set(false)"
+  ancho="full"
+  (cerrar)="cerrarPermisos()"
 >
-  <p class="modal-hint">
-    Activa los permisos que concede este rol. Todos los usuarios con este rol los heredarán.
-  </p>
   @if (cargandoPermisos()) {
     <div class="loading"><span class="ui-spinner"></span> Cargando permisos…</div>
   } @else if (errorPermisos()) {
     <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="errorPermisos()!" />
-  } @else if (catalogoPermisos().length === 0) {
+  } @else if (tableroPermisos().length === 0) {
     <ui-empty icono="permisos" titulo="Sin permisos" mensaje="No hay permisos en el catálogo." />
   } @else {
-    <app-lista-asignacion
-      icono="key"
-      [items]="catalogoPermisos()"
-      [asignados]="permisosAsignados()"
-      [cambiando]="cambiandoPermiso()"
-      (alternar)="alternarPermiso($event)"
+    <app-tablero-permisos
+      class="roles-tablero"
+      [permisos]="tableroPermisos()"
+      [nombreRol]="rolPermisos()?.nombre ?? ''"
+      [protegido]="rolProtegido()"
+      [soloLectura]="guardandoPermisos()"
+      [otorgables]="otorgables()"
     />
   }
   <div modal-footer class="modal-foot">
-    <button type="button" class="ui-btn ui-btn--primary" (click)="permisosAbierto.set(false)">
-      Listo
-    </button>
+    @if (confirmarDescarte()) {
+      <span class="roles-pie__aviso" role="alert">
+        ¿Cerrar sin guardar {{ cambiosPermisos() }} {{ cambiosPermisos() === 1 ? 'cambio' : 'cambios' }}?
+      </span>
+      <button type="button" class="ui-btn ui-btn--secondary" (click)="confirmarDescarte.set(false)">
+        Seguir editando
+      </button>
+      <button type="button" class="ui-btn ui-btn--danger" (click)="cerrarPermisos()">
+        Cerrar sin guardar
+      </button>
+    } @else if (cambiosPermisos() > 0) {
+      <span class="roles-pie__aviso">
+        {{ cambiosPermisos() }} {{ cambiosPermisos() === 1 ? 'cambio sin guardar' : 'cambios sin guardar' }}
+      </span>
+      <button
+        type="button"
+        class="ui-btn ui-btn--secondary"
+        [disabled]="guardandoPermisos()"
+        (click)="descartarPermisos()"
+      >
+        Descartar
+      </button>
+      <button
+        type="button"
+        class="ui-btn ui-btn--primary"
+        [disabled]="guardandoPermisos()"
+        (click)="guardarPermisos()"
+      >
+        @if (guardandoPermisos()) {
+          <span class="ui-spinner" style="width: 16px; height: 16px"></span>
+        }
+        Guardar cambios
+      </button>
+    } @else {
+      <button type="button" class="ui-btn ui-btn--primary" (click)="cerrarPermisos()">Listo</button>
+    }
   </div>
 </ui-modal>

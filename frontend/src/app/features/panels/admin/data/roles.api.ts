@@ -1,6 +1,6 @@
 import { Service, inject } from '@angular/core';
 import { Observable } from 'rxjs';
-import { Permiso } from './permiso.model';
+import { PermisoDelRol, RolPermisosLote, RolPermisosLoteRequest } from './permiso.model';
 import { Rol, RolActualizarRequest, RolCrearRequest } from './rol.model';
 import { Api } from '../../../../core/services/api';
 
@@ -28,15 +28,13 @@ export class RolesApi {
     return this.api.patch<Rol>(`/roles/${id}/activo`, { activo });
   }
 
-  permisos(id: number): Observable<Permiso[]> {
-    return this.api.get<Permiso[]>(`/roles/${id}/permisos`);
+  /** Catálogo completo con lo que el rol tiene y en cuántos roles está cada permiso. */
+  tableroPermisos(id: number): Observable<PermisoDelRol[]> {
+    return this.api.get<PermisoDelRol[]>(`/roles/${id}/permisos/tablero`);
   }
 
-  asignarPermiso(id: number, permisoId: number): Observable<unknown> {
-    return this.api.post(`/roles/${id}/permisos`, { permisoId });
-  }
-
-  quitarPermiso(id: number, permisoId: number): Observable<void> {
-    return this.api.delete<void>(`/roles/${id}/permisos/${permisoId}`);
+  /** Agrega y quita varios permisos del rol en una sola transacción. */
+  actualizarPermisos(id: number, cambios: RolPermisosLoteRequest): Observable<RolPermisosLote> {
+    return this.api.patch<RolPermisosLote>(`/roles/${id}/permisos`, cambios);
   }
 }

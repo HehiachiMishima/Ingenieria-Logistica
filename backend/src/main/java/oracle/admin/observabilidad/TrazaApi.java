@@ -50,7 +50,8 @@ public class TrazaApi implements WebMvcConfigurer, HandlerInterceptor {
                 "cambiarActivo", "Cambiar estado", "eliminar", "Eliminar");
         }
         agregar(m, "UsuarioRolController", "Rol de usuario", "asignar", "Asignar", "quitar", "Quitar");
-        agregar(m, "RolPermisoController", "Permiso de rol", "asignar", "Asignar", "quitar", "Quitar");
+        agregar(m, "RolPermisoController", "Permiso de rol", "asignar", "Asignar", "quitar", "Quitar",
+            "actualizarLote", "Actualizar permisos");
         agregar(m, "UsuarioPermisoController", "Permiso de usuario", "otorgar", "Cambiar permiso", "eliminar", "Eliminar");
         agregar(m, "AuthController", "Cuenta", "cambiarContrasena", "Cambiar contraseña");
         // Simulación Titan: el registro es siempre el archivo

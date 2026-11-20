@@ -29,7 +29,7 @@ const PERIODOS: OpcionPeriodo<Periodo>[] = [
 @Component({
   selector: 'app-tablero-operacion',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ApisVigilar, DemandaRendimiento, Icon, PulsoPlataforma, RouterLink, SelectorPeriodo, TableroMetas],
+  imports: [ApisVigilar, DemandaRendimiento, Icon, PulsoPlataforma, RouterLink, TableroMetas],
   templateUrl: './tablero-operacion.html',
   styleUrl: './tablero-operacion.scss',
 })

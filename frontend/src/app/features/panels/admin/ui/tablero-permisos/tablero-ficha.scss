@@ -1,0 +1,215 @@
+/*
+ * Ficha de un permiso con el diseño de las rutas de Simulación Titan, en dos filas:
+ *   arriba (22 px): acción (C/R/U/D…) · roles que lo tienen (caja kraft) o «Inactivo»;
+ *   abajo: pestaña del panel · lo que abre o maneja, centrado.
+ * Marco de 2 px, esquinas rectas, bloques separados por 1 px. Estados: elegida (contorno
+ * de acento), movida sin guardar (rayas), coincide con la búsqueda (contorno ámbar),
+ * atenuada (no coincide) e inactiva (gris y rayada: no concede acceso).
+ */
+.tp-ficha {
+  --tp-marco: light-dark(#5b6f8f, #5a76a6);
+
+  container: ficha / inline-size;
+  position: relative;
+  display: grid;
+  grid-template-rows: 22px minmax(28px, auto);
+  gap: 1px;
+  min-width: 0;
+  border: 2px solid var(--tp-marco);
+  font-weight: 700;
+  line-height: 1;
+  background: color-mix(in srgb, var(--border) 55%, var(--surface));
+  cursor: grab;
+  user-select: none;
+  transition:
+    opacity var(--transition-fast),
+    outline-color var(--transition-fast);
+
+  &:focus-visible {
+    outline: 3px solid var(--ring, var(--accent));
+    outline-offset: 2px;
+  }
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+.tp-ficha__datos,
+.tp-ficha__fila {
+  display: flex;
+  gap: 1px;
+  min-width: 0;
+}
+
+.tp-ficha__accion,
+.tp-ficha__uso,
+.tp-ficha__inactivo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tp-ficha__accion {
+  flex: none;
+  width: 24px;
+  font-size: 0.72rem;
+  color: #fff;
+  background: var(--accion);
+}
+
+/* Roles que tienen el permiso, con la caja kraft de los bultos de Titan. */
+.tp-ficha__uso {
+  --kraft: #c8894a;
+
+  flex: 1 1 auto;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 4px;
+  font-size: 0.75rem;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--kraft) 16%, var(--surface));
+}
+
+.tp-ficha__inactivo {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  color: #fff;
+  text-transform: uppercase;
+  background: #475569;
+}
+
+/* Panel: su código en blanco sobre su color, oscurecido para que se lea en todos los tonos. */
+.tp-ficha__pestana {
+  flex: none;
+  align-content: center;
+  min-width: 30px;
+  padding: 0 4px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  color: #fff;
+  text-align: center;
+  letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--grupo-color, var(--accent)) 82%, #000);
+
+  &--vacia {
+    background: color-mix(in srgb, var(--text-3) 55%, var(--surface));
+  }
+}
+
+.tp-ficha__caja {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+  background: var(--surface);
+}
+
+/* Etiqueta centrada: hasta dos líneas y, si no cabe, «…» (el nombre completo va en el título). */
+.tp-ficha__codigo {
+  display: -webkit-box;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 3px 4px;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: 0.74rem;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  color: var(--text);
+  text-align: center;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+/* Ficha angosta (columna del rol, pantallas medianas): letra algo menor para que las palabras
+   largas («ADMINISTRACIÓN», «SINCRONIZACIÓN») quepan enteras sin partirse. */
+@container ficha (max-width: 170px) {
+  .tp-ficha__pestana {
+    min-width: 26px;
+    padding: 0 3px;
+    font-size: 0.62rem;
+  }
+
+  .tp-ficha__codigo {
+    padding: 3px 2px;
+    font-size: 0.66rem;
+    letter-spacing: 0;
+  }
+}
+
+/* ---------- Estados ---------- */
+.tp-ficha--elegida {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+
+  .tp-ficha__caja {
+    background-color: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  }
+}
+
+/* Movida y sin guardar: rayas de acento, como una ruta movida en Titan. */
+.tp-ficha--movida .tp-ficha__caja {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0 6px,
+    color-mix(in srgb, var(--accent) 12%, transparent) 6px 12px
+  );
+}
+
+/* Inactiva: no concede acceso; pestaña gris y código rayado en gris. */
+.tp-ficha--inactiva {
+  .tp-ficha__pestana {
+    background: color-mix(in srgb, var(--text-3) 55%, var(--surface));
+  }
+
+  .tp-ficha__caja {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      transparent 0 5px,
+      color-mix(in srgb, var(--text-3) 18%, transparent) 5px 10px
+    );
+  }
+
+  .tp-ficha__codigo {
+    color: var(--text-2);
+  }
+}
+
+.tp-ficha--fija {
+  cursor: not-allowed;
+}
+
+.tp-ficha--coincide {
+  border-color: var(--tp-coincide);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--tp-coincide) 45%, transparent);
+}
+
+.tp-ficha--atenuada {
+  opacity: 0.28;
+}
+
+.tp-ficha--arrastrada {
+  opacity: 0.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tp-ficha {
+    transition: none;
+  }
+}
+
+/* Alto contraste: el estado no depende solo del color. */
+@media (forced-colors: active) {
+  .tp-ficha--elegida {
+    outline: 3px solid Highlight;
+  }
+
+  .tp-ficha--coincide {
+    border-style: dashed;
+  }
+}

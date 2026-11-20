@@ -1,2 +1,21 @@
 // Estilos específicos de la página de roles.
 // El diseño de tabla, formularios y switches se reutiliza de _components.scss.
+@use 'breakpoints' as bp;
+
+/* Pie del diálogo de permisos: el aviso de cambios a la izquierda, las acciones a la derecha. */
+.roles-pie__aviso {
+  align-self: center;
+  margin-right: auto;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+@include bp.down(sm) {
+  // El pie apila en orden inverso: el aviso va arriba de los botones.
+  .roles-pie__aviso {
+    order: 1;
+    margin-right: 0;
+    text-align: center;
+  }
+}

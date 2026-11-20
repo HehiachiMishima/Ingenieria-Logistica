@@ -1,0 +1,324 @@
+@use 'breakpoints' as bp;
+
+/*
+ * Tablero de permisos del rol. Escritorio: catálogo y columna del rol a la altura del diálogo,
+ * cada uno con su propio scroll (el rol siempre queda a la vista para soltar). Debajo de lg los
+ * dos se apilan, el rol primero, y desplaza el cuerpo del diálogo.
+ */
+:host {
+  --tp-cabeza: light-dark(#0f2140, #0b1729);
+  --tp-coincide: #f2a623;
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  height: 100%;
+  min-height: 0;
+}
+
+.tp-indicacion {
+  flex: none;
+  margin: 0;
+}
+
+/* ---------- Barra: buscador, coincidencias y acciones de la selección ---------- */
+.tp-barra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+
+  &__buscar {
+    flex: 1 1 260px;
+    min-width: 0;
+    max-width: 420px;
+  }
+
+  &__conteo {
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--text-2);
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__seleccion {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-left: auto;
+  }
+}
+
+.tp-aviso {
+  min-height: 1.25rem;
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+/* ---------- Tablero ---------- */
+.tp {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 1fr) minmax(min(100%, 260px), 330px);
+  gap: var(--space-4);
+  min-height: 0;
+}
+
+.tp-catalogo {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr));
+  align-content: start;
+  gap: var(--space-3) var(--space-2);
+  min-height: 0;
+  padding: var(--space-1);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border-radius: var(--radius-sm);
+}
+
+.tp-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+
+  &__cabeza {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px var(--space-2);
+    min-height: 34px;
+    padding: 5px var(--space-2);
+    color: #fff;
+    background: var(--tp-cabeza);
+    border-top: 3px solid var(--accion);
+  }
+
+  &__letra {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: #fff;
+    background: var(--accion);
+  }
+
+  // Una sola palabra: no se recorta; si no cabe junto al contador, el contador baja de línea.
+  &__titulo {
+    flex: 1 0 auto;
+    font-size: var(--fs-sm);
+    font-weight: 700;
+  }
+
+  &__conteo {
+    flex: none;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: rgb(255 255 255 / 78%);
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__fichas {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  &__vacia {
+    margin: 0;
+    padding: var(--space-3) var(--space-2);
+    font-size: var(--fs-sm);
+    color: var(--text-3);
+    text-align: center;
+    border: 1px dashed var(--border-strong);
+  }
+}
+
+/* ---------- Columna del rol ---------- */
+.tp-rol {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+  border: 2px solid var(--accent);
+  transition:
+    background-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+
+  &__cabeza {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 40px;
+    padding: var(--space-2) var(--space-3);
+    color: #fff;
+    background: var(--tp-cabeza);
+  }
+
+  &__etiqueta {
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    color: rgb(255 255 255 / 70%);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  &__nombre {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-size: var(--fs-sm);
+  }
+
+  &__conteo {
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__cuerpo {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--space-3);
+    min-height: 0;
+    padding: var(--space-3);
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  &__vacio {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    min-height: 140px;
+    margin: 0;
+    padding: var(--space-4);
+    font-size: var(--fs-sm);
+    color: var(--text-3);
+    text-align: center;
+    border: 2px dashed var(--border-strong);
+  }
+}
+
+.tp-seccion {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  &__titulo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  &__conteo {
+    margin-left: auto;
+    font-size: 0.75rem;
+    color: var(--text-3);
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__fichas {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 124px), 1fr));
+    gap: 6px;
+  }
+}
+
+.tp-nota {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  background: var(--surface-2);
+  border-left: 3px solid var(--border-strong);
+
+  ui-icon {
+    flex: none;
+    margin-top: 1px;
+  }
+
+  &--aviso {
+    color: var(--text);
+    background: var(--warning-soft);
+    border-left-color: var(--warning);
+  }
+}
+
+/* ---------- Arrastre: destino válido o prohibido (clases que pone la directiva) ---------- */
+.tp-zona--destino {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+
+  &.tp-rol {
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+
+  &.tp-catalogo {
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
+  }
+}
+
+.tp-zona--prohibido {
+  outline: 2px solid var(--danger);
+  outline-offset: 2px;
+  background: var(--danger-soft);
+}
+
+/* ---------- Pantallas medianas y chicas: todo apilado, el rol primero ---------- */
+@include bp.down(lg) {
+  :host {
+    height: auto;
+  }
+
+  .tp {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tp-rol {
+    order: -1;
+  }
+
+  .tp-catalogo,
+  .tp-rol__cuerpo {
+    overflow: visible;
+  }
+
+  /* La barra queda a la vista mientras se desplaza el cuerpo del diálogo. */
+  .tp-barra {
+    position: sticky;
+    z-index: 2;
+    top: 0;
+    padding: var(--space-2) 0;
+    background: var(--surface);
+  }
+
+  // 16 px: iOS no hace zoom al enfocar el buscador.
+  .tp-barra__buscar .ui-input {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tp-rol {
+    transition: none;
+  }
+}

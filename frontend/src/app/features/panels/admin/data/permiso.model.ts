@@ -44,3 +44,27 @@ export interface PermisoEfectivo {
   otorgado: boolean;
   origen: 'ROL' | 'OVERRIDE' | string;
 }
+
+/** Permiso del catálogo visto desde un rol: si el rol lo concede y en cuántos roles está. */
+export interface PermisoDelRol {
+  id: number;
+  nombre: string;
+  descripcion: string | null;
+  activo: boolean;
+  asignado: boolean;
+  roles: number;
+}
+
+/** Cambios en lote de los permisos de un rol (una sola transacción). */
+export interface RolPermisosLoteRequest {
+  agregar: number[];
+  quitar: number[];
+}
+
+/** Lo que cambió de verdad y los ids que el rol tiene ahora. */
+export interface RolPermisosLote {
+  rolId: number;
+  agregados: number;
+  quitados: number;
+  asignados: number[];
+}
