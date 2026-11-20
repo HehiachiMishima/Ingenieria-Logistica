@@ -2,12 +2,16 @@ package oracle.admin.controller;
 
 import jakarta.validation.Valid;
 import oracle.admin.request.UsuarioPermisoOverrideRequest;
+import oracle.admin.request.UsuarioPermisosLoteRequest;
 import oracle.common.response.ApiResponse;
+import oracle.admin.response.PermisosUsuarioTableroResponse;
 import oracle.admin.response.UsuarioPermisoResponse;
+import oracle.admin.response.UsuarioPermisosLoteResponse;
 import oracle.admin.service.UsuarioPermisoService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -44,5 +48,20 @@ public class UsuarioPermisoController {
     @PreAuthorize("hasAuthority('ASIGNAR_PERMISOS')")
     public ApiResponse<Void> eliminar(@PathVariable Long usuarioId, @PathVariable Long permisoId) {
         return usuarioPermisoService.eliminar(usuarioId, permisoId);
+    }
+
+    /** Catálogo con lo que dan los roles del usuario, sus excepciones y si se pueden conceder. */
+    @GetMapping("/tablero")
+    @PreAuthorize("hasAuthority('VER_USUARIOS') and hasAuthority('VER_PERMISOS')")
+    public ApiResponse<PermisosUsuarioTableroResponse> tablero(@PathVariable Long usuarioId) {
+        return usuarioPermisoService.tablero(usuarioId);
+    }
+
+    /** Concede, deniega o devuelve a la herencia varios permisos en una sola transacción. */
+    @PatchMapping
+    @PreAuthorize("hasAuthority('ASIGNAR_PERMISOS')")
+    public ApiResponse<UsuarioPermisosLoteResponse> actualizarLote(@PathVariable Long usuarioId,
+            @Valid @RequestBody UsuarioPermisosLoteRequest peticion) {
+        return usuarioPermisoService.actualizarLote(usuarioId, peticion);
     }
 }

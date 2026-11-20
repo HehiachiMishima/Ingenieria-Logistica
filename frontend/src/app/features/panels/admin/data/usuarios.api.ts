@@ -1,6 +1,6 @@
 import { Service, inject } from '@angular/core';
 import { Observable } from 'rxjs';
-import { PermisoEfectivo, UsuarioPermisoDetalle, UsuarioPermisoOverride } from './permiso.model';
+import { PermisosUsuarioTablero, UsuarioPermisosLote, UsuarioPermisosLoteRequest } from './permiso.model';
 import { RolesUsuarioTablero, UsuarioRolesLote, UsuarioRolesLoteRequest } from './rol.model';
 import { Usuario } from '../../../../core/models';
 import { UsuarioActualizarRequest, UsuarioCrearRequest, UsuarioResumen } from './usuario.model';
@@ -45,23 +45,13 @@ export class UsuariosApi {
     return this.api.patch<UsuarioRolesLote>(`/usuarios/${id}/roles`, cambios);
   }
 
-  /** Overrides individuales (grant/deny) del usuario. */
-  permisos(id: number): Observable<UsuarioPermisoDetalle[]> {
-    return this.api.get<UsuarioPermisoDetalle[]>(`/usuarios/${id}/permisos`);
+  /** Catálogo con lo que dan los roles del usuario, sus excepciones y si se pueden conceder. */
+  tableroPermisos(id: number): Observable<PermisosUsuarioTablero> {
+    return this.api.get<PermisosUsuarioTablero>(`/usuarios/${id}/permisos/tablero`);
   }
 
-  /** Concede (otorgado=true) o deniega (otorgado=false) un permiso al usuario. */
-  otorgarPermiso(id: number, override: UsuarioPermisoOverride): Observable<UsuarioPermisoDetalle> {
-    return this.api.put<UsuarioPermisoDetalle>(`/usuarios/${id}/permisos`, override);
-  }
-
-  /** Elimina el override; el permiso vuelve a heredarse del rol. */
-  quitarPermiso(id: number, permisoId: number): Observable<void> {
-    return this.api.delete<void>(`/usuarios/${id}/permisos/${permisoId}`);
-  }
-
-  /** Resolución: aportes del rol y de los overrides, antes de aplicar MIN(). */
-  resolucionEfectivos(id: number): Observable<PermisoEfectivo[]> {
-    return this.api.get<PermisoEfectivo[]>(`/resolucion/usuarios/${id}/efectivos`);
+  /** Concede, deniega o devuelve a la herencia del rol varios permisos en una sola transacción. */
+  actualizarPermisos(id: number, cambios: UsuarioPermisosLoteRequest): Observable<UsuarioPermisosLote> {
+    return this.api.patch<UsuarioPermisosLote>(`/usuarios/${id}/permisos`, cambios);
   }
 }

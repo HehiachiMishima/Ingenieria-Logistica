@@ -15,6 +15,7 @@ import { contieneTexto } from '../../../../../core/utils/texto.util';
 import { Icon } from '../../../../../shared/ui/icon/icon';
 import { PermisoDelRol } from '../../data/permiso.model';
 import { ArrastreFichas, SoltarFichas } from '../tablero-fichas/arrastre-fichas.directive';
+import { llevarAColumna, seguirColumnasVisibles } from '../tablero-fichas/columnas-catalogo';
 import { COLUMNAS_CRUD, ColumnaCrud, FichaPermiso, clasificarPermiso } from './ficha-permiso';
 
 /** Lado del tablero: el catálogo (lo que el rol no tiene) o la columna del rol. */
@@ -192,53 +193,18 @@ export class TableroPermisos {
   readonly visibles = signal<ReadonlySet<string>>(new Set());
 
   constructor() {
-    // Un IntersectionObserver en vez de escuchar el scroll: Angular solo se entera cuando cambia
-    // qué columnas están a la vista, no en cada píxel desplazado.
     effect((alLimpiar) => {
       const raiz = this.catalogo().nativeElement;
       const columnas = this.columnasCatalogo().map((ref) => ref.nativeElement);
-      if (typeof IntersectionObserver === 'undefined' || columnas.length === 0) {
-        return;
-      }
-      const vistas = new Set<string>();
-      const observador = new IntersectionObserver(
-        (entradas) => {
-          for (const entrada of entradas) {
-            const accion = (entrada.target as HTMLElement).dataset['accion'] ?? '';
-            const ancho = entrada.boundingClientRect.width;
-            // Solo cuenta el ancho: una columna larga nunca entra entera a lo alto.
-            if (ancho > 0 && entrada.intersectionRect.width / ancho >= 0.6) {
-              vistas.add(accion);
-            } else {
-              vistas.delete(accion);
-            }
-          }
-          this.visibles.set(new Set(vistas));
-        },
-        { root: raiz, threshold: [0, 0.25, 0.5, 0.6, 0.75, 1] },
-      );
-      for (const columna of columnas) {
-        observador.observe(columna);
-      }
-      alLimpiar(() => observador.disconnect());
+      alLimpiar(seguirColumnasVisibles(raiz, columnas, (visibles) => this.visibles.set(visibles)));
     });
   }
 
-  /** Atajo: lleva la columna a la vista (a lo ancho en escritorio; bajo la barra al apilar). */
   irAColumna(accion: string): void {
-    const columna = this.columnasCatalogo()
-      .map((ref) => ref.nativeElement)
-      .find((el) => el.dataset['accion'] === accion);
-    if (!columna) {
-      return;
-    }
-    const apilado = !matchMedia('(min-width: 1024px)').matches; // responsive:ok mismo corte lg del SCSS; solo elige cómo desplazar
-    const suave = !matchMedia('(prefers-reduced-motion: reduce)').matches;
-    columna.scrollIntoView({
-      behavior: suave ? 'smooth' : 'auto',
-      block: apilado ? 'start' : 'nearest',
-      inline: 'start',
-    });
+    llevarAColumna(
+      this.columnasCatalogo().map((ref) => ref.nativeElement),
+      accion,
+    );
   }
 
   buscar(termino: string): void {

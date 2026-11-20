@@ -4,9 +4,9 @@
 
 | Campo | Valor |
 |---|---|
-| Fecha | 2026-11-19 (observabilidad) · 2026-11-20 (permisos del rol y roles del usuario) |
-| Commit | 19a57b7 + cambios sin commit (rama update_16) · 2a6d074 + cambios sin commit (rama update_19) · 8215938 + cambios sin commit (roles del usuario) |
-| Entorno | local, macOS arm64, una instancia; volumen sintético de 1 000 000 trazas, 200 000 eventos de auditoría y 80 569 filas en `roles_permisos` (2 000 roles × 40 permisos, 563 permisos), y para los roles del usuario 100 000 usuarios con 150 001 asignaciones de rol, todo dentro de transacciones revertidas |
+| Fecha | 2026-11-19 (observabilidad) · 2026-11-20 (permisos del rol, roles del usuario y permisos individuales) |
+| Commit | 19a57b7 + cambios sin commit (rama update_16) · 2a6d074 + cambios sin commit (rama update_19) · 8215938 + cambios sin commit (roles del usuario) · de8a47e + cambios sin commit (permisos individuales) |
+| Entorno | local, macOS arm64, una instancia; volumen sintético de 1 000 000 trazas, 200 000 eventos de auditoría y 80 569 filas en `roles_permisos` (2 000 roles × 40 permisos, 563 permisos), y para los roles del usuario 100 000 usuarios con 150 001 asignaciones de rol y 50 000 excepciones, todo dentro de transacciones revertidas |
 | Backend | Spring Boot 4.1.2, Hibernate 7.4.13, HikariCP 7.0.2, driver PostgreSQL 42.7.14, JDK 25, virtual threads sí (`spring.threads.virtual.enabled=true`), open-in-view false |
 | Base de datos | PostgreSQL 18.6 local, max_connections 100, sin PgBouncer, pg_stat_statements no cargado |
 | Frontend | Angular 22.1, builder application (esbuild), zoneless, RxJS 7.8 |
@@ -43,6 +43,8 @@
 | Desplazar el catálogo del tablero (diálogo mediano) | 1366 × 768, bundle de producción, 90 cuadros recorriendo 720 px a lo ancho y 450 px a lo alto, ida y vuelta | p95 17,9 ms por cuadro (máx. 18,5 ms), 0 tareas largas, 16 cambios de clase en los atajos | 200 ms (INP; cuadro ≤ 16,7 ms a 60 Hz) | `requestAnimationFrame` + `PerformanceObserver(longtask)` + `MutationObserver` en el navegador contra el servidor de QA | 2026-11-20 |
 | Abrir los roles de un usuario (antes) | 2 002 roles, 150 001 filas en `usuarios_roles` | 2 peticiones HTTP; 0,21 + 0,01 ms en la base | 200 ms | `EXPLAIN (ANALYZE, BUFFERS)` en `BenchRolesUsuario.java` (scratchpad) | 2026-11-20 |
 | Dar 5 roles a un usuario (antes) | uno a uno, como `UsuarioRolService.asignar` | 5 peticiones HTTP; 30 sentencias = 17,6 ms en la base | — | `BenchRolesUsuario.java` (por rol: permisos del actor ×2, del usuario, del rol, EXISTS e INSERT) | 2026-11-20 |
+| Abrir los permisos individuales de un usuario (antes) | 100 001 usuarios, 50 000 filas en `usuarios_permisos` | 3 peticiones HTTP (catálogo, excepciones, resolución); 0,008 + 0,013 + 0,049 ms en la base | 200 ms | `EXPLAIN (ANALYZE, BUFFERS)` en `BenchExcepciones.java` (scratchpad) | 2026-11-20 |
+| Conceder 5 permisos a un usuario (antes) | uno a uno, como `UsuarioPermisoService.otorgar` | 5 peticiones HTTP; 35 sentencias = 20,0 ms en la base | — | `BenchExcepciones.java` (por permiso: usuario, permisos del actor ×2, del usuario, permiso, excepción e INSERT) | 2026-11-20 |
 | Chunk perezoso de Usuarios | `ng build` producción | 9,98 kB gzip | — | `ng build` de `8215938` en un worktree temporal; tamaño del archivo con `gzip -9` | 2026-11-20 |
 
 ## 3. Hallazgos
@@ -56,6 +58,7 @@
 | Media | API | `roles.ts:244` (versión `2a6d074`): `alternarPermiso` envía un POST o DELETE por permiso; asignar 16 permisos = 16 peticiones, 16 transacciones, 16 `invalidarTodo` de `AutorizacionCache` y 16 eventos de auditoría; el cupo de escrituras es 60 por minuto (`LimiteUsoAdmin.java:21`), así que armar un rol con todo el catálogo (63) termina en 429 | API conversadora: una escritura HTTP por elemento | `PATCH /api/roles/{rolId}/permisos` con `{agregar, quitar}` en una transacción (`RolPermisoService.java:159`, `RolPermisoLoteRepository`: un `INSERT … unnest … ON CONFLICT DO NOTHING` y un `DELETE … = ANY`); el tablero junta los cambios y guarda una vez | 1 petición, 1 transacción, 1 invalidación y 1 evento por guardado; 16 permisos en 4 sentencias (medido: 1,98 ms frente a 5,72 ms) y ningún 429 al armar un rol completo |
 | Media | API | `roles-usuario.ts:92` (versión `8215938`): un POST o DELETE por rol, y cada uno repite `verificarPuedeAdministrar` (2 lecturas de `v_permisos_finales`) y `verificarPuedeOtorgar` (1 más): dar 5 roles = 5 peticiones, 30 sentencias y 5 invalidaciones de la caché de autorización | API conversadora: una escritura HTTP por elemento, con los controles de escalada repetidos | `PATCH /api/usuarios/{usuarioId}/roles` con `{agregar, quitar}` en una transacción (`UsuarioRolService.actualizarLote`, `UsuarioRolLoteRepository`): los controles se hacen una vez para todo el lote | 1 petición y 8 sentencias para 5 roles (medido: 6,9 ms frente a 17,6 ms) |
 | Media | Base de datos | Primera versión de `UsuarioRolLoteRepository.java:35` con `array_agg(p.nombre ORDER BY p.nombre)` en el mismo `GROUP BY` que el conteo: 118,0 ms, `Sort Method: external merge Disk: 3816kB` y `temp read=474` con 2 002 roles y 80 069 filas en `roles_permisos` | Agregado ordenado con estado por grupo que derrama a disco con el `work_mem` por defecto | Conteo y «otorgable» en un agregado simple; los paneles en una CTE aparte, solo sobre las filas `PANEL_*`, con `string_agg` | 0 buffers temporales y ≤ 40 ms (medido: 36,3 ms) |
+| Media | API | `permisos-usuario.ts:156` y `:133` (versión `de8a47e`): un PUT o DELETE por permiso, cada uno con `verificarPuedeAdministrar` y `verificarPuedeOtorgar` (7 sentencias por permiso); abrir el diálogo hacía 3 peticiones en paralelo (`permisos-usuario.ts:86`) | API conversadora: una escritura HTTP por elemento y tres lecturas para una pantalla | `GET /api/usuarios/{usuarioId}/permisos/tablero` (una consulta con lo que dan los roles, las excepciones y si se puede conceder) y `PATCH /api/usuarios/{usuarioId}/permisos` con `{conceder, denegar, heredar}` en una transacción (`UsuarioPermisoService.actualizarLote`) | 1 petición al abrir y 1 al guardar; 8 sentencias para 5 permisos (medido: 9,3 ms frente a 20,0 ms) |
 
 ## 4. Clasificación
 
@@ -78,11 +81,14 @@
 | Escrituras por permiso al asignar a un rol | API | Aplicable | 16 peticiones para 16 permisos y 429 con más de 60 por minuto; corregido con el guardado en lote (1 petición) |
 | Escrituras por rol al asignar a un usuario | API | Aplicable | 5 peticiones y 30 sentencias para 5 roles, con los controles de escalada repetidos; corregido con el guardado en lote (1 petición, 8 sentencias) |
 | Derrame a disco en el tablero de roles del usuario | Base de datos | Aplicable | `external merge Disk: 3816kB` y 118 ms en la primera versión; corregido separando los paneles en su propia CTE (36,3 ms, sin buffers temporales) |
+| Escrituras por permiso en los permisos individuales | API | Aplicable | 5 peticiones y 35 sentencias para 5 permisos y 3 peticiones al abrir; corregido con el tablero y el guardado en lote (1 + 1 peticiones, 8 sentencias) |
 | Uso de cada permiso en el tablero | Base de datos | No aplicable | Una sola consulta agrega `roles_permisos` por `permiso_id` (`RolPermisoLoteRepository.java:32`): 9,1 ms y 1 201 buffers con 80 569 filas (≈ 40 veces el volumen real); la variante con subconsultas por permiso midió 22,4 ms |
 | Peso del tablero en el chunk de Roles | Frontend | No aplicable | +9,5 kB gzip solo en la ruta perezosa de Roles (incluye los atajos del diálogo mediano); el bundle inicial sube 0,08 kB (449,63 kB). Si hiciera falta, el tablero se puede cargar con `@defer` al abrir el diálogo |
 | Scroll del catálogo y atajos de columna | Frontend | No aplicable | Las columnas visibles se detectan con `IntersectionObserver` (`tablero-permisos.ts`), no con un listener de `scroll`: Angular solo vuelve a pintar los atajos cuando cambia qué columnas se ven (16 cambios de clase en 90 cuadros); p95 17,9 ms por cuadro y 0 tareas largas |
 | Uso de cada rol en el tablero de roles | Base de datos | No aplicable | `HashAggregate` de las 150 001 filas de `usuarios_roles` en 16 ms, dentro de los 36,3 ms de toda la consulta; crece con las asignaciones, lejos de 200 ms |
 | Estilos del tablero repetidos en dos rutas | Frontend | No aplicable | El tablero de roles reutiliza los SCSS del de permisos y Angular los compila en cada componente: la ruta de Usuarios suma 9,9 kB gzip (17,47 kB su chunk + 2,39 kB de un chunk común con la directiva de arrastre); el bundle inicial no cambia |
+| Consulta del tablero de permisos individuales | Base de datos | No aplicable | 0,163 ms y 52 buffers con 100 001 usuarios y 50 000 excepciones: solo lee por usuario (PK de `usuarios_roles` y `usuarios_permisos`) |
+| CSS global del diálogo anterior | Frontend | No aplicable | Las reglas `.perm-*` de `_components.scss` solo las usaba el diálogo reemplazado; se quitaron y el bundle inicial bajó 2,15 kB |
 | p95 HTTP con carga | API | Pendiente | Backend en marcha con datos + `k6` sobre los tres `/resumen` |
 | LCP / INP del Dashboard | Frontend | Pendiente | Lighthouse contra el servidor de QA; INP de campo con `web-vitals` |
 | Salud del pool Hikari | Backend | Pendiente | `analyze_pool_health.sh` con Actuator y carga |
@@ -99,6 +105,7 @@
 | 5 | N3 | Derrame a disco del tablero de roles del usuario (aplicado) | 3/1 · Aprovechar (hecho) |
 | 6 | N4 | Guardado en lote de los permisos del rol (aplicado) | 3/2 · Aprovechar (hecho) |
 | 7 | N4 | Guardado en lote de los roles del usuario (aplicado) | 3/2 · Aprovechar (hecho) |
+| 8 | N4 | Tablero y guardado en lote de los permisos individuales (aplicado) | 3/2 · Aprovechar (hecho) |
 
 ## 6. Verificación antes/después
 
@@ -118,14 +125,17 @@
 | Sentencias en la base para asignar 16 permisos | 32 (5,72 ms) | 4 (1,98 ms) | −65 % de tiempo | Mejora |
 | Peticiones HTTP al abrir los permisos del rol | 2 | 1 | −50 % | Mejora |
 | Consulta al abrir los permisos del rol (incluye el uso por permiso, que antes no existía) | 0,115 ms | 9,08 ms | +8,97 ms | Regresión |
-| Chunk perezoso de Roles (gzip) | 5,80 kB | 15,82 kB (13,43 + 2,39 común) | +10,02 kB | Regresión |
+| Chunk perezoso de Roles (gzip) | 5,80 kB | 15,88 kB (13,15 + 2,73 común) | +10,08 kB | Regresión |
 | Peticiones HTTP para dar 5 roles a un usuario | 5 | 1 | −80 % | Mejora |
 | Sentencias en la base para dar 5 roles | 30 (17,6 ms) | 8 (6,9 ms) | −61 % de tiempo | Mejora |
 | Peticiones HTTP al abrir los roles del usuario | 2 | 1 | −50 % | Mejora |
 | Consulta del tablero de roles (primera versión → final), 2 002 roles y 150 001 asignaciones | 118,0 ms con derrame | 36,3 ms sin derrame | −69 % | Mejora |
 | Consulta al abrir los roles del usuario (incluye uso, paneles y si se puede otorgar, que antes no existían) | 0,22 ms | 36,3 ms | +36,1 ms | Regresión |
-| Chunk perezoso de Usuarios (gzip) | 9,98 kB | 19,86 kB (17,47 + 2,39 común) | +9,88 kB | Regresión |
-| Bundle inicial | 449,55 kB | 449,63 kB | +0,08 kB | Sin cambio |
+| Chunk perezoso de Usuarios (gzip) | 9,98 kB | 25,42 kB (22,69 + 2,73 común) | +15,44 kB | Regresión |
+| Peticiones HTTP al abrir los permisos individuales | 3 | 1 | −67 % | Mejora |
+| Peticiones HTTP para conceder 5 permisos a un usuario | 5 | 1 | −80 % | Mejora |
+| Sentencias en la base para conceder 5 permisos | 35 (20,0 ms) | 8 (9,3 ms) | −54 % de tiempo | Mejora |
+| Bundle inicial | 449,55 kB | 447,48 kB | −2,07 kB | Mejora |
 
 ## 7. Veredicto
 
@@ -133,4 +143,4 @@ El Dashboard de operación no depende del volumen de trazas: lee resúmenes por 
 
 En los permisos del rol, el problema no era la base sino la conversación: una petición, una transacción, una invalidación de la caché de autorización y un evento de auditoría por cada permiso, con un cupo de 60 escrituras por minuto que impedía armar un rol completo. El guardado en lote lo reduce a una petición por guardado (16 permisos: 4 sentencias, 1,98 ms en la base). Abrir el tablero cuesta 9 ms en la base con 40 veces el volumen real porque ahora también cuenta en cuántos roles está cada permiso; es una regresión aceptada, muy por debajo de 200 ms. El tablero, ya en el diálogo mediano con scroll en dos ejes y atajos de columna, suma 9,5 kB comprimidos solo a la ruta de Roles y se desplaza a 60 cuadros por segundo sin tareas largas.
 
-Los roles del usuario tenían el mismo problema, agravado: además de una petición por rol, cada una repetía los controles de escalada (6 sentencias por rol). El guardado en lote deja 1 petición y 8 sentencias para 5 roles. La primera versión de la consulta del tablero derramaba a disco (118 ms) por un `array_agg` ordenado en el mismo agregado que el conteo; separada en dos agregados queda en 36 ms sin buffers temporales con 2 002 roles y 150 001 asignaciones. PostgreSQL no es el cuello de botella en estas pantallas.
+Los roles del usuario tenían el mismo problema, agravado: además de una petición por rol, cada una repetía los controles de escalada (6 sentencias por rol). El guardado en lote deja 1 petición y 8 sentencias para 5 roles. La primera versión de la consulta del tablero derramaba a disco (118 ms) por un `array_agg` ordenado en el mismo agregado que el conteo; separada en dos agregados queda en 36 ms sin buffers temporales con 2 002 roles y 150 001 asignaciones. PostgreSQL no es el cuello de botella en estas pantallas. Los permisos individuales repetían el patrón con tres peticiones al abrir y siete sentencias por permiso; con el tablero son una petición para abrir (0,16 ms en la base con 100 000 usuarios) y otra para guardar. Los tres tableros comparten la directiva de arrastre y los estilos: la ruta de Usuarios suma 15,4 kB comprimidos y el bundle inicial bajó 2,07 kB al quitar el CSS del diálogo anterior.

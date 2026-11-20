@@ -1,0 +1,233 @@
+@if (bloqueo(); as motivo) {
+  <p class="tp-nota tp-nota--aviso te-bloqueo">
+    <ui-icon name="lock" [size]="16" />
+    {{ motivo }} Solo puedes ver sus permisos.
+  </p>
+}
+
+<div class="tp-barra">
+  <div class="ui-search tp-barra__buscar">
+    <ui-icon name="search" [size]="18" />
+    <input
+      type="search"
+      class="ui-input"
+      placeholder="Buscar permiso…"
+      aria-label="Buscar permiso por nombre, descripción o panel"
+      [value]="busqueda()"
+      (input)="buscar($any($event.target).value)"
+    />
+  </div>
+  <span class="te-resumen" aria-live="polite">
+    <strong>{{ resumenEfectivos().efectivos }} efectivos</strong>
+    <span>· {{ resumenEfectivos().delRol }} del rol</span>
+    <span class="te-resumen__mas">+{{ concedidos().length }}</span>
+    <span class="te-resumen__menos">−{{ denegados().length }}</span>
+  </span>
+  @if (coinciden() !== null) {
+    <span class="tp-barra__conteo">
+      {{ coincidenciasTotales() }} {{ coincidenciasTotales() === 1 ? 'coincidencia' : 'coincidencias' }}
+    </span>
+    <button
+      type="button"
+      class="ui-btn ui-btn--secondary ui-btn--sm"
+      [disabled]="bloqueo() !== null || guardando() || elegiblesBusqueda().length === 0"
+      (click)="elegirCoincidencias()"
+    >
+      <ui-icon name="check" [size]="16" />
+      Elegir las {{ elegiblesBusqueda().length }}
+    </button>
+  }
+  @if (ladoElegido()) {
+    <span class="tp-barra__seleccion">
+      @for (destino of destinosSeleccion(); track destino) {
+        <button
+          type="button"
+          class="ui-btn ui-btn--sm te-mover"
+          [class]="'te-mover--' + destino"
+          (click)="moverElegidas(destino)"
+        >
+          {{ textoDestino(destino) }} ({{ elegidas().size }})
+        </button>
+      }
+      <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm" (click)="limpiarSeleccion()">
+        Limpiar selección
+      </button>
+    </span>
+  }
+</div>
+
+<nav class="tp-atajos" aria-label="Ir a una columna del catálogo">
+  @for (columna of columnas(); track columna.accion) {
+    <button
+      type="button"
+      class="tp-atajo"
+      [class.tp-atajo--visible]="visibles().has(columna.accion)"
+      [class.tp-atajo--sin]="coinciden() !== null && columna.coincidencias === 0"
+      [style.--accion]="columna.color"
+      [attr.aria-label]="
+        'Ir a ' +
+        columna.titulo +
+        ': ' +
+        (coinciden() !== null
+          ? columna.coincidencias + ' coincidencias'
+          : columna.fichas.length + ' permisos que hereda')
+      "
+      (click)="irAColumna(columna.accion)"
+    >
+      <span class="tp-atajo__letra" aria-hidden="true">{{ columna.accion }}</span>
+      <span class="tp-atajo__titulo" aria-hidden="true">{{ columna.titulo }}</span>
+      <span
+        class="tp-atajo__conteo"
+        [class.tp-atajo__conteo--coincide]="coinciden() !== null && columna.coincidencias > 0"
+        aria-hidden="true"
+      >
+        {{ coinciden() !== null ? columna.coincidencias : columna.fichas.length }}
+      </span>
+    </button>
+  }
+</nav>
+
+<p class="tp-aviso" role="status" aria-live="polite">{{ aviso() }}</p>
+
+<div
+  class="tp te"
+  appArrastreFichas
+  nombreGrupo="permisos"
+  [validar]="validar"
+  [grupo]="grupo"
+  (soltar)="alSoltar($event)"
+>
+  <section
+    #catalogo
+    class="tp-catalogo"
+    data-zona="catalogo"
+    aria-label="Catálogo: permisos que el usuario hereda de sus roles"
+  >
+    @for (columna of columnas(); track columna.accion) {
+      <div #columnaCatalogo class="tp-col" [attr.data-accion]="columna.accion" [style.--accion]="columna.color">
+        <header class="tp-col__cabeza">
+          <span class="tp-col__letra" aria-hidden="true">{{ columna.accion }}</span>
+          <span class="tp-col__titulo">{{ columna.titulo }}</span>
+          <span class="tp-col__conteo">
+            @if (coinciden()) {
+              {{ columna.coincidencias }} de {{ columna.fichas.length }}
+            } @else {
+              {{ columna.fichas.length }}
+            }
+          </span>
+        </header>
+        <div class="tp-col__fichas">
+          @for (ficha of columna.fichas; track ficha.id) {
+            <ng-container *ngTemplateOutlet="fichaTpl; context: { $implicit: ficha, lado: 'catalogo' }" />
+          } @empty {
+            <p class="tp-col__vacia">Todos con excepción</p>
+          }
+        </div>
+      </div>
+    }
+  </section>
+
+  <div class="te-excepciones">
+    <section class="tp-rol te-zona te-zona--concedidos" data-zona="concedidos" aria-label="Permisos concedidos a este usuario">
+      <header class="tp-rol__cabeza">
+        <span class="tp-rol__etiqueta">+ Concedidos</span>
+        <strong class="tp-rol__nombre">{{ nombreUsuario() }}</strong>
+        <span class="tp-rol__conteo">{{ concedidos().length }}</span>
+      </header>
+      <div class="tp-rol__cuerpo">
+        @if (concedidos().length) {
+          <div class="tp-seccion__fichas">
+            @for (ficha of concedidos(); track ficha.id) {
+              <ng-container *ngTemplateOutlet="fichaTpl; context: { $implicit: ficha, lado: 'concedidos' }" />
+            }
+          </div>
+        } @else {
+          <p class="tp-rol__vacio te-vacio">Suelta aquí para concederle un permiso que su rol no da.</p>
+        }
+        @if (concedidosRedundantes()) {
+          <p class="tp-nota">
+            <ui-icon name="info" [size]="16" />
+            {{ concedidosRedundantes() }}
+            {{ concedidosRedundantes() === 1 ? 'ya lo da su rol' : 'ya los da su rol' }}: la excepción sobra.
+          </p>
+        }
+      </div>
+    </section>
+
+    <section class="tp-rol te-zona te-zona--denegados" data-zona="denegados" aria-label="Permisos denegados a este usuario">
+      <header class="tp-rol__cabeza">
+        <span class="tp-rol__etiqueta">− Denegados</span>
+        <strong class="tp-rol__nombre">{{ nombreUsuario() }}</strong>
+        <span class="tp-rol__conteo">{{ denegados().length }}</span>
+      </header>
+      <div class="tp-rol__cuerpo">
+        @if (denegados().length) {
+          <div class="tp-seccion__fichas">
+            @for (ficha of denegados(); track ficha.id) {
+              <ng-container *ngTemplateOutlet="fichaTpl; context: { $implicit: ficha, lado: 'denegados' }" />
+            }
+          </div>
+        } @else {
+          <p class="tp-rol__vacio te-vacio">Suelta aquí para quitarle un permiso aunque su rol lo dé.</p>
+        }
+        @if (denegadosSinEfecto()) {
+          <p class="tp-nota">
+            <ui-icon name="info" [size]="16" />
+            {{ denegadosSinEfecto() }}
+            {{ denegadosSinEfecto() === 1 ? 'no lo da su rol' : 'no los da su rol' }}: hoy denegarlo no cambia nada.
+          </p>
+        }
+      </div>
+    </section>
+  </div>
+</div>
+
+<ng-template #fichaTpl let-ficha let-lado="lado">
+  <div
+    class="tp-ficha"
+    role="button"
+    tabindex="0"
+    [attr.data-ficha]="ficha.id"
+    [attr.draggable]="arrastrable(ficha)"
+    [attr.aria-pressed]="elegidas().has(ficha.id)"
+    [attr.aria-label]="ficha.resumen"
+    [attr.title]="ficha.resumen"
+    [class.tp-ficha--elegida]="elegidas().has(ficha.id)"
+    [class.tp-ficha--movida]="ficha.movida"
+    [class.tp-ficha--inactiva]="!ficha.activo"
+    [class.tp-ficha--fija]="!arrastrable(ficha)"
+    [class.te-ficha--concedido]="ficha.estado === 'concedido'"
+    [class.te-ficha--denegado]="ficha.estado === 'denegado'"
+    [class.tp-ficha--atenuada]="coinciden() !== null && !coinciden()!.has(ficha.id)"
+    [class.tp-ficha--coincide]="coinciden()?.has(ficha.id) ?? false"
+    [style.--accion]="ficha.colorAccion"
+    [style.--grupo-color]="ficha.colorPanel"
+    (click)="alternar(ficha, lado, $event)"
+    (keydown.enter)="alternar(ficha, lado, $event)"
+    (keydown.space)="$event.preventDefault(); alternar(ficha, lado, $event)"
+  >
+    <span class="tp-ficha__datos" aria-hidden="true">
+      <span class="tp-ficha__accion">{{ ficha.accion }}</span>
+      @if (!ficha.activo) {
+        <span class="tp-ficha__inactivo">Inactivo</span>
+      } @else if (ficha.estado === 'concedido') {
+        <span class="te-estado te-estado--concedido">+ Concedido</span>
+      } @else if (ficha.estado === 'denegado') {
+        <span class="te-estado te-estado--denegado">− Denegado</span>
+      } @else if (ficha.porRol) {
+        <span class="tp-ficha__uso"><ui-icon name="check" [size]="11" />Rol</span>
+      } @else {
+        <span class="te-estado te-estado--sin">
+          @if (!ficha.otorgable) {
+            <ui-icon name="lock" [size]="10" />
+          }
+          Sin rol
+        </span>
+      }
+    </span>
+    <span class="tp-ficha__fila" aria-hidden="true">
+      <span class="tp-ficha__pestana" [class.tp-ficha__pestana--vacia]="!ficha.panel">{{ ficha.panel }}</span>
+      <span class="tp-ficha__caja"><span class="tp-ficha__codigo">{{ ficha.etiqueta }}</span></span>
+    </span>
+  </div>
+</ng-template>

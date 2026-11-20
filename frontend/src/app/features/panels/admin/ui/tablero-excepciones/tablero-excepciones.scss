@@ -1,0 +1,161 @@
+@use 'breakpoints' as bp;
+
+/*
+ * Tablero de permisos individuales. Se carga después de los estilos del tablero de permisos del
+ * rol (barra, atajos, catálogo CRUD con scroll en dos ejes, columna destino, fichas Titan) y solo
+ * agrega lo propio: la columna de la derecha partida en «Concedidos» (verde) y «Denegados» (rojo),
+ * el estado arriba de cada ficha y el resumen de permisos efectivos.
+ */
+:host {
+  --te-concede: #047857;
+  --te-deniega: #b91c1c;
+}
+
+.te-bloqueo {
+  flex: none;
+}
+
+/* ---------- Resumen: efectivos · del rol · +concedidos · −denegados ---------- */
+.te-resumen {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+
+  strong {
+    color: var(--text);
+  }
+
+  &__mas,
+  &__menos {
+    padding: 1px 6px;
+    font-weight: 700;
+    color: #fff;
+  }
+
+  &__mas {
+    background: var(--te-concede);
+  }
+
+  &__menos {
+    background: var(--te-deniega);
+  }
+}
+
+/* Botones de la selección con el color de su destino. */
+.te-mover {
+  color: #fff;
+  border: 1px solid transparent;
+
+  &--concedidos {
+    background: var(--te-concede);
+  }
+
+  &--denegados {
+    background: var(--te-deniega);
+  }
+
+  &--catalogo {
+    color: var(--text);
+    background: var(--surface);
+    border-color: var(--border-strong);
+  }
+}
+
+/* ---------- Columna de excepciones: dos zonas, cada una con su scroll ---------- */
+.te-excepciones {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 0;
+}
+
+.te-zona {
+  --te-color: var(--te-concede);
+
+  background: color-mix(in srgb, var(--te-color) 4%, var(--surface));
+  border-color: var(--te-color);
+
+  &--denegados {
+    --te-color: var(--te-deniega);
+  }
+
+  .tp-rol__cabeza {
+    background: color-mix(in srgb, var(--te-color) 78%, #000);
+  }
+
+  .tp-rol__etiqueta {
+    color: #fff;
+  }
+}
+
+.te-vacio {
+  min-height: 64px;
+}
+
+/* ---------- Estado arriba de la ficha ---------- */
+.te-estado {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 3px;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  color: #fff;
+  text-transform: uppercase;
+
+  &--concedido {
+    background: var(--te-concede);
+  }
+
+  &--denegado {
+    background: var(--te-deniega);
+  }
+
+  &--sin {
+    color: var(--text-2);
+    background: color-mix(in srgb, var(--text-3) 22%, var(--surface));
+  }
+}
+
+.te-ficha--concedido {
+  border-color: var(--te-concede);
+}
+
+// Denegado: borde rojo, rayas rojas y la etiqueta tachada (lo pierde aunque su rol lo dé).
+.te-ficha--denegado {
+  border-color: var(--te-deniega);
+
+  .tp-ficha__caja {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      transparent 0 5px,
+      color-mix(in srgb, var(--te-deniega) 14%, transparent) 5px 10px
+    );
+  }
+
+  .tp-ficha__codigo {
+    text-decoration: line-through;
+    text-decoration-thickness: 2px;
+  }
+}
+
+/* ---------- Apilado (debajo de lg): las excepciones arriba, luego el catálogo ---------- */
+@include bp.down(lg) {
+  .te-excepciones {
+    grid-template-rows: none;
+    order: -1;
+  }
+}
+
+@media (forced-colors: active) {
+  .te-ficha--denegado .tp-ficha__codigo {
+    text-decoration-style: double;
+  }
+}

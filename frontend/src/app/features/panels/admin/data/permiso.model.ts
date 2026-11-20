@@ -68,3 +68,39 @@ export interface RolPermisosLote {
   quitados: number;
   asignados: number[];
 }
+
+/** Permiso del catálogo visto desde un usuario (tablero de permisos individuales). */
+export interface PermisoDelUsuario {
+  id: number;
+  nombre: string;
+  descripcion: string | null;
+  activo: boolean;
+  /** Algún rol activo del usuario lo concede. */
+  porRol: boolean;
+  /** Excepción del usuario: true concede, false deniega, null hereda del rol. */
+  excepcion: boolean | null;
+  /** Quien edita lo tiene y puede concederlo. */
+  otorgable: boolean;
+}
+
+export interface PermisosUsuarioTablero {
+  usuarioId: number;
+  /** Por qué quien edita no puede cambiar las excepciones de este usuario; null si puede. */
+  bloqueo: string | null;
+  permisos: PermisoDelUsuario[];
+}
+
+/** Cambios en lote de las excepciones de un usuario (una sola transacción). */
+export interface UsuarioPermisosLoteRequest {
+  conceder: number[];
+  denegar: number[];
+  heredar: number[];
+}
+
+export interface UsuarioPermisosLote {
+  usuarioId: number;
+  concedidos: number;
+  denegados: number;
+  heredados: number;
+  excepciones: { permisoId: number; otorgado: boolean }[];
+}
