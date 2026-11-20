@@ -5,6 +5,7 @@
  * Marco de 2 px, esquinas rectas, bloques separados por 1 px. Estados: elegida (contorno
  * de acento), movida sin guardar (rayas), coincide con la búsqueda (contorno ámbar),
  * atenuada (no coincide) e inactiva (gris y rayada: no concede acceso).
+ * Compartido: el tablero de roles del usuario (tablero-roles) usa las mismas fichas.
  */
 .tp-ficha {
   --tp-marco: light-dark(#5b6f8f, #5a76a6);

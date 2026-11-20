@@ -1,7 +1,7 @@
 import { Service, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { PermisoEfectivo, UsuarioPermisoDetalle, UsuarioPermisoOverride } from './permiso.model';
-import { Rol } from './rol.model';
+import { RolesUsuarioTablero, UsuarioRolesLote, UsuarioRolesLoteRequest } from './rol.model';
 import { Usuario } from '../../../../core/models';
 import { UsuarioActualizarRequest, UsuarioCrearRequest, UsuarioResumen } from './usuario.model';
 import { Api } from '../../../../core/services/api';
@@ -35,16 +35,14 @@ export class UsuariosApi {
     return this.api.patch<Usuario>(`/usuarios/${id}/activo`, { activo });
   }
 
-  roles(id: number): Observable<Rol[]> {
-    return this.api.get<Rol[]>(`/usuarios/${id}/roles`);
+  /** Catálogo de roles con lo que el usuario tiene, su uso, sus paneles y si se pueden otorgar. */
+  tableroRoles(id: number): Observable<RolesUsuarioTablero> {
+    return this.api.get<RolesUsuarioTablero>(`/usuarios/${id}/roles/tablero`);
   }
 
-  asignarRol(id: number, rolId: number): Observable<unknown> {
-    return this.api.post(`/usuarios/${id}/roles`, { rolId });
-  }
-
-  quitarRol(id: number, rolId: number): Observable<void> {
-    return this.api.delete<void>(`/usuarios/${id}/roles/${rolId}`);
+  /** Agrega y quita varios roles del usuario en una sola transacción. */
+  actualizarRoles(id: number, cambios: UsuarioRolesLoteRequest): Observable<UsuarioRolesLote> {
+    return this.api.patch<UsuarioRolesLote>(`/usuarios/${id}/roles`, cambios);
   }
 
   /** Overrides individuales (grant/deny) del usuario. */

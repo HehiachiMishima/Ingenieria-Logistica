@@ -4,10 +4,15 @@ import oracle.common.support.ActorActual;
 import oracle.common.support.Trazas;
 
 import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import oracle.common.exception.ConflictoException;
 import oracle.common.exception.OperacionNoPermitidaException;
 import oracle.common.exception.RecursoNoEncontradoException;
+import oracle.common.exception.SolicitudInvalidaException;
 import oracle.admin.model.Permiso;
 import oracle.admin.model.Rol;
 import oracle.admin.model.Usuario;
@@ -15,11 +20,15 @@ import oracle.admin.model.UsuarioRol;
 import oracle.admin.repository.RolPermisoRepository;
 import oracle.admin.repository.RolRepository;
 import oracle.admin.repository.UsuarioRepository;
+import oracle.admin.repository.UsuarioRolLoteRepository;
 import oracle.admin.repository.UsuarioRolRepository;
 import oracle.admin.request.UsuarioRolAsignarRequest;
+import oracle.admin.request.UsuarioRolesLoteRequest;
 import oracle.common.response.ApiResponse;
 import oracle.admin.response.RolResponse;
+import oracle.admin.response.RolesUsuarioTableroResponse;
 import oracle.admin.response.UsuarioRolResponse;
+import oracle.admin.response.UsuarioRolesLoteResponse;
 import oracle.common.security.AutorizacionCache;
 import oracle.common.config.Transacciones;
 import org.springframework.stereotype.Service;
@@ -37,6 +46,7 @@ public class UsuarioRolService {
     private final Transacciones transacciones;
     private final RolPermisoRepository rolPermisoRepository;
     private final ControlEscalamiento escalamiento;
+    private final UsuarioRolLoteRepository lote;
 
     public UsuarioRolService(
             UsuarioRepository usuarioRepository,
@@ -45,7 +55,8 @@ public class UsuarioRolService {
             AutorizacionCache autorizacionCache,
             Transacciones transacciones,
             ControlEscalamiento escalamiento,
-            RolPermisoRepository rolPermisoRepository) {
+            RolPermisoRepository rolPermisoRepository,
+            UsuarioRolLoteRepository lote) {
         this.usuarioRepository = usuarioRepository;
         this.rolRepository = rolRepository;
         this.usuarioRolRepository = usuarioRolRepository;
@@ -53,6 +64,7 @@ public class UsuarioRolService {
         this.transacciones = transacciones;
         this.escalamiento = escalamiento;
         this.rolPermisoRepository = rolPermisoRepository;
+        this.lote = lote;
     }
 
     /** Asignar un rol al usuario (unico por par). */
@@ -119,6 +131,83 @@ public class UsuarioRolService {
                             .toList();
                 }));
         return ApiResponse.ok("Roles del usuario.", datos);
+    }
+
+    /**
+     * Catálogo de roles visto desde el usuario, con lo que tiene, el uso, los paneles de cada rol
+     * y si quien edita puede otorgarlo. {@code bloqueo} adelanta el motivo por el que no podría
+     * cambiarle los roles (las mismas reglas que al guardar), para mostrarlo antes de intentarlo.
+     */
+    public ApiResponse<RolesUsuarioTableroResponse> tablero(Long usuarioId) {
+        Long actor = ActorActual.id();
+        RolesUsuarioTableroResponse datos = Trazas.medir(log,
+                "UsuarioRolService.tablero usuarioId=" + usuarioId, () -> transacciones.consultar(() -> {
+                    Usuario usuario = obtenerUsuario(usuarioId);
+                    return new RolesUsuarioTableroResponse(usuarioId, motivoBloqueo(usuario, actor),
+                            lote.tablero(usuarioId, actor));
+                }));
+        return ApiResponse.ok("Tablero de roles del usuario.", datos);
+    }
+
+    /**
+     * Agrega y quita varios roles del usuario en una sola transacción: o se aplican todos o
+     * ninguno. Lo que ya tenía (o ya no tenía) se ignora, así un reintento no falla. Mismas
+     * reglas que uno a uno: usuario no protegido, nadie se cambia a sí mismo, no se administra a
+     * quien tiene más permisos y no se otorgan roles con permisos que el actor no tiene.
+     */
+    public ApiResponse<UsuarioRolesLoteResponse> actualizarLote(Long usuarioId, UsuarioRolesLoteRequest peticion) {
+        Long actor = ActorActual.id();
+        Set<Long> agregar = new LinkedHashSet<>(peticion.agregar());
+        Set<Long> quitar = new LinkedHashSet<>(peticion.quitar());
+        if (agregar.isEmpty() && quitar.isEmpty()) {
+            throw new SolicitudInvalidaException("Indique al menos un rol para agregar o quitar.");
+        }
+        if (agregar.stream().anyMatch(quitar::contains)) {
+            throw new SolicitudInvalidaException("Un mismo rol no puede agregarse y quitarse a la vez.");
+        }
+        return Trazas.medir(log,
+                "UsuarioRolService.actualizarLote usuarioId=" + usuarioId + " agregar=" + agregar.size()
+                        + " quitar=" + quitar.size(),
+                () -> transacciones.ejecutar(() -> {
+                    Usuario usuario = obtenerUsuario(usuarioId);
+                    verificarNoProtegido(usuario);
+                    Protecciones.verificarNoAutoGestion(usuarioId, actor);
+                    escalamiento.verificarPuedeAdministrar(actor, usuarioId);
+
+                    Set<Long> pedidos = new LinkedHashSet<>(agregar);
+                    pedidos.addAll(quitar);
+                    Map<Long, String> nombres = lote.nombres(pedidos);
+                    List<Long> inexistentes = pedidos.stream().filter(id -> !nombres.containsKey(id)).toList();
+                    if (!inexistentes.isEmpty()) {
+                        throw new RecursoNoEncontradoException("No existen los roles con id "
+                                + inexistentes.stream().map(String::valueOf).collect(Collectors.joining(", ")) + ".");
+                    }
+
+                    Set<Long> actuales = new LinkedHashSet<>(lote.asignados(usuarioId));
+                    List<Long> nuevos = agregar.stream().filter(id -> !actuales.contains(id)).toList();
+                    List<Long> retirados = quitar.stream().filter(actuales::contains).toList();
+                    escalamiento.verificarPuedeOtorgar(actor, lote.permisosDeRoles(nuevos));
+
+                    int agregados = lote.agregar(usuarioId, nuevos, actor);
+                    int quitados = lote.quitar(usuarioId, retirados);
+                    if (agregados + quitados > 0) {
+                        transacciones.alConfirmar(() -> autorizacionCache.invalidar(usuarioId));
+                    }
+                    return ApiResponse.ok("Roles del usuario actualizados.",
+                            new UsuarioRolesLoteResponse(usuarioId, agregados, quitados, lote.asignados(usuarioId)));
+                }));
+    }
+
+    /** Por qué el actor no puede cambiar los roles de este usuario; null si puede. */
+    private String motivoBloqueo(Usuario usuario, Long actor) {
+        try {
+            verificarNoProtegido(usuario);
+            Protecciones.verificarNoAutoGestion(usuario.getId(), actor);
+            escalamiento.verificarPuedeAdministrar(actor, usuario.getId());
+            return null;
+        } catch (OperacionNoPermitidaException e) {
+            return e.getMessage();
+        }
     }
 
     private void validarUsuario(Long id) {

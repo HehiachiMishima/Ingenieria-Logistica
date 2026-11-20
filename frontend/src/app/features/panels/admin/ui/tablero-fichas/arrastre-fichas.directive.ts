@@ -1,35 +1,36 @@
 import { Directive, ElementRef, OnDestroy, OnInit, inject, input, output } from '@angular/core';
 
-/** Lado del tablero: el catálogo (lo que el rol no tiene) o la columna del rol. */
-export type ZonaPermisos = 'catalogo' | 'rol';
-
-export interface SoltarPermisos {
+export interface SoltarFichas {
   ids: readonly number[];
-  origen: ZonaPermisos;
-  destino: ZonaPermisos;
+  /** Lado de donde salieron y lado donde se soltaron: el valor de su `data-zona`. */
+  origen: string;
+  destino: string;
   /** Por qué no se puede soltar ahí (null = válido). */
   motivo: string | null;
 }
 
 /**
- * Arrastrar fichas de permiso entre el catálogo y el rol, como las rutas de Titan: se escucha
- * una sola vez en el tablero, el destino se resalta tocando clases en el DOM y Angular solo se
- * entera al soltar (`soltar`). Si la ficha tomada está elegida, viaja toda la selección.
+ * Arrastrar fichas entre los dos lados de un tablero (permisos ↔ rol, roles ↔ usuario), como
+ * las rutas de Titan: se escucha una sola vez en el tablero, el destino se resalta tocando
+ * clases en el DOM y Angular solo se entera al soltar (`soltar`). Si la ficha tomada está
+ * elegida, viaja toda la selección.
  *
- * Marcado que espera: cada ficha con `[data-permiso]="id"` y `draggable="true"`; cada lado
- * con `[data-zona]="'catalogo' | 'rol'"`.
+ * Marcado que espera: cada ficha con `[data-ficha]="id"` y `draggable="true"`; cada lado con
+ * `[data-zona]` (p. ej. «catalogo» y «rol»), cuyo valor llega tal cual en `soltar`.
  */
-@Directive({ selector: '[appArrastrePermisos]' })
-export class ArrastrePermisos implements OnInit, OnDestroy {
+@Directive({ selector: '[appArrastreFichas]' })
+export class ArrastreFichas implements OnInit, OnDestroy {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
-  readonly validar = input.required<(ids: readonly number[], destino: ZonaPermisos) => string | null>();
+  readonly validar = input.required<(ids: readonly number[], destino: string) => string | null>();
   readonly grupo = input<(id: number) => readonly number[]>((id) => [id]);
-  readonly soltar = output<SoltarPermisos>();
+  /** Nombre en plural de las fichas, para la pastilla del arrastre en grupo («3 permisos»). */
+  readonly nombreGrupo = input('fichas');
+  readonly soltar = output<SoltarFichas>();
 
   private ids: readonly number[] = [];
-  private origen: ZonaPermisos | null = null;
-  private destino: ZonaPermisos | null = null;
+  private origen: string | null = null;
+  private destino: string | null = null;
   private origenes: HTMLElement[] = [];
   private marcada: HTMLElement | null = null;
   private retirar: (() => void) | null = null;
@@ -58,8 +59,8 @@ export class ArrastrePermisos implements OnInit, OnDestroy {
   }
 
   private alIniciar(evento: DragEvent): void {
-    const ficha = (evento.target as HTMLElement | null)?.closest<HTMLElement>('[data-permiso]');
-    const id = Number(ficha?.dataset['permiso']);
+    const ficha = (evento.target as HTMLElement | null)?.closest<HTMLElement>('[data-ficha]');
+    const id = Number(ficha?.dataset['ficha']);
     const origen = this.zonaDe(ficha ?? null);
     if (!ficha || !id || !origen) {
       return;
@@ -68,8 +69,8 @@ export class ArrastrePermisos implements OnInit, OnDestroy {
     this.ids = grupo.includes(id) ? grupo : [id];
     this.origen = origen;
     const host = this.host.nativeElement;
-    this.origenes = this.ids.flatMap((permisoId) => {
-      const elemento = host.querySelector<HTMLElement>(`[data-permiso="${permisoId}"]`);
+    this.origenes = this.ids.flatMap((fichaId) => {
+      const elemento = host.querySelector<HTMLElement>(`[data-ficha="${fichaId}"]`);
       return elemento ? [elemento] : [];
     });
     // Chrome cancela el arrastre si el origen cambia de estilo dentro de `dragstart`.
@@ -91,10 +92,10 @@ export class ArrastrePermisos implements OnInit, OnDestroy {
     }
   }
 
-  /** Pastilla con cuántos permisos viajan (estilos en línea: vive en el body, fuera del componente). */
+  /** Pastilla con cuántas fichas viajan (estilos en línea: vive en el body, fuera del componente). */
   private fantasma(datos: DataTransfer, cantidad: number): void {
     const pastilla = document.createElement('div');
-    pastilla.textContent = `${cantidad} permisos`;
+    pastilla.textContent = `${cantidad} ${this.nombreGrupo()}`;
     Object.assign(pastilla.style, {
       position: 'fixed',
       top: '-200px',
@@ -153,9 +154,8 @@ export class ArrastrePermisos implements OnInit, OnDestroy {
     }
   }
 
-  private zonaDe(elemento: HTMLElement | null): ZonaPermisos | null {
-    const zona = elemento?.closest<HTMLElement>('[data-zona]')?.dataset['zona'];
-    return zona === 'catalogo' || zona === 'rol' ? zona : null;
+  private zonaDe(elemento: HTMLElement | null): string | null {
+    return elemento?.closest<HTMLElement>('[data-zona]')?.dataset['zona'] || null;
   }
 
   private desmarcar(): void {

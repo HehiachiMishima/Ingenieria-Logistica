@@ -49,7 +49,8 @@ public class TrazaApi implements WebMvcConfigurer, HandlerInterceptor {
             agregar(m, p[0], p[1], "crear", "Crear", "actualizar", "Actualizar",
                 "cambiarActivo", "Cambiar estado", "eliminar", "Eliminar");
         }
-        agregar(m, "UsuarioRolController", "Rol de usuario", "asignar", "Asignar", "quitar", "Quitar");
+        agregar(m, "UsuarioRolController", "Rol de usuario", "asignar", "Asignar", "quitar", "Quitar",
+            "actualizarLote", "Actualizar roles");
         agregar(m, "RolPermisoController", "Permiso de rol", "asignar", "Asignar", "quitar", "Quitar",
             "actualizarLote", "Actualizar permisos");
         agregar(m, "UsuarioPermisoController", "Permiso de usuario", "otorgar", "Cambiar permiso", "eliminar", "Eliminar");

@@ -2,28 +2,48 @@
   [abierto]="usuario() !== null"
   titulo="Roles del usuario"
   [subtitulo]="usuario()?.usuario ?? ''"
+  ancho="lg"
   (cerrar)="cerrarModal()"
 >
-  <p class="modal-hint">
-    Activa los roles que quieras asignar a este usuario. Sus permisos se heredan de los roles
-    activados.
-  </p>
   @if (cargando()) {
     <div class="loading"><span class="ui-spinner"></span> Cargando roles…</div>
   } @else if (error()) {
     <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="error()!" />
-  } @else if (catalogo().length === 0) {
+  } @else if (roles().length === 0) {
     <ui-empty icono="roles" titulo="Sin roles" mensaje="No hay roles creados en el sistema." />
   } @else {
-    <app-lista-asignacion
-      icono="shieldCheck"
-      [items]="catalogo()"
-      [asignados]="asignados()"
-      [cambiando]="cambiando()"
-      (alternar)="alternar($event)"
+    <app-tablero-roles
+      class="ru-tablero"
+      [roles]="roles()"
+      [nombreUsuario]="usuario()?.usuario ?? ''"
+      [bloqueo]="bloqueo()"
+      [guardando]="guardando()"
     />
   }
   <div modal-footer class="modal-foot">
-    <button type="button" class="ui-btn ui-btn--primary" (click)="cerrarModal()">Listo</button>
+    @if (confirmarDescarte()) {
+      <span class="ru-pie__aviso" role="alert">
+        ¿Cerrar sin guardar {{ cambios() }} {{ cambios() === 1 ? 'cambio' : 'cambios' }}?
+      </span>
+      <button type="button" class="ui-btn ui-btn--secondary" (click)="confirmarDescarte.set(false)">
+        Seguir editando
+      </button>
+      <button type="button" class="ui-btn ui-btn--danger" (click)="cerrarModal()">Cerrar sin guardar</button>
+    } @else if (cambios() > 0) {
+      <span class="ru-pie__aviso">
+        {{ cambios() }} {{ cambios() === 1 ? 'cambio sin guardar' : 'cambios sin guardar' }}
+      </span>
+      <button type="button" class="ui-btn ui-btn--secondary" [disabled]="guardando()" (click)="descartar()">
+        Descartar
+      </button>
+      <button type="button" class="ui-btn ui-btn--primary" [disabled]="guardando()" (click)="guardar()">
+        @if (guardando()) {
+          <span class="ui-spinner" style="width: 16px; height: 16px"></span>
+        }
+        Guardar cambios
+      </button>
+    } @else {
+      <button type="button" class="ui-btn ui-btn--primary" (click)="cerrarModal()">Listo</button>
+    }
   </div>
 </ui-modal>

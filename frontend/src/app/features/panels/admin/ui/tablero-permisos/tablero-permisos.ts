@@ -14,8 +14,11 @@ import {
 import { contieneTexto } from '../../../../../core/utils/texto.util';
 import { Icon } from '../../../../../shared/ui/icon/icon';
 import { PermisoDelRol } from '../../data/permiso.model';
-import { ArrastrePermisos, SoltarPermisos, ZonaPermisos } from './arrastre-permisos.directive';
+import { ArrastreFichas, SoltarFichas } from '../tablero-fichas/arrastre-fichas.directive';
 import { COLUMNAS_CRUD, ColumnaCrud, FichaPermiso, clasificarPermiso } from './ficha-permiso';
+
+/** Lado del tablero: el catálogo (lo que el rol no tiene) o la columna del rol. */
+export type ZonaPermisos = 'catalogo' | 'rol';
 
 /** Permiso listo para dibujar: su clasificación y dónde queda con los cambios sin guardar. */
 export interface Ficha extends PermisoDelRol, FichaPermiso {
@@ -55,7 +58,7 @@ const TITULO_ACCION = new Map(COLUMNAS_CRUD.map((c) => [c.accion, c.titulo]));
 @Component({
   selector: 'app-tablero-permisos',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ArrastrePermisos, Icon, NgTemplateOutlet],
+  imports: [ArrastreFichas, Icon, NgTemplateOutlet],
   templateUrl: './tablero-permisos.html',
   styleUrls: ['./tablero-permisos.scss', './tablero-ficha.scss'],
   host: { '(keydown.escape)': 'alEscape($event)' },
@@ -180,7 +183,7 @@ export class TableroPermisos {
   }));
   readonly totalCambios = computed(() => this.agregar().size + this.quitar().size);
 
-  readonly validar = (ids: readonly number[], destino: ZonaPermisos) => this.motivo(ids, destino);
+  readonly validar = (ids: readonly number[], destino: string) => this.motivo(ids, destino as ZonaPermisos);
   readonly grupo = (id: number): readonly number[] => (this.elegidas().has(id) ? [...this.elegidas()] : [id]);
 
   private readonly catalogo = viewChild.required<ElementRef<HTMLElement>>('catalogo');
@@ -307,12 +310,12 @@ export class TableroPermisos {
     this.aviso.set('Cambios descartados.');
   }
 
-  alSoltar(evento: SoltarPermisos): void {
+  alSoltar(evento: SoltarFichas): void {
     if (evento.motivo) {
       this.aviso.set(evento.motivo);
       return;
     }
-    this.aplicar(evento.ids, evento.destino);
+    this.aplicar(evento.ids, evento.destino as ZonaPermisos);
   }
 
   alEscape(evento: Event): void {

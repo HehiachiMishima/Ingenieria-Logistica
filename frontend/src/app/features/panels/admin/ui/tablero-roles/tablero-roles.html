@@ -1,0 +1,168 @@
+@if (bloqueo(); as motivo) {
+  <p class="tp-nota tp-nota--aviso tr-bloqueo">
+    <ui-icon name="lock" [size]="16" />
+    {{ motivo }} Solo puedes ver sus roles.
+  </p>
+}
+
+<div class="tp-barra">
+  <div class="ui-search tp-barra__buscar">
+    <ui-icon name="search" [size]="18" />
+    <input
+      type="search"
+      class="ui-input"
+      placeholder="Buscar rol…"
+      aria-label="Buscar rol por nombre, descripción o panel"
+      [value]="busqueda()"
+      (input)="buscar($any($event.target).value)"
+    />
+  </div>
+  @if (coinciden() !== null) {
+    <span class="tp-barra__conteo">
+      {{ coincidenciasCatalogo() }} {{ coincidenciasCatalogo() === 1 ? 'coincidencia' : 'coincidencias' }}
+    </span>
+    <button
+      type="button"
+      class="ui-btn ui-btn--secondary ui-btn--sm"
+      [disabled]="bloqueo() !== null || guardando() || elegiblesBusqueda().length === 0"
+      (click)="elegirCoincidencias()"
+    >
+      <ui-icon name="check" [size]="16" />
+      Elegir {{ elegiblesBusqueda().length === 1 ? 'el' : 'los' }} {{ elegiblesBusqueda().length }}
+    </button>
+  }
+  @if (ladoElegido(); as lado) {
+    <span class="tp-barra__seleccion">
+      <button type="button" class="ui-btn ui-btn--primary ui-btn--sm" (click)="moverElegidas()">
+        <ui-icon [name]="lado === 'catalogo' ? 'flecha' : 'chevronLeft'" [size]="16" />
+        {{ lado === 'catalogo' ? 'Dar al usuario' : 'Quitar al usuario' }} ({{ elegidas().size }})
+      </button>
+      <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm" (click)="limpiarSeleccion()">
+        Limpiar selección
+      </button>
+    </span>
+  }
+</div>
+
+@if (filtros().length) {
+  <nav class="tp-atajos tr-filtros" aria-label="Filtrar roles por panel">
+    @for (filtro of filtros(); track filtro.clave) {
+      <button
+        type="button"
+        class="tp-atajo"
+        [class.tp-atajo--visible]="panelFiltro() === filtro.clave"
+        [class.tp-atajo--sin]="filtro.cantidad === 0"
+        [style.--accion]="filtro.color"
+        [attr.aria-pressed]="panelFiltro() === filtro.clave"
+        [attr.aria-label]="'Filtrar por ' + filtro.nombre + ': ' + filtro.cantidad + ' roles sin asignar'"
+        [attr.title]="filtro.nombre"
+        (click)="filtrarPanel(filtro.clave)"
+      >
+        <span class="tp-atajo__letra tr-filtro__codigo" aria-hidden="true">{{ filtro.codigo }}</span>
+        <span
+          class="tp-atajo__conteo"
+          [class.tp-atajo__conteo--coincide]="panelFiltro() === filtro.clave && filtro.cantidad > 0"
+          aria-hidden="true"
+        >
+          {{ filtro.cantidad }}
+        </span>
+      </button>
+    }
+  </nav>
+}
+
+<p class="tp-aviso" role="status" aria-live="polite">{{ aviso() }}</p>
+
+<div
+  class="tp tr"
+  appArrastreFichas
+  nombreGrupo="roles"
+  [validar]="validar"
+  [grupo]="grupo"
+  (soltar)="alSoltar($event)"
+>
+  <section class="tr-catalogo" data-zona="catalogo" aria-label="Roles que el usuario no tiene">
+    <div class="tr-rejilla">
+      @for (rol of catalogo(); track rol.id) {
+        <ng-container *ngTemplateOutlet="fichaTpl; context: { $implicit: rol, lado: 'catalogo' }" />
+      } @empty {
+        <p class="tp-col__vacia tr-vacio">El usuario ya tiene todos los roles.</p>
+      }
+    </div>
+  </section>
+
+  <section class="tp-rol" data-zona="usuario" aria-label="Roles del usuario">
+    <header class="tp-rol__cabeza">
+      <span class="tp-rol__etiqueta">Usuario</span>
+      <strong class="tp-rol__nombre">{{ nombreUsuario() }}</strong>
+      <span class="tp-rol__conteo">
+        @if (totalCambios()) {
+          {{ antes() }} → {{ despues() }}
+        } @else {
+          {{ despues() }} {{ despues() === 1 ? 'rol' : 'roles' }}
+        }
+      </span>
+    </header>
+    <div class="tp-rol__cuerpo">
+      @for (rol of delUsuario(); track rol.id) {
+        <ng-container *ngTemplateOutlet="fichaTpl; context: { $implicit: rol, lado: 'usuario' }" />
+      } @empty {
+        <p class="tp-rol__vacio">
+          <ui-icon name="shieldCheck" [size]="20" />
+          Suelta aquí los roles de este usuario.
+        </p>
+      }
+      @if (inactivosDelUsuario()) {
+        <p class="tp-nota tp-nota--aviso">
+          <ui-icon name="alertTriangle" [size]="16" />
+          {{ inactivosDelUsuario() }}
+          {{ inactivosDelUsuario() === 1 ? 'rol inactivo no concede' : 'roles inactivos no conceden' }}
+          acceso hasta reactivarlo en Roles.
+        </p>
+      }
+    </div>
+  </section>
+</div>
+
+<ng-template #fichaTpl let-rol let-lado="lado">
+  <div
+    class="tp-ficha tr-ficha"
+    role="button"
+    tabindex="0"
+    [attr.data-ficha]="rol.id"
+    [attr.draggable]="rol.bloqueo === null"
+    [attr.aria-pressed]="elegidas().has(rol.id)"
+    [attr.aria-disabled]="rol.bloqueo !== null"
+    [attr.aria-label]="rol.resumen"
+    [attr.title]="rol.resumen"
+    [class.tp-ficha--elegida]="elegidas().has(rol.id)"
+    [class.tp-ficha--movida]="rol.movida"
+    [class.tp-ficha--inactiva]="!rol.activo"
+    [class.tp-ficha--fija]="rol.bloqueo !== null"
+    [class.tp-ficha--atenuada]="coinciden() !== null && !coinciden()!.has(rol.id)"
+    [class.tp-ficha--coincide]="coinciden()?.has(rol.id) ?? false"
+    (click)="alternar(rol, lado, $event)"
+    (keydown.enter)="alternar(rol, lado, $event)"
+    (keydown.space)="$event.preventDefault(); alternar(rol, lado, $event)"
+  >
+    <span class="tp-ficha__datos" aria-hidden="true">
+      @if (rol.activo) {
+        @for (panel of rol.visibles; track panel.clave) {
+          <span class="tr-ficha__panel" [style.--grupo-color]="panel.color">{{ panel.codigo }}</span>
+        }
+        @if (rol.extra) {
+          <span class="tr-ficha__panel tr-ficha__panel--mas">+{{ rol.extra }}</span>
+        }
+        <span class="tp-ficha__uso">
+          <ui-icon [name]="rol.bloqueo ? 'lock' : 'usuarios'" [size]="11" />{{ rol.usos }}
+        </span>
+      } @else {
+        <span class="tp-ficha__inactivo">Inactivo</span>
+      }
+    </span>
+    <span class="tp-ficha__fila" aria-hidden="true">
+      <span class="tp-ficha__pestana tr-ficha__permisos"><ui-icon name="key" [size]="10" />{{ rol.permisos }}</span>
+      <span class="tp-ficha__caja"><span class="tp-ficha__codigo tr-ficha__nombre">{{ rol.nombre }}</span></span>
+    </span>
+  </div>
+</ng-template>

@@ -1,0 +1,36 @@
+@use 'breakpoints' as bp;
+
+.loading {
+  font-size: var(--fs-md);
+}
+
+/*
+ * Tablero del diálogo de roles (760 px, «lg»): alto fijo para que solo se desplacen por dentro
+ * el catálogo y la columna del usuario, sin un segundo scroll en el cuerpo. 240 px es lo que
+ * ocupan cabecera, márgenes y pie: el diálogo queda en ≈ 710 px y nunca pasa la pantalla.
+ * Debajo de lg el tablero se apila y desplaza el cuerpo (alto automático).
+ */
+@include bp.up(lg) {
+  .ru-tablero {
+    height: min(470px, calc(100dvh - 240px));
+    min-height: 300px;
+  }
+}
+
+/* Pie: el aviso de cambios a la izquierda, las acciones a la derecha. */
+.ru-pie__aviso {
+  align-self: center;
+  margin-right: auto;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+@include bp.down(sm) {
+  // El pie apila en orden inverso: el aviso va arriba de los botones.
+  .ru-pie__aviso {
+    order: 1;
+    margin-right: 0;
+    text-align: center;
+  }
+}

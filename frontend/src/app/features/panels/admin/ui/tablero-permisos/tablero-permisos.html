@@ -72,7 +72,8 @@
 
 <div
   class="tp"
-  appArrastrePermisos
+  appArrastreFichas
+  nombreGrupo="permisos"
   [validar]="validar"
   [grupo]="grupo"
   (soltar)="alSoltar($event)"
@@ -171,7 +172,7 @@
     class="tp-ficha"
     role="button"
     tabindex="0"
-    [attr.data-permiso]="ficha.id"
+    [attr.data-ficha]="ficha.id"
     [attr.draggable]="ficha.bloqueo === null"
     [attr.aria-pressed]="elegidas().has(ficha.id)"
     [attr.aria-disabled]="ficha.bloqueo !== null"

@@ -1,47 +1,44 @@
-import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
-import { EMPTY, catchError, finalize, forkJoin, switchMap } from 'rxjs';
+import { EMPTY, catchError, finalize, switchMap } from 'rxjs';
 import { mensajeDeError } from '../../../../../../core/errors/error.util';
 import { Usuario } from '../../../../../../core/models';
 import { Notificaciones } from '../../../../../../core/services/notificaciones';
 import { EmptyState } from '../../../../../../shared/ui/empty-state/empty-state';
 import { Modal } from '../../../../../../shared/ui/modal/modal';
-import { Rol } from '../../../data/rol.model';
-import { RolesApi } from '../../../data/roles.api';
+import { RolDelUsuario, UsuarioRolesLote } from '../../../data/rol.model';
 import { UsuariosApi } from '../../../data/usuarios.api';
-import { ListaAsignacion } from '../../../ui/lista-asignacion';
+import { TableroRoles } from '../../../ui/tablero-roles/tablero-roles';
 
 /**
- * Modal de roles de un usuario: activa o quita roles uno a uno. Se abre con
- * un usuario y, al cerrarse, avisa si hubo cambios para que la página
- * refresque sus columnas de roles y permisos.
+ * Modal de roles de un usuario: tablero de fichas (catálogo ↔ usuario) que junta los cambios y
+ * los guarda en una sola petición. Se abre con un usuario y, al cerrarse, avisa si hubo cambios
+ * guardados para que la página refresque sus columnas de roles y permisos.
  */
 @Component({
   selector: 'app-roles-usuario',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [EmptyState, ListaAsignacion, Modal],
+  imports: [EmptyState, Modal, TableroRoles],
   templateUrl: './roles-usuario.html',
-  styles: `
-    .loading {
-      font-size: var(--fs-md);
-    }
-  `,
+  styleUrl: './roles-usuario.scss',
 })
 export class RolesUsuario {
   private readonly usuariosApi = inject(UsuariosApi);
-  private readonly rolesApi = inject(RolesApi);
   private readonly notificaciones = inject(Notificaciones);
 
   /** Usuario cuyos roles se editan; null = modal cerrado. */
   readonly usuario = input<Usuario | null>(null);
-  /** Emite al cerrar: true si se asignó o quitó algún rol. */
+  /** Emite al cerrar: true si se guardó algún cambio. */
   readonly cerrar = output<boolean>();
 
   readonly cargando = signal(false);
   readonly error = signal<string | null>(null);
-  readonly catalogo = signal<Rol[]>([]);
-  readonly asignados = signal<ReadonlySet<number>>(new Set());
-  readonly cambiando = signal<number | null>(null);
+  readonly roles = signal<RolDelUsuario[]>([]);
+  readonly bloqueo = signal<string | null>(null);
+  readonly guardando = signal(false);
+  readonly confirmarDescarte = signal(false);
+  readonly tablero = viewChild(TableroRoles);
+  readonly cambios = computed(() => this.tablero()?.totalCambios() ?? 0);
   private huboCambios = false;
 
   constructor() {
@@ -51,16 +48,15 @@ export class RolesUsuario {
       .pipe(
         switchMap((usuario) => {
           this.error.set(null);
-          this.asignados.set(new Set());
+          this.roles.set([]);
+          this.bloqueo.set(null);
+          this.confirmarDescarte.set(false);
           this.huboCambios = false;
           if (!usuario) {
             return EMPTY;
           }
           this.cargando.set(true);
-          return forkJoin({
-            catalogo: this.rolesApi.listar(),
-            asignados: this.usuariosApi.roles(usuario.id),
-          }).pipe(
+          return this.usuariosApi.tableroRoles(usuario.id).pipe(
             catchError((err: unknown) => {
               this.error.set(mensajeDeError(err));
               this.notificaciones.error('No se pudieron cargar los roles', mensajeDeError(err));
@@ -71,43 +67,67 @@ export class RolesUsuario {
         }),
         takeUntilDestroyed(),
       )
-      .subscribe(({ catalogo, asignados }) => {
-        this.catalogo.set(catalogo);
-        this.asignados.set(new Set(asignados.map((rol) => rol.id)));
+      .subscribe((tablero) => {
+        this.bloqueo.set(tablero.bloqueo);
+        this.roles.set(tablero.roles);
       });
   }
 
+  /** Cerrar con cambios sin guardar pide confirmación en el pie del diálogo. */
   cerrarModal(): void {
+    if (this.guardando()) {
+      return;
+    }
+    if (this.cambios() > 0 && !this.confirmarDescarte()) {
+      this.confirmarDescarte.set(true);
+      return;
+    }
+    this.confirmarDescarte.set(false);
     this.cerrar.emit(this.huboCambios);
   }
 
-  alternar(rol: Rol): void {
+  descartar(): void {
+    this.tablero()?.descartar();
+    this.confirmarDescarte.set(false);
+  }
+
+  /** Guarda en una sola petición todo lo movido en el tablero. */
+  guardar(): void {
     const usuario = this.usuario();
-    if (!usuario || this.cambiando()) {
+    const tablero = this.tablero();
+    if (!usuario || !tablero || this.guardando() || tablero.totalCambios() === 0) {
       return;
     }
-    this.cambiando.set(rol.id);
-    const asignado = this.asignados().has(rol.id);
-    const peticion$ = asignado
-      ? this.usuariosApi.quitarRol(usuario.id, rol.id)
-      : this.usuariosApi.asignarRol(usuario.id, rol.id);
-
-    peticion$.pipe(finalize(() => this.cambiando.set(null))).subscribe({
-      next: () => {
-        this.asignados.update((actuales) => {
-          const copia = new Set(actuales);
-          if (asignado) {
-            copia.delete(rol.id);
-          } else {
-            copia.add(rol.id);
+    this.guardando.set(true);
+    this.confirmarDescarte.set(false);
+    this.usuariosApi
+      .actualizarRoles(usuario.id, tablero.cambios())
+      .pipe(finalize(() => this.guardando.set(false)))
+      .subscribe({
+        next: (resultado) => {
+          if (this.usuario()?.id === usuario.id) {
+            const ahora = new Set(resultado.asignados);
+            this.roles.update((roles) =>
+              roles.map((r) => {
+                const asignado = ahora.has(r.id);
+                const usuarios = r.usuarios + (asignado === r.asignado ? 0 : asignado ? 1 : -1);
+                return { ...r, asignado, usuarios };
+              }),
+            );
           }
-          return copia;
-        });
-        this.huboCambios = true;
-        this.notificaciones.info(asignado ? 'Rol quitado' : 'Rol asignado', rol.nombre);
-      },
-      error: (err: unknown) =>
-        this.notificaciones.error('No se pudo actualizar el rol', mensajeDeError(err)),
-    });
+          this.huboCambios = true;
+          this.notificaciones.exito('Roles del usuario actualizados', resumenLote(usuario.usuario, resultado));
+        },
+        error: (err: unknown) => this.notificaciones.error('No se pudieron guardar los roles', mensajeDeError(err)),
+      });
   }
+}
+
+/** «@jperez · 1 agregado y 1 quitado». */
+function resumenLote(usuario: string, { agregados, quitados }: UsuarioRolesLote): string {
+  const partes = [
+    agregados ? `${agregados} ${agregados === 1 ? 'agregado' : 'agregados'}` : '',
+    quitados ? `${quitados} ${quitados === 1 ? 'quitado' : 'quitados'}` : '',
+  ].filter(Boolean);
+  return `${usuario} · ${partes.length ? partes.join(' y ') : 'sin cambios (ya estaban aplicados)'}`;
 }

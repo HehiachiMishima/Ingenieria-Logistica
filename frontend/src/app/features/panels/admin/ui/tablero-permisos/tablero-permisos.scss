@@ -5,6 +5,8 @@
  * se desplaza a lo ancho y a lo alto con las cabeceras fijas arriba, los atajos saltan a cada
  * columna y el rol queda siempre a la vista a la derecha, con su propio scroll. Debajo de lg todo
  * se apila, el rol primero, y desplaza el cuerpo del diálogo.
+ * Compartido: el tablero de roles del usuario (tablero-roles) reutiliza la barra, los avisos, los
+ * atajos (como filtros), la columna del destino y las zonas de arrastre; cambiar aquí afecta a los dos.
  */
 :host {
   --tp-cabeza: light-dark(#0f2140, #0b1729);
