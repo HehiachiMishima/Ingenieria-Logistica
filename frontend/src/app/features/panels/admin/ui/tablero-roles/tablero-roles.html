@@ -1,3 +1,54 @@
+@if (cabecera(); as permiso) {
+  @if (fichaCabecera(); as ficha) {
+    <div class="tr-cabecera">
+      <div
+        class="tp-ficha tr-cabecera__ficha"
+        [class.tp-ficha--inactiva]="!permiso.activo"
+        [style.--accion]="ficha.colorAccion"
+        [style.--grupo-color]="ficha.colorPanel"
+        aria-hidden="true"
+      >
+        <span class="tp-ficha__datos">
+          <span class="tp-ficha__accion">{{ ficha.accion }}</span>
+          @if (permiso.activo) {
+            <span class="tp-ficha__uso"><ui-icon name="roles" [size]="11" />{{ despues() }}</span>
+          } @else {
+            <span class="tp-ficha__inactivo">Inactivo</span>
+          }
+        </span>
+        <span class="tp-ficha__fila">
+          <span class="tp-ficha__pestana" [class.tp-ficha__pestana--vacia]="!ficha.panel">{{ ficha.panel }}</span>
+          <span class="tp-ficha__caja"><span class="tp-ficha__codigo">{{ ficha.etiqueta }}</span></span>
+        </span>
+      </div>
+      <div class="tr-cabecera__texto">
+        <strong class="tr-cabecera__nombre">{{ permiso.nombre }}</strong>
+        <span class="tr-cabecera__desc">{{ permiso.descripcion || 'Sin descripción' }}</span>
+      </div>
+      <div class="tr-cabecera__kpis">
+        <span class="tr-kpi">
+          <strong>
+            @if (totalCambios()) {
+              {{ antes() }} →
+            }
+            {{ despues() }}
+          </strong>
+          {{ despues() === 1 ? 'rol' : 'roles' }}
+        </span>
+        <span class="tr-kpi" title="Usuarios distintos que hoy lo tienen por sus roles activos (sin contar excepciones)">
+          <strong>{{ permiso.usuarios }}</strong> {{ permiso.usuarios === 1 ? 'usuario' : 'usuarios' }} hoy
+        </span>
+      </div>
+      @if (!permiso.activo) {
+        <p class="tp-nota tp-nota--aviso tr-cabecera__nota">
+          <ui-icon name="alertTriangle" [size]="16" />
+          Permiso inactivo: no concede acceso aunque lo tengan los roles. Reactívelo para darlo.
+        </p>
+      }
+    </div>
+  }
+}
+
 @if (bloqueo(); as motivo) {
   <p class="tp-nota tp-nota--aviso tr-bloqueo">
     <ui-icon name="lock" [size]="16" />
@@ -35,7 +86,7 @@
     <span class="tp-barra__seleccion">
       <button type="button" class="ui-btn ui-btn--primary ui-btn--sm" (click)="moverElegidas()">
         <ui-icon [name]="lado === 'catalogo' ? 'flecha' : 'chevronLeft'" [size]="16" />
-        {{ lado === 'catalogo' ? 'Dar al usuario' : 'Quitar al usuario' }} ({{ elegidas().size }})
+        {{ lado === 'catalogo' ? textos().dar : textos().quitar }} ({{ elegidas().size }})
       </button>
       <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm" (click)="limpiarSeleccion()">
         Limpiar selección
@@ -81,20 +132,22 @@
   [grupo]="grupo"
   (soltar)="alSoltar($event)"
 >
-  <section class="tr-catalogo" data-zona="catalogo" aria-label="Roles que el usuario no tiene">
+  <section class="tr-catalogo" data-zona="catalogo" [attr.aria-label]="textos().ariaCatalogo">
     <div class="tr-rejilla">
       @for (rol of catalogo(); track rol.id) {
         <ng-container *ngTemplateOutlet="fichaTpl; context: { $implicit: rol, lado: 'catalogo' }" />
       } @empty {
-        <p class="tp-col__vacia tr-vacio">El usuario ya tiene todos los roles.</p>
+        <p class="tp-col__vacia tr-vacio">{{ textos().vacioCatalogo }}</p>
       }
     </div>
   </section>
 
-  <section class="tp-rol" data-zona="usuario" aria-label="Roles del usuario">
+  <section class="tp-rol" data-zona="usuario" [attr.aria-label]="textos().ariaDestino">
     <header class="tp-rol__cabeza">
-      <span class="tp-rol__etiqueta">Usuario</span>
-      <strong class="tp-rol__nombre">{{ nombreUsuario() }}</strong>
+      <span class="tp-rol__etiqueta">{{ textos().destino }}</span>
+      @if (nombreDestino()) {
+        <strong class="tp-rol__nombre">{{ nombreDestino() }}</strong>
+      }
       <span class="tp-rol__conteo">
         @if (totalCambios()) {
           {{ antes() }} → {{ despues() }}
@@ -109,7 +162,7 @@
       } @empty {
         <p class="tp-rol__vacio">
           <ui-icon name="shieldCheck" [size]="20" />
-          Suelta aquí los roles de este usuario.
+          {{ textos().vacioDestino }}
         </p>
       }
       @if (inactivosDelUsuario()) {

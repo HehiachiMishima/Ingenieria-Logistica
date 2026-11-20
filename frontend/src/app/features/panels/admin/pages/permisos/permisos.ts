@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { finalize } from 'rxjs';
 import { mensajeDeError } from '../../../../../core/errors/error.util';
@@ -7,8 +7,7 @@ import { PERMISOS } from '../../../../../core/config/permisos';
 import { Notificaciones } from '../../../../../core/services/notificaciones';
 import { DirectorioUsuarios } from '../../../../../core/services/directorio-usuarios';
 import { PermisosApi } from '../../data/permisos.api';
-import { Permiso } from '../../data/permiso.model';
-import { Rol } from '../../data/rol.model';
+import { Permiso, PermisoRolesLote, RolesPermisoTablero } from '../../data/permiso.model';
 import { HasPermiso } from '../../../../../shared/directives/has-permiso.directive';
 import { ColumnasRedimensionables } from '../../../../../shared/directives/columnas-redimensionables.directive';
 import { EmptyState } from '../../../../../shared/ui/empty-state/empty-state';
@@ -20,7 +19,13 @@ import { PanelFiltros } from '../../../../../shared/ui/panel-filtros/panel-filtr
 import { RangoRapido } from '../../../../../shared/ui/panel-filtros/rango-rapido';
 import { ActorLabelPipe } from '../../../../../shared/pipes/actor-label.pipe';
 import { ListadoRegistros } from '../../state/listado-registros';
-import { ListaAsignacion } from '../../ui/lista-asignacion';
+import { SesionStore } from '../../../../../core/services/sesion';
+import {
+  CabeceraPermiso,
+  RolTablero,
+  TableroRoles,
+  TextosTableroRoles,
+} from '../../ui/tablero-roles/tablero-roles';
 
 @Component({
   selector: 'app-admin-permisos',
@@ -38,7 +43,7 @@ import { ListaAsignacion } from '../../ui/lista-asignacion';
     PanelFiltros,
     FiltrosActivos,
     RangoRapido,
-    ListaAsignacion,
+    TableroRoles,
   ],
   templateUrl: './permisos.html',
   styleUrl: './permisos.scss',
@@ -48,6 +53,7 @@ export class Permisos {
   private readonly permisosApi = inject(PermisosApi);
   private readonly notificaciones = inject(Notificaciones);
   private readonly directorio = inject(DirectorioUsuarios);
+  private readonly sesion = inject(SesionStore);
 
   readonly permisos = PERMISOS;
 
@@ -74,9 +80,61 @@ export class Permisos {
   readonly permisoRoles = signal<Permiso | null>(null);
   readonly cargandoRoles = signal(false);
   readonly errorRoles = signal<string | null>(null);
-  readonly rolesConPermiso = signal<Rol[]>([]);
+  readonly tableroRoles = signal<RolesPermisoTablero | null>(null);
+  readonly guardandoRoles = signal(false);
+  readonly confirmarDescarte = signal(false);
+  readonly tablero = viewChild(TableroRoles);
+  readonly cambiosRoles = computed(() => this.tablero()?.totalCambios() ?? 0);
   /** Descarta la respuesta de un modal abierto antes (otro permiso). */
   private solicitudRoles = 0;
+
+  readonly textosRoles: TextosTableroRoles = {
+    destino: 'Con el permiso',
+    dar: 'Dar el permiso',
+    quitar: 'Quitar el permiso',
+    vacioDestino: 'Ningún rol lo concede: suelta aquí los roles que deben tenerlo.',
+    vacioCatalogo: 'Todos los roles ya tienen este permiso.',
+    ariaCatalogo: 'Roles sin este permiso',
+    ariaDestino: 'Roles con este permiso',
+    movidosAlDestino: ['rol recibe el permiso', 'roles reciben el permiso'],
+    movidosAlCatalogo: ['rol pierde el permiso', 'roles pierden el permiso'],
+  };
+
+  /** Sin ASIGNAR_PERMISOS se ve el reparto pero no se cambia (el backend también lo exige). */
+  readonly bloqueoRoles = computed(() =>
+    this.sesion.tienePermiso(PERMISOS.ASIGNAR_PERMISOS)
+      ? null
+      : 'Necesita el permiso ASIGNAR_PERMISOS para dar o quitar permisos a los roles.',
+  );
+
+  /**
+   * Roles para el tablero con las reglas del backend por rol: al ADMINISTRADOR no se le quita;
+   * no se da un permiso inactivo ni uno que quien edita no tiene. Un rol inactivo sí puede
+   * recibirlo (queda listo para cuando se active).
+   */
+  readonly rolesDelTablero = computed<RolTablero[]>(() => {
+    const tablero = this.tableroRoles();
+    if (!tablero) {
+      return [];
+    }
+    const motivoDar = !tablero.activo
+      ? `«${tablero.nombre}» está inactivo: reactívelo antes de darlo a un rol.`
+      : !tablero.otorgable
+        ? `No puede dar «${tablero.nombre}»: usted no tiene ese permiso.`
+        : null;
+    return tablero.roles.map((rol) => ({
+      ...rol,
+      motivoDar,
+      motivoQuitar: rol.protegido ? 'Al rol ADMINISTRADOR no se le quitan permisos: solo se le agregan.' : null,
+    }));
+  });
+
+  readonly cabeceraRoles = computed<CabeceraPermiso | null>(() => {
+    const tablero = this.tableroRoles();
+    return tablero
+      ? { nombre: tablero.nombre, descripcion: tablero.descripcion, activo: tablero.activo, usuarios: tablero.usuarios }
+      : null;
+  });
 
   constructor() {
     this.directorio.cargar();
@@ -204,12 +262,13 @@ export class Permisos {
     const solicitud = ++this.solicitudRoles;
     const vigente = () => solicitud === this.solicitudRoles;
     this.permisoRoles.set(permiso);
-    this.rolesConPermiso.set([]);
+    this.tableroRoles.set(null);
     this.errorRoles.set(null);
+    this.confirmarDescarte.set(false);
     this.rolesAbierto.set(true);
     this.cargandoRoles.set(true);
     this.permisosApi
-      .roles(permiso.id)
+      .tableroRoles(permiso.id)
       .pipe(
         finalize(() => {
           if (vigente()) {
@@ -218,9 +277,9 @@ export class Permisos {
         }),
       )
       .subscribe({
-        next: (roles) => {
+        next: (tablero) => {
           if (vigente()) {
-            this.rolesConPermiso.set(roles);
+            this.tableroRoles.set(tablero);
           }
         },
         error: (err: unknown) => {
@@ -232,4 +291,63 @@ export class Permisos {
         },
       });
   }
+
+  /** Cerrar con cambios sin guardar pide confirmación en el pie del diálogo. */
+  cerrarRoles(): void {
+    if (this.guardandoRoles()) {
+      return;
+    }
+    if (this.cambiosRoles() > 0 && !this.confirmarDescarte()) {
+      this.confirmarDescarte.set(true);
+      return;
+    }
+    this.confirmarDescarte.set(false);
+    this.rolesAbierto.set(false);
+    this.solicitudRoles++;
+  }
+
+  descartarRoles(): void {
+    this.tablero()?.descartar();
+    this.confirmarDescarte.set(false);
+  }
+
+  /** Da y quita el permiso a todos los roles movidos en una sola petición. */
+  guardarRoles(): void {
+    const permiso = this.permisoRoles();
+    const tablero = this.tablero();
+    if (!permiso || !tablero || this.guardandoRoles() || tablero.totalCambios() === 0) {
+      return;
+    }
+    const solicitud = this.solicitudRoles;
+    this.guardandoRoles.set(true);
+    this.confirmarDescarte.set(false);
+    this.permisosApi
+      .actualizarRoles(permiso.id, tablero.cambios())
+      .pipe(finalize(() => this.guardandoRoles.set(false)))
+      .subscribe({
+        next: (resultado) => {
+          if (solicitud === this.solicitudRoles) {
+            const ahora = new Set(resultado.asignados);
+            this.tableroRoles.update((actual) =>
+              actual && {
+                ...actual,
+                usuarios: resultado.usuarios,
+                roles: actual.roles.map((r) => ({ ...r, asignado: ahora.has(r.id) })),
+              },
+            );
+          }
+          this.notificaciones.exito('Roles del permiso actualizados', resumenLote(permiso.nombre, resultado));
+        },
+        error: (err: unknown) => this.notificaciones.error('No se pudieron guardar los roles', mensajeDeError(err)),
+      });
+  }
+}
+
+/** «VER_ORDENES_PICKING · 2 roles lo reciben y 1 lo pierde». */
+function resumenLote(permiso: string, { agregados, quitados }: PermisoRolesLote): string {
+  const partes = [
+    agregados ? `${agregados} ${agregados === 1 ? 'rol lo recibe' : 'roles lo reciben'}` : '',
+    quitados ? `${quitados} ${quitados === 1 ? 'lo pierde' : 'lo pierden'}` : '',
+  ].filter(Boolean);
+  return `${permiso} · ${partes.length ? partes.join(' y ') : 'sin cambios (ya estaban aplicados)'}`;
 }

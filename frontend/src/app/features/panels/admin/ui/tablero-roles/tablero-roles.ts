@@ -2,12 +2,70 @@ import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, input, linkedSignal, signal } from '@angular/core';
 import { contieneTexto } from '../../../../../core/utils/texto.util';
 import { Icon } from '../../../../../shared/ui/icon/icon';
-import { RolDelUsuario } from '../../data/rol.model';
 import { ArrastreFichas, SoltarFichas } from '../tablero-fichas/arrastre-fichas.directive';
-import { clasificarPermiso } from '../tablero-permisos/ficha-permiso';
+import { COLUMNAS_CRUD, FichaPermiso, clasificarPermiso } from '../tablero-permisos/ficha-permiso';
 
-/** Lado del tablero: el catálogo (roles que el usuario no tiene) o la columna del usuario. */
+/**
+ * Lado del tablero: el catálogo (roles que no están en el destino) o la columna del destino (el
+ * usuario en «Roles del usuario»; los roles con el permiso en «Roles con este permiso»).
+ */
 export type ZonaRoles = 'catalogo' | 'usuario';
+
+/** Rol que muestra el tablero. Las reglas por rol las decide la página que lo usa. */
+export interface RolTablero {
+  id: number;
+  nombre: string;
+  descripcion: string | null;
+  activo: boolean;
+  /** Ya está en el destino (guardado). */
+  asignado: boolean;
+  permisos: number;
+  usuarios: number;
+  /** Permisos PANEL_* activos del rol. */
+  paneles: string[];
+  /** false: quien edita no puede ponerlo en el destino porque trae permisos que no tiene. */
+  otorgable?: boolean;
+  /** Por qué no puede ir al destino (manda sobre `otorgable`); null o ausente = puede. */
+  motivoDar?: string | null;
+  /** Por qué no puede salir del destino si ya estaba (p. ej. ADMINISTRADOR). */
+  motivoQuitar?: string | null;
+}
+
+/** Textos que cambian según lo que represente el destino. */
+export interface TextosTableroRoles {
+  /** Etiqueta de la cabecera del destino («Usuario», «Con el permiso»). */
+  destino: string;
+  dar: string;
+  quitar: string;
+  vacioDestino: string;
+  vacioCatalogo: string;
+  ariaCatalogo: string;
+  ariaDestino: string;
+  /** Tras mover: «2 roles al usuario», «1 rol recibe el permiso». */
+  movidosAlDestino: [string, string];
+  movidosAlCatalogo: [string, string];
+}
+
+export const TEXTOS_ROLES_USUARIO: TextosTableroRoles = {
+  destino: 'Usuario',
+  dar: 'Dar al usuario',
+  quitar: 'Quitar al usuario',
+  vacioDestino: 'Suelta aquí los roles de este usuario.',
+  vacioCatalogo: 'El usuario ya tiene todos los roles.',
+  ariaCatalogo: 'Roles que el usuario no tiene',
+  ariaDestino: 'Roles del usuario',
+  movidosAlDestino: ['rol al usuario', 'roles al usuario'],
+  movidosAlCatalogo: ['rol fuera del usuario', 'roles fuera del usuario'],
+};
+
+/** Cabecera opcional: el permiso cuyo reparto se edita, con a cuántos usuarios llega. */
+export interface CabeceraPermiso {
+  nombre: string;
+  descripcion: string | null;
+  activo: boolean;
+  /** Usuarios distintos que lo tienen hoy por sus roles activos. */
+  usuarios: number;
+}
 
 /** Panel al que da entrada un rol (pestaña de color de la ficha y filtro). */
 export interface PanelRol {
@@ -18,7 +76,7 @@ export interface PanelRol {
 }
 
 /** Rol listo para dibujar: sus paneles y dónde queda con los cambios sin guardar. */
-export interface FichaRol extends RolDelUsuario {
+export interface FichaRol extends RolTablero {
   enUsuario: boolean;
   movida: boolean;
   /** Usuarios que lo tendrán al guardar. */
@@ -63,8 +121,10 @@ function ordenPanel(panel: PanelRol): number {
 }
 
 /**
- * Tablero de roles de un usuario (presentación): el catálogo de roles en una rejilla de fichas
- * con el diseño de Titan y, a la derecha, la columna del usuario. Los roles se pasan de un lado a
+ * Tablero de roles (presentación) que usan «Roles del usuario» y «Roles con este permiso»: el
+ * catálogo de roles en una rejilla de fichas con el diseño de Titan y, a la derecha, la columna del
+ * destino (el usuario, o los roles que tienen el permiso). Textos, reglas por rol y la cabecera del
+ * permiso los decide la página. Los roles se pasan de un lado a
  * otro arrastrando o eligiéndolos y usando los botones; los cambios quedan pendientes (rayados)
  * hasta que la página los guarda en lote. El buscador y los filtros por panel atenúan lo que no
  * coincide sin esconderlo.
@@ -82,27 +142,43 @@ function ordenPanel(panel: PanelRol): number {
   host: { '(keydown.escape)': 'alEscape($event)' },
 })
 export class TableroRoles {
-  readonly roles = input<readonly RolDelUsuario[]>([]);
-  readonly nombreUsuario = input('');
-  /** Motivo por el que quien edita no puede cambiar los roles de este usuario (todo de solo lectura). */
+  readonly roles = input<readonly RolTablero[]>([]);
+  /** Nombre en la cabecera del destino (el usuario, o el permiso). */
+  readonly nombreDestino = input('');
+  readonly textos = input<TextosTableroRoles>(TEXTOS_ROLES_USUARIO);
+  /** Un rol inactivo puede ir al destino (al darle un permiso sí; a un usuario no). */
+  readonly permitirInactivos = input(false);
+  /** Ficha del permiso arriba del tablero («Roles con este permiso»). */
+  readonly cabecera = input<CabeceraPermiso | null>(null);
+  /** Motivo por el que quien edita no puede cambiar nada (todo de solo lectura). */
   readonly bloqueo = input<string | null>(null);
   /** Mientras se guarda: no se mueve nada. */
   readonly guardando = input(false);
 
+  /** La cabecera dibujada como ficha Titan (acción, panel y etiqueta del permiso). */
+  readonly fichaCabecera = computed<(FichaPermiso & { colorAccion: string }) | null>(() => {
+    const cabecera = this.cabecera();
+    if (!cabecera) {
+      return null;
+    }
+    const clase = clasificarPermiso(cabecera.nombre);
+    return { ...clase, colorAccion: COLUMNAS_CRUD.find((c) => c.accion === clase.accion)?.color ?? '#334155' };
+  });
+
   /** Cambios sin guardar; se vacían cada vez que llega el catálogo (al abrir o tras guardar). */
-  private readonly agregar = linkedSignal<readonly RolDelUsuario[], ReadonlySet<number>>({
+  private readonly agregar = linkedSignal<readonly RolTablero[], ReadonlySet<number>>({
     source: this.roles,
     computation: () => VACIO,
   });
-  private readonly quitar = linkedSignal<readonly RolDelUsuario[], ReadonlySet<number>>({
+  private readonly quitar = linkedSignal<readonly RolTablero[], ReadonlySet<number>>({
     source: this.roles,
     computation: () => VACIO,
   });
-  readonly elegidas = linkedSignal<readonly RolDelUsuario[], ReadonlySet<number>>({
+  readonly elegidas = linkedSignal<readonly RolTablero[], ReadonlySet<number>>({
     source: this.roles,
     computation: () => VACIO,
   });
-  readonly ladoElegido = linkedSignal<readonly RolDelUsuario[], ZonaRoles | null>({
+  readonly ladoElegido = linkedSignal<readonly RolTablero[], ZonaRoles | null>({
     source: this.roles,
     computation: () => null,
   });
@@ -112,7 +188,7 @@ export class TableroRoles {
   /** Clave del panel filtrado (PANEL_PICKING…); null = todos. */
   readonly panelFiltro = signal<string | null>(null);
   /** Último rechazo o confirmación (lectores de pantalla incluidos); se limpia al llegar el catálogo. */
-  readonly aviso = linkedSignal<readonly RolDelUsuario[], string | null>({
+  readonly aviso = linkedSignal<readonly RolTablero[], string | null>({
     source: this.roles,
     computation: () => null,
   });
@@ -324,12 +400,8 @@ export class TableroRoles {
     this.agregar.set(agregar);
     this.quitar.set(quitar);
     this.limpiarSeleccion();
-    const nombre = movidas === 1 ? 'rol' : 'roles';
-    this.aviso.set(
-      destino === 'usuario'
-        ? `${movidas} ${nombre} al usuario (falta guardar).`
-        : `${movidas} ${nombre} fuera del usuario (falta guardar).`,
-    );
+    const [uno, varios] = destino === 'usuario' ? this.textos().movidosAlDestino : this.textos().movidosAlCatalogo;
+    this.aviso.set(`${movidas} ${movidas === 1 ? uno : varios} (falta guardar).`);
   }
 
   /** Por qué esos roles no pueden ir a `destino`; null si pueden. */
@@ -347,18 +419,25 @@ export class TableroRoles {
   }
 
   /** Por qué un rol no puede pasar al otro lado (null = puede). */
-  private bloqueoDe(rol: RolDelUsuario, enUsuario: boolean): string | null {
+  private bloqueoDe(rol: RolTablero, enUsuario: boolean): string | null {
     const bloqueo = this.bloqueo();
     if (bloqueo) {
       return bloqueo;
     }
-    if (enUsuario || rol.asignado) {
-      return null; // quitar siempre se puede; volver a poner uno que ya tenía, también
+    if (enUsuario) {
+      // Sacar uno que ya estaba puede estar prohibido (ADMINISTRADOR); uno recién puesto, no.
+      return rol.asignado ? (rol.motivoQuitar ?? null) : null;
     }
-    if (!rol.activo) {
+    if (rol.asignado) {
+      return null; // se sacó sin guardar: volver a ponerlo siempre se puede
+    }
+    if (!rol.activo && !this.permitirInactivos()) {
       return `«${rol.nombre}» está inactivo: reactívelo en Roles antes de asignarlo.`;
     }
-    if (!rol.otorgable) {
+    if (rol.motivoDar) {
+      return rol.motivoDar;
+    }
+    if (rol.otorgable === false) {
       return `No puede otorgar «${rol.nombre}»: trae permisos que usted no tiene.`;
     }
     return null;

@@ -4,8 +4,8 @@
 
 | Campo | Valor |
 |---|---|
-| Fecha | 2026-11-19 (observabilidad) · 2026-11-20 (permisos del rol, roles del usuario y permisos individuales) |
-| Commit | 19a57b7 + cambios sin commit (rama update_16) · 2a6d074 + cambios sin commit (rama update_19) · 8215938 + cambios sin commit (roles del usuario) · de8a47e + cambios sin commit (permisos individuales) |
+| Fecha | 2026-11-19 (observabilidad) · 2026-11-20 (permisos del rol, roles del usuario, permisos individuales y roles con un permiso) |
+| Commit | 19a57b7 + cambios sin commit (rama update_16) · 2a6d074 + cambios sin commit (rama update_19) · 8215938 + cambios sin commit (roles del usuario) · de8a47e + cambios sin commit (permisos individuales) · b21c714 + cambios sin commit (roles con un permiso) |
 | Entorno | local, macOS arm64, una instancia; volumen sintético de 1 000 000 trazas, 200 000 eventos de auditoría y 80 569 filas en `roles_permisos` (2 000 roles × 40 permisos, 563 permisos), y para los roles del usuario 100 000 usuarios con 150 001 asignaciones de rol y 50 000 excepciones, todo dentro de transacciones revertidas |
 | Backend | Spring Boot 4.1.2, Hibernate 7.4.13, HikariCP 7.0.2, driver PostgreSQL 42.7.14, JDK 25, virtual threads sí (`spring.threads.virtual.enabled=true`), open-in-view false |
 | Base de datos | PostgreSQL 18.6 local, max_connections 100, sin PgBouncer, pg_stat_statements no cargado |
@@ -45,6 +45,9 @@
 | Dar 5 roles a un usuario (antes) | uno a uno, como `UsuarioRolService.asignar` | 5 peticiones HTTP; 30 sentencias = 17,6 ms en la base | — | `BenchRolesUsuario.java` (por rol: permisos del actor ×2, del usuario, del rol, EXISTS e INSERT) | 2026-11-20 |
 | Abrir los permisos individuales de un usuario (antes) | 100 001 usuarios, 50 000 filas en `usuarios_permisos` | 3 peticiones HTTP (catálogo, excepciones, resolución); 0,008 + 0,013 + 0,049 ms en la base | 200 ms | `EXPLAIN (ANALYZE, BUFFERS)` en `BenchExcepciones.java` (scratchpad) | 2026-11-20 |
 | Conceder 5 permisos a un usuario (antes) | uno a uno, como `UsuarioPermisoService.otorgar` | 5 peticiones HTTP; 35 sentencias = 20,0 ms en la base | — | `BenchExcepciones.java` (por permiso: usuario, permisos del actor ×2, del usuario, permiso, excepción e INSERT) | 2026-11-20 |
+| Abrir «Roles con este permiso» (antes) | permiso presente en 1 322 de 2 002 roles | 1 consulta (roles con el permiso): 2,4 ms y 609 buffers; solo lectura | 200 ms | `EXPLAIN (ANALYZE, BUFFERS)` en `BenchPermisoRoles.java` (scratchpad) | 2026-11-20 |
+| Dar un permiso a 5 roles (antes) | desde Roles, un rol por vez (`RolPermisoService.asignar`) | 5 peticiones HTTP y 5 `invalidarTodo` de la caché de autorización; 25 sentencias = 9,6 ms en la base | — | `BenchPermisoRoles.java` | 2026-11-20 |
+| Chunk perezoso de Permisos | `ng build` producción | 6,03 kB gzip | — | `ng build` de `de8a47e` en un worktree temporal (la página no cambió hasta `b21c714`) | 2026-11-20 |
 | Chunk perezoso de Usuarios | `ng build` producción | 9,98 kB gzip | — | `ng build` de `8215938` en un worktree temporal; tamaño del archivo con `gzip -9` | 2026-11-20 |
 
 ## 3. Hallazgos
@@ -59,6 +62,7 @@
 | Media | API | `roles-usuario.ts:92` (versión `8215938`): un POST o DELETE por rol, y cada uno repite `verificarPuedeAdministrar` (2 lecturas de `v_permisos_finales`) y `verificarPuedeOtorgar` (1 más): dar 5 roles = 5 peticiones, 30 sentencias y 5 invalidaciones de la caché de autorización | API conversadora: una escritura HTTP por elemento, con los controles de escalada repetidos | `PATCH /api/usuarios/{usuarioId}/roles` con `{agregar, quitar}` en una transacción (`UsuarioRolService.actualizarLote`, `UsuarioRolLoteRepository`): los controles se hacen una vez para todo el lote | 1 petición y 8 sentencias para 5 roles (medido: 6,9 ms frente a 17,6 ms) |
 | Media | Base de datos | Primera versión de `UsuarioRolLoteRepository.java:35` con `array_agg(p.nombre ORDER BY p.nombre)` en el mismo `GROUP BY` que el conteo: 118,0 ms, `Sort Method: external merge Disk: 3816kB` y `temp read=474` con 2 002 roles y 80 069 filas en `roles_permisos` | Agregado ordenado con estado por grupo que derrama a disco con el `work_mem` por defecto | Conteo y «otorgable» en un agregado simple; los paneles en una CTE aparte, solo sobre las filas `PANEL_*`, con `string_agg` | 0 buffers temporales y ≤ 40 ms (medido: 36,3 ms) |
 | Media | API | `permisos-usuario.ts:156` y `:133` (versión `de8a47e`): un PUT o DELETE por permiso, cada uno con `verificarPuedeAdministrar` y `verificarPuedeOtorgar` (7 sentencias por permiso); abrir el diálogo hacía 3 peticiones en paralelo (`permisos-usuario.ts:86`) | API conversadora: una escritura HTTP por elemento y tres lecturas para una pantalla | `GET /api/usuarios/{usuarioId}/permisos/tablero` (una consulta con lo que dan los roles, las excepciones y si se puede conceder) y `PATCH /api/usuarios/{usuarioId}/permisos` con `{conceder, denegar, heredar}` en una transacción (`UsuarioPermisoService.actualizarLote`) | 1 petición al abrir y 1 al guardar; 8 sentencias para 5 permisos (medido: 9,3 ms frente a 20,0 ms) |
+| Media | Backend | `permisos.html:342` (versión `b21c714`): «La asignación se hace desde la pantalla de Roles»; dar un permiso nuevo a 5 roles exige 5 guardados, y cada uno ejecuta `autorizacionCache.invalidarTodo` (`RolPermisoService.java:95`), que vacía la caché de autorización de todos los usuarios | Reparto de un permiso por elemento: N invalidaciones globales de caché y N peticiones | Tablero inverso: `GET /api/permisos/{permisoId}/roles/tablero` y `PATCH /api/permisos/{permisoId}/roles` con `{agregar, quitar}` en una transacción (`RolPermisoService.actualizarRoles`) | 1 petición y 1 `invalidarTodo` por guardado en lugar de 5; 7 sentencias en lugar de 25 |
 
 ## 4. Clasificación
 
@@ -82,6 +86,7 @@
 | Escrituras por rol al asignar a un usuario | API | Aplicable | 5 peticiones y 30 sentencias para 5 roles, con los controles de escalada repetidos; corregido con el guardado en lote (1 petición, 8 sentencias) |
 | Derrame a disco en el tablero de roles del usuario | Base de datos | Aplicable | `external merge Disk: 3816kB` y 118 ms en la primera versión; corregido separando los paneles en su propia CTE (36,3 ms, sin buffers temporales) |
 | Escrituras por permiso en los permisos individuales | API | Aplicable | 5 peticiones y 35 sentencias para 5 permisos y 3 peticiones al abrir; corregido con el tablero y el guardado en lote (1 + 1 peticiones, 8 sentencias) |
+| Reparto de un permiso entre roles | Backend | Aplicable | 5 guardados y 5 vaciados globales de la caché de autorización para 5 roles; corregido con el tablero inverso (1 y 1) |
 | Uso de cada permiso en el tablero | Base de datos | No aplicable | Una sola consulta agrega `roles_permisos` por `permiso_id` (`RolPermisoLoteRepository.java:32`): 9,1 ms y 1 201 buffers con 80 569 filas (≈ 40 veces el volumen real); la variante con subconsultas por permiso midió 22,4 ms |
 | Peso del tablero en el chunk de Roles | Frontend | No aplicable | +9,5 kB gzip solo en la ruta perezosa de Roles (incluye los atajos del diálogo mediano); el bundle inicial sube 0,08 kB (449,63 kB). Si hiciera falta, el tablero se puede cargar con `@defer` al abrir el diálogo |
 | Scroll del catálogo y atajos de columna | Frontend | No aplicable | Las columnas visibles se detectan con `IntersectionObserver` (`tablero-permisos.ts`), no con un listener de `scroll`: Angular solo vuelve a pintar los atajos cuando cambia qué columnas se ven (16 cambios de clase en 90 cuadros); p95 17,9 ms por cuadro y 0 tareas largas |
@@ -89,6 +94,8 @@
 | Estilos del tablero repetidos en dos rutas | Frontend | No aplicable | El tablero de roles reutiliza los SCSS del de permisos y Angular los compila en cada componente: la ruta de Usuarios suma 9,9 kB gzip (17,47 kB su chunk + 2,39 kB de un chunk común con la directiva de arrastre); el bundle inicial no cambia |
 | Consulta del tablero de permisos individuales | Base de datos | No aplicable | 0,163 ms y 52 buffers con 100 001 usuarios y 50 000 excepciones: solo lee por usuario (PK de `usuarios_roles` y `usuarios_permisos`) |
 | CSS global del diálogo anterior | Frontend | No aplicable | Las reglas `.perm-*` de `_components.scss` solo las usaba el diálogo reemplazado; se quitaron y el bundle inicial bajó 2,15 kB |
+| Consulta del tablero «Roles con este permiso» | Base de datos | No aplicable | 37,3 ms (catálogo con uso, sin buffers temporales) + 30,5 ms (usuarios alcanzados, `DISTINCT` en dos niveles) con un permiso en 1 322 de 2 002 roles y 150 002 asignaciones; dentro de 200 ms |
+| Componentes y estilos sin uso tras los tableros | Frontend | No aplicable | `ui/lista-asignacion.ts` y las reglas `.switch`, `.role-list` y `.role-item` de `_components.scss` ya no los usaba nadie; se quitaron y el bundle inicial bajó 1,18 kB más |
 | p95 HTTP con carga | API | Pendiente | Backend en marcha con datos + `k6` sobre los tres `/resumen` |
 | LCP / INP del Dashboard | Frontend | Pendiente | Lighthouse contra el servidor de QA; INP de campo con `web-vitals` |
 | Salud del pool Hikari | Backend | Pendiente | `analyze_pool_health.sh` con Actuator y carga |
@@ -106,6 +113,7 @@
 | 6 | N4 | Guardado en lote de los permisos del rol (aplicado) | 3/2 · Aprovechar (hecho) |
 | 7 | N4 | Guardado en lote de los roles del usuario (aplicado) | 3/2 · Aprovechar (hecho) |
 | 8 | N4 | Tablero y guardado en lote de los permisos individuales (aplicado) | 3/2 · Aprovechar (hecho) |
+| 9 | N4 | Tablero inverso «Roles con este permiso» (aplicado) | 3/2 · Aprovechar (hecho) |
 
 ## 6. Verificación antes/después
 
@@ -125,17 +133,22 @@
 | Sentencias en la base para asignar 16 permisos | 32 (5,72 ms) | 4 (1,98 ms) | −65 % de tiempo | Mejora |
 | Peticiones HTTP al abrir los permisos del rol | 2 | 1 | −50 % | Mejora |
 | Consulta al abrir los permisos del rol (incluye el uso por permiso, que antes no existía) | 0,115 ms | 9,08 ms | +8,97 ms | Regresión |
-| Chunk perezoso de Roles (gzip) | 5,80 kB | 15,88 kB (13,15 + 2,73 común) | +10,08 kB | Regresión |
+| Chunk perezoso de Roles (gzip) | 5,80 kB | 16,90 kB (13,15 + 3,75 común) | +11,10 kB | Regresión |
 | Peticiones HTTP para dar 5 roles a un usuario | 5 | 1 | −80 % | Mejora |
 | Sentencias en la base para dar 5 roles | 30 (17,6 ms) | 8 (6,9 ms) | −61 % de tiempo | Mejora |
 | Peticiones HTTP al abrir los roles del usuario | 2 | 1 | −50 % | Mejora |
 | Consulta del tablero de roles (primera versión → final), 2 002 roles y 150 001 asignaciones | 118,0 ms con derrame | 36,3 ms sin derrame | −69 % | Mejora |
 | Consulta al abrir los roles del usuario (incluye uso, paneles y si se puede otorgar, que antes no existían) | 0,22 ms | 36,3 ms | +36,1 ms | Regresión |
-| Chunk perezoso de Usuarios (gzip) | 9,98 kB | 25,42 kB (22,69 + 2,73 común) | +15,44 kB | Regresión |
+| Chunk perezoso de Usuarios (gzip) | 9,98 kB | 29,21 kB (16,96 + 8,50 + 3,75 comunes) | +19,23 kB | Regresión |
+| Chunk perezoso de Permisos (gzip) | 6,03 kB | 19,34 kB (7,09 + 8,50 + 3,75 comunes) | +13,31 kB | Regresión |
+| Peticiones HTTP para dar un permiso a 5 roles | 5 | 1 | −80 % | Mejora |
+| Vaciados globales de la caché de autorización al dar un permiso a 5 roles | 5 | 1 | −80 % | Mejora |
+| Sentencias en la base para dar un permiso a 5 roles (incluye recontar los usuarios alcanzados) | 25 (9,6 ms) | 7 (29,4 ms) | +19,8 ms | Regresión |
+| Consulta al abrir «Roles con este permiso» (catálogo con uso y alcance, que antes no existían) | 2,4 ms | 67,8 ms | +65,4 ms | Regresión |
 | Peticiones HTTP al abrir los permisos individuales | 3 | 1 | −67 % | Mejora |
 | Peticiones HTTP para conceder 5 permisos a un usuario | 5 | 1 | −80 % | Mejora |
 | Sentencias en la base para conceder 5 permisos | 35 (20,0 ms) | 8 (9,3 ms) | −54 % de tiempo | Mejora |
-| Bundle inicial | 449,55 kB | 447,48 kB | −2,07 kB | Mejora |
+| Bundle inicial | 449,55 kB | 446,30 kB | −3,25 kB | Mejora |
 
 ## 7. Veredicto
 
@@ -143,4 +156,4 @@ El Dashboard de operación no depende del volumen de trazas: lee resúmenes por 
 
 En los permisos del rol, el problema no era la base sino la conversación: una petición, una transacción, una invalidación de la caché de autorización y un evento de auditoría por cada permiso, con un cupo de 60 escrituras por minuto que impedía armar un rol completo. El guardado en lote lo reduce a una petición por guardado (16 permisos: 4 sentencias, 1,98 ms en la base). Abrir el tablero cuesta 9 ms en la base con 40 veces el volumen real porque ahora también cuenta en cuántos roles está cada permiso; es una regresión aceptada, muy por debajo de 200 ms. El tablero, ya en el diálogo mediano con scroll en dos ejes y atajos de columna, suma 9,5 kB comprimidos solo a la ruta de Roles y se desplaza a 60 cuadros por segundo sin tareas largas.
 
-Los roles del usuario tenían el mismo problema, agravado: además de una petición por rol, cada una repetía los controles de escalada (6 sentencias por rol). El guardado en lote deja 1 petición y 8 sentencias para 5 roles. La primera versión de la consulta del tablero derramaba a disco (118 ms) por un `array_agg` ordenado en el mismo agregado que el conteo; separada en dos agregados queda en 36 ms sin buffers temporales con 2 002 roles y 150 001 asignaciones. PostgreSQL no es el cuello de botella en estas pantallas. Los permisos individuales repetían el patrón con tres peticiones al abrir y siete sentencias por permiso; con el tablero son una petición para abrir (0,16 ms en la base con 100 000 usuarios) y otra para guardar. Los tres tableros comparten la directiva de arrastre y los estilos: la ruta de Usuarios suma 15,4 kB comprimidos y el bundle inicial bajó 2,07 kB al quitar el CSS del diálogo anterior.
+Los roles del usuario tenían el mismo problema, agravado: además de una petición por rol, cada una repetía los controles de escalada (6 sentencias por rol). El guardado en lote deja 1 petición y 8 sentencias para 5 roles. La primera versión de la consulta del tablero derramaba a disco (118 ms) por un `array_agg` ordenado en el mismo agregado que el conteo; separada en dos agregados queda en 36 ms sin buffers temporales con 2 002 roles y 150 001 asignaciones. PostgreSQL no es el cuello de botella en estas pantallas. Los permisos individuales repetían el patrón con tres peticiones al abrir y siete sentencias por permiso; con el tablero son una petición para abrir (0,16 ms en la base con 100 000 usuarios) y otra para guardar. Los tres tableros comparten la directiva de arrastre y los estilos: la ruta de Usuarios suma 15,4 kB comprimidos y el bundle inicial bajó 2,07 kB al quitar el CSS del diálogo anterior. «Roles con este permiso» pasó de solo lectura a tablero inverso: dar un permiso a varios roles es una petición y un solo vaciado de la caché de autorización en lugar de uno por rol. Abrirlo cuesta 68 ms en la base y guardar 29 ms porque cuenta a cuántos usuarios llega el permiso; con un permiso presente en 1 322 roles sigue muy por debajo de 200 ms. Al quitar el componente y el CSS que ya no usaba nadie, el bundle inicial quedó en 446,30 kB.

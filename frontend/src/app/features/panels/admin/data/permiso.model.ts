@@ -104,3 +104,44 @@ export interface UsuarioPermisosLote {
   heredados: number;
   excepciones: { permisoId: number; otorgado: boolean }[];
 }
+
+/** Rol visto desde un permiso (tablero «Roles con este permiso»). */
+export interface RolDelPermiso {
+  id: number;
+  nombre: string;
+  descripcion: string | null;
+  activo: boolean;
+  /** Ya concede este permiso. */
+  asignado: boolean;
+  permisos: number;
+  usuarios: number;
+  paneles: string[];
+  /** Rol ADMINISTRADOR: no se le quitan permisos. */
+  protegido: boolean;
+}
+
+export interface RolesPermisoTablero {
+  permisoId: number;
+  nombre: string;
+  descripcion: string | null;
+  activo: boolean;
+  /** Quien edita tiene el permiso y puede darlo. */
+  otorgable: boolean;
+  /** Usuarios distintos que lo tienen hoy por sus roles activos. */
+  usuarios: number;
+  roles: RolDelPermiso[];
+}
+
+/** Da (agregar) o quita el permiso a varios roles (una sola transacción). */
+export interface PermisoRolesLoteRequest {
+  agregar: number[];
+  quitar: number[];
+}
+
+export interface PermisoRolesLote {
+  permisoId: number;
+  agregados: number;
+  quitados: number;
+  asignados: number[];
+  usuarios: number;
+}

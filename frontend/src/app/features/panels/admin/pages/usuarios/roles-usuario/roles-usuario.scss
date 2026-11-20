@@ -6,13 +6,13 @@
 
 /*
  * Tablero del diálogo de roles (760 px, «lg»): alto fijo para que solo se desplacen por dentro
- * el catálogo y la columna del usuario, sin un segundo scroll en el cuerpo. 240 px es lo que
+ * el catálogo y la columna del usuario, sin un segundo scroll en el cuerpo. 260 px es lo que
  * ocupan cabecera, márgenes y pie: el diálogo queda en ≈ 710 px y nunca pasa la pantalla.
  * Debajo de lg el tablero se apila y desplaza el cuerpo (alto automático).
  */
 @include bp.up(lg) {
   .ru-tablero {
-    height: min(470px, calc(100dvh - 240px));
+    height: min(470px, calc(100dvh - 260px));
     min-height: 300px;
   }
 }

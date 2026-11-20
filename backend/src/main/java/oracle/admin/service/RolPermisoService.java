@@ -21,13 +21,16 @@ import oracle.admin.repository.RolPermisoLoteRepository;
 import oracle.admin.repository.RolPermisoRepository;
 import oracle.admin.repository.RolRepository;
 import oracle.admin.request.RolPermisoAsignarRequest;
+import oracle.admin.request.PermisoRolesLoteRequest;
 import oracle.admin.request.RolPermisosLoteRequest;
 import oracle.common.response.ApiResponse;
 import oracle.admin.response.PermisoResponse;
+import oracle.admin.response.PermisoRolesLoteResponse;
 import oracle.admin.response.PermisoTableroResponse;
 import oracle.admin.response.RolPermisoResponse;
 import oracle.admin.response.RolPermisosLoteResponse;
 import oracle.admin.response.RolResponse;
+import oracle.admin.response.RolesPermisoTableroResponse;
 import oracle.common.security.AutorizacionCache;
 import oracle.common.config.Transacciones;
 import org.springframework.stereotype.Service;
@@ -196,6 +199,86 @@ public class RolPermisoService {
                     return ApiResponse.ok("Permisos del rol actualizados.",
                             new RolPermisosLoteResponse(rolId, agregados, quitados, lote.asignados(rolId)));
                 }));
+    }
+
+    /**
+     * Tablero «roles con este permiso»: el catálogo de roles con los que ya lo tienen, si quien
+     * edita puede darlo (lo tiene, igual que ControlEscalamiento) y a cuántos usuarios llega hoy.
+     */
+    public ApiResponse<RolesPermisoTableroResponse> tableroRoles(Long permisoId) {
+        Long actor = ActorActual.id();
+        RolesPermisoTableroResponse datos = Trazas.medir(log,
+                "RolPermisoService.tableroRoles permisoId=" + permisoId, () -> transacciones.consultar(() -> {
+                    Permiso permiso = obtenerPermiso(permisoId);
+                    return new RolesPermisoTableroResponse(permisoId, permiso.getNombre(), permiso.getDescripcion(),
+                            Boolean.TRUE.equals(permiso.getActivo()), puedeOtorgar(actor, permiso.getNombre()),
+                            lote.usuariosAlcanzados(permisoId), lote.rolesDelTablero(permisoId));
+                }));
+        return ApiResponse.ok("Tablero de roles del permiso.", datos);
+    }
+
+    /**
+     * Da o quita el permiso a varios roles en una sola transacción: o se aplican todos o ninguno.
+     * Lo que ya estaba así se ignora. Mismas reglas que desde el rol: solo se da un permiso que el
+     * actor tiene y al rol ADMINISTRADOR no se le quita.
+     */
+    public ApiResponse<PermisoRolesLoteResponse> actualizarRoles(Long permisoId, PermisoRolesLoteRequest peticion) {
+        Long actor = ActorActual.id();
+        Set<Long> agregar = new LinkedHashSet<>(peticion.agregar());
+        Set<Long> quitar = new LinkedHashSet<>(peticion.quitar());
+        if (agregar.isEmpty() && quitar.isEmpty()) {
+            throw new SolicitudInvalidaException("Indique al menos un rol al que dar o quitar el permiso.");
+        }
+        if (agregar.stream().anyMatch(quitar::contains)) {
+            throw new SolicitudInvalidaException("Un mismo rol no puede recibir y perder el permiso a la vez.");
+        }
+        return Trazas.medir(log,
+                "RolPermisoService.actualizarRoles permisoId=" + permisoId + " agregar=" + agregar.size()
+                        + " quitar=" + quitar.size(),
+                () -> transacciones.ejecutar(() -> {
+                    Permiso permiso = obtenerPermiso(permisoId);
+                    Set<Long> pedidos = new LinkedHashSet<>(agregar);
+                    pedidos.addAll(quitar);
+                    Map<Long, String> nombres = lote.nombresDeRoles(pedidos);
+                    List<Long> inexistentes = pedidos.stream().filter(id -> !nombres.containsKey(id)).toList();
+                    if (!inexistentes.isEmpty()) {
+                        throw new RecursoNoEncontradoException("No existen los roles con id "
+                                + inexistentes.stream().map(String::valueOf).collect(Collectors.joining(", ")) + ".");
+                    }
+                    if (quitar.stream().map(nombres::get).anyMatch(Protecciones::esRolAdministrador)) {
+                        throw new OperacionNoPermitidaException(
+                                "No se pueden quitar permisos al rol ADMINISTRADOR. Solo se pueden agregar.");
+                    }
+
+                    Set<Long> actuales = new LinkedHashSet<>(lote.rolesConPermiso(permisoId));
+                    List<Long> nuevos = agregar.stream().filter(id -> !actuales.contains(id)).toList();
+                    List<Long> retirados = quitar.stream().filter(actuales::contains).toList();
+                    if (!nuevos.isEmpty()) {
+                        escalamiento.verificarPuedeOtorgar(actor, List.of(permiso.getNombre()));
+                    }
+
+                    int agregados = lote.darARoles(permisoId, nuevos, actor);
+                    int quitados = lote.quitarARoles(permisoId, retirados);
+                    if (agregados + quitados > 0) {
+                        transacciones.alConfirmar(autorizacionCache::invalidarTodo);
+                    }
+                    return ApiResponse.ok("Roles del permiso actualizados.", new PermisoRolesLoteResponse(permisoId,
+                            agregados, quitados, lote.rolesConPermiso(permisoId), lote.usuariosAlcanzados(permisoId)));
+                }));
+    }
+
+    private boolean puedeOtorgar(Long actor, String permiso) {
+        try {
+            escalamiento.verificarPuedeOtorgar(actor, List.of(permiso));
+            return true;
+        } catch (OperacionNoPermitidaException e) {
+            return false;
+        }
+    }
+
+    private Permiso obtenerPermiso(Long id) {
+        return permisoRepository.findById(id)
+                .orElseThrow(() -> new RecursoNoEncontradoException("No existe el permiso con id " + id + "."));
     }
 
     private Rol obtenerRol(Long id) {

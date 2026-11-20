@@ -192,7 +192,7 @@
               <td>
                 <div class="row-actions">
                   <button
-                    *hasPermiso="permisos.ASIGNAR_ROLES"
+                    *hasPermiso="permisos.VER_ROLES"
                     type="button"
                     class="ui-icon-btn"
                     title="Roles con este permiso"
@@ -336,24 +336,50 @@
   [abierto]="rolesAbierto()"
   titulo="Roles con este permiso"
   [subtitulo]="permisoRoles()?.nombre ?? ''"
-  (cerrar)="rolesAbierto.set(false)"
+  ancho="lg"
+  (cerrar)="cerrarRoles()"
 >
-  <p class="modal-hint">
-    Estos son los roles activos que conceden este permiso. La asignación se hace desde la pantalla
-    de Roles.
-  </p>
   @if (cargandoRoles()) {
     <div class="loading"><span class="ui-spinner"></span> Cargando…</div>
   } @else if (errorRoles()) {
     <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="errorRoles()!" />
-  } @else if (rolesConPermiso().length === 0) {
-    <ui-empty icono="roles" titulo="Sin roles" mensaje="Ningún rol concede este permiso todavía." />
+  } @else if (rolesDelTablero().length === 0) {
+    <ui-empty icono="roles" titulo="Sin roles" mensaje="No hay roles creados en el sistema." />
   } @else {
-    <app-lista-asignacion icono="shieldCheck" [items]="rolesConPermiso()" />
+    <app-tablero-roles
+      class="pp-tablero"
+      [roles]="rolesDelTablero()"
+      [textos]="textosRoles"
+      [permitirInactivos]="true"
+      [cabecera]="cabeceraRoles()"
+      [bloqueo]="bloqueoRoles()"
+      [guardando]="guardandoRoles()"
+    />
   }
   <div modal-footer class="modal-foot">
-    <button type="button" class="ui-btn ui-btn--primary" (click)="rolesAbierto.set(false)">
-      Cerrar
-    </button>
+    @if (confirmarDescarte()) {
+      <span class="pp-pie__aviso" role="alert">
+        ¿Cerrar sin guardar {{ cambiosRoles() }} {{ cambiosRoles() === 1 ? 'cambio' : 'cambios' }}?
+      </span>
+      <button type="button" class="ui-btn ui-btn--secondary" (click)="confirmarDescarte.set(false)">
+        Seguir editando
+      </button>
+      <button type="button" class="ui-btn ui-btn--danger" (click)="cerrarRoles()">Cerrar sin guardar</button>
+    } @else if (cambiosRoles() > 0) {
+      <span class="pp-pie__aviso">
+        {{ cambiosRoles() }} {{ cambiosRoles() === 1 ? 'cambio sin guardar' : 'cambios sin guardar' }}
+      </span>
+      <button type="button" class="ui-btn ui-btn--secondary" [disabled]="guardandoRoles()" (click)="descartarRoles()">
+        Descartar
+      </button>
+      <button type="button" class="ui-btn ui-btn--primary" [disabled]="guardandoRoles()" (click)="guardarRoles()">
+        @if (guardandoRoles()) {
+          <span class="ui-spinner" style="width: 16px; height: 16px"></span>
+        }
+        Guardar cambios
+      </button>
+    } @else {
+      <button type="button" class="ui-btn ui-btn--primary" (click)="cerrarRoles()">Listo</button>
+    }
   </div>
 </ui-modal>

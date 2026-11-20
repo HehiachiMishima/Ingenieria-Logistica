@@ -2,13 +2,16 @@ package oracle.admin.controller;
 
 import jakarta.validation.Valid;
 import oracle.admin.request.RolPermisoAsignarRequest;
+import oracle.admin.request.PermisoRolesLoteRequest;
 import oracle.admin.request.RolPermisosLoteRequest;
 import oracle.common.response.ApiResponse;
 import oracle.admin.response.PermisoResponse;
+import oracle.admin.response.PermisoRolesLoteResponse;
 import oracle.admin.response.PermisoTableroResponse;
 import oracle.admin.response.RolPermisoResponse;
 import oracle.admin.response.RolPermisosLoteResponse;
 import oracle.admin.response.RolResponse;
+import oracle.admin.response.RolesPermisoTableroResponse;
 import oracle.admin.service.RolPermisoService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -65,6 +68,21 @@ public class RolPermisoController {
     public ApiResponse<RolPermisosLoteResponse> actualizarLote(@PathVariable Long rolId,
             @Valid @RequestBody RolPermisosLoteRequest peticion) {
         return rolPermisoService.actualizarLote(rolId, peticion);
+    }
+
+    /** Catálogo de roles con los que ya tienen el permiso y a cuántos usuarios llega. */
+    @GetMapping("/permisos/{permisoId}/roles/tablero")
+    @PreAuthorize("hasAuthority('VER_PERMISOS') and hasAuthority('VER_ROLES')")
+    public ApiResponse<RolesPermisoTableroResponse> tableroRoles(@PathVariable Long permisoId) {
+        return rolPermisoService.tableroRoles(permisoId);
+    }
+
+    /** Da o quita el permiso a varios roles en una sola transacción. */
+    @PatchMapping("/permisos/{permisoId}/roles")
+    @PreAuthorize("hasAuthority('ASIGNAR_PERMISOS')")
+    public ApiResponse<PermisoRolesLoteResponse> actualizarRoles(@PathVariable Long permisoId,
+            @Valid @RequestBody PermisoRolesLoteRequest peticion) {
+        return rolPermisoService.actualizarRoles(permisoId, peticion);
     }
 
     @GetMapping("/permisos/{permisoId}/roles")

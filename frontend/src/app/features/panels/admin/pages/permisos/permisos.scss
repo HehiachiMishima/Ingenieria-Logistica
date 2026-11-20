@@ -1,2 +1,34 @@
 // Estilos específicos de la página de permisos.
 // El diseño se reutiliza desde el design system (_components.scss).
+@use 'breakpoints' as bp;
+
+/*
+ * Tablero del diálogo «Roles con este permiso» (760 px, «lg»): alto fijo para que solo se
+ * desplacen por dentro el catálogo de roles y la columna de los que lo tienen. 240 px es lo que
+ * ocupan cabecera (con subtítulo), márgenes y pie, medido a 768 px de alto. Debajo de lg el tablero
+ * se apila (alto automático).
+ */
+@include bp.up(lg) {
+  .pp-tablero {
+    height: min(560px, calc(100dvh - 260px));
+    min-height: 360px;
+  }
+}
+
+/* Pie: el aviso de cambios a la izquierda, las acciones a la derecha. */
+.pp-pie__aviso {
+  align-self: center;
+  margin-right: auto;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+@include bp.down(sm) {
+  // El pie apila en orden inverso: el aviso va arriba de los botones.
+  .pp-pie__aviso {
+    order: 1;
+    margin-right: 0;
+    text-align: center;
+  }
+}

@@ -1,7 +1,13 @@
 import { Service, inject } from '@angular/core';
 import { Observable } from 'rxjs';
-import { Permiso, PermisoActualizarRequest, PermisoCrearRequest } from './permiso.model';
-import { Rol } from './rol.model';
+import {
+  Permiso,
+  PermisoActualizarRequest,
+  PermisoCrearRequest,
+  PermisoRolesLote,
+  PermisoRolesLoteRequest,
+  RolesPermisoTablero,
+} from './permiso.model';
 import { Api } from '../../../../core/services/api';
 
 @Service()
@@ -28,7 +34,13 @@ export class PermisosApi {
     return this.api.patch<Permiso>(`/permisos/${id}/activo`, { activo });
   }
 
-  roles(id: number): Observable<Rol[]> {
-    return this.api.get<Rol[]>(`/permisos/${id}/roles`);
+  /** Catálogo de roles con los que ya tienen el permiso y a cuántos usuarios llega. */
+  tableroRoles(id: number): Observable<RolesPermisoTablero> {
+    return this.api.get<RolesPermisoTablero>(`/permisos/${id}/roles/tablero`);
+  }
+
+  /** Da o quita el permiso a varios roles en una sola transacción. */
+  actualizarRoles(id: number, cambios: PermisoRolesLoteRequest): Observable<PermisoRolesLote> {
+    return this.api.patch<PermisoRolesLote>(`/permisos/${id}/roles`, cambios);
   }
 }

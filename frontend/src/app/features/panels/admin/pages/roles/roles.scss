@@ -4,13 +4,13 @@
 
 /*
  * Tablero del diálogo de permisos (980 px, «xl»): alto fijo para que solo se desplacen por dentro
- * el catálogo y la columna del rol, sin un segundo scroll en el cuerpo del diálogo. 240 px es lo
+ * el catálogo y la columna del rol, sin un segundo scroll en el cuerpo del diálogo. 260 px es lo
  * que ocupan cabecera, márgenes y pie: el diálogo queda en ≈ 740 px y nunca pasa la pantalla.
  * Debajo de lg el tablero se apila y desplaza el cuerpo (alto automático).
  */
 @include bp.up(lg) {
   .roles-tablero {
-    height: min(500px, calc(100dvh - 240px));
+    height: min(500px, calc(100dvh - 260px));
     min-height: 320px;
   }
 }
