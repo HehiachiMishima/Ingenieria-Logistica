@@ -37,6 +37,37 @@
   }
 </div>
 
+<nav class="tp-atajos" aria-label="Ir a una columna del catálogo">
+  @for (columna of columnas(); track columna.accion) {
+    <button
+      type="button"
+      class="tp-atajo"
+      [class.tp-atajo--visible]="visibles().has(columna.accion)"
+      [class.tp-atajo--sin]="coinciden() !== null && columna.coincidencias === 0"
+      [style.--accion]="columna.color"
+      [attr.aria-label]="
+        'Ir a ' +
+        columna.titulo +
+        ': ' +
+        (coinciden() !== null
+          ? columna.coincidencias + ' coincidencias'
+          : columna.fichas.length + ' libres')
+      "
+      (click)="irAColumna(columna.accion)"
+    >
+      <span class="tp-atajo__letra" aria-hidden="true">{{ columna.accion }}</span>
+      <span class="tp-atajo__titulo" aria-hidden="true">{{ columna.titulo }}</span>
+      <span
+        class="tp-atajo__conteo"
+        [class.tp-atajo__conteo--coincide]="coinciden() !== null && columna.coincidencias > 0"
+        aria-hidden="true"
+      >
+        {{ coinciden() !== null ? columna.coincidencias : columna.fichas.length }}
+      </span>
+    </button>
+  }
+</nav>
+
 <p class="tp-aviso" role="status" aria-live="polite">{{ aviso() }}</p>
 
 <div
@@ -46,9 +77,14 @@
   [grupo]="grupo"
   (soltar)="alSoltar($event)"
 >
-  <section class="tp-catalogo" data-zona="catalogo" aria-label="Catálogo: permisos que el rol no concede">
+  <section
+    #catalogo
+    class="tp-catalogo"
+    data-zona="catalogo"
+    aria-label="Catálogo: permisos que el rol no concede"
+  >
     @for (columna of columnas(); track columna.accion) {
-      <div class="tp-col" [style.--accion]="columna.color">
+      <div #columnaCatalogo class="tp-col" [attr.data-accion]="columna.accion" [style.--accion]="columna.color">
         <header class="tp-col__cabeza">
           <span class="tp-col__letra" aria-hidden="true">{{ columna.accion }}</span>
           <span class="tp-col__titulo">{{ columna.titulo }}</span>

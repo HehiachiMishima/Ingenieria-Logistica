@@ -1,9 +1,10 @@
 @use 'breakpoints' as bp;
 
 /*
- * Tablero de permisos del rol. Escritorio: catálogo y columna del rol a la altura del diálogo,
- * cada uno con su propio scroll (el rol siempre queda a la vista para soltar). Debajo de lg los
- * dos se apilan, el rol primero, y desplaza el cuerpo del diálogo.
+ * Tablero de permisos del rol (diálogo mediano). Escritorio: la página fija el alto; el catálogo
+ * se desplaza a lo ancho y a lo alto con las cabeceras fijas arriba, los atajos saltan a cada
+ * columna y el rol queda siempre a la vista a la derecha, con su propio scroll. Debajo de lg todo
+ * se apila, el rol primero, y desplaza el cuerpo del diálogo.
  */
 :host {
   --tp-cabeza: light-dark(#0f2140, #0b1729);
@@ -12,13 +13,92 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  height: 100%;
   min-height: 0;
 }
 
-.tp-indicacion {
+/* ---------- Atajos: una por columna del catálogo; resaltan las que están a la vista ---------- */
+.tp-atajos {
+  display: grid;
   flex: none;
-  margin: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 112px), 1fr));
+  gap: 6px;
+}
+
+.tp-atajo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 var(--space-2) 0 0;
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast);
+
+  &:hover {
+    border-color: var(--accion);
+  }
+
+  &:focus-visible {
+    outline: 3px solid var(--ring, var(--accent));
+    outline-offset: 2px;
+  }
+
+  &__letra {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    align-self: stretch;
+    justify-content: center;
+    width: 24px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: #fff;
+    background: var(--accion);
+  }
+
+  &__titulo {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap; /* responsive:ok una palabra; se acorta con «…» y el aria-label la dice entera */
+  }
+
+  &__conteo {
+    flex: none;
+    min-width: 22px;
+    padding: 1px 5px;
+    font-size: 0.75rem;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    background: var(--surface-2);
+
+    &--coincide {
+      color: #3b2a00;
+      background: var(--tp-coincide);
+    }
+  }
+
+  // Columna a la vista en el catálogo.
+  &--visible {
+    color: var(--text);
+    background: color-mix(in srgb, var(--accion) 10%, var(--surface));
+    border-color: var(--accion);
+  }
+
+  // Buscando y sin coincidencias en esa columna.
+  &--sin {
+    opacity: 0.55;
+  }
 }
 
 /* ---------- Barra: buscador, coincidencias y acciones de la selección ---------- */
@@ -60,14 +140,16 @@
 .tp {
   display: grid;
   flex: 1 1 auto;
-  grid-template-columns: minmax(0, 1fr) minmax(min(100%, 260px), 330px);
+  grid-template-columns: minmax(0, 1fr) minmax(min(100%, 280px), 300px);
   gap: var(--space-4);
   min-height: 0;
 }
 
+// Una fila de columnas de ancho fijo: lo que no cabe se alcanza desplazando a lo ancho.
 .tp-catalogo {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr));
+  grid-auto-columns: 176px;
+  grid-auto-flow: column;
   align-content: start;
   gap: var(--space-3) var(--space-2);
   min-height: 0;
@@ -82,8 +164,13 @@
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+  scroll-margin: var(--space-1);
 
+  // Fija arriba mientras se desplaza el catálogo.
   &__cabeza {
+    position: sticky;
+    z-index: 1;
+    top: 0;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -188,7 +275,7 @@
     flex-direction: column;
     gap: var(--space-3);
     min-height: 0;
-    padding: var(--space-3);
+    padding: var(--space-2);
     overflow: auto;
     overscroll-behavior: contain;
   }
@@ -285,10 +372,6 @@
 
 /* ---------- Pantallas medianas y chicas: todo apilado, el rol primero ---------- */
 @include bp.down(lg) {
-  :host {
-    height: auto;
-  }
-
   .tp {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -299,6 +382,37 @@
 
   .tp-catalogo,
   .tp-rol__cuerpo {
+    overflow: visible;
+  }
+
+  // Apilado: las columnas bajan en rejilla; un atajo deja la columna justo bajo la barra fija.
+  .tp-catalogo {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr));
+  }
+
+  .tp-col {
+    scroll-margin-top: 140px;
+  }
+
+  .tp-col__cabeza {
+    position: static;
+  }
+
+  // Una sola fila que se desplaza a lo ancho: los atajos no empujan el tablero hacia abajo.
+  .tp-atajos {
+    display: flex;
+    padding-bottom: 2px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
+  .tp-atajo {
+    flex: none;
+    min-height: 44px;
+  }
+
+  .tp-atajo__titulo {
     overflow: visible;
   }
 
@@ -318,7 +432,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tp-rol {
+  .tp-rol,
+  .tp-atajo {
     transition: none;
   }
 }

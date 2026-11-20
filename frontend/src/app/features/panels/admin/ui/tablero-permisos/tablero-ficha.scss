@@ -105,6 +105,9 @@
   flex: 1 1 auto;
   align-items: center;
   min-width: 0;
+  // Relleno abajo en la caja y arriba en el texto: la tilde de las mayúsculas («Á») cabe y una
+  // tercera línea recortada no asoma por debajo.
+  padding: 0 0 3px;
   background: var(--surface);
 }
 
@@ -113,7 +116,7 @@
   display: -webkit-box;
   flex: 1 1 auto;
   min-width: 0;
-  padding: 3px 4px;
+  padding: 3px 4px 0;
   overflow: hidden;
   overflow-wrap: anywhere;
   font-size: 0.74rem;
@@ -136,7 +139,7 @@
   }
 
   .tp-ficha__codigo {
-    padding: 3px 2px;
+    padding: 3px 2px 0;
     font-size: 0.66rem;
     letter-spacing: 0;
   }

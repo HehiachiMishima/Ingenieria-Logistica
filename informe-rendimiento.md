@@ -40,6 +40,7 @@
 | Abrir los permisos de un rol (antes) | 563 permisos, 80 569 filas en `roles_permisos` | 2 peticiones HTTP; 0,058 + 0,057 ms en la base | 200 ms | `EXPLAIN (ANALYZE, BUFFERS)` en `BenchPermisosRol.java` (scratchpad) | 2026-11-20 |
 | Asignar 16 permisos a un rol (antes) | uno a uno, como `alternarPermiso` | 16 peticiones HTTP, 16 transacciones; 32 sentencias = 5,72 ms en la base | — | `BenchPermisosRol.java` (EXISTS + INSERT por permiso, igual que `RolPermisoService.asignar`) | 2026-11-20 |
 | Chunk perezoso de Roles | `ng build` producción | 19,15 kB (5,80 kB gzip) | — | `ng build` de `2a6d074` en un worktree temporal; tamaño del archivo con `gzip -9` | 2026-11-20 |
+| Desplazar el catálogo del tablero (diálogo mediano) | 1366 × 768, bundle de producción, 90 cuadros recorriendo 720 px a lo ancho y 450 px a lo alto, ida y vuelta | p95 17,9 ms por cuadro (máx. 18,5 ms), 0 tareas largas, 16 cambios de clase en los atajos | 200 ms (INP; cuadro ≤ 16,7 ms a 60 Hz) | `requestAnimationFrame` + `PerformanceObserver(longtask)` + `MutationObserver` en el navegador contra el servidor de QA | 2026-11-20 |
 
 ## 3. Hallazgos
 
@@ -71,7 +72,8 @@
 | Paginación con OFFSET y total en Actividad, Auditoría y peticiones | Base de datos | No aplicable | Pedida para igualar el paginador estándar; el total se cuenta hasta 10 000 (17,4 ms) y la página más profunda permitida cuesta 18,9–65,0 ms, dentro de 200 ms; `ConsultasObservabilidad.java` rechaza páginas más allá del tope |
 | Escrituras por permiso al asignar a un rol | API | Aplicable | 16 peticiones para 16 permisos y 429 con más de 60 por minuto; corregido con el guardado en lote (1 petición) |
 | Uso de cada permiso en el tablero | Base de datos | No aplicable | Una sola consulta agrega `roles_permisos` por `permiso_id` (`RolPermisoLoteRepository.java:32`): 9,1 ms y 1 201 buffers con 80 569 filas (≈ 40 veces el volumen real); la variante con subconsultas por permiso midió 22,4 ms |
-| Peso del tablero en el chunk de Roles | Frontend | No aplicable | +8,6 kB gzip solo en la ruta perezosa de Roles; el bundle inicial no cambia (449,55 kB). Si hiciera falta, el tablero se puede cargar con `@defer` al abrir el diálogo |
+| Peso del tablero en el chunk de Roles | Frontend | No aplicable | +9,5 kB gzip solo en la ruta perezosa de Roles (incluye los atajos del diálogo mediano); el bundle inicial sube 0,08 kB (449,63 kB). Si hiciera falta, el tablero se puede cargar con `@defer` al abrir el diálogo |
+| Scroll del catálogo y atajos de columna | Frontend | No aplicable | Las columnas visibles se detectan con `IntersectionObserver` (`tablero-permisos.ts`), no con un listener de `scroll`: Angular solo vuelve a pintar los atajos cuando cambia qué columnas se ven (16 cambios de clase en 90 cuadros); p95 17,9 ms por cuadro y 0 tareas largas |
 | p95 HTTP con carga | API | Pendiente | Backend en marcha con datos + `k6` sobre los tres `/resumen` |
 | LCP / INP del Dashboard | Frontend | Pendiente | Lighthouse contra el servidor de QA; INP de campo con `web-vitals` |
 | Salud del pool Hikari | Backend | Pendiente | `analyze_pool_health.sh` con Actuator y carga |
@@ -105,11 +107,11 @@
 | Sentencias en la base para asignar 16 permisos | 32 (5,72 ms) | 4 (1,98 ms) | −65 % de tiempo | Mejora |
 | Peticiones HTTP al abrir los permisos del rol | 2 | 1 | −50 % | Mejora |
 | Consulta al abrir los permisos del rol (incluye el uso por permiso, que antes no existía) | 0,115 ms | 9,08 ms | +8,97 ms | Regresión |
-| Chunk perezoso de Roles (gzip) | 5,80 kB | 14,37 kB | +8,57 kB | Regresión |
-| Bundle inicial | 449,55 kB | 449,55 kB | 0 | Sin cambio |
+| Chunk perezoso de Roles (gzip) | 5,80 kB | 15,26 kB | +9,46 kB | Regresión |
+| Bundle inicial | 449,55 kB | 449,63 kB | +0,08 kB | Sin cambio |
 
 ## 7. Veredicto
 
 El Dashboard de operación no depende del volumen de trazas: lee resúmenes por hora que se llenan en la misma sentencia que guarda cada lote, y todas sus consultas quedan por debajo de 120 ms en el peor caso sintético (1 M trazas, 200 000 eventos, 300 usuarios activos cada hora). Lo único que derramaba a disco eran los usuarios distintos por día y semana; la agregación en dos niveles lo eliminó. PostgreSQL no es el cuello de botella en estas consultas. Pasar Actividad, Auditoría y el detalle de peticiones al paginador estándar (página + total) cuesta unos 17 ms por página por el conteo con tope de 10 000, y la página más profunda permitida 65 ms: es una regresión aceptada frente al cursor, dentro del umbral de 200 ms. Falta medir el p95 HTTP con carga real, el LCP del Dashboard y la salud del pool con Actuator; el resumen diario de actividad solo hace falta si el uso real se acerca al peor caso.
 
-En los permisos del rol, el problema no era la base sino la conversación: una petición, una transacción, una invalidación de la caché de autorización y un evento de auditoría por cada permiso, con un cupo de 60 escrituras por minuto que impedía armar un rol completo. El guardado en lote lo reduce a una petición por guardado (16 permisos: 4 sentencias, 1,98 ms en la base). Abrir el tablero cuesta 9 ms en la base con 40 veces el volumen real porque ahora también cuenta en cuántos roles está cada permiso; es una regresión aceptada, muy por debajo de 200 ms. El tablero suma 8,6 kB comprimidos solo a la ruta de Roles.
+En los permisos del rol, el problema no era la base sino la conversación: una petición, una transacción, una invalidación de la caché de autorización y un evento de auditoría por cada permiso, con un cupo de 60 escrituras por minuto que impedía armar un rol completo. El guardado en lote lo reduce a una petición por guardado (16 permisos: 4 sentencias, 1,98 ms en la base). Abrir el tablero cuesta 9 ms en la base con 40 veces el volumen real porque ahora también cuenta en cuántos roles está cada permiso; es una regresión aceptada, muy por debajo de 200 ms. El tablero, ya en el diálogo mediano con scroll en dos ejes y atajos de columna, suma 9,5 kB comprimidos solo a la ruta de Roles y se desplaza a 60 cuadros por segundo sin tareas largas.
