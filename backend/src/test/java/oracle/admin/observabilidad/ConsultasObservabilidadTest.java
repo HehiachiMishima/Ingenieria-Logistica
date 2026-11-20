@@ -4,14 +4,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import oracle.common.config.Transacciones;
 import oracle.common.exception.SolicitudInvalidaException;
+import oracle.common.response.ApiResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 @SpringBootTest
 @WithMockUser(authorities = {"VER_ACTIVIDAD", "VER_AUDITORIA"})
@@ -21,6 +27,7 @@ class ConsultasObservabilidadTest {
     @Autowired ResumenObservabilidad resumen;
     @Autowired ColaPeticiones cola;
     @Autowired JdbcTemplate jdbc;
+    @Autowired Transacciones transacciones;
 
     private static ColaPeticiones.Traza traza(String usuario, String ruta, int estado, long ms) {
         return new ColaPeticiones.Traza(UUID.randomUUID(), 1L, usuario, "GET", ruta, estado, ms, "prueba",
@@ -136,19 +143,69 @@ class ConsultasObservabilidadTest {
                     VALUES(gen_random_uuid(),1,?,'GET',?,200,1,'prueba')
                     """, usuario, ruta);
         }
-        var primera = consultas.actividad(1, usuario, 1, 10).datos();
-        var ultima = consultas.actividad(1, usuario, 6, 10).datos();
+        var primera = consultas.actividad(1, usuario, false, 1, 10).datos();
+        var ultima = consultas.actividad(1, usuario, false, 6, 10).datos();
         assertThat(primera.contenido()).hasSize(10).allMatch(f -> "/prueba".equals(f.get("ruta")));
         assertThat(primera.total()).isEqualTo(51);
         assertThat(primera.totalPaginas()).isEqualTo(6);
         assertThat(ultima.contenido()).hasSize(1);
         assertThat((Long) ultima.contenido().getFirst().get("id"))
                 .isLessThan((Long) primera.contenido().getLast().get("id"));
-        assertThatThrownBy(() -> consultas.actividad(91, usuario, 1, 10))
+        assertThatThrownBy(() -> consultas.actividad(91, usuario, false, 1, 10))
                 .isInstanceOf(SolicitudInvalidaException.class);
-        assertThatThrownBy(() -> consultas.actividad(1, usuario, 1, 51))
+        assertThatThrownBy(() -> consultas.actividad(1, usuario, false, 1, 51))
                 .isInstanceOf(SolicitudInvalidaException.class);
-        assertThatThrownBy(() -> consultas.actividad(1, usuario, 1001, 10))
+        assertThatThrownBy(() -> consultas.actividad(1, usuario, false, 1001, 10))
                 .isInstanceOf(SolicitudInvalidaException.class);
+    }
+
+    @Test
+    void laActividadFiltraElUsuarioSinDistinguirMayusculasYSoloLosCambios() {
+        String login = "Prueba-" + UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO seguridad.usuarios(usuario,contrasena,nombre,apellido,email,actualizado_por)
+                VALUES (?,'x','Prueba','Actividad',?,1)
+                """, login, login + "@prueba.test");
+        jdbc.update("""
+                INSERT INTO bitacora.peticiones(solicitud,actor_id,usuario,metodo,ruta,estado,duracion_ms,correlacion)
+                SELECT gen_random_uuid(),1,?,'GET','/prueba',200,10,'prueba' FROM generate_series(1,2)
+                """, login);
+        var cambio = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO bitacora.peticiones(solicitud,actor_id,usuario,metodo,ruta,estado,duracion_ms,correlacion)
+                VALUES (?,1,?,'DELETE','/api/simulacion/{id}',409,10,'prueba')
+                """, cambio, login);
+        new EventoAdministrativo(jdbc, cambio, 1L, login, "Eliminar", "Archivo Titan", "345", "prueba")
+                .insertar("Fallo", "345");
+
+        String escrito = login.toLowerCase();
+        assertThat(consultas.actividad(1, escrito, false, 1, 10).datos().total()).isEqualTo(3);
+        var cambios = consultas.actividad(1, escrito, true, 1, 10).datos();
+        assertThat(cambios.total()).isEqualTo(1);
+        assertThat(cambios.contenido().getFirst()).containsEntry("accion", "Eliminar")
+                .containsEntry("resultado", "Fallo").containsEntry("estado", 409);
+        assertThat(consultas.auditoria(7, login.toUpperCase(), null, null, 1, 10).datos().total()).isEqualTo(1);
+    }
+
+    /** Resultado de un alta, como los record de respuesta de cada módulo. */
+    public record Creado(Long id) {}
+
+    @Test
+    void unaPeticionConVariasTransaccionesRegistraUnSoloCambioConElIdCreado() {
+        var solicitud = UUID.randomUUID();
+        var peticion = new MockHttpServletRequest();
+        peticion.setAttribute(EventoAdministrativo.CLAVE, new EventoAdministrativo(jdbc, solicitud, 1L,
+                solicitud.toString(), "Crear", "Responsable de área", "5", "prueba"));
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(peticion));
+        try {
+            // Anidada y luego otra: antes, el segundo INSERT chocaba con la solicitud UNIQUE y tumbaba el cambio.
+            transacciones.ejecutar(() -> transacciones.ejecutar(() -> ApiResponse.ok("Creado.", new Creado(12L))));
+            transacciones.ejecutar(() -> new Creado(13L));
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
+        assertThat(jdbc.queryForList(
+                "SELECT registro, resultado FROM bitacora.auditoria_eventos WHERE solicitud = ?", solicitud))
+                .containsExactly(Map.of("registro", "5/12", "resultado", "Éxito"));
     }
 }

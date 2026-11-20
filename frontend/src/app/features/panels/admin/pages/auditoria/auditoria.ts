@@ -8,7 +8,13 @@ import { PanelFiltros } from '../../../../../shared/ui/panel-filtros/panel-filtr
 import { ObservabilidadApi } from '../../data/observabilidad.api';
 import { Evento, FiltrosAuditoria, Periodo, ResultadoAuditoria } from '../../data/observabilidad.model';
 import { ListadoPaginado } from '../../state/listado-paginado';
-import { BADGE_RESULTADO, PERIODOS_AUDITORIA, badgeEstado, inicialesDe } from '../../ui/observabilidad.util';
+import {
+  BADGE_RESULTADO,
+  PERIODOS_AUDITORIA,
+  badgeEstado,
+  inicialesDe,
+  registroVisible,
+} from '../../ui/observabilidad.util';
 import { SelectorPeriodo } from '../../ui/selector-periodo';
 
 type ClaveFiltro = 'usuario' | 'registro' | 'resultado';
@@ -32,12 +38,14 @@ export class Auditoria {
   readonly badgeResultado = BADGE_RESULTADO;
   readonly badgeEstado = badgeEstado;
   readonly iniciales = inicialesDe;
+  readonly registro = registroVisible;
 
   readonly filtros = signal<FiltrosAuditoria>({ dias: 7, usuario: '', registro: '', resultado: '' });
   readonly filtrosAbierto = signal(false);
 
   readonly lista = new ListadoPaginado<Evento>((pagina, tamano) => this.api.auditoria(this.filtros(), pagina, tamano));
-  readonly corte = computed(() => (this.lista.listado.listo() ? new Date() : null));
+  /** Hora de la última respuesta correcta: avanza con cada Actualizar, filtro o página. */
+  readonly corte = this.lista.listado.actualizado;
 
   readonly chips = computed<ChipFiltro[]>(() => {
     const f = this.filtros();

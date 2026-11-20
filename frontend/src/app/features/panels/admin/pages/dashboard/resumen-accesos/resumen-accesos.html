@@ -1,0 +1,58 @@
+<section class="ra" aria-labelledby="ra-titulo">
+  <div class="ra__rejilla">
+    @for (t of tarjetas(); track t.clave) {
+      <article class="dash-card ra__tarjeta" [class.dash-card--cargando]="cargando()">
+        <header class="dash-card__head">
+          <div class="dash-card__titulos">
+            <h3 class="dash-card__titulo"><ui-icon [name]="t.icono" [size]="18" /> {{ t.titulo }}</h3>
+          </div>
+          @if (t.verModulo) {
+            <a class="ra__ir" [routerLink]="t.ruta">
+              {{ t.enlace }} <ui-icon name="chevronRight" [size]="14" />
+            </a>
+          }
+        </header>
+        <div class="dash-card__body ra__cuerpo">
+          <p class="ra__cifra">
+            <strong>{{ t.valor }}</strong>
+            <span>{{ t.deTotal }}</span>
+          </p>
+          <p class="ra__detalle">
+            {{ t.detalle }}
+            @if (t.delta; as d) {
+              · <span class="ra__delta" [class.ra__delta--bien]="d.bueno" [class.ra__delta--mal]="!d.bueno">{{ d.texto }}</span>
+              <span class="ra__suave"> vs 30 días previos</span>
+            }
+          </p>
+
+          <!-- Reparto: barra segmentada (2 px de aire entre partes) y su leyenda con números. -->
+          <div class="ra__barra" [class.ra__barra--vacia]="t.vacia" role="img" [attr.aria-label]="t.aria">
+            @for (s of t.segmentos; track s.etiqueta) {
+              @if (s.valor > 0) {
+                <span [attr.data-tono]="s.tono" [style.flex-grow]="s.valor"></span>
+              }
+            }
+          </div>
+          <ul class="ra__leyenda" aria-hidden="true">
+            @for (s of t.segmentos; track s.etiqueta) {
+              <li [class.ra__leyenda--cero]="!s.valor">
+                <i [attr.data-tono]="s.tono"></i><b>{{ s.texto }}</b> {{ s.etiqueta }}
+              </li>
+            }
+          </ul>
+
+          <p class="ra__aviso" [attr.data-nivel]="t.aviso.nivel">
+            <ui-icon [name]="iconoNivel[t.aviso.nivel]" [size]="16" />
+            <span>{{ t.aviso.texto }}</span>
+          </p>
+        </div>
+      </article>
+    } @empty {
+      @if (cargando()) {
+        @for (i of [1, 2, 3]; track i) {
+          <span class="ui-skeleton ra__esqueleto" aria-hidden="true"></span>
+        }
+      }
+    }
+  </div>
+</section>

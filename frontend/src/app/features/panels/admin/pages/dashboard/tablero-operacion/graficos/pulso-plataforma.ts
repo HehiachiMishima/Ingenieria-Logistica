@@ -155,7 +155,7 @@ export class PulsoPlataforma {
       lista.push({
         etiqueta: 'Usuarios activos',
         valor: entero(a.usuarios),
-        nota: cuentas ? `${porcentaje(a.usuarios / cuentas)} de las cuentas` : 'con al menos una acción',
+        nota: cuentas ? `${porcentaje(a.usuarios / cuentas)} de las cuentas` : 'con al menos una petición',
         delta: deltaRelativo(a.usuarios, a.usuariosPrevios, false),
       });
     }

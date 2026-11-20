@@ -1,19 +1,6 @@
 @if (hayAlgo) {
   <section class="op" aria-labelledby="op-titulo">
-    <header class="op__head">
-      <div class="op__textos">
-        <h2 id="op-titulo" class="op__titulo"><ui-icon name="radar" [size]="20" /> Monitoreo y actividad</h2>
-        <p class="op__sub">
-          Salud de las APIs y uso de la plataforma: últimos {{ dias() }} días comparados con los {{ dias() }} anteriores.
-        </p>
-      </div>
-      <app-selector-periodo
-        [opciones]="periodos"
-        [valor]="dias()"
-        etiqueta="Período de monitoreo y actividad"
-        (cambio)="cambiarPeriodo($event)"
-      />
-    </header>
+
 
     @for (e of errores(); track e) {
       <p class="op__error" role="alert"><ui-icon name="alertTriangle" [size]="16" /> No se pudo cargar {{ e }}</p>
@@ -45,10 +32,6 @@
       <!-- 2 · ¿Cumplimos las metas? -->
       <article class="dash-card" [class.dash-card--cargando]="cargandoM() || cargandoA()">
         <header class="dash-card__head">
-          <div class="dash-card__titulos">
-            <h3 class="dash-card__titulo"><ui-icon name="checkCircleFilled" [size]="18" /> ¿Cumplimos las metas?</h3>
-            <p class="dash-card__sub">Cada indicador contra su meta y frente al período anterior; usuarios y acciones de las últimas 12 semanas.</p>
-          </div>
           @if (verActividad) {
             <a class="op__ir" routerLink="/admin/actividad">Actividad <ui-icon name="chevronRight" [size]="14" /></a>
           }

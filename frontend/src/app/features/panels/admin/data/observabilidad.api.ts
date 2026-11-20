@@ -50,8 +50,19 @@ export class ObservabilidadApi {
     return this.api.get<ResumenActividad>('/admin/actividad/resumen', { dias, usuario }, this.silenciosa);
   }
 
-  actividad(dias: Periodo, usuario: string, pagina: number, tamano: number): Observable<PaginaRemota<Evento>> {
-    return this.api.get<PaginaRemota<Evento>>('/admin/actividad', { dias, usuario, pagina, tamano }, this.silenciosa);
+  /** Con {@code soloCambios}, solo las peticiones que cambiaron datos (con evento de auditoría). */
+  actividad(
+    dias: Periodo,
+    usuario: string,
+    soloCambios: boolean,
+    pagina: number,
+    tamano: number,
+  ): Observable<PaginaRemota<Evento>> {
+    return this.api.get<PaginaRemota<Evento>>(
+      '/admin/actividad',
+      { dias, usuario, cambios: soloCambios || null, pagina, tamano },
+      this.silenciosa,
+    );
   }
 
   resumenAuditoria(f: FiltrosAuditoria): Observable<ResumenAuditoria> {

@@ -2,7 +2,7 @@
   <div>
     <h1 class="page-head__title">Auditoría</h1>
     <p class="page-head__sub">
-      Registro inmutable de cambios administrativos y de distribución Titan: quién, qué y con qué resultado.
+      Registro inmutable de los cambios de datos de todos los paneles: quién, qué y con qué resultado.
       <!-- Siempre presente (oculto mientras carga): al llegar los datos el encabezado no salta. -->
       <span class="obs-nota" [class.obs-oculto]="!corte()">· Actualizado {{ corte() ? (corte() | date: 'HH:mm') : '--:--' }}</span>
     </p>
@@ -60,7 +60,7 @@
   <section class="filtro-seccion">
     <h3 class="filtro-seccion__titulo"><ui-icon name="user" [size]="15" /> Quién y qué</h3>
     <div class="ui-field">
-      <label class="ui-label" for="auditoria-usuario">Nombre de usuario exacto</label>
+      <label class="ui-label" for="auditoria-usuario">Nombre de usuario</label>
       <input
         id="auditoria-usuario"
         name="usuario"
@@ -71,6 +71,7 @@
         (change)="aplicarTexto('usuario', $any($event.target).value)"
         (keydown.enter)="aplicarTexto('usuario', $any($event.target).value)"
       />
+      <span class="filtro-nota">Completo; no distingue mayúsculas ni tildes.</span>
     </div>
     <div class="ui-field">
       <label class="ui-label" for="auditoria-registro">ID del registro</label>
@@ -131,7 +132,7 @@
                 <span class="ui-table__primary">{{ e.accion }}</span>
                 <span class="u-muted"> · {{ e.entidad }}</span>
               </td>
-              <td><span class="u-mono">{{ e.registro || '—' }}</span></td>
+              <td><span class="u-mono">{{ registro(e) || '—' }}</span></td>
               <td>
                 <span class="ui-badge" [class]="badgeResultado[e.resultado ?? ''] ?? 'ui-badge--neutral'">
                   <span class="ui-dot"></span> {{ e.resultado }}

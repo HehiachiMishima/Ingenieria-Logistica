@@ -51,7 +51,7 @@ const escala = (v: number, desde: number, hasta: number) => Math.min(100, Math.m
 /**
  * Tablero de metas: cada indicador contra su meta, con un estado en palabras (nunca solo
  * color). Disponibilidad y tasa de error en medidor; el tiempo p95 en una gráfica de bala con
- * sus tramos (en meta, atención, crítico); usuarios y acciones con su tendencia de 12 semanas.
+ * sus tramos (en meta, atención, crítico); usuarios y peticiones de usuarios con su tendencia de 12 semanas.
  */
 @Component({
   selector: 'app-tablero-metas',
@@ -145,19 +145,19 @@ export class TableroMetas {
         valor: entero(a.usuarios),
         nivel: null,
         delta: deltaRelativo(a.usuarios, a.usuariosPrevios, false),
-        nota: cuentas ? `${porcentaje(a.usuarios / cuentas)} de las cuentas activas` : 'con al menos una acción',
+        nota: cuentas ? `${porcentaje(a.usuarios / cuentas)} de las cuentas activas` : 'con al menos una petición',
         tipo: 'tendencia',
         ...this.tendencia(a.semanas.map((s) => ({ periodo: s.periodo, valor: s.usuarios })), (v) => `${entero(v)} usuarios`),
       });
       lista.push({
         clave: 'acciones',
-        etiqueta: 'Acciones',
+        etiqueta: 'Peticiones de usuarios',
         valor: compacto(a.acciones),
         nivel: null,
         delta: deltaRelativo(a.acciones, a.accionesPrevias, false),
-        nota: 'clics y cambios en la plataforma',
+        nota: 'consultas y cambios en la plataforma',
         tipo: 'tendencia',
-        ...this.tendencia(a.semanas.map((s) => ({ periodo: s.periodo, valor: s.acciones })), (v) => `${entero(v)} acciones`),
+        ...this.tendencia(a.semanas.map((s) => ({ periodo: s.periodo, valor: s.acciones })), (v) => `${entero(v)} peticiones`),
       });
     }
     return lista;

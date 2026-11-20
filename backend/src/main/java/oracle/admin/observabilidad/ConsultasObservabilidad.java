@@ -53,9 +53,25 @@ public class ConsultasObservabilidad {
                 args.add(valor.strip());
             }
         }
-        /** Condición fija escrita en esta clase (nunca con datos del usuario). */
-        void y(String condicion) {
+        /**
+         * Usuario sin distinguir mayúsculas ni tildes: se traduce al login guardado (seguridad.usuarios
+         * usa la intercalación comun.ci) y se compara por igualdad, así sigue usando el índice
+         * (usuario, id DESC). Un usuario ya eliminado se busca tal como se escribió.
+         */
+        void usuario(String columna, String valor) {
+            if (valor != null && !valor.isBlank()) {
+                if (valor.length() > 250) throw new SolicitudInvalidaException("Filtro demasiado largo.");
+                // Q: uq_usuarios_usuario (usuario) una vez; luego <tabla>_usuario (usuario, id DESC).
+                where.append(" AND ").append(columna).append(" = coalesce(")
+                    .append("(SELECT u.usuario FROM seguridad.usuarios u WHERE u.usuario = ?), ?) COLLATE \"default\"");
+                args.add(valor.strip());
+                args.add(valor.strip());
+            }
+        }
+        /** Condición fija escrita en esta clase (nunca con datos del usuario), con sus parámetros. */
+        void y(String condicion, Object... valores) {
             where.append(" AND ").append(condicion);
+            args.addAll(List.of(valores));
         }
     }
 
@@ -95,7 +111,7 @@ public class ConsultasObservabilidad {
             throw new SolicitudInvalidaException("Resultado no válido: usa Éxito, Fallo o Denegado.");
         }
         var f = new Filtro("a", dias);
-        f.igual("a.usuario", usuario);
+        f.usuario("a.usuario", usuario);
         f.igual("a.registro", registro);
         f.igual("a.resultado", resultado);
         return pagina("""
@@ -108,11 +124,18 @@ public class ConsultasObservabilidad {
     @GetMapping("/actividad")
     @PreAuthorize("hasAuthority('VER_ACTIVIDAD')")
     public ApiResponse<PaginaResponse<Map<String, Object>>> actividad(@RequestParam(defaultValue="7") int dias,
-            @RequestParam(required=false) String usuario, @RequestParam(defaultValue="1") int pagina,
-            @RequestParam(defaultValue="" + TAMANO) int tamano) {
+            @RequestParam(required=false) String usuario, @RequestParam(defaultValue="false") boolean cambios,
+            @RequestParam(defaultValue="1") int pagina, @RequestParam(defaultValue="" + TAMANO) int tamano) {
         var f = new Filtro("p", dias);
         f.y("p.actor_id IS NOT NULL AND p.ruta NOT IN (" + ColaPeticiones.RUTAS_TECNICAS + ")");
-        f.igual("p.usuario", usuario);
+        f.usuario("p.usuario", usuario);
+        if (cambios) {
+            // Solo las peticiones con evento de auditoría. El evento se escribe durante la petición y la
+            // traza al terminarla: la hora de margen evita perder los del borde del período.
+            // Q: auditoria_fecha (ocurrido_en, id) arma el semi-join; luego peticiones_fecha.
+            f.y("p.solicitud IN (SELECT a2.solicitud FROM bitacora.auditoria_eventos a2"
+                + " WHERE a2.ocurrido_en >= now() - (? * interval '1 day') - interval '1 hour')", dias);
+        }
         return pagina("""
             SELECT p.id,p.ocurrido_en AS fecha,p.usuario,p.metodo,p.ruta,p.estado,p.duracion_ms,
                    p.correlacion,a.accion,a.entidad,a.registro,a.resultado

@@ -1,0 +1,232 @@
+// Usuarios, roles y permisos: tres tarjetas gemelas (3 en escritorio, 1 por fila en celular).
+// El reparto usa los colores de estado del sistema y la marca solo para los permisos activos.
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.ra__head {
+  margin-bottom: var(--space-4);
+}
+
+.ra__titulo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+
+  ui-icon {
+    color: var(--accent);
+  }
+}
+
+.ra__sub {
+  margin: var(--space-1) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+
+.ra__rejilla {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+  gap: var(--space-4);
+}
+
+// `.dash-card` ocupa 12 columnas en la rejilla del dashboard; aquí cada tarjeta es una columna.
+.dash-card.ra__tarjeta {
+  grid-column: auto;
+}
+
+.ra__ir {
+  display: inline-flex;
+  align-self: center;
+  align-items: center;
+  gap: 2px;
+  min-height: 32px;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+.ra__cuerpo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+// La cifra protagonista de cada módulo, con su total en pequeño.
+.ra__cifra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px var(--space-2);
+  margin: 0;
+
+  strong {
+    font-size: clamp(2rem, 1.6rem + 1.2vw, 2.5rem);
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.03em;
+    color: var(--text);
+  }
+
+  span {
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    color: var(--text-3);
+  }
+}
+
+.ra__detalle {
+  min-height: 2.6em;
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+  color: var(--text-2);
+}
+
+.ra__delta {
+  font-weight: 700;
+  white-space: nowrap;
+
+  &--bien {
+    color: var(--success);
+  }
+
+  &--mal {
+    color: var(--danger);
+  }
+}
+
+.ra__suave {
+  color: var(--text-3);
+}
+
+// Barra segmentada fina, de punta redondeada; las partes se separan con 2 px del fondo.
+.ra__barra {
+  display: flex;
+  gap: 2px;
+  height: 10px;
+  margin-top: var(--space-2);
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+
+  span {
+    flex-basis: 0;
+    min-width: 4px;
+  }
+
+  // Sin datos: solo la pista, para que la tarjeta no quede con un hueco.
+  &--vacia {
+    background: color-mix(in srgb, var(--text-3) 14%, var(--surface));
+  }
+}
+
+[data-tono='bien'] {
+  background: var(--success);
+}
+
+[data-tono='atencion'] {
+  background: var(--warning);
+}
+
+[data-tono='critico'] {
+  background: var(--danger);
+}
+
+[data-tono='marca'] {
+  background: var(--accent);
+}
+
+[data-tono='neutro'] {
+  background: color-mix(in srgb, var(--text-3) 38%, var(--surface));
+}
+
+// Leyenda: el número y el nombre de cada parte (el color nunca va solo).
+.ra__leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+
+  li {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  i {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+  }
+
+  b {
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  // Una parte en cero se nombra igual (la leyenda no cambia), pero apagada.
+  &--cero {
+    opacity: 0.6;
+  }
+}
+
+// Lo único que hay que revisar (o que está todo en orden), con ícono y texto.
+.ra__aviso {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: auto 0 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  line-height: 1.4;
+
+  ui-icon {
+    flex: none;
+    margin-top: 1px;
+  }
+
+  &[data-nivel='ok'] {
+    color: var(--success);
+    background: color-mix(in srgb, var(--success) 10%, var(--surface));
+  }
+
+  &[data-nivel='aviso'] {
+    color: color-mix(in srgb, var(--warning) 80%, var(--text));
+    background: color-mix(in srgb, var(--warning) 12%, var(--surface));
+  }
+
+  &[data-nivel='riesgo'] {
+    color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  }
+}
+
+.ra__esqueleto {
+  display: block;
+  height: 236px; // responsive:ok esqueleto con el alto de una tarjeta (sin saltos al cargar)
+  border-radius: var(--radius-xl);
+}

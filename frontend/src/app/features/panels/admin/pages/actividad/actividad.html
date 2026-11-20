@@ -2,7 +2,8 @@
   <div>
     <h1 class="page-head__title">Actividad</h1>
     <p class="page-head__sub">
-      Peticiones de cada usuario, las más recientes primero. El detalle se conserva 30 días.
+      Peticiones de cada usuario, las más recientes primero. «Cambio» dice qué datos modificó y si se guardó;
+      las consultas muestran —. El detalle se conserva 30 días.
       <!-- Siempre presente (oculto mientras carga): al llegar los datos el encabezado no salta. -->
       <span class="obs-nota" [class.obs-oculto]="!corte()">· Actualizado {{ corte() ? (corte() | date: 'HH:mm') : '--:--' }}</span>
     </p>
@@ -30,7 +31,7 @@
   </button>
 </div>
 
-<ui-filtros-activos [chips]="chips()" (quitar)="quitarFiltro($event)" (limpiar)="aplicarUsuario('')" />
+<ui-filtros-activos [chips]="chips()" (quitar)="quitarFiltro($event)" (limpiar)="limpiar()" />
 
 <ui-panel-filtros
   id="actividad-filtros"
@@ -38,12 +39,29 @@
   [activos]="filtrosActivos()"
   titulo="Filtrar actividad"
   (cerrar)="filtrosAbierto.set(false)"
-  (limpiar)="aplicarUsuario('')"
+  (limpiar)="limpiar()"
 >
+  <section class="filtro-seccion">
+    <h3 class="filtro-seccion__titulo"><ui-icon name="edit" [size]="15" /> Mostrar</h3>
+    <div class="ui-rango" role="group" aria-label="Mostrar">
+      @for (v of vistas; track v.soloCambios) {
+        <button
+          type="button"
+          class="ui-rango__btn"
+          [class.ui-rango__btn--on]="soloCambios() === v.soloCambios"
+          [attr.aria-pressed]="soloCambios() === v.soloCambios"
+          (click)="aplicarVista(v.soloCambios)"
+        >
+          {{ v.etiqueta }}
+        </button>
+      }
+    </div>
+    <span class="filtro-nota">«Solo cambios» oculta las consultas y deja lo que creó, editó o eliminó datos.</span>
+  </section>
   <section class="filtro-seccion">
     <h3 class="filtro-seccion__titulo"><ui-icon name="user" [size]="15" /> Usuario</h3>
     <div class="ui-field">
-      <label class="ui-label" for="actividad-usuario">Nombre de usuario exacto</label>
+      <label class="ui-label" for="actividad-usuario">Nombre de usuario</label>
       <input
         id="actividad-usuario"
         name="usuario"
@@ -55,6 +73,7 @@
         (keydown.enter)="aplicarUsuario($any($event.target).value)"
       />
     </div>
+    <span class="filtro-nota">Completo; no distingue mayúsculas ni tildes.</span>
   </section>
 </ui-panel-filtros>
 
@@ -68,11 +87,7 @@
       </button>
     </ui-empty>
   } @else if (lista.listado.items().length === 0) {
-    <ui-empty
-      icono="usuarios"
-      [titulo]="usuario() ? 'Sin resultados' : 'Sin actividad'"
-      [mensaje]="usuario() ? 'Ese usuario no tiene peticiones en el período.' : 'Aún no hay peticiones de usuarios en el período.'"
-    />
+    <ui-empty icono="usuarios" [titulo]="vacio().titulo" [mensaje]="vacio().mensaje" />
   } @else {
     <div class="ui-table-wrap">
       <table class="ui-table">
@@ -81,7 +96,7 @@
             <th>Fecha y hora</th>
             <th>Usuario</th>
             <th>Petición</th>
-            <th>Acción</th>
+            <th>Cambio</th>
             <th>Estado</th>
             <th class="obs-num">Duración</th>
             <th>ID de correlación</th>
@@ -94,7 +109,7 @@
               <td>
                 <div class="ui-person">
                   <span class="ui-avatar">{{ iniciales(e.usuario) }}</span>
-                  <span class="ui-table__primary" [title]="e.usuario ?? ''">{{ e.usuario || 'Anónimo' }}</span>
+                  <span class="ui-table__primary" [title]="e.usuario ?? ''">{{ e.usuario }}</span>
                 </div>
               </td>
               <td>
@@ -105,9 +120,23 @@
               </td>
               <td>
                 @if (e.accion) {
-                  {{ e.accion }} · {{ e.entidad }} <span class="u-mono">{{ e.registro }}</span>
+                  <!-- Qué cambió y si se guardó: un 409 o un 403 no se lee como hecho. -->
+                  <span class="obs-cambio">
+                    <span class="obs-cambio__que">
+                      <span class="ui-table__primary">{{ e.accion }}</span>
+                      <span class="u-muted"> · {{ e.entidad }}</span>
+                      @if (registro(e); as r) {
+                        <span class="u-mono obs-cambio__registro">{{ r }}</span>
+                      }
+                    </span>
+                    @if (e.resultado; as res) {
+                      <span class="ui-badge" [class]="badgeResultado[res] ?? 'ui-badge--neutral'">
+                        <span class="ui-dot"></span> {{ res }}
+                      </span>
+                    }
+                  </span>
                 } @else {
-                  <span class="u-muted">—</span>
+                  <span class="u-muted" title="Consulta: no cambió datos">—</span>
                 }
               </td>
               <td><span class="ui-badge" [class]="badgeEstado(e.estado)">HTTP {{ e.estado }}</span></td>

@@ -1,4 +1,4 @@
-import { EndpointMonitoreo, Periodo } from '../data/observabilidad.model';
+import { EndpointMonitoreo, Evento, Periodo } from '../data/observabilidad.model';
 import { OpcionPeriodo } from './selector-periodo';
 
 /** Meta de tiempo de respuesta (p95) por API, en ms. */
@@ -108,4 +108,14 @@ export function inicialesDe(usuario: string | null | undefined): string {
   const partes = (usuario ?? '').split(/[.\-_@\s]+/).filter(Boolean);
   const texto = partes.length > 1 ? partes[0][0] + partes[1][0] : (partes[0] ?? '?').slice(0, 2);
   return texto.toUpperCase();
+}
+
+/**
+ * Registro de un cambio tal como se muestra: el id (o «usuario/rol», «área/responsable»);
+ * un alta que falló no llegó a tener id y se lee «nuevo». Vacío cuando no aplica
+ * (p. ej. predeterminados o la propia cuenta).
+ */
+export function registroVisible(e: Pick<Evento, 'accion' | 'registro'>): string {
+  if (e.registro) return e.registro;
+  return e.accion === 'Crear' || e.accion === 'Subir' ? 'nuevo' : '';
 }

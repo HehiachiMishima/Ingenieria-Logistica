@@ -33,6 +33,8 @@ export class ListadoRemoto<T> {
   readonly error = signal<string | null>(null);
   /** true tras la primera respuesta (con o sin datos). */
   readonly listo = signal(false);
+  /** Hora de la última respuesta correcta («Actualizado HH:mm»); un fallo conserva la anterior. */
+  readonly actualizado = signal<Date | null>(null);
   /** Recarga en curso con datos ya visibles: la UI atenúa la tabla en vez de vaciarla. */
   readonly refrescando = computed(() => this.cargando() && this.listo());
   /** Primera carga: la UI muestra el esqueleto/spinner. */
@@ -74,6 +76,7 @@ export class ListadoRemoto<T> {
         }
         this.items.set(pagina.contenido);
         this.total.set(pagina.total);
+        this.actualizado.set(new Date());
       });
   }
 
@@ -90,6 +93,7 @@ export class ListadoRemoto<T> {
     this.total.set(0);
     this.error.set(null);
     this.listo.set(false);
+    this.actualizado.set(null);
   }
 }
 

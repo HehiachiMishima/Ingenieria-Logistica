@@ -9,3 +9,19 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+// Cambio: qué se modificó y su resultado. Parte en líneas antes de ensanchar la tabla;
+// el resultado baja bajo el texto cuando no cabe al lado.
+.obs-cambio {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 18ch;
+  max-width: 34ch;
+}
+
+.obs-cambio__registro {
+  margin-left: var(--space-1);
+  overflow-wrap: anywhere;
+}
