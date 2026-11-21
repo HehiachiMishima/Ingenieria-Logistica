@@ -13,6 +13,7 @@ import java.util.Optional;
 import java.util.function.Predicate;
 import oracle.simulacion.model.Balanceo;
 import oracle.simulacion.model.HistorialBalanceo;
+import oracle.simulacion.response.LocalesRutaResponse;
 import oracle.simulacion.service.SimulacionExcel;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -501,6 +502,165 @@ public class SimulacionLotesRepository {
           ps.setString(13, ruta.frecuencia());
           ps.setString(14, ruta.dias());
         });
+  }
+
+  /** Tope de locales que devuelve el detalle de una ruta (la consulta pide uno más para saberlo). */
+  public static final int MAX_LOCALES_DETALLE = 5_000;
+
+  /** Clave única de una ruta en su registro: código canónico y tipo (como en uq_rutas_archivo_ruta_tipo). */
+  public static String clave(SimulacionExcel.FilaRuta ruta) {
+    return SimulacionExcel.nombre(ruta.codigoRuta()) + '\u0000' + ruta.tipo().name();
+  }
+
+  /** Totales de una ruta guardada: para reconocer la misma ruta en el Excel al completar sus locales. */
+  public record TotalesRuta(long id, BigDecimal bultos, BigDecimal unidades, BigDecimal lineas) {
+    public boolean coincide(SimulacionExcel.FilaRuta fila) {
+      return bultos.compareTo(fila.bultos()) == 0
+          && unidades.compareTo(fila.unidades()) == 0
+          && lineas.compareTo(fila.lineas()) == 0;
+    }
+  }
+
+  /** Un local listo para insertar: su ruta, su orden en el Excel y sus totales. */
+  private record FilaLocal(long rutaId, int orden, SimulacionExcel.LocalRuta local) {}
+
+  /**
+   * Los locales de cada ruta del archivo recién insertado, en el orden del Excel. Las rutas se
+   * leen de una vez por su clave única (código, tipo) y los locales van por lotes.
+   */
+  public void insertarLocales(Long archivoId, List<SimulacionExcel.FilaRuta> rutas) {
+    Map<String, Long> ids = new HashMap<>(rutas.size() * 2);
+    jdbc.query(
+        "SELECT id, codigo_ruta, tipo FROM simulacion.rutas_proyeccion WHERE archivo_id = ?",
+        (java.sql.ResultSet rs) -> {
+          ids.put(rs.getString(2) + '\u0000' + rs.getString(3), rs.getLong(1));
+        },
+        archivoId);
+    List<FilaLocal> filas = new ArrayList<>();
+    for (SimulacionExcel.FilaRuta ruta : rutas) {
+      Long rutaId = ids.get(clave(ruta));
+      if (rutaId == null) {
+        throw new IllegalStateException("La ruta " + ruta.codigoRuta() + " no quedó insertada.");
+      }
+      agregarLocales(filas, rutaId, ruta);
+    }
+    insertarFilas(filas);
+  }
+
+  /** Totales de cada ruta del registro, por su clave (código canónico, tipo). */
+  public Map<String, TotalesRuta> totalesRutas(Long archivoId) {
+    Map<String, TotalesRuta> rutas = new HashMap<>();
+    // Q: idx_rutas_archivo_id (archivo_id, id).
+    jdbc.query(
+        """
+        SELECT id, codigo_ruta, tipo, total_bultos, total_unidades, total_lineas
+        FROM simulacion.rutas_proyeccion WHERE archivo_id = ?
+        """,
+        (java.sql.ResultSet rs) -> {
+          rutas.put(
+              rs.getString(2) + '\u0000' + rs.getString(3),
+              new TotalesRuta(rs.getLong(1), rs.getBigDecimal(4), rs.getBigDecimal(5), rs.getBigDecimal(6)));
+        },
+        archivoId);
+    return rutas;
+  }
+
+  /**
+   * Reemplaza los locales de estas rutas (id de ruta → su ruta del Excel) y deja su conteo de
+   * locales en el número de locales que trae.
+   */
+  public void reemplazarLocales(Map<Long, SimulacionExcel.FilaRuta> porRuta) {
+    if (porRuta.isEmpty()) {
+      return;
+    }
+    Long[] ids = porRuta.keySet().toArray(Long[]::new);
+    // Q: pk_rutas_locales (ruta_id, orden).
+    jdbc.update(
+        conexion -> {
+          var ps = conexion.prepareStatement("DELETE FROM simulacion.rutas_locales WHERE ruta_id = ANY (?)");
+          ps.setArray(1, conexion.createArrayOf("bigint", ids));
+          return ps;
+        });
+    List<FilaLocal> filas = new ArrayList<>();
+    porRuta.forEach((rutaId, ruta) -> agregarLocales(filas, rutaId, ruta));
+    insertarFilas(filas);
+    jdbc.batchUpdate(
+        "UPDATE simulacion.rutas_proyeccion SET conteo_cod = ? WHERE id = ?",
+        new ArrayList<>(porRuta.entrySet()),
+        LOTE,
+        (ps, e) -> {
+          ps.setInt(1, e.getValue().conteoCod());
+          ps.setLong(2, e.getKey());
+        });
+  }
+
+  /** Total de locales del registro (archivos_excel.total_cod) tras cambiar el de alguna ruta. */
+  public int totalCod(Long archivoId) {
+    Integer total =
+        jdbc.queryForObject(
+            "SELECT COALESCE(SUM(conteo_cod), 0)::int FROM simulacion.rutas_proyeccion WHERE archivo_id = ?",
+            Integer.class,
+            archivoId);
+    return total == null ? 0 : total;
+  }
+
+  private static void agregarLocales(List<FilaLocal> filas, long rutaId, SimulacionExcel.FilaRuta ruta) {
+    int orden = 0;
+    for (SimulacionExcel.LocalRuta local : ruta.locales()) {
+      filas.add(new FilaLocal(rutaId, ++orden, local));
+    }
+  }
+
+  private void insertarFilas(List<FilaLocal> filas) {
+    jdbc.batchUpdate(
+        """
+        INSERT INTO simulacion.rutas_locales (ruta_id, orden, cod, filas, bultos, unidades, lineas)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        filas,
+        LOTE,
+        (ps, f) -> {
+          ps.setLong(1, f.rutaId());
+          ps.setInt(2, f.orden());
+          ps.setString(3, f.local().cod());
+          ps.setInt(4, f.local().filas());
+          ps.setBigDecimal(5, f.local().bultos());
+          ps.setBigDecimal(6, f.local().unidades());
+          ps.setBigDecimal(7, f.local().lineas());
+        });
+  }
+
+  /**
+   * Locales de una ruta del archivo, en el orden del Excel, hasta {@link #MAX_LOCALES_DETALLE} + 1
+   * (el de más indica que hay más). Vacío si la ruta no es del archivo o no tiene detalle.
+   */
+  public List<LocalesRutaResponse.Local> localesDeRuta(Long archivoId, Long rutaId) {
+    // Q: PK rutas_locales (ruta_id, orden) y PK de rutas_proyeccion (id).
+    return jdbc.query(
+        """
+        SELECT l.cod, l.filas, l.bultos, l.unidades, l.lineas
+        FROM simulacion.rutas_locales l
+        JOIN simulacion.rutas_proyeccion r ON r.id = l.ruta_id
+        WHERE l.ruta_id = ? AND r.archivo_id = ?
+        ORDER BY l.orden
+        LIMIT ?
+        """,
+        (rs, i) ->
+            new LocalesRutaResponse.Local(
+                rs.getString(1), rs.getInt(2), rs.getBigDecimal(3), rs.getBigDecimal(4), rs.getBigDecimal(5)),
+        rutaId,
+        archivoId,
+        MAX_LOCALES_DETALLE + 1);
+  }
+
+  /** La ruta pertenece al archivo (para distinguir «sin detalle» de «no existe»). */
+  public boolean rutaDelArchivo(Long archivoId, Long rutaId) {
+    return Boolean.TRUE.equals(
+        jdbc.queryForObject(
+            "SELECT EXISTS (SELECT 1 FROM simulacion.rutas_proyeccion WHERE id = ? AND archivo_id = ?)",
+            Boolean.class,
+            rutaId,
+            archivoId));
   }
 
   /**

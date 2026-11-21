@@ -79,6 +79,9 @@ class PlanoChutesTest {
     SimulacionExcel.Analisis ajustado =
         registro().alPlano(new SimulacionExcel.Analisis(List.of(fila("2001", "CHUTE 05")), BigDecimal.TEN));
     assertEquals("5", ajustado.rutas().get(0).chute());
+    // Ajustar al plano solo cambia el chute: los locales de la ruta se conservan (antes se perdían).
+    assertEquals(
+        List.of(new SimulacionExcel.LocalRuta("L-2001", 1, 1000, 100, 100)), ajustado.rutas().get(0).locales());
   }
 
   private SimulacionRegistroService registro() {
@@ -92,6 +95,7 @@ class PlanoChutesTest {
 
   private static SimulacionExcel.FilaRuta fila(String codigo, String chute) {
     return new SimulacionExcel.FilaRuta(
-        codigo, "CL1", chute, "A", "DIARIA", "L-M-X-J-V-S", TipoRuta.B2C, BigDecimal.TEN, BigDecimal.ONE, BigDecimal.ONE, 1);
+        codigo, "CL1", chute, "A", "DIARIA", "L-M-X-J-V-S", TipoRuta.B2C, BigDecimal.TEN, BigDecimal.ONE, BigDecimal.ONE, 1,
+        List.of(new SimulacionExcel.LocalRuta("L-" + codigo, 1, 1000, 100, 100)));
   }
 }

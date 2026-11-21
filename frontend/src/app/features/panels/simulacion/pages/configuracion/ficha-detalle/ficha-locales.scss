@@ -1,0 +1,483 @@
+/*
+ * Ficha de una ruta: su ficha de la planilla y la cuadrícula de sus locales del Excel, con el
+ * diseño de la planilla de Titan: marco de 2 px (--mz-marco), bloques separados por 1 px, bultos en
+ * kraft, cabecera como la de los chutes y respiro blanco entre fichas. Archivo aparte: el
+ * componente pasaría el presupuesto de estilos por archivo.
+ */
+
+.detalle-pop--ruta {
+  /* Variables de la planilla (en Configuración las define `.mz`). */
+  --mz-marco: light-dark(#5b6f8f, #5a76a6);
+  --mz-fila-ruta: 54px;
+  --kraft: #c8894a;
+
+  width: min(420px, calc(100vw - 24px)); /* responsive:ok mismo patrón que .detalle-pop (fija, nunca más ancha que la ventana) */
+  container: ficha-ruta / inline-size;
+
+  /* Solo la cuadrícula cede alto cuando falta espacio; lo demás conserva el suyo. */
+  > * {
+    flex: none;
+  }
+}
+
+.detalle-pop--ruta.detalle-pop--hoja {
+  width: auto;
+  /* Con la cuadrícula de locales, la hoja usa más alto que la de un cluster. */
+  max-height: min(85dvh, calc(100dvh - 24px)) !important;
+}
+
+/* ---------- Cabecera: la ficha de la planilla · título · cerrar ---------- */
+
+.loc-cabeza {
+  gap: var(--space-3);
+}
+
+.loc-ficha {
+  flex: none;
+  width: 156px; /* responsive:ok el ancho de columna de la planilla; en fichas angostas el título baja */
+  height: 54px;
+
+  .matriz-ruta {
+    height: 100%;
+    cursor: default;
+  }
+}
+
+.loc-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+  color: var(--text-3);
+}
+
+.loc-kraft {
+  background: color-mix(in srgb, var(--kraft) 16%, var(--surface)) !important;
+}
+
+/* La base del sistema deja los svg en bloque: aquí la caja va en la línea de su número. */
+.loc-tot__k .caja-bulto,
+.loc-mini__bultos .caja-bulto,
+.loc-pie .caja-bulto {
+  display: inline-block;
+}
+
+/* Celular: campos de 16 px para que iOS no acerque la pantalla al tocarlos. */
+.detalle-pop--hoja .loc-filtros .ui-input {
+  font-size: 16px;
+}
+
+/* ---------- Totales en bloques con el marco de la ficha ---------- */
+
+.loc-tot {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 1px;
+  margin: 0;
+  background: color-mix(in srgb, var(--mz-marco) 45%, var(--border));
+  border: 2px solid var(--mz-marco);
+}
+
+.loc-tot__k {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 6px 9px;
+  background: var(--surface);
+
+  dt {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+
+  dd {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 800;
+    line-height: 1.25;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+
+  .caja-bulto {
+    width: 15px;
+    height: 15px;
+    margin-right: 5px;
+    vertical-align: -2px;
+  }
+}
+
+/* Peso en su chute y operarios: una línea discreta. */
+.loc-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--space-3);
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+
+  span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  strong {
+    color: var(--text);
+  }
+}
+
+/* ---------- Buscador y bultos mínimos ---------- */
+
+.loc-filtros {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.loc-buscar .ui-input {
+  width: 100%;
+  min-height: 36px;
+}
+
+.loc-min {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--text-2);
+  white-space: nowrap; /* responsive:ok «Bultos ≥», texto fijo de 9 caracteres */
+
+  .ui-input {
+    width: 84px;
+    min-height: 36px;
+  }
+}
+
+/* Ficha angosta (celulares de 320–360 px): la ficha y el cierre arriba, el título debajo, y los
+   bultos mínimos bajo el buscador. */
+@container ficha-ruta (max-width: 320px) {
+  .loc-cabeza {
+    flex-wrap: wrap;
+
+    .ficha-cabeza__titulo {
+      flex-basis: 100%;
+      order: 3;
+    }
+
+    .ficha-cerrar {
+      margin-left: auto;
+    }
+  }
+
+  .loc-filtros {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------- Cuadrícula: alto acotado y scroll vertical propio ---------- */
+
+.loc-scroll {
+  flex: 1 1 auto !important;
+  min-height: 150px;
+  max-height: 320px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  /* Al llegar con Tab, lo enfocado no queda bajo la cabecera ni el pie fijos (el pie crece con
+     el texto y, en fichas angostas, pasa a dos o tres líneas). */
+  scroll-padding-block: 2.75rem 4.5rem;
+  container-type: inline-size;
+  background: var(--surface);
+  border-radius: 10px 10px 0 0;
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+/* En la hoja inferior del celular la cuadrícula llena el alto de la hoja. */
+.detalle-pop--hoja .loc-scroll {
+  max-height: none;
+}
+
+/* Cabecera como la de los chutes (fondo de tabla y línea de marca), fija al desplazar. */
+.loc-cab {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  height: 38px;
+  padding: 0 10px;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--table-head-fg);
+  background: var(--table-head-bg);
+  border-bottom: 2px solid var(--brand);
+  border-radius: 10px 10px 0 0;
+}
+
+.loc-cab__n {
+  padding: 2px 8px;
+  letter-spacing: 0.04em;
+  white-space: nowrap; /* responsive:ok la cuenta «7 de 14» */
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 99px;
+}
+
+/* Dos mini fichas por fila, con el respiro blanco de la planilla (3 px abajo, 2 px al lado). */
+.loc-grilla {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px 2px;
+  margin: 0;
+  padding: 3px 0 0;
+  list-style: none;
+}
+
+@container (max-width: 260px) {
+  .loc-grilla {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Mini ficha de un local: dos filas como la de la ruta (COD · bultos / unidades · líneas). */
+.loc-mini {
+  position: relative;
+  display: grid;
+  grid-template-rows: 24px 24px;
+  gap: 1px;
+  min-width: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--border) 55%, var(--surface));
+  border: 2px solid var(--mz-marco);
+
+  &:hover {
+    outline: 2px solid var(--pop-color, var(--accent));
+    outline-offset: -2px;
+  }
+}
+
+.loc-mini__arriba,
+.loc-mini__abajo {
+  display: flex;
+  gap: 1px;
+  min-width: 0;
+}
+
+.loc-mini__cod,
+.loc-mini__bultos,
+.loc-mini__abajo > span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  line-height: 24px;
+  text-align: center;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.loc-mini__cod {
+  flex: 0 1 auto;
+  min-width: 54px;
+  max-width: 50%;
+  padding: 0 6px;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 800;
+  color: #fff;
+  background: var(--table-head-bg);
+
+  /* Fila sin COD: gris, como la pestaña de una ruta sin grupo. */
+  &--sin {
+    font-family: var(--font-sans);
+    font-size: 0.64rem;
+    background: color-mix(in srgb, var(--text-3) 55%, var(--surface));
+  }
+}
+
+.loc-mini__bultos {
+  flex: 1 1 auto;
+  padding: 0 4px;
+  font-size: 0.84rem;
+  color: var(--text);
+  background: color-mix(in srgb, var(--kraft) 16%, var(--surface));
+
+  .caja-bulto {
+    width: 14px;
+    height: 14px;
+    margin-right: 5px;
+    vertical-align: -2px;
+  }
+}
+
+.loc-mini__abajo > span {
+  flex: 1 1 0;
+  padding: 0 4px;
+  font-size: 0.74rem;
+  color: var(--text);
+  background: var(--surface);
+
+  small {
+    margin-right: 4px;
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+}
+
+/* COD repetido en el Excel: se sumaron sus filas. La etiqueta reserva su lugar a la derecha. */
+.loc-mini--rep .loc-mini__bultos {
+  padding-right: 36px;
+}
+
+.loc-rep {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 0 4px;
+  font-size: 0.6rem;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.4;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+}
+
+.loc-vacio {
+  margin: 3px 0 0;
+  padding: var(--space-4) var(--space-3);
+  font-size: var(--fs-xs);
+  text-align: center;
+  color: var(--text-3);
+  background: var(--surface-2);
+}
+
+/* Pie fijo: la fila de totales de la planilla (gris, etiqueta en mayúsculas, cifras en negrita). */
+.loc-pie {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px var(--space-2);
+  min-height: 40px;
+  margin-top: 3px;
+  padding: 6px 8px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap; /* responsive:ok cada cifra entera; el pie se parte en dos líneas (flex-wrap) */
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+
+  small {
+    font-size: 0.66rem;
+    color: var(--text-3);
+  }
+
+  .caja-bulto {
+    width: 14px;
+    height: 14px;
+    margin-right: 5px;
+    vertical-align: -2px;
+  }
+}
+
+.loc-pie__etq {
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+/* ---------- Avisos y carga ---------- */
+
+.loc-aviso {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+
+  ui-icon {
+    flex: none;
+  }
+
+  span {
+    flex: 1 1 12rem;
+  }
+
+  &--error {
+    color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  }
+}
+
+.loc-cargando {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px 2px;
+
+  &__ficha {
+    display: block;
+    height: 52px;
+  }
+}
+
+/* «Mostrar más»: los locales se dibujan de a 200. */
+.loc-mas {
+  justify-content: center;
+  width: 100%;
+  margin-top: 3px;
+}
+
+.loc-aviso .ui-btn {
+  margin-left: auto;
+}
+
+/* Ficha baja (laptop con zoom, celular horizontal o pequeño): la cuadrícula crece con su
+   contenido y la ficha entera desplaza; cabecera y pie siguen fijos dentro de la ficha. */
+.detalle-pop--baja {
+  scroll-padding-block: 2.75rem 4.5rem;
+}
+
+/* Ficha angosta (hoja del celular): el pie ocupa hasta tres líneas. */
+@media (max-width: 420px) {
+  .loc-scroll,
+  .detalle-pop--baja {
+    scroll-padding-bottom: 7.5rem;
+  }
+}
+
+.detalle-pop--baja .loc-scroll {
+  flex: none !important;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+}

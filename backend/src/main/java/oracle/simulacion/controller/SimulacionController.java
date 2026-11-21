@@ -29,6 +29,7 @@ import oracle.simulacion.response.ConfiguracionSimulacionResponse;
 import oracle.simulacion.response.DashboardSimulacionResponse;
 import oracle.simulacion.response.HistorialRegistroResponse;
 import oracle.simulacion.response.HistorialSimulacionResponse;
+import oracle.simulacion.response.LocalesRutaResponse;
 import oracle.simulacion.response.PaginaRutasResponse;
 import oracle.simulacion.response.RutaSimulacionResponse;
 import oracle.simulacion.response.RutasDashboardResponse;
@@ -126,6 +127,27 @@ public class SimulacionController {
     }
   }
 
+  /**
+   * Completa los locales de un registro ya subido con su Excel, sin tocar su balanceo: solo las
+   * rutas con el mismo código, tipo y totales reciben los locales.
+   */
+  @PostMapping(value = "/{id}/locales", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  @PreAuthorize("hasAuthority('MODIFICAR_REGISTRO_SIMULACION')")
+  public ResponseEntity<?> completarLocales(
+      @PathVariable Long id, @RequestPart("archivo") MultipartFile archivo, HttpServletRequest peticion) {
+    try {
+      return ResponseEntity.ok(registroService.completarLocales(id, archivo));
+    } catch (SimulacionExcel.ArchivoInvalidoException error) {
+      return ResponseEntity.status(error.estado())
+          .body(
+              ApiError.de(
+                  error.estado().value(),
+                  error.estado().getReasonPhrase(),
+                  error.getMessage(),
+                  peticion.getRequestURI()));
+    }
+  }
+
   @PutMapping("/{id}")
   @PreAuthorize("hasAuthority('MODIFICAR_REGISTRO_SIMULACION')")
   public ApiResponse<ArchivoSimulacionResponse> actualizar(
@@ -165,6 +187,13 @@ public class SimulacionController {
       @RequestParam(required = false) List<Long> clusterIds,
       @RequestParam(required = false) List<Long> chuteIds) {
     return configuracionService.rutas(id, despues, tamano, texto, clusterIds, chuteIds);
+  }
+
+  /** Los locales de una ruta tal como vinieron en el Excel (al hacer clic en la ruta). */
+  @GetMapping("/{id}/rutas/{rutaId}/locales")
+  @PreAuthorize("hasAuthority('VER_CONFIGURACION_SIMULACION')")
+  public ApiResponse<LocalesRutaResponse> localesRuta(@PathVariable Long id, @PathVariable Long rutaId) {
+    return configuracionService.localesRuta(id, rutaId);
   }
 
   /** Todas las rutas del registro de una vez (reporte PDF y HTML): una sola lectura en la base. */

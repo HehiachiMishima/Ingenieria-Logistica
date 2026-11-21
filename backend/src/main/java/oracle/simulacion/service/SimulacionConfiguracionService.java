@@ -85,6 +85,7 @@ import oracle.simulacion.response.BalanceoResponse;
 import oracle.simulacion.response.CambioClusterResponse;
 import oracle.simulacion.response.CargaSimulacionResponse;
 import oracle.simulacion.response.GrupoClusterResponse;
+import oracle.simulacion.response.LocalesRutaResponse;
 import oracle.simulacion.response.TramoGrupoResponse;
 import oracle.simulacion.response.VistaBalanceoResponse;
 import oracle.simulacion.response.PaginaRutasResponse;
@@ -275,6 +276,31 @@ public class SimulacionConfiguracionService {
    * una vez y las rutas se leen por lotes de 5 000 con keyset, sin el conteo de la
    * paginación. Antes, cada página de 1 000 volvía a armar el contexto (unas 5 consultas).
    */
+  /**
+   * Los locales de una ruta tal como vinieron en el Excel. Un archivo subido antes de guardar los
+   * locales devuelve {@code conDetalle = false}; una ruta de otro archivo, 404.
+   */
+  public ApiResponse<LocalesRutaResponse> localesRuta(Long archivoId, Long rutaId) {
+    return leer(
+        "localesRuta id=" + archivoId + " ruta=" + rutaId,
+        () -> {
+          List<LocalesRutaResponse.Local> locales = lotes.localesDeRuta(archivoId, rutaId);
+          if (locales.isEmpty()) {
+            if (!lotes.rutaDelArchivo(archivoId, rutaId)) {
+              throw new RecursoNoEncontradoException("La ruta no pertenece a este registro.");
+            }
+            return new LocalesRutaResponse(rutaId, false, false, List.of());
+          }
+          boolean truncado = locales.size() > SimulacionLotesRepository.MAX_LOCALES_DETALLE;
+          return new LocalesRutaResponse(
+              rutaId,
+              true,
+              truncado,
+              truncado ? locales.subList(0, SimulacionLotesRepository.MAX_LOCALES_DETALLE) : locales);
+        },
+        "Locales de la ruta.");
+  }
+
   public ApiResponse<List<RutaSimulacionResponse>> todasLasRutas(Long archivoId) {
     return leer(
         "todas las rutas id=" + archivoId,

@@ -20,6 +20,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import oracle.simulacion.model.TipoRuta;
+import oracle.simulacion.service.SimulacionExcel;
 import oracle.simulacion.service.SimulacionExcel.FilaRuta;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -90,7 +91,8 @@ class SimulacionLotesRepositoryTest {
             new BigDecimal("1.00"),
             BigDecimal.ZERO,
             BigDecimal.ZERO,
-            3);
+            3,
+            List.of());
 
     new SimulacionLotesRepository(jdbc)
         .insertarRutas(9L, List.of(ruta), Map.of("CL 1", 11L), Map.of("CHUTE 1", 22L));
@@ -125,8 +127,63 @@ class SimulacionLotesRepositoryTest {
             BigDecimal.ONE,
             BigDecimal.ZERO,
             BigDecimal.ZERO,
-            1);
+            1,
+            List.of());
     assertThrows(IllegalStateException.class, () -> setter.getValue().setValues(ps, huerfana));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void insertarLocalesLosCuelgaDeSuRutaEnElOrdenDelExcel() throws Exception {
+    JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    // La BD devuelve el id de la ruta recién insertada por su clave (código canónico, tipo).
+    doAnswer(
+            (i) -> {
+              RowCallbackHandler manejador = i.getArgument(1);
+              ResultSet rs = mock(ResultSet.class);
+              when(rs.getLong(1)).thenReturn(41L);
+              when(rs.getString(2)).thenReturn("R 30");
+              when(rs.getString(3)).thenReturn("B2C");
+              manejador.processRow(rs);
+              return null;
+            })
+        .when(jdbc)
+        .query(startsWith("SELECT id, codigo_ruta, tipo FROM simulacion.rutas_proyeccion"), any(RowCallbackHandler.class), any(Object[].class));
+    ArgumentCaptor<ParameterizedPreparedStatementSetter<Object>> setter =
+        ArgumentCaptor.forClass(ParameterizedPreparedStatementSetter.class);
+    ArgumentCaptor<Collection<Object>> filas = ArgumentCaptor.forClass(Collection.class);
+    when(jdbc.batchUpdate(startsWith("INSERT INTO simulacion.rutas_locales"), filas.capture(), eq(2_000), setter.capture()))
+        .thenReturn(new int[0][]);
+    FilaRuta ruta =
+        new FilaRuta("R  30", "CL1", "CHUTE 1", "A", "DIARIA", "L-M-X-J-V-S", TipoRuta.B2C,
+            new BigDecimal("9.50"), new BigDecimal("95.00"), new BigDecimal("6.00"), 2,
+            List.of(
+                new SimulacionExcel.LocalRuta("F045", 2, 750, 7500, 500),
+                new SimulacionExcel.LocalRuta(null, 1, 200, 2000, 100)));
+
+    new SimulacionLotesRepository(jdbc).insertarLocales(9L, List.of(ruta));
+
+    List<Object> insertadas = new ArrayList<>(filas.getValue());
+    assertEquals(2, insertadas.size());
+    PreparedStatement primera = mock(PreparedStatement.class);
+    setter.getValue().setValues(primera, insertadas.get(0));
+    verify(primera).setLong(1, 41L);
+    verify(primera).setInt(2, 1);
+    verify(primera).setString(3, "F045");
+    verify(primera).setInt(4, 2);
+    verify(primera).setBigDecimal(5, new BigDecimal("7.50"));
+    verify(primera).setBigDecimal(6, new BigDecimal("75.00"));
+    verify(primera).setBigDecimal(7, new BigDecimal("5.00"));
+    PreparedStatement segunda = mock(PreparedStatement.class);
+    setter.getValue().setValues(segunda, insertadas.get(1));
+    verify(segunda).setInt(2, 2);
+    verify(segunda).setString(3, null);
+
+    // Una ruta que no quedó insertada es un error claro, no un local huérfano.
+    FilaRuta otra = new FilaRuta("R9", "CL1", "CHUTE 1", "A", "LXV", "L-X-V", TipoRuta.B2B,
+        BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ZERO, 1,
+        List.of(new SimulacionExcel.LocalRuta("X", 1, 100, 0, 0)));
+    assertThrows(IllegalStateException.class, () -> new SimulacionLotesRepository(jdbc).insertarLocales(9L, List.of(otra)));
   }
 
   private static ResultSet fila(long id, String nombre) throws Exception {

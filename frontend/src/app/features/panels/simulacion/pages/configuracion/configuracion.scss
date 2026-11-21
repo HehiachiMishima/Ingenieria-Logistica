@@ -655,38 +655,7 @@
 
 /* La ficha de cada ruta (dos filas) está en configuracion-ficha.scss. */
 
-/* Caja de cartón: caras kraft, cinta clara y contorno marrón (se ve en ambos temas). */
-.caja-bulto {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  overflow: visible;
-
-  path {
-    stroke: #6b4220;
-    stroke-width: 0.8;
-    stroke-linejoin: round;
-  }
-
-  &__tapa {
-    fill: #e8b97a;
-  }
-
-  &__frente {
-    fill: #c8894a;
-  }
-
-  &__lado {
-    fill: #a9692f;
-  }
-
-  path.caja-bulto__cinta {
-    fill: none;
-    stroke: #f6e2b3;
-    stroke-width: 1.5;
-    stroke-linecap: round;
-  }
-}
+/* La caja de cartón de los bultos está en configuracion-ficha.scss (también la usa la ficha flotante). */
 
 /* Arrastre: la ruta tomada se atenúa y la columna destino se resalta. */
 .matriz-ruta--arrastrada {

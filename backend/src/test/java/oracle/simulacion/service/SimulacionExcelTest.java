@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import oracle.simulacion.model.TipoRuta;
@@ -368,57 +369,59 @@ class SimulacionExcelTest {
   }
 
   @Test
-  void conUnaSolaFilaElCodEsLaCantidadDeLocales() {
+  void cadaFilaEsUnLocalYElCodRepetidoSeSuma() {
     String csv =
-        "COD,RUTA,CLUSTER,CHUTE,GRUPO,FRECUENCIA,TIPO,BULTOS\n"
-            // Una sola fila: el COD es la cantidad de locales.
-            + "25,1001,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n"
-            + "007,1002,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n"
-            + SimulacionExcel.MAX_LOCALES + ",1003,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n"
-            // Con letras es el código de un local; sin COD cuentan las filas.
-            + "L25,1004,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n"
-            + ",1005,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n"
-            // Varias filas: se cuentan los COD distintos, como siempre.
-            + "25,1006,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n"
-            + "25,1006,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n"
-            + "25,1007,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n"
-            + "30,1007,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n";
+        "COD,RUTA,CLUSTER,CHUTE,GRUPO,FRECUENCIA,TIPO,BULTOS,UNIDADES,LINEAS\n"
+            // Una sola fila: un solo local, aunque el COD sea un número.
+            + "25,1001,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5,50,3\n"
+            + "L25,1004,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5,50,3\n"
+            + ",1005,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5,50,3\n"
+            // El mismo COD (sin importar mayúsculas) es el mismo local: suma sus filas.
+            + "f25,1006,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5,50,3\n"
+            + "F25,1006,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,2.5,20,1\n"
+            // COD distintos, en el orden del Excel.
+            + "30,1007,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,4,40,2\n"
+            + "25,1007,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,6,60,4\n"
+            // Filas sin COD: cada una es un local propio.
+            + ",1008,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,1,10,1\n"
+            + ",1008,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,2,20,2\n";
 
-    Map<String, Integer> locales =
+    Map<String, SimulacionExcel.FilaRuta> rutas =
         SimulacionExcel.analizar(csv(csv)).rutas().stream()
-            .collect(
-                Collectors.toMap(
-                    SimulacionExcel.FilaRuta::codigoRuta, SimulacionExcel.FilaRuta::conteoCod));
+            .collect(Collectors.toMap(SimulacionExcel.FilaRuta::codigoRuta, (r) -> r));
 
     assertEquals(
-        Map.of(
-            "1001", 25,
-            "1002", 7,
-            "1003", SimulacionExcel.MAX_LOCALES,
-            "1004", 1,
-            "1005", 1,
-            "1006", 1,
-            "1007", 2),
-        locales);
+        Map.of("1001", 1, "1004", 1, "1005", 1, "1006", 1, "1007", 2, "1008", 2),
+        rutas.values().stream()
+            .collect(Collectors.toMap(SimulacionExcel.FilaRuta::codigoRuta, SimulacionExcel.FilaRuta::conteoCod)));
+    assertEquals(
+        List.of(new SimulacionExcel.LocalRuta("25", 1, 500, 5000, 300)), rutas.get("1001").locales());
+    assertEquals(
+        List.of(new SimulacionExcel.LocalRuta(null, 1, 500, 5000, 300)), rutas.get("1005").locales());
+    assertEquals(
+        List.of(new SimulacionExcel.LocalRuta("f25", 2, 750, 7000, 400)), rutas.get("1006").locales());
+    assertEquals(
+        List.of(new SimulacionExcel.LocalRuta("30", 1, 400, 4000, 200), new SimulacionExcel.LocalRuta("25", 1, 600, 6000, 400)),
+        rutas.get("1007").locales());
+    assertEquals(2, rutas.get("1008").locales().size());
+    // Los locales suman exactamente lo que suma su ruta.
+    var ruta1007 = rutas.get("1007");
+    assertEquals(
+        ruta1007.bultos(),
+        ruta1007.locales().stream().map(SimulacionExcel.LocalRuta::bultos).reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add));
   }
 
   @Test
-  void conUnaSolaFilaRechazaUnCodQueNoEsUnaCantidadValida() {
-    String[] invalidos = {"-5", "0", "12.5", "12,5", String.valueOf(SimulacionExcel.MAX_LOCALES + 1)};
-    for (String cod : invalidos) {
-      String csv =
-          "COD,RUTA,CLUSTER,CHUTE,GRUPO,FRECUENCIA,TIPO,BULTOS\n"
-              + "A1,1000,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n"
-              + "\"" + cod + "\",3030,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n";
+  void rechazaUnCodDemasiadoLargo() {
+    String cod = "X".repeat(SimulacionExcel.MAX_COD + 1);
+    String csv =
+        "COD,RUTA,CLUSTER,CHUTE,GRUPO,FRECUENCIA,TIPO,BULTOS\n"
+            + "A1,1000,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n"
+            + cod + ",3030,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n";
 
-      ConflictoException error =
-          assertThrows(ConflictoException.class, () -> SimulacionExcel.analizar(csv(csv)), cod);
+    ConflictoException error = assertThrows(ConflictoException.class, () -> SimulacionExcel.analizar(csv(csv)));
 
-      // Indica la fila y la ruta para corregir el archivo.
-      assertTrue(
-          error.getMessage().startsWith("Fila 3: la ruta 3030") && error.getMessage().contains(cod),
-          error.getMessage());
-    }
+    assertTrue(error.getMessage().startsWith("La fila 3 tiene un COD"), error.getMessage());
   }
 
   @Test
@@ -460,6 +463,53 @@ class SimulacionExcelTest {
 
   private static MockMultipartFile csv(String contenido) {
     return new MockMultipartFile("archivo", "proyeccion.csv", "text/csv", contenido.getBytes());
+  }
+
+  @Test
+  void elCodNumericoConFormatoDeCerosSeLeeComoLoMuestraExcel() throws Exception {
+    byte[] contenido;
+    try (XSSFWorkbook libro = new XSSFWorkbook();
+        ByteArrayOutputStream salida = new ByteArrayOutputStream()) {
+      Sheet hoja = libro.createSheet("Proyección");
+      var ceros = libro.createCellStyle();
+      ceros.setDataFormat(libro.createDataFormat().getFormat("0000"));
+      String[] cabecera = {"COD", "RUTA", "CLUSTER", "CHUTE", "GRUPO", "FRECUENCIA", "TIPO", "BULTOS"};
+      Row primera = hoja.createRow(0);
+      for (int c = 0; c < cabecera.length; c++) {
+        primera.createCell(c).setCellValue(cabecera[c]);
+      }
+      // El mismo local: como número 457 con formato «0000» y como texto «0457».
+      Object[][] filas = {{457.0, 3030.0, 5.0}, {"0457", 3030.0, 2.0}, {12.0, 3031.0, 1.0}};
+      for (int f = 0; f < filas.length; f++) {
+        Row fila = hoja.createRow(f + 1);
+        if (filas[f][0] instanceof Double numero) {
+          var celda = fila.createCell(0);
+          celda.setCellValue(numero);
+          celda.setCellStyle(ceros);
+        } else {
+          fila.createCell(0).setCellValue((String) filas[f][0]);
+        }
+        // La RUTA numérica (sin formato de ceros) no cambia: sigue siendo «3030».
+        var ruta = fila.createCell(1);
+        ruta.setCellValue((Double) filas[f][1]);
+        ruta.setCellStyle(ceros);
+        fila.createCell(2).setCellValue("CL1");
+        fila.createCell(3).setCellValue("CHUTE 1");
+        fila.createCell(4).setCellValue("A");
+        fila.createCell(5).setCellValue("L-M-X-J-V-S");
+        fila.createCell(6).setCellValue("B2C");
+        fila.createCell(7).setCellValue((Double) filas[f][2]);
+      }
+      libro.write(salida);
+      contenido = salida.toByteArray();
+    }
+
+    var rutas = SimulacionExcel.analizar(xlsx(contenido)).rutas();
+
+    var ruta3030 = rutas.stream().filter((r) -> r.codigoRuta().equals("3030")).findFirst().orElseThrow();
+    assertEquals(List.of(new SimulacionExcel.LocalRuta("0457", 2, 700, 0, 0)), ruta3030.locales());
+    var ruta3031 = rutas.stream().filter((r) -> r.codigoRuta().equals("3031")).findFirst().orElseThrow();
+    assertEquals("0012", ruta3031.locales().get(0).cod());
   }
 
   private static MockMultipartFile xlsx(byte[] contenido) {

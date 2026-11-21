@@ -9,7 +9,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -26,6 +26,7 @@ import {
   map,
   of,
   scan,
+  startWith,
   switchMap,
   tap,
 } from 'rxjs';
@@ -54,7 +55,7 @@ import { HasPermiso } from '../../../../../shared/directives/has-permiso.directi
 import { EmptyState } from '../../../../../shared/ui/empty-state/empty-state';
 import { Icon } from '../../../../../shared/ui/icon/icon';
 import { IconoSim } from '../../icono-sim/icono-sim';
-import { FichaDetalle } from './ficha-detalle/ficha-detalle';
+import { EstadoLocales, FichaDetalle } from './ficha-detalle/ficha-detalle';
 import { Modal } from '../../../../../shared/ui/modal/modal';
 import { ChipFiltro, FiltrosActivos } from '../../../../../shared/ui/panel-filtros/filtros-activos';
 import { PanelFiltros } from '../../../../../shared/ui/panel-filtros/panel-filtros';
@@ -212,9 +213,11 @@ interface DetalleAbierto {
 
 /** Ancho de la ficha (igual que en el SCSS) y margen con el borde de la ventana. */
 const ANCHO_DETALLE = 320;
+/** La ficha de una ruta lleva la cuadrícula de sus locales: es más ancha (igual que en el SCSS). */
+const ANCHO_DETALLE_RUTA = 420;
 const MARGEN_DETALLE = 12;
 
-function posicionDetalle(ancla: HTMLElement, altoEstimado: number): PosicionDetalle {
+function posicionDetalle(ancla: HTMLElement, altoEstimado: number, anchoDetalle = ANCHO_DETALLE): PosicionDetalle {
   const caja = ancla.getBoundingClientRect();
   const ancho = window.innerWidth;
   const alto = window.innerHeight;
@@ -226,7 +229,7 @@ function posicionDetalle(ancla: HTMLElement, altoEstimado: number): PosicionDeta
   }
   const left = Math.min(
     Math.max(MARGEN_DETALLE, caja.left),
-    ancho - Math.min(ANCHO_DETALLE, ancho - MARGEN_DETALLE * 2) - MARGEN_DETALLE,
+    ancho - Math.min(anchoDetalle, ancho - MARGEN_DETALLE * 2) - MARGEN_DETALLE,
   );
   if (abajo >= altoEstimado || abajo >= arriba) {
     return { hoja: false, left, top: caja.bottom + 6, bottom: null, maxAlto: abajo };
@@ -1717,6 +1720,87 @@ export class SimulacionConfiguracion {
     };
   });
 
+  /** Registro y ruta de la ficha de ruta abierta (null con otra ficha o ninguna). */
+  private readonly rutaConLocales = computed(
+    () => {
+      const abierto = this.detalle();
+      const registro = this.seleccionado();
+      return abierto?.tipo === 'ruta' && registro !== null ? { registro, ruta: abierto.id } : null;
+    },
+    { equal: (a, b) => a?.registro === b?.registro && a?.ruta === b?.ruta },
+  );
+
+  /** Pide otra vez los locales de la ruta abierta (tras un error). */
+  private readonly reintentoLocales = signal(0);
+
+  /**
+   * Locales del Excel de la ruta abierta. Se piden al abrir su ficha; abrir otra ruta cancela la
+   * petición anterior (switchMap) y cerrar la ficha la descarta.
+   */
+  readonly localesRuta = signal<EstadoLocales | null>(null);
+
+  private readonly cargaLocales = toObservable(
+    computed(() => ({ clave: this.rutaConLocales(), intento: this.reintentoLocales() })),
+  )
+    .pipe(
+      switchMap(({ clave }) =>
+        clave === null
+          ? of(null)
+          : this.api.localesRuta(clave.registro, clave.ruta).pipe(
+              map((datos): EstadoLocales => ({ estado: 'listo', datos })),
+              catchError((error: unknown) => of<EstadoLocales>({ estado: 'error', mensaje: mensajeDeError(error) })),
+              startWith<EstadoLocales>({ estado: 'cargando' }),
+            ),
+      ),
+      takeUntilDestroyed(),
+    )
+    .subscribe((estado) => this.localesRuta.set(estado));
+
+  reintentarLocales(): void {
+    this.reintentoLocales.update((n) => n + 1);
+  }
+
+  /** Completar los locales de un registro con su Excel es modificar el registro. */
+  readonly puedeCompletarLocales = computed(() =>
+    this.sesion.permisos().includes(PERMISOS.MODIFICAR_REGISTRO_SIMULACION),
+  );
+  readonly completandoLocales = signal(false);
+
+  /**
+   * Completa los locales del registro con su Excel (sin tocar su balanceo) y vuelve a pedir los de
+   * la ruta abierta. Cambia el conteo de locales: la planilla se actualiza (si hay cambios sin
+   * guardar, `actualizar()` avisa en vez de descartarlos).
+   */
+  completarLocales(archivo: File): void {
+    const registro = this.seleccionado();
+    if (registro === null || this.completandoLocales()) {
+      return;
+    }
+    this.completandoLocales.set(true);
+    this.api
+      .completarLocales(registro, archivo)
+      .pipe(
+        finalize(() => this.completandoLocales.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: (r) => {
+          const partes = [`${r.completadas} ${r.completadas === 1 ? 'ruta recibió' : 'rutas recibieron'} sus locales.`];
+          if (r.distintas > 0) {
+            partes.push(`${r.distintas} con otros totales en el Excel no se tocaron.`);
+          }
+          if (r.sinExcel > 0) {
+            partes.push(`${r.sinExcel} no están en el Excel y siguen sin detalle.`);
+          }
+          this.notificaciones.exito('Locales completados', partes.join(' '));
+          this.reintentarLocales();
+          this.actualizar();
+        },
+        // El error ya lo muestra el aviso global de la API.
+        error: () => undefined,
+      });
+  }
+
   /** Cluster de la ficha, con sus métricas vigentes. */
   readonly clusterDetalle = computed(() => {
     const abierto = this.detalle();
@@ -1776,7 +1860,7 @@ export class SimulacionConfiguracion {
 
   /** Abre (o cierra, si ya estaba abierta) la ficha de una ruta junto a ella. */
   abrirDetalleRuta(evento: Event, rutaId: number): void {
-    this.abrirDetalle(evento, 'ruta', rutaId, 300);
+    this.abrirDetalle(evento, 'ruta', rutaId, 560, ANCHO_DETALLE_RUTA);
   }
 
   /** Abre (o cierra) la ficha con el detalle de un cluster junto a su botón. */
@@ -1788,7 +1872,13 @@ export class SimulacionConfiguracion {
     this.detalle.set(null);
   }
 
-  private abrirDetalle(evento: Event, tipo: DetalleAbierto['tipo'], id: number, alto: number): void {
+  private abrirDetalle(
+    evento: Event,
+    tipo: DetalleAbierto['tipo'],
+    id: number,
+    alto: number,
+    ancho = ANCHO_DETALLE,
+  ): void {
     const ancla = evento.currentTarget;
     if (!(ancla instanceof HTMLElement)) {
       return;
@@ -1801,7 +1891,7 @@ export class SimulacionConfiguracion {
       this.detalle.set(null);
       return;
     }
-    this.detalle.set({ tipo, id, ancla, pos: posicionDetalle(ancla, alto) });
+    this.detalle.set({ tipo, id, ancla, pos: posicionDetalle(ancla, alto, ancho) });
   }
 
   /**
@@ -1837,7 +1927,14 @@ export class SimulacionConfiguracion {
         this.detalle.set(null);
       }
     };
-    const alRedimensionar = () => this.detalle.set(null);
+    // Solo si cambia el ancho (giro o ventana): abrir el teclado del celular para buscar un local
+    // cambia el alto en algunos navegadores y no debe cerrar la ficha.
+    const anchoAlAbrir = window.innerWidth;
+    const alRedimensionar = () => {
+      if (window.innerWidth !== anchoAlAbrir) {
+        this.detalle.set(null);
+      }
+    };
     document.addEventListener('pointerdown', alTocar, true);
     document.addEventListener('keydown', alTeclear);
     document.addEventListener('scroll', alDesplazar, { capture: true, passive: true });
@@ -2168,6 +2265,8 @@ export class SimulacionConfiguracion {
     // Los filtros pertenecen al registro: solo se limpian al cambiar de registro,
     // no al recargar el mismo con «Actualizar».
     if (id !== this.seleccionado()) {
+      // La ficha abierta es de una ruta del registro anterior.
+      this.detalle.set(null);
       this.accionBalanceoGuardado.set(null);
       this.reiniciarFiltros();
       this.rutasMatriz.set([]);

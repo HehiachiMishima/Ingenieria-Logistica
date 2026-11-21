@@ -7,6 +7,7 @@ import {
   BalanceoCuerpo,
   BalanceoSimulacion,
   ComparativoLanzamiento,
+  CompletarLocales,
   ConfiguracionSimulacion,
   ConfiguracionSimulacionRequest,
   DashboardSimulacion,
@@ -14,6 +15,7 @@ import {
   FaseBalanceo,
   HistorialRegistroSimulacion,
   HistorialSimulacion,
+  LocalesRuta,
   PaginaRutas,
   PredeterminadosSimulacion,
   RegistroSimulacionActualizarRequest,
@@ -22,7 +24,9 @@ import {
   RutasSimulacionFiltros,
   VistaBalanceo,
 } from './simulacion.model';
+import { HttpContext } from '@angular/common/http';
 import { Pagina } from '../../../../core/models';
+import { PETICION_SILENCIOSA } from '../../../../core/interceptors/error.interceptor';
 import { Api } from '../../../../core/services/api';
 
 @Service()
@@ -60,6 +64,28 @@ export class SimulacionApi {
 
   eliminar(id: number): Observable<void> {
     return this.api.delete<void>(`/simulacion/registros/${id}`);
+  }
+
+  /**
+   * Locales de una ruta tal como vinieron en el Excel (la ficha de la ruta). Silenciosa: la ficha
+   * muestra el error en su lugar, sin aviso global.
+   */
+  localesRuta(id: number, rutaId: number): Observable<LocalesRuta> {
+    return this.api.get<LocalesRuta>(
+      `/simulacion/registros/${id}/rutas/${rutaId}/locales`,
+      undefined,
+      new HttpContext().set(PETICION_SILENCIOSA, true),
+    );
+  }
+
+  /**
+   * Completa los locales de un registro ya subido con su Excel (sin tocar su balanceo): solo las
+   * rutas con el mismo código, tipo y totales reciben sus locales.
+   */
+  completarLocales(id: number, archivo: File): Observable<CompletarLocales> {
+    const formulario = new FormData();
+    formulario.append('archivo', archivo);
+    return this.api.postForm<CompletarLocales>(`/simulacion/registros/${id}/locales`, formulario);
   }
 
   /** Configuración de un balanceo (Diarias, L-X-V o M-J-S): sus clusters, su carga y los chutes. */

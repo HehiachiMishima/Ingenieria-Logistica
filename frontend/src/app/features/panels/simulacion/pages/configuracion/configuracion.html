@@ -962,7 +962,9 @@
 @let r = rutaDetalle();
 @let k = clusterDetalle();
 @if (r || k) {
-<app-ficha-detalle [posicion]="d.pos" [ruta]="r" [cluster]="k" (cerrar)="cerrarDetalle()" />
+<app-ficha-detalle [posicion]="d.pos" [ruta]="r" [cluster]="k" [locales]="r ? localesRuta() : null"
+  [puedeCompletar]="puedeCompletarLocales()" [completando]="completandoLocales()"
+  (cerrar)="cerrarDetalle()" (reintentar)="reintentarLocales()" (completar)="completarLocales($event)" />
 }
 }
 

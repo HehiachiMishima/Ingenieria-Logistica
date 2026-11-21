@@ -210,6 +210,39 @@ export interface RutaSimulacion {
   dias?: string | null;
 }
 
+/** Un local de la ruta tal como vino en el Excel. */
+export interface LocalRuta {
+  /** Código del local; null si la fila no traía COD. */
+  cod: string | null;
+  /** Filas del Excel con ese COD (más de una: se sumaron). */
+  filas: number;
+  bultos: number;
+  unidades: number;
+  lineas: number;
+}
+
+/** Los locales de una ruta (ficha de la ruta en la planilla). */
+export interface LocalesRuta {
+  rutaId: number;
+  /** false: el registro se subió antes de guardar los locales (hay que volver a subirlo). */
+  conDetalle: boolean;
+  /** La ruta tiene más locales de los que devuelve la consulta. */
+  truncado: boolean;
+  locales: LocalRuta[];
+}
+
+/** Resultado de completar los locales de un registro con su Excel. */
+export interface CompletarLocales {
+  /** Rutas que recibieron sus locales. */
+  completadas: number;
+  /** Rutas con el mismo código y tipo pero otros totales: no se tocaron. */
+  distintas: number;
+  /** Rutas del registro que no están en el Excel. */
+  sinExcel: number;
+  /** Rutas del Excel que no existen en el registro. */
+  soloEnExcel: number;
+}
+
 /** Rutas y totales de un cluster asignados a un chute. */
 export interface CargaSimulacion {
   clusterId: number;

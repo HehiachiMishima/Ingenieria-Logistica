@@ -203,9 +203,9 @@ class SimulacionRegistroServiceTest {
 
   @Test
   void costoDeMemoriaSegunFormatoYTamano() {
-    assertEquals(12, SimulacionRegistroService.costoMemoriaMb(archivo("a.csv", 1)));
-    assertEquals(28, SimulacionRegistroService.costoMemoriaMb(archivo("a.xlsx", 1)));
-    assertEquals(64, SimulacionRegistroService.costoMemoriaMb(archivo("a.xlsx", 4)));
+    assertEquals(13, SimulacionRegistroService.costoMemoriaMb(archivo("a.csv", 1)));
+    assertEquals(32, SimulacionRegistroService.costoMemoriaMb(archivo("a.xlsx", 1)));
+    assertEquals(80, SimulacionRegistroService.costoMemoriaMb(archivo("a.xlsx", 4)));
     assertEquals(
         SimulacionRegistroService.PRESUPUESTO_MEMORIA_MB,
         SimulacionRegistroService.costoMemoriaMb(archivo("a.xls", 20)));
@@ -226,6 +226,75 @@ class SimulacionRegistroServiceTest {
 
   private ApiResponse<ArchivoSimulacionResponse> subir(MockMultipartFile archivo, String nombre) {
     return servicio.subir(archivo, nombre, null, null);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void laSubidaGuardaLosLocalesDeCadaRuta() {
+    subir(
+        csv("COD,RUTA,CLUSTER,CHUTE,GRUPO,FRECUENCIA,TIPO,BULTOS\n"
+            + "F1,3030,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n"
+            + "F2,3030,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,3\n"),
+        "Semana 40");
+
+    org.mockito.ArgumentCaptor<List<SimulacionExcel.FilaRuta>> rutas = org.mockito.ArgumentCaptor.forClass(List.class);
+    verify(lotes).insertarLocales(anyLong(), rutas.capture());
+    // Pasan por el ajuste al plano con sus locales (antes llegaban vacíos).
+    assertEquals(
+        List.of(new SimulacionExcel.LocalRuta("F1", 1, 500, 0, 0), new SimulacionExcel.LocalRuta("F2", 1, 300, 0, 0)),
+        rutas.getValue().get(0).locales());
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void completarLocalesSoloEnLasRutasConElMismoCodigoTipoYTotales() {
+    ArchivoExcel registro = new ArchivoExcel();
+    registro.setId(9L);
+    when(archivoRepo.bloquear(9L)).thenReturn(Optional.of(registro));
+    when(archivoRepo.save(any(ArchivoExcel.class))).thenAnswer((i) -> i.getArgument(0));
+    java.math.BigDecimal cero = new java.math.BigDecimal("0.00");
+    when(lotes.totalesRutas(9L))
+        .thenReturn(
+            Map.of(
+                "3030\u0000B2C", new SimulacionLotesRepository.TotalesRuta(7L, new java.math.BigDecimal("8.00"), cero, cero),
+                "3031\u0000B2C", new SimulacionLotesRepository.TotalesRuta(8L, new java.math.BigDecimal("1.00"), cero, cero),
+                "3032\u0000B2B", new SimulacionLotesRepository.TotalesRuta(9L, java.math.BigDecimal.ONE, cero, cero)));
+    when(lotes.totalCod(9L)).thenReturn(4);
+
+    var respuesta =
+        servicio.completarLocales(
+            9L,
+            csv("COD,RUTA,CLUSTER,CHUTE,GRUPO,FRECUENCIA,TIPO,BULTOS\n"
+                + "F1,3030,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,5\n"
+                + "F2,3030,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,3\n"
+                // Mismo código y tipo pero otros bultos: no es la misma ruta, no se toca.
+                + "F3,3031,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,9\n"
+                // No existe en el registro: se ignora.
+                + "F4,4040,CL1,CHUTE 1,A,L-M-X-J-V-S,B2C,2\n"));
+
+    assertEquals(new oracle.simulacion.response.CompletarLocalesResponse(1, 1, 1, 1), respuesta.datos());
+    org.mockito.ArgumentCaptor<Map<Long, SimulacionExcel.FilaRuta>> reemplazo = org.mockito.ArgumentCaptor.forClass(Map.class);
+    verify(lotes).reemplazarLocales(reemplazo.capture());
+    assertEquals(java.util.Set.of(7L), reemplazo.getValue().keySet());
+    assertEquals(2, reemplazo.getValue().get(7L).locales().size());
+    // El total de locales del registro se recalcula.
+    assertEquals(4, registro.getTotalCod());
+  }
+
+  @Test
+  void completarLocalesConUnExcelAjenoNoTocaNada() {
+    ArchivoExcel registro = new ArchivoExcel();
+    when(archivoRepo.bloquear(9L)).thenReturn(Optional.of(registro));
+    java.math.BigDecimal cero = new java.math.BigDecimal("0.00");
+    when(lotes.totalesRutas(9L))
+        .thenReturn(Map.of("3030\u0000B2C", new SimulacionLotesRepository.TotalesRuta(7L, new java.math.BigDecimal("99.00"), cero, cero)));
+
+    ConflictoException error =
+        org.junit.jupiter.api.Assertions.assertThrows(
+            ConflictoException.class, () -> servicio.completarLocales(9L, csv(CSV)));
+
+    assertTrue(error.getMessage().startsWith("El Excel no coincide con este registro"), error.getMessage());
+    verify(lotes, org.mockito.Mockito.never()).reemplazarLocales(org.mockito.ArgumentMatchers.anyMap());
   }
 
   private static MockMultipartFile csv(String contenido) {

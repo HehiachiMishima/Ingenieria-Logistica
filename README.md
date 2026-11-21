@@ -156,6 +156,14 @@ las trazas existentes; aplícala con el backend detenido. Los resúmenes se cons
 Para habilitar el balanceo de rutas guardado por archivo en **Simulación Titan**, aplica
 `backend/migracion_balanceo_rutas.sql` a las bases existentes antes de actualizar el backend.
 
+Para ver los locales de cada ruta al hacer clic en ella (Simulación Titan), aplica
+`backend/migracion_locales_rutas.sql` antes de actualizar el backend: crea la tabla vacía
+`simulacion.rutas_locales` y se puede aplicar con el backend encendido. Cada fila del Excel es un
+local (una ruta de una sola fila tiene un local) y un COD repetido en la misma ruta se suma. Los
+registros subidos antes de la migración no tienen el detalle: en la ficha de cualquiera de sus rutas,
+«Completar con su Excel» (permiso `MODIFICAR_REGISTRO_SIMULACION`) relee el Excel y le pone los
+locales a cada ruta con el mismo código, tipo y totales, sin tocar el balanceo ni crear otro registro.
+
 Si la base ya estaba instalada antes del panel **Simulación Santa Anita**, aplicar
 `migracion_simulacion_santa.sql` **antes** de arrancar el backend que trae el panel
 (con `ddl-auto=validate` no arranca si falta el esquema). Corre en una transacción y es

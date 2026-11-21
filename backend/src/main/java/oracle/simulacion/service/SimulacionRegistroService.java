@@ -38,6 +38,7 @@ import oracle.simulacion.repository.ArchivoExcelRepository;
 import oracle.simulacion.repository.SimulacionLotesRepository;
 import oracle.simulacion.request.RegistroActualizarRequest;
 import oracle.simulacion.response.ArchivoSimulacionResponse;
+import oracle.simulacion.response.CompletarLocalesResponse;
 import oracle.simulacion.service.SimulacionExcel.ArchivoInvalidoException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -60,6 +61,8 @@ public class SimulacionRegistroService {
    * responde 429 en lugar de agotar memoria o el pool para todos.
    */
   static final int MAX_CARGAS_SIMULTANEAS = 2;
+  /** Espera máxima por memoria cuando otra carga la ocupa (la lectura de 100k filas tarda ~1–2 s). */
+  static final int ESPERA_MEMORIA_S = 20;
   /**
    * Presupuesto de heap (MB) para el parseo de cargas simultáneas. Con -XX:MaxRAMPercentage=70
    * sobre 512 MB el heap es ~350 MB, de los que la aplicación en reposo usa ~150 MB.
@@ -185,31 +188,106 @@ public class SimulacionRegistroService {
     }
     boolean registrado = false;
     try {
-      int costo = costoMemoriaMb(archivo);
-      if (!cargas.tryAcquire()) {
-        throw ocupado();
-      }
-      try {
-        if (!memoria.tryAcquire(costo)) {
-          throw ocupado();
-        }
-        try {
-          ArchivoSimulacionResponse creado =
-              registrar(archivo, nombreRegistro, etiqueta, color, actor);
-          recientes.completar(huella, creado.id());
-          registrado = true;
-          return ApiResponse.ok(MENSAJE_CREADO, creado);
-        } finally {
-          memoria.release(costo);
-        }
-      } finally {
-        cargas.release();
-      }
+      ArchivoSimulacionResponse creado =
+          conCupo(archivo, () -> registrar(archivo, nombreRegistro, etiqueta, color, actor));
+      recientes.completar(huella, creado.id());
+      registrado = true;
+      return ApiResponse.ok(MENSAJE_CREADO, creado);
     } finally {
       if (!registrado) {
         recientes.liberar(huella);
       }
     }
+  }
+
+  /**
+   * Corre {@code trabajo} (leer un Excel y guardarlo) dentro de los topes de carga: hasta
+   * {@value #MAX_CARGAS_SIMULTANEAS} a la vez y {@value #PRESUPUESTO_MEMORIA_MB} MB de heap
+   * estimado. Si la memoria está ocupada por otra carga espera hasta {@value #ESPERA_MEMORIA_S} s
+   * (un archivo grande reserva ~96 MB: dos no caben a la vez) en lugar de rechazar al instante.
+   */
+  private <T> T conCupo(MultipartFile archivo, java.util.function.Supplier<T> trabajo) {
+    int costo = costoMemoriaMb(archivo);
+    if (!cargas.tryAcquire()) {
+      throw ocupado();
+    }
+    try {
+      if (!reservarMemoria(costo)) {
+        throw ocupado();
+      }
+      try {
+        return trabajo.get();
+      } finally {
+        memoria.release(costo);
+      }
+    } finally {
+      cargas.release();
+    }
+  }
+
+  private boolean reservarMemoria(int costo) {
+    try {
+      return memoria.tryAcquire(costo, ESPERA_MEMORIA_S, java.util.concurrent.TimeUnit.SECONDS);
+    } catch (InterruptedException interrumpido) {
+      Thread.currentThread().interrupt();
+      return false;
+    }
+  }
+
+  /**
+   * Completa (o reemplaza) los locales de un registro ya subido con su Excel, sin tocar su balanceo:
+   * cada ruta del registro toma los locales de la ruta del Excel con el mismo código y tipo, solo si
+   * sus totales (bultos, unidades y líneas) coinciden, así un Excel distinto no le pega locales
+   * ajenos. El conteo de locales de esas rutas pasa a ser el de sus locales (una fila = un local).
+   */
+  public ApiResponse<CompletarLocalesResponse> completarLocales(Long id, MultipartFile archivo) {
+    validarArchivo(archivo);
+    Long actor = ActorActual.id();
+    CompletarLocalesResponse datos =
+        Trazas.medir(
+            log,
+            "SimulacionRegistroService.completarLocales id=" + id,
+            () ->
+                conCupo(
+                    archivo,
+                    () -> {
+                      // Se lee fuera de la transacción; el plano no importa: solo se usan los locales.
+                      SimulacionExcel.Analisis analisis = SimulacionExcel.analizar(archivo);
+                      return transacciones.ejecutar(() -> completar(id, analisis, actor));
+                    }));
+    return ApiResponse.ok(
+        "Locales completados en " + datos.completadas() + (datos.completadas() == 1 ? " ruta." : " rutas."),
+        datos);
+  }
+
+  private CompletarLocalesResponse completar(Long id, SimulacionExcel.Analisis analisis, Long actor) {
+    // Con bloqueo: un balanceo en curso sobre el mismo registro termina antes.
+    ArchivoExcel registro = buscarBloqueado(id);
+    Map<String, SimulacionLotesRepository.TotalesRuta> rutas = lotes.totalesRutas(id);
+    Map<Long, SimulacionExcel.FilaRuta> completar = new java.util.LinkedHashMap<>();
+    int distintas = 0;
+    int soloEnExcel = 0;
+    for (SimulacionExcel.FilaRuta fila : analisis.rutas()) {
+      SimulacionLotesRepository.TotalesRuta ruta = rutas.get(SimulacionLotesRepository.clave(fila));
+      if (ruta == null) {
+        soloEnExcel++;
+      } else if (ruta.coincide(fila)) {
+        completar.put(ruta.id(), fila);
+      } else {
+        distintas++;
+      }
+    }
+    if (completar.isEmpty()) {
+      throw new ConflictoException(
+          "El Excel no coincide con este registro: ninguna de sus rutas tiene los mismos bultos,"
+              + " unidades y líneas. Usa el Excel con el que se creó el registro.");
+    }
+    lotes.reemplazarLocales(completar);
+    registro.setTotalCod(lotes.totalCod(id));
+    Auditoria.alActualizar(registro, actor);
+    archivoRepo.save(registro);
+    return new CompletarLocalesResponse(
+        completar.size(), distintas, rutas.size() - completar.size() - distintas, soloEnExcel);
   }
 
   public ApiResponse<ArchivoSimulacionResponse> actualizar(
@@ -262,15 +340,16 @@ public class SimulacionRegistroService {
   }
 
   /**
-   * Heap estimado (MB) para parsear el archivo, medido con SimulacionExcelBenchmark: un .xlsx de
-   * 4,2 MB (100k filas) necesita 25–57 MB de heap; un .csv de 5 MB, ~25 MB. .xls (HSSF) carga el
-   * libro entero, de ahí el mismo factor que .xlsx. Un archivo más caro que el presupuesto corre
-   * solo.
+   * Heap estimado (MB) para parsear el archivo y guardar los locales de cada ruta, medido con
+   * SimulacionExcelBenchmark (heap mínimo sin OOM, 100k filas con un COD distinto por fila): .xlsx
+   * de 5,1 MB, 41 MB con 1 000 rutas y 90 MB con 100 000 rutas de un local; .csv de 6,7 MB, 33 MB.
+   * .xls (HSSF) carga el libro entero, de ahí el mismo factor que .xlsx. Un archivo más caro que el
+   * presupuesto corre solo.
    */
   static int costoMemoriaMb(MultipartFile archivo) {
     String nombre = String.valueOf(archivo.getOriginalFilename()).toLowerCase(Locale.ROOT);
     long megas = Math.max(1, archivo.getSize() / (1024 * 1024));
-    long costo = nombre.endsWith(".csv") ? 8 + megas * 4 : 16 + megas * 12;
+    long costo = nombre.endsWith(".csv") ? 8 + megas * 5 : 16 + megas * 16;
     return (int) Math.min(costo, PRESUPUESTO_MEMORIA_MB);
   }
 
@@ -385,7 +464,9 @@ public class SimulacionRegistroService {
                         f.bultos(),
                         f.unidades(),
                         f.lineas(),
-                        f.conteoCod()))
+                        f.conteoCod(),
+                        // Los locales viajan con su ruta: el plano solo cambia el nombre del chute.
+                        f.locales()))
             .toList();
     return new SimulacionExcel.Analisis(rutas, analisis.totalBultos());
   }
@@ -431,6 +512,8 @@ public class SimulacionRegistroService {
     lotes.insertarParametrosChute(
         archivoId, delRegistro, ParametroChute.OPERARIOS_INICIALES, predeterminados.chutesBuff());
     lotes.insertarRutas(archivoId, rutas, clusters, chutes);
+    // Cada local de cada ruta, para verlos al hacer clic en la ruta.
+    lotes.insertarLocales(archivoId, rutas);
     return guardado;
   }
 

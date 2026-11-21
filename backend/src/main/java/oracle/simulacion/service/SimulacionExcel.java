@@ -69,8 +69,9 @@ import org.xml.sax.XMLReader;
  * PROMEDIO/LINEAS. La cabecera se busca en las primeras {@value #FILAS_BUSCAR_CABECERA} filas
  * (puede haber un título encima).
  *
- * <p>COD son los locales de la ruta: con varias filas se cuentan los COD distintos; si la ruta viene
- * en una sola fila, su COD ya es la cantidad de locales (ver {@code Acumulado#conteoCod}).
+ * <p>COD es el código de cada local de la ruta: cada fila es un local y una ruta de una sola fila
+ * tiene un solo local. Un COD repetido en la misma ruta es el mismo local y suma sus filas; una fila
+ * sin COD es un local propio. Cada local se guarda con sus totales (ver {@link LocalRuta}).
  *
  * <p>La misma ruta puede aparecer con tipos distintos (una ruta B2C y la misma ruta B2B), pero no
  * puede repetirse dos veces con el mismo tipo ni cambiar de cluster, chute o grupo dentro del mismo
@@ -95,11 +96,8 @@ public final class SimulacionExcel {
   static final int MAX_COLUMNAS = 50;
   /** Longitud de codigo_ruta y de los nombres de cluster/chute en la BD. */
   static final int MAX_TEXTO = 50;
-  /**
-   * Tope de locales de una ruta de una sola fila: {@value #MAX_FILAS} rutas por este tope caben en
-   * el INTEGER de total_cod.
-   */
-  static final int MAX_LOCALES = 10_000;
+  /** Longitud del COD de un local en la BD (rutas_locales.cod). */
+  static final int MAX_COD = 100;
   /** Máximo de DECIMAL(12,2), en céntimos. */
   private static final long MAX_CENTIMOS = 999_999_999_999L;
   static final BigDecimal MAX_VALOR = BigDecimal.valueOf(MAX_CENTIMOS, 2);
@@ -115,8 +113,6 @@ public final class SimulacionExcel {
 
   private static final String[] COLUMNAS_OBLIGATORIAS = {"RUTA", "CLUSTER", "CHUTE", "GRUPO", "FRECUENCIA", "TIPO", "BULTOS"};
   private static final Pattern MARCAS = Pattern.compile("\\p{M}+");
-  /** Número con signo o decimales («-5», «12.5», «1,5»): no es el código de un local. */
-  private static final Pattern NUMERO = Pattern.compile("[+-]?\\d+(?:[.,]\\d+)*");
   private static final Pattern ESPACIOS = Pattern.compile("[\\s\\u00A0\\u2007\\u202F\\uFEFF]+");
   private static final Charset WINDOWS_1252 = Charset.forName("windows-1252");
   private static final char[] SEPARADORES_CSV = {',', ';', '\t', '|'};
@@ -151,8 +147,37 @@ public final class SimulacionExcel {
       BigDecimal bultos,
       BigDecimal unidades,
       BigDecimal lineas,
-      /** Locales de la ruta (ver {@code Acumulado#conteoCod}). */
-      int conteoCod) {}
+      /** Locales de la ruta: COD distintos (una fila sin COD cuenta como uno). */
+      int conteoCod,
+      /** Cada local con sus totales, en el orden del Excel. */
+      List<LocalRuta> locales) {
+
+    /**
+     * Sin constructor corto a propósito: quien reconstruya una ruta (p. ej. al ajustarla al plano)
+     * tiene que pasar sus locales, o el compilador lo avisa. Antes uno así los perdía en silencio.
+     */
+    public FilaRuta {
+      locales = locales == null ? List.of() : List.copyOf(locales);
+    }
+  }
+
+  /**
+   * Un local de la ruta tal como lo trae el Excel. {@code cod} es null si la fila no tenía COD;
+   * {@code filas} &gt; 1 si el mismo COD vino en varias filas (se suman). Importes en céntimos.
+   */
+  public record LocalRuta(String cod, int filas, long bultosCentimos, long unidadesCentimos, long lineasCentimos) {
+    public BigDecimal bultos() {
+      return BigDecimal.valueOf(bultosCentimos, 2);
+    }
+
+    public BigDecimal unidades() {
+      return BigDecimal.valueOf(unidadesCentimos, 2);
+    }
+
+    public BigDecimal lineas() {
+      return BigDecimal.valueOf(lineasCentimos, 2);
+    }
+  }
 
   public record Analisis(List<FilaRuta> rutas, BigDecimal totalBultos) {}
 
@@ -478,7 +503,7 @@ public final class SimulacionExcel {
         for (int c = 0; c < ultima; c++) {
           Cell celda = registro.getCell(c, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
           if (esNumerica(celda)) {
-            fila.ponerNumero(c, celda.getNumericCellValue());
+            fila.ponerNumero(c, celda.getNumericCellValue(), cerosDe(celda.getCellStyle().getDataFormatString()));
           } else {
             fila.poner(c, valorCelda(celda));
           }
@@ -633,6 +658,8 @@ public final class SimulacionExcel {
     private final String[] valores = new String[MAX_COLUMNAS];
     private final double[] numeros = new double[MAX_COLUMNAS];
     private final boolean[] numerico = new boolean[MAX_COLUMNAS];
+    /** Dígitos del formato de ceros de la celda («0000» → 4); 0 si no tiene. Solo lo usa el COD. */
+    private final int[] ceros = new int[MAX_COLUMNAS];
     private int tamano;
 
     void limpiar() {
@@ -644,14 +671,21 @@ public final class SimulacionExcel {
       if (abrir(columna)) {
         valores[columna] = valor;
         numerico[columna] = false;
+        ceros[columna] = 0;
       }
     }
 
     void ponerNumero(int columna, double valor) {
+      ponerNumero(columna, valor, 0);
+    }
+
+    /** Número con el formato de ceros de su celda (ver {@link #codigo(int)}). */
+    void ponerNumero(int columna, double valor, int digitos) {
       if (abrir(columna)) {
         valores[columna] = null;
         numeros[columna] = valor;
         numerico[columna] = true;
+        ceros[columna] = digitos;
       }
     }
 
@@ -662,6 +696,7 @@ public final class SimulacionExcel {
       while (tamano < columna) {
         valores[tamano] = "";
         numerico[tamano] = false;
+        ceros[tamano] = 0;
         tamano++;
       }
       tamano = Math.max(tamano, columna + 1);
@@ -680,6 +715,22 @@ public final class SimulacionExcel {
         valores[indice] = crudo(numeros[indice]);
       }
       return valores[indice];
+    }
+
+    /**
+     * Texto de un código tal como lo muestra Excel: un número con formato de ceros conserva los de
+     * la izquierda (457 con «0000» → «0457»), así el mismo local escrito como texto o como número es
+     * el mismo. El resto, como {@link #valor(int)}.
+     */
+    String codigo(int indice) {
+      if (indice < tamano && numerico[indice] && ceros[indice] > 0) {
+        double numero = numeros[indice];
+        if (numero >= 0 && numero == Math.rint(numero) && numero < 1e15) {
+          String digitos = Long.toString((long) numero);
+          return digitos.length() >= ceros[indice] ? digitos : "0".repeat(ceros[indice] - digitos.length()) + digitos;
+        }
+      }
+      return valor(indice);
     }
 
     boolean numerico(int indice) {
@@ -838,7 +889,11 @@ public final class SimulacionExcel {
       Frecuencia frecuencia = frecuencia(texto(fila, iFrecuencia), numero);
       // «a», «A» y « A » son el mismo grupo: se guarda con el primer nombre que apareció.
       String grupo = grupos.computeIfAbsent(clave(grupoLeido), (k) -> grupoLeido);
-      String cod = texto(fila, iCod);
+      String cod = iCod < 0 ? "" : fila.codigo(iCod).trim();
+      if (cod.length() > MAX_COD) {
+        throw ArchivoInvalidoException.contenido(
+            "La fila " + numero + " tiene un COD de más de " + MAX_COD + " caracteres.");
+      }
 
       String claveRuta = clave(ruta) + '\u0000' + tipo.name();
       Acumulado acumulado = porRuta.get(claveRuta);
@@ -889,7 +944,34 @@ public final class SimulacionExcel {
     }
   }
 
-  /** Totales de una ruta en céntimos y sus locales (ver {@link #conteoCod()}). */
+  /** Un local mientras se lee: sus totales en céntimos y cuántas filas del Excel lo traen. */
+  private static final class Local {
+    private final String cod;
+    private int filas = 1;
+    private long bultos;
+    private long unidades;
+    private long lineas;
+
+    Local(String cod, long bultos, long unidades, long lineas) {
+      this.cod = cod;
+      this.bultos = bultos;
+      this.unidades = unidades;
+      this.lineas = lineas;
+    }
+
+    void sumar(long b, long u, long l) {
+      filas++;
+      bultos += b;
+      unidades += u;
+      lineas += l;
+    }
+
+    LocalRuta aLocal() {
+      return new LocalRuta(cod.isEmpty() ? null : cod, filas, bultos, unidades, lineas);
+    }
+  }
+
+  /** Totales de una ruta en céntimos y sus locales: una fila = un local, el COD repetido se suma. */
   private static final class Acumulado {
     private final String ruta;
     private final String cluster;
@@ -904,13 +986,15 @@ public final class SimulacionExcel {
     private long bultos;
     private long unidades;
     private long lineas;
-    /** El primer COD se guarda suelto: el conjunto solo se crea si aparece un segundo distinto. */
-    private String primerCod;
-    /** El primer COD tal como vino y su fila: con una sola fila es la cantidad de locales. */
-    private String primerCodValor;
-    private int filaPrimerCod;
-    private Set<String> cods;
-    private int filas;
+    /**
+     * Locales de la ruta en el orden del Excel, por COD (sin mayúsculas ni tildes): un COD repetido
+     * suma sus filas. Una fila sin COD es un local propio. El primero va suelto y el mapa solo se
+     * crea con el segundo local distinto: con 100k rutas de un local cada una, un mapa por ruta
+     * pesaba ~50 MB más (SimulacionExcelBenchmark, «rutas-unicas»).
+     */
+    private Local primero;
+    private String clavePrimero;
+    private Map<String, Local> locales;
 
     Acumulado(
         String ruta, String cluster, String chute, String grupo, Frecuencia frecuencia, TipoRuta tipo) {
@@ -951,21 +1035,42 @@ public final class SimulacionExcel {
       bultos = acotar(bultos + b, "BULTOS", numero);
       unidades = acotar(unidades + u, "UNIDADES", numero);
       lineas = acotar(lineas + l, "LINEAS", numero);
-      if (!cod.isEmpty()) {
-        String claveCod = clave(cod);
-        if (primerCod == null) {
-          primerCod = claveCod;
-          primerCodValor = cod;
-          filaPrimerCod = numero;
-        } else if (cods != null) {
-          cods.add(claveCod);
-        } else if (!primerCod.equals(claveCod)) {
-          cods = new HashSet<>();
-          cods.add(primerCod);
-          cods.add(claveCod);
-        }
+      // Las sumas por local nunca pasan de las de su ruta, ya acotadas arriba.
+      String claveLocal = cod.isEmpty() ? "\u0000" + numero : clave(cod);
+      if (primero == null) {
+        primero = new Local(cod, b, u, l);
+        clavePrimero = claveLocal;
+        return;
       }
-      filas++;
+      if (locales == null) {
+        if (clavePrimero.equals(claveLocal)) {
+          primero.sumar(b, u, l);
+          return;
+        }
+        locales = new LinkedHashMap<>();
+        locales.put(clavePrimero, primero);
+      }
+      Local local = locales.get(claveLocal);
+      if (local == null) {
+        locales.put(claveLocal, new Local(cod, b, u, l));
+      } else {
+        local.sumar(b, u, l);
+      }
+    }
+
+    private int conteoLocales() {
+      return locales != null ? locales.size() : primero != null ? 1 : 0;
+    }
+
+    private List<LocalRuta> aLocales() {
+      if (locales == null) {
+        return primero == null ? List.of() : List.of(primero.aLocal());
+      }
+      List<LocalRuta> lista = new ArrayList<>(locales.size());
+      for (Local local : locales.values()) {
+        lista.add(local.aLocal());
+      }
+      return lista;
     }
 
     FilaRuta aFila() {
@@ -980,41 +1085,8 @@ public final class SimulacionExcel {
           BigDecimal.valueOf(bultos, 2),
           BigDecimal.valueOf(unidades, 2),
           BigDecimal.valueOf(lineas, 2),
-          conteoCod());
-    }
-
-    /**
-     * Locales de la ruta. Con varias filas se cuentan los COD distintos (sin COD, las filas). Si la
-     * ruta viene en una sola fila, su COD ya es la cantidad de locales: se toma tal cual (un entero
-     * de 1 a {@value SimulacionExcel#MAX_LOCALES}); si trae letras es el código de un local y
-     * cuenta 1.
-     */
-    private int conteoCod() {
-      if (primerCod == null) {
-        return filas;
-      }
-      if (filas > 1) {
-        return cods == null ? 1 : cods.size();
-      }
-      String cod = primerCodValor;
-      if (!NUMERO.matcher(cod).matches()) {
-        return 1;
-      }
-      long valor = 0;
-      for (int i = 0; i < cod.length() && valor <= MAX_LOCALES; i++) {
-        char c = cod.charAt(i);
-        valor = c >= '0' && c <= '9' ? valor * 10 + (c - '0') : -1;
-        if (valor < 0) {
-          break;
-        }
-      }
-      if (valor < 1 || valor > MAX_LOCALES) {
-        throw ArchivoInvalidoException.contenido(
-            "Fila " + filaPrimerCod + ": la ruta " + ruta + " (" + tipo + ") viene en una sola fila,"
-                + " así que su COD es la cantidad de locales; \"" + recortar(cod)
-                + "\" debe ser un número entero de 1 a " + MAX_LOCALES + ".");
-      }
-      return (int) valor;
+          conteoLocales(),
+          aLocales());
     }
 
     private long acotar(long valor, String columna, int numero) {
@@ -1037,6 +1109,8 @@ public final class SimulacionExcel {
     /** Número que FormatoCrudo acaba de recibir para la celda en curso. */
     private boolean hayNumero;
     private double numero;
+    /** Dígitos del formato de ceros del número en curso (ver {@link Fila#codigo(int)}). */
+    private int ceros;
 
     FilasXlsx(Agrupador agrupador) {
       this.agrupador = agrupador;
@@ -1057,7 +1131,7 @@ public final class SimulacionExcel {
       int columna = referencia == null ? fila.tamano : columna(referencia);
       if (hayNumero) {
         hayNumero = false;
-        fila.ponerNumero(columna, numero);
+        fila.ponerNumero(columna, numero, ceros);
       } else {
         fila.poner(columna, valor == null ? "" : valor);
       }
@@ -1103,6 +1177,7 @@ public final class SimulacionExcel {
     public String formatRawCellContents(double valor, int indice, String formato) {
       filas.hayNumero = true;
       filas.numero = valor;
+      filas.ceros = cerosDe(formato);
       return "";
     }
 
@@ -1111,6 +1186,19 @@ public final class SimulacionExcel {
         double valor, int indice, String formato, boolean fechas1904) {
       return formatRawCellContents(valor, indice, formato);
     }
+  }
+
+  /** Dígitos de un formato de ceros («0000» → 4, hasta 30); 0 si el formato es otro. */
+  static int cerosDe(String formato) {
+    if (formato == null || formato.length() < 2 || formato.length() > 30) {
+      return 0;
+    }
+    for (int i = 0; i < formato.length(); i++) {
+      if (formato.charAt(i) != '0') {
+        return 0;
+      }
+    }
+    return formato.length();
   }
 
   /** Texto canónico de un número de celda: "3030" (no "3030.0"), "12.5", "0.001". */

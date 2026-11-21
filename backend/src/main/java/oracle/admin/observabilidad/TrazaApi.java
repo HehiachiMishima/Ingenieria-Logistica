@@ -63,7 +63,7 @@ public class TrazaApi implements WebMvcConfigurer, HandlerInterceptor {
             "cambiarClusterRuta", "Cambiar cluster de ruta", "balancear", "Balancear cluster",
             "restablecerCluster", "Restablecer cluster", "cerrar", "Cerrar cluster", "reabrir", "Reabrir cluster",
             "guardarBalanceoRutas", "Guardar predeterminado", "cargarBalanceoRutas", "Cargar predeterminado",
-            "restablecer", "Restablecer archivo");
+            "restablecer", "Restablecer archivo", "completarLocales", "Completar locales");
         agregar(m, "SimulacionPredeterminadosController", "Predeterminados Titan",
             "bloquear", "Bloquear", "desbloquear", "Desbloquear");
         // Simulación Santa Anita

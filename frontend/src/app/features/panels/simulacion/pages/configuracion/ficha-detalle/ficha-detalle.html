@@ -2,80 +2,67 @@
 @let r = ruta();
 @let k = cluster();
 @let pos = posicion();
-<div class="detalle-pop" [class.detalle-pop--hoja]="pos.hoja" role="dialog"
+<div #pop class="detalle-pop" [class.detalle-pop--hoja]="pos.hoja" [class.detalle-pop--ruta]="!!r" [class.detalle-pop--baja]="!!r && baja()" role="dialog"
   [attr.aria-label]="r ? 'Detalle de la ruta ' + r.ruta.codigoRuta : 'Detalle de ' + k!.c.nombre"
   [style.left.px]="pos.left" [style.top.px]="pos.top" [style.bottom.px]="pos.bottom"
   [style.max-height.px]="pos.maxAlto" [style.--pop-color]="r ? r.color : k!.c.color">
   @if (r) {
-  <!-- ============ Ruta ============ -->
-  <header class="ficha-cabeza">
-    <span class="ficha-avatar ficha-avatar--caja" aria-hidden="true">
-      <app-icono-sim nombre="caja" [tamano]="26" />
-    </span>
-    <div class="ficha-cabeza__titulo">
-      <span class="ficha-kicker">Ruta</span>
-      <strong>{{ r.ruta.codigoRuta }}</strong>
+  <!-- ============ Ruta: su ficha de la planilla y la cuadrícula de sus locales del Excel ============ -->
+  @let grupo = r.colorGrupo !== null ? r.ruta.grupo : null;
+  <header class="ficha-cabeza loc-cabeza">
+    <!-- La misma ficha de dos filas de la planilla; el nombre del diálogo ya la describe. -->
+    <div class="loc-ficha" aria-hidden="true">
+      <div class="matriz-ruta" [class.matriz-ruta--movida]="r.movida" [class.matriz-ruta--grupo]="grupo !== null"
+        [style.--grupo-color]="r.colorGrupo">
+        <span class="matriz-ruta__datos">
+          <span class="matriz-ruta__pestana-tipo" [attr.data-tipo]="r.ruta.tipo">{{ r.ruta.tipo }}</span>
+          <span class="matriz-ruta__frecuencia" [attr.data-frecuencia]="r.frecuencia.tipo"
+            [class.matriz-ruta__frecuencia--fija]="r.frecuencia.fija">{{ r.frecuencia.dias }}</span>
+          <span class="matriz-ruta__bultos"><ng-container [ngTemplateOutlet]="caja" />{{ r.ruta.totalBultos | entero }}</span>
+        </span>
+        <span class="matriz-ruta__fila-ruta">
+          <span class="matriz-ruta__pestana" [class.matriz-ruta__pestana--vacia]="grupo === null"
+            [class.matriz-ruta__pestana--corta]="grupo !== null && grupo.length <= 2">{{ grupo }}</span>
+          <span class="matriz-ruta__caja-codigo">
+            <span class="matriz-ruta__codigo" [attr.data-frecuencia]="r.frecuencia.tipo">{{ r.ruta.codigoRuta }}</span>
+          </span>
+        </span>
+      </div>
     </div>
-    <span class="matriz-ruta__tipo" [class.matriz-ruta__tipo--b2b]="r.ruta.tipo === 'B2B'"
-      [class.matriz-ruta__tipo--b2c]="r.ruta.tipo === 'B2C'">{{ r.ruta.tipo }}</span>
+    <div class="ficha-cabeza__titulo">
+      <strong>Ruta {{ r.ruta.codigoRuta }}</strong>
+      <span class="loc-sub">{{ r.ruta.conteoCod | entero }} {{ r.ruta.conteoCod === 1 ? 'local' : 'locales' }} del Excel ·
+        {{ r.ruta.cluster }} · {{ r.ruta.chute }}</span>
+    </div>
     <button type="button" class="ficha-cerrar" aria-label="Cerrar detalle" (click)="cerrar.emit()">
       <ui-icon name="close" [size]="16" />
     </button>
   </header>
 
-  <!-- Frecuencia y dónde está: cluster · grupo → chute. -->
-  <div class="ficha-chips">
-    <span class="ficha-frecuencia" [attr.data-frecuencia]="r.frecuencia.tipo" [title]="r.frecuencia.titulo">
-      <ui-icon name="calendario" [size]="12" />
-      {{ r.frecuencia.tipo === 'D' ? 'Diaria · 6 días' : r.frecuencia.tipo === 'MJS' ? 'M-J-S' : 'L-X-V' }}
-    </span>
-    <span class="ficha-chip"><span class="ficha-chip__color" aria-hidden="true"></span>{{ r.ruta.cluster }}</span>
-    @if (r.ruta.grupo) {
-    <span class="ficha-chip ficha-chip--grupo" [style.--g]="r.colorGrupo">
-      <span class="ficha-chip__grupo">{{ r.ruta.grupo }}</span>Grupo
-    </span>
-    }
-    <ui-icon class="ficha-chips__flecha" name="flecha" [size]="12" />
-    <span class="ficha-chip"><ui-icon name="almacen" [size]="12" />{{ r.ruta.chute }}</span>
-  </div>
-
-  <dl class="ficha-datos">
-    <div class="ficha-dato ficha-dato--destacado">
-      <span class="ficha-dato__icono"><app-icono-sim nombre="bultos" [tamano]="18" /></span>
+  <!-- Totales de la ruta en bloques con el marco de la ficha. -->
+  <dl class="loc-tot">
+    <div class="loc-tot__k loc-kraft">
       <dt>Bultos</dt>
-      <dd>{{ r.ruta.totalBultos | entero }}</dd>
+      <dd><ng-container [ngTemplateOutlet]="caja" />{{ r.ruta.totalBultos | numero: 2 }}</dd>
     </div>
-    <div class="ficha-dato">
-      <span class="ficha-dato__icono"><app-icono-sim nombre="unidades" [tamano]="18" /></span>
+    <div class="loc-tot__k">
       <dt>Unidades</dt>
-      <dd>{{ r.ruta.totalUnidades | entero }}</dd>
+      <dd>{{ r.ruta.totalUnidades | numero: 2 }}</dd>
     </div>
-    <div class="ficha-dato">
-      <span class="ficha-dato__icono"><app-icono-sim nombre="lineas" [tamano]="18" /></span>
+    <div class="loc-tot__k">
       <dt>Líneas</dt>
-      <dd>{{ r.ruta.totalLineas | entero }}</dd>
-    </div>
-    <div class="ficha-dato">
-      <span class="ficha-dato__icono"><app-icono-sim nombre="cod" [tamano]="18" /></span>
-      <dt>Locales (COD)</dt>
-      <dd>{{ r.ruta.conteoCod | entero }}</dd>
+      <dd>{{ r.ruta.totalLineas | numero: 2 }}</dd>
     </div>
   </dl>
 
-  @if (r.parte !== null) {
-  <div class="ficha-barra" [attr.aria-label]="r.parte + ' % de los bultos de su chute'">
-    <div class="ficha-barra__texto">
-      <span>De los bultos de su chute</span>
-      <strong>{{ r.parte }} %</strong>
-    </div>
-    <span class="ficha-barra__pista"><span [style.width.%]="r.parte"></span></span>
-  </div>
-  }
-
-  @if (r.operarios !== null) {
-  <p class="ficha-nota ficha-nota--operarios">
-    <span class="ficha-nota__icono"><app-icono-sim nombre="operarios" [tamano]="20" /></span>
-    <span><strong>{{ r.operarios }}</strong> operario(s) en su chute</span>
+  @if (r.parte !== null || r.operarios !== null) {
+  <p class="loc-info">
+    @if (r.parte !== null) {
+    <span><strong>{{ r.parte }} %</strong> de los bultos de su chute</span>
+    }
+    @if (r.operarios !== null) {
+    <span><app-icono-sim nombre="operarios" [tamano]="14" /><strong>{{ r.operarios }}</strong> operario(s) en su chute</span>
+    }
   </p>
   }
 
@@ -92,6 +79,102 @@
       <strong>{{ r.ruta.cluster }} · {{ r.ruta.chute }}</strong>
     </span>
   </div>
+  }
+
+  <!-- Locales del Excel: buscador, bultos mínimos y la cuadrícula (dos por fila, como los chutes). -->
+  @let est = locales();
+  @switch (est?.estado) {
+  @case ('listo') {
+  @if (est?.estado === 'listo' && est.datos.conDetalle) {
+  <div class="loc-filtros">
+    <label class="ui-search loc-buscar">
+      <ui-icon name="search" [size]="16" />
+      <input class="ui-input" type="search" placeholder="Buscar COD" aria-label="Buscar local por COD"
+        autocomplete="off" [value]="busqueda()" (input)="buscar($event)" />
+    </label>
+    <label class="loc-min">
+      <span>Bultos ≥</span>
+      <input class="ui-input" type="number" min="0" step="any" inputmode="decimal" placeholder="0"
+        aria-label="Bultos mínimos del local" [value]="minimo() ?? ''" (input)="filtrarBultos($event)" />
+    </label>
+  </div>
+
+  <div class="loc-scroll" role="region" aria-label="Locales de la ruta" tabindex="0">
+    <div class="loc-cab">
+      <span>Locales · por bultos</span>
+      <span class="loc-cab__n" aria-live="polite">{{ filtrando() ? visibles().length + ' de ' + todos().length : todos().length }}</span>
+    </div>
+    @if (visibles().length > 0) {
+    <ul class="loc-grilla">
+      @for (l of mostrados(); track $index) {
+      <li class="loc-mini" [class.loc-mini--rep]="l.filas > 1"
+        [attr.aria-label]="(l.cod ?? 'Sin COD') + ': ' + (l.bultos | numero: 2) + ' bultos, ' + (l.unidades | numero: 2) + ' unidades, ' + (l.lineas | numero: 2) + ' líneas' + (l.filas > 1 ? ', en ' + l.filas + ' filas del Excel' : '')">
+        <span class="loc-mini__arriba" aria-hidden="true">
+          <span class="loc-mini__cod" [class.loc-mini__cod--sin]="!l.cod" [title]="l.cod ?? 'Sin COD'">{{ l.cod ?? 'Sin COD' }}</span>
+          <span class="loc-mini__bultos" [title]="(l.bultos | numero: 2) + ' bultos'"><ng-container [ngTemplateOutlet]="caja" />{{ l.bultos | numero: 2 }}</span>
+        </span>
+        <span class="loc-mini__abajo" aria-hidden="true">
+          <span [title]="(l.unidades | numero: 2) + ' unidades'"><small>Unid.</small>{{ l.unidades | numero: 2 }}</span>
+          <span [title]="(l.lineas | numero: 2) + ' líneas'"><small>Lín.</small>{{ l.lineas | numero: 2 }}</span>
+        </span>
+        @if (l.filas > 1) {
+        <i class="loc-rep" aria-hidden="true" [title]="'Aparece ' + l.filas + ' veces en el Excel: se suman'">×{{ l.filas }}</i>
+        }
+      </li>
+      }
+    </ul>
+    @if (quedan() > 0) {
+    <!-- Se dibujan de a 200: con miles de locales, todos a la vez bloqueaban la pantalla. -->
+    <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm loc-mas" (click)="mostrarMas()">
+      Mostrar {{ siguientes() | entero }} más · quedan {{ quedan() | entero }}
+    </button>
+    }
+    } @else {
+    <p class="loc-vacio">Ningún local coincide con la búsqueda.</p>
+    }
+    @let t = totalesVisibles();
+    <div class="loc-pie">
+      <span class="loc-pie__etq">{{ etiquetaPie() }}</span>
+      <span class="loc-pie__bultos"><ng-container [ngTemplateOutlet]="caja" />{{ t.bultos | numero: 2 }}</span>
+      <span>{{ t.unidades | numero: 2 }} <small>unid.</small></span>
+      <span>{{ t.lineas | numero: 2 }} <small>lín.</small></span>
+    </div>
+  </div>
+  @if (est.datos.truncado) {
+  <p class="loc-aviso"><ui-icon name="info" [size]="14" /> Se muestran los primeros {{ est.datos.locales.length | entero }} locales.</p>
+  }
+  } @else {
+  <div class="loc-aviso">
+    <ui-icon name="info" [size]="14" />
+    <span>Este registro se subió antes de guardar los locales.
+      {{ puedeCompletar() ? 'Complétalos con su Excel: el balanceo no cambia.' : 'Pide a quien administra los registros que los complete con su Excel.' }}</span>
+    @if (puedeCompletar()) {
+    <input #excel type="file" accept=".xlsx,.xls,.csv" hidden (change)="elegirExcel($event)" />
+    <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" [disabled]="completando()" (click)="excel.click()">
+      @if (completando()) {
+      <span class="ui-spinner" aria-hidden="true"></span> Completando…
+      } @else {
+      <ui-icon name="almacen" [size]="14" /> Completar con su Excel
+      }
+    </button>
+    }
+  </div>
+  }
+  }
+  @case ('error') {
+  <p class="loc-aviso loc-aviso--error" role="alert">
+    <ui-icon name="alertTriangle" [size]="14" />
+    <span>No se pudieron cargar los locales. {{ est?.estado === 'error' ? est.mensaje : '' }}</span>
+    <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="reintentar.emit()">Reintentar</button>
+  </p>
+  }
+  @default {
+  <div class="loc-cargando" aria-busy="true" aria-label="Cargando locales">
+    @for (i of [1, 2, 3, 4]; track i) {
+    <span class="ui-skeleton loc-cargando__ficha"></span>
+    }
+  </div>
+  }
   }
 
   @if (r.aviso) {
@@ -245,3 +328,13 @@
   }
   }
 </div>
+
+<!-- Caja de cartón de los bultos (la misma de la planilla). -->
+<ng-template #caja>
+  <svg class="caja-bulto" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+    <path class="caja-bulto__tapa" d="M8 1.5 14.5 4.5 8 7.5 1.5 4.5Z" />
+    <path class="caja-bulto__frente" d="M1.5 4.5 8 7.5V14.5L1.5 11.5Z" />
+    <path class="caja-bulto__lado" d="M8 7.5 14.5 4.5V11.5L8 14.5Z" />
+    <path class="caja-bulto__cinta" d="M4.75 3 11.25 6V13" />
+  </svg>
+</ng-template>
