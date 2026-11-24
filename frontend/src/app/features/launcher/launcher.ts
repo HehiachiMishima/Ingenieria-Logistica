@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { PANELES, PanelDef, modulosAccesibles, panelAccesible } from '../../core/config/paneles';
+import { PANELES, PanelDef, panelAccesible } from '../../core/config/paneles';
 import { Auth } from '../../core/services/auth';
 import { Notificaciones } from '../../core/services/notificaciones';
 import { TemaService } from '../../core/services/tema';
@@ -26,9 +26,9 @@ export class Launcher {
   readonly permisos = this.auth.permisos;
 
   /**
-   * Tarjeta de cada panel con su acceso ya resuelto: la plantilla no vuelve a
-   * evaluar los permisos en cada detección de cambios. Los chips muestran los
-   * módulos accesibles, o todos si el panel está bloqueado.
+   * Logo de cada panel con su acceso ya resuelto: la plantilla no vuelve a
+   * evaluar los permisos en cada detección de cambios. El logo es
+   * `paneles/<id>.svg` (carpeta public) y el nombre accesible avisa si no hay acceso.
    */
   readonly tarjetas = computed(() => {
     const permisos = this.permisos();
@@ -37,7 +37,8 @@ export class Launcher {
       return {
         panel,
         accesible,
-        modulos: accesible ? modulosAccesibles(panel, permisos) : panel.modulos,
+        logo: `paneles/${panel.id}.svg`,
+        etiqueta: accesible ? panel.nombre : `${panel.nombre}: sin acceso`,
       };
     });
   });

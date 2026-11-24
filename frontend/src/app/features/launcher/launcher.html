@@ -46,47 +46,37 @@
       </p>
     </section>
 
-    <div class="launcher__grid">
+    <nav class="launcher__grid" aria-label="Paneles">
       @for (t of tarjetas(); track t.panel.id; let i = $index) {
         <button
           type="button"
-          class="panel-card"
-          [class.panel-card--locked]="!t.accesible"
+          class="panel-logo"
+          [class.panel-logo--locked]="!t.accesible"
           [attr.aria-disabled]="!t.accesible"
-          [style.--c]="t.panel.acento"
+          [attr.aria-label]="t.etiqueta"
+          [title]="t.panel.descripcion"
           [style.--i]="i"
           (click)="abrir(t.panel, t.accesible)"
         >
-          <span class="panel-card__band" aria-hidden="true"></span>
-
-          <span class="panel-card__head">
-            <span class="panel-card__icon"><ui-icon [name]="t.panel.icono" [size]="24" /></span>
-            <span class="panel-card__status" [class.panel-card__status--off]="!t.accesible">
-              <ui-icon [name]="t.accesible ? 'checkCircleFilled' : 'lock'" [size]="14" />
-              {{ t.accesible ? 'Disponible' : 'Bloqueado' }}
-            </span>
+          <span class="panel-logo__media">
+            <img
+              class="panel-logo__img"
+              [src]="t.logo"
+              alt=""
+              width="120"
+              height="120"
+              decoding="async"
+              [attr.loading]="i < 6 ? 'eager' : 'lazy'"
+            />
           </span>
-
-          <span class="panel-card__name">{{ t.panel.nombre }}</span>
-          <span class="panel-card__desc">{{ t.panel.descripcion }}</span>
-
-          <span class="panel-card__mods">
-            @for (modulo of t.modulos; track modulo.id) {
-              <span class="panel-card__mod">
-                <ui-icon [name]="modulo.icono" [size]="13" />
-                {{ modulo.nombre }}
-              </span>
+          <span class="panel-logo__name">
+            @if (!t.accesible) {
+              <ui-icon class="panel-logo__lock" name="lock" [size]="13" />
             }
-          </span>
-
-          <span class="panel-card__cta">
-            {{ t.accesible ? 'Entrar al panel' : 'Solicita acceso al administrador' }}
-            @if (t.accesible) {
-              <ui-icon name="flecha" [size]="16" />
-            }
+            {{ t.panel.nombre }}
           </span>
         </button>
       }
-    </div>
+    </nav>
   </main>
 </div>

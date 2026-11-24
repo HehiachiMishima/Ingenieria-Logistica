@@ -1716,7 +1716,7 @@ export class SimulacionConfiguracion {
         ? null
         : cerrado
           ? `${ruta.cluster} está cerrado: reábrelo para mover sus rutas.`
-          : 'Arrástrala a otro chute o cluster para moverla.',
+          : '',
     };
   });
 

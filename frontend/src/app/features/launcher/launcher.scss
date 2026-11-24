@@ -1,9 +1,8 @@
 @use 'breakpoints' as bp;
 
 /**
- * Launcher "Atlas": cabecera navy con la escena de marca y tarjetas
- * de panel con color de señal propio (--c) que reflejan los módulos
- * habilitados para el usuario.
+ * Launcher "Atlas": cabecera navy con la escena de marca y una bandeja con
+ * el logo 3D y el nombre de cada panel.
  */
 :host {
   display: block;
@@ -211,188 +210,138 @@
   }
 }
 
+/*
+ * Bandeja de paneles: logo 3D (public/paneles/<id>.svg) y nombre, nada más. La bandeja
+ * tiene superficie propia para que logos y nombres no queden mitad sobre la escena navy
+ * y mitad sobre el fondo. Columnas: 2 (< 360 px) · 3 (celular) · 4 (tablet) · 6
+ * (escritorio); la última fila queda centrada.
+ */
 .launcher__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: var(--space-5);
-  margin-top: var(--space-10);
+  --cols: 2;
+  --gap-x: var(--space-1);
 
-  @include bp.down(sm) {
-    grid-template-columns: 1fr;
-  }
-}
-
-.panel-card {
-  --c: var(--brand);
-  position: relative;
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-3);
-  min-height: 280px;
-  padding: var(--space-6);
-  text-align: left;
-  color: var(--text);
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-4) var(--gap-x);
+  margin-top: var(--space-10);
+  padding: clamp(var(--space-4), 3vw, var(--space-8)) clamp(var(--space-2), 2vw, var(--space-6));
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 18px;
   box-shadow: var(--shadow-sm);
-  cursor: pointer;
-  overflow: hidden;
-  animation: ui-rise 600ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-delay: calc(120ms + var(--i, 0) * 80ms);
-  transition: transform var(--transition), box-shadow var(--transition), border-color var(--transition);
 
-  /* Brillo de la esquina: ocupa la tarjeta (inset 0) y dibuja el mismo círculo
-     de 200 px centrado a 40 px de la esquina; antes sobresalía 60 px y la
-     tarjeta medía más que su caja. */
-  &::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(
-      circle 100px at calc(100% - 40px) 40px,
-      color-mix(in srgb, var(--c) 22%, transparent),
-      transparent 70px
-    );
-    pointer-events: none;
-    transform-origin: calc(100% - 40px) 40px;
-    transition: transform var(--transition-slow);
+  @media (min-width: 360px) {
+    --cols: 3;
   }
 
-  &:hover:not(.panel-card--locked) {
-    transform: translateY(-4px);
-    border-color: color-mix(in srgb, var(--c) 55%, var(--border));
-    box-shadow: 0 22px 44px -18px color-mix(in srgb, var(--c) 60%, transparent), var(--shadow-sm);
+  @include bp.up(sm) {
+    --cols: 4;
+    --gap-x: var(--space-2);
+  }
 
-    &::after {
-      transform: scale(1.4);
-    }
+  @include bp.up(lg) {
+    --cols: 6;
+  }
+}
 
-    .panel-card__cta {
-      gap: var(--space-3);
+.panel-logo {
+  display: flex;
+  flex: 0 0 calc((100% - (var(--cols) - 1) * var(--gap-x)) / var(--cols));
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-3) var(--space-1) var(--space-4);
+  font: inherit;
+  color: var(--text);
+  text-align: center;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  animation: ui-rise 600ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(120ms + var(--i, 0) * 50ms);
+  transition:
+    background-color var(--transition),
+    border-color var(--transition);
+
+  &:hover:not(.panel-logo--locked) {
+    background: var(--surface-2);
+    border-color: var(--border);
+
+    .panel-logo__img {
+      transform: translateY(-4px) scale(1.04);
     }
   }
 
   &:focus-visible {
-    outline: 3px solid var(--c);
-    outline-offset: 3px;
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* Celular: 4 px de aire entre columnas y sin relleno lateral, así «Automatización» cabe
+     entera desde 390 px; más angosto se divide con guion. */
+  @include bp.down(sm) {
+    padding-inline: 0;
   }
 }
 
-.panel-card__band {
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 4px;
-  background: linear-gradient(90deg, var(--c), color-mix(in srgb, var(--c) 30%, transparent));
+/* El logo crece con la columna hasta 112 px; width/height en la etiqueta reservan su caja. */
+.panel-logo__media {
+  width: min(100%, 112px);
 }
 
-.panel-card__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.panel-logo__img {
+  display: block;
   width: 100%;
+  height: auto;
+  transition: transform var(--transition);
 }
 
-.panel-card__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 54px;
-  height: 54px;
-  border-radius: 14px;
-  color: #fff;
-  background: var(--c);
-  box-shadow: 0 12px 26px -10px var(--c);
-}
-
-.panel-card__status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: var(--radius-pill);
-  font-size: var(--fs-xs);
+/* Nombres largos («Bitácora de incidencias») en dos líneas. Entre 360 y 389 px (tres columnas
+   angostas) la letra baja a 0.75rem para que «Automatización» quepa entera. En rem: crece si el
+   usuario agranda el texto; entonces una palabra de 12 o más letras se divide con guion
+   («Trazabili-dad»), nunca «Simula-ción» ni «San-ta». */
+.panel-logo__name {
+  max-width: 100%;
+  font-size: var(--fs-sm);
   font-weight: 700;
-  color: var(--success);
-  background: var(--success-soft);
+  line-height: 1.3;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  hyphenate-limit-chars: 12 5 4;
 
-  &--off {
-    color: var(--text-3);
-    background: var(--surface-3);
+  @media (min-width: 360px) and (max-width: 389.98px) {
+    font-size: 0.75rem;
   }
 }
 
-.panel-card__name {
-  margin-top: var(--space-2);
-  font-family: var(--font-display);
-  font-size: var(--fs-xl);
-  font-weight: 800;
-  letter-spacing: -0.03em;
-}
-
-.panel-card__desc {
-  color: var(--text-3);
-  font-size: var(--fs-md);
-  line-height: 1.5;
-}
-
-.panel-card__mods {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.panel-card__mod {
+/* Sin acceso: logo en gris y un candado delante del nombre (fuera del logo, no lo tapa);
+   el nombre accesible del botón lo dice. */
+.panel-logo__lock {
   display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 9px;
-  border-radius: var(--radius-xs);
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  color: var(--text-2);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  margin-right: 3px;
+  vertical-align: -2px;
 }
 
-.panel-card__cta {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-top: auto;
-  padding-top: var(--space-3);
-  font-size: var(--fs-md);
-  font-weight: 700;
-  color: var(--c);
-  transition: gap var(--transition);
-}
-
-.panel-card--locked {
+.panel-logo--locked {
   cursor: not-allowed;
-  background: var(--surface-2);
 
-  .panel-card__icon {
-    background: var(--surface-3);
+  .panel-logo__img {
+    filter: grayscale(1);
+    opacity: 0.5;
+  }
+
+  .panel-logo__name {
     color: var(--text-3);
-    box-shadow: none;
   }
+}
 
-  .panel-card__band {
-    background: var(--border-strong);
-  }
-
-  .panel-card__name,
-  .panel-card__desc {
-    opacity: 0.7;
-  }
-
-  .panel-card__cta {
-    color: var(--text-3);
-    font-weight: 600;
-  }
-
-  &::after {
-    display: none;
+@media (prefers-reduced-motion: reduce) {
+  .panel-logo,
+  .panel-logo__img {
+    animation: none;
+    transition: none;
   }
 }

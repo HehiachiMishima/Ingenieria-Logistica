@@ -1,11 +1,11 @@
-# Informe de auditoría de rendimiento — Administración: Dashboard de operación, Monitoreo, Actividad, Auditoría y permisos del rol
+# Informe de auditoría de rendimiento — Administración: Dashboard de operación, Monitoreo, Actividad, Auditoría, permisos del rol y selector de paneles
 
 ## 1. Contexto
 
 | Campo | Valor |
 |---|---|
-| Fecha | 2026-11-19 (observabilidad) · 2026-11-20 (permisos del rol, roles del usuario, permisos individuales y roles con un permiso) |
-| Commit | 19a57b7 + cambios sin commit (rama update_16) · 2a6d074 + cambios sin commit (rama update_19) · 8215938 + cambios sin commit (roles del usuario) · de8a47e + cambios sin commit (permisos individuales) · b21c714 + cambios sin commit (roles con un permiso) |
+| Fecha | 2026-11-19 (observabilidad) · 2026-11-20 (permisos del rol, roles del usuario, permisos individuales y roles con un permiso) · 2026-11-21 (selector de paneles) |
+| Commit | 19a57b7 + cambios sin commit (rama update_16) · 2a6d074 + cambios sin commit (rama update_19) · 8215938 + cambios sin commit (roles del usuario) · de8a47e + cambios sin commit (permisos individuales) · b21c714 + cambios sin commit (roles con un permiso) · c754505 + cambios sin commit (selector de paneles, rama update_21) |
 | Entorno | local, macOS arm64, una instancia; volumen sintético de 1 000 000 trazas, 200 000 eventos de auditoría y 80 569 filas en `roles_permisos` (2 000 roles × 40 permisos, 563 permisos), y para los roles del usuario 100 000 usuarios con 150 001 asignaciones de rol y 50 000 excepciones, todo dentro de transacciones revertidas |
 | Backend | Spring Boot 4.1.2, Hibernate 7.4.13, HikariCP 7.0.2, driver PostgreSQL 42.7.14, JDK 25, virtual threads sí (`spring.threads.virtual.enabled=true`), open-in-view false |
 | Base de datos | PostgreSQL 18.6 local, max_connections 100, sin PgBouncer, pg_stat_statements no cargado |
@@ -49,6 +49,11 @@
 | Dar un permiso a 5 roles (antes) | desde Roles, un rol por vez (`RolPermisoService.asignar`) | 5 peticiones HTTP y 5 `invalidarTodo` de la caché de autorización; 25 sentencias = 9,6 ms en la base | — | `BenchPermisoRoles.java` | 2026-11-20 |
 | Chunk perezoso de Permisos | `ng build` producción | 6,03 kB gzip | — | `ng build` de `de8a47e` en un worktree temporal (la página no cambió hasta `b21c714`) | 2026-11-20 |
 | Chunk perezoso de Usuarios | `ng build` producción | 9,98 kB gzip | — | `ng build` de `8215938` en un worktree temporal; tamaño del archivo con `gzip -9` | 2026-11-20 |
+| Chunk perezoso del selector de paneles (antes) | `ng build` producción | 13,45 kB (4,11 kB gzip) | — | `ng build --output-path` de `c754505` (scratchpad `qa-base`); tamaño del archivo y `gzip -c` | 2026-11-21 |
+| LCP del selector `/` (antes) | 1366 × 768, bundle de producción, servidor de QA local sin caché HTTP, 3 cargas | 844 · 1 980 · 1 992 ms; elemento: la marca `atlasImg.png` de la cabecera | 2,5 s | `PerformanceObserver('largest-contentful-paint')` en el navegador, alternando con el build nuevo | 2026-11-21 |
+| CLS del selector (antes) | 1366 × 768 y 390 × 844 | 0 | 0,1 | `PerformanceObserver('layout-shift')` | 2026-11-21 |
+| Imágenes del selector (antes) | 1366 × 768 | `atlasImg.png` 572 790 B (1 360 × 1 600 px, mostrada a 46 × 46 px) y `atlas-carga.webp` 153 702 B; 14 peticiones en total | — | Resource Timing (`encodedBodySize`) | 2026-11-21 |
+| Alto del selector en celular (antes) | 390 × 844 | 3 838 px; 2 de 11 paneles en la primera pantalla | — | `document.documentElement.scrollHeight` | 2026-11-21 |
 
 ## 3. Hallazgos
 
@@ -63,6 +68,7 @@
 | Media | Base de datos | Primera versión de `UsuarioRolLoteRepository.java:35` con `array_agg(p.nombre ORDER BY p.nombre)` en el mismo `GROUP BY` que el conteo: 118,0 ms, `Sort Method: external merge Disk: 3816kB` y `temp read=474` con 2 002 roles y 80 069 filas en `roles_permisos` | Agregado ordenado con estado por grupo que derrama a disco con el `work_mem` por defecto | Conteo y «otorgable» en un agregado simple; los paneles en una CTE aparte, solo sobre las filas `PANEL_*`, con `string_agg` | 0 buffers temporales y ≤ 40 ms (medido: 36,3 ms) |
 | Media | API | `permisos-usuario.ts:156` y `:133` (versión `de8a47e`): un PUT o DELETE por permiso, cada uno con `verificarPuedeAdministrar` y `verificarPuedeOtorgar` (7 sentencias por permiso); abrir el diálogo hacía 3 peticiones en paralelo (`permisos-usuario.ts:86`) | API conversadora: una escritura HTTP por elemento y tres lecturas para una pantalla | `GET /api/usuarios/{usuarioId}/permisos/tablero` (una consulta con lo que dan los roles, las excepciones y si se puede conceder) y `PATCH /api/usuarios/{usuarioId}/permisos` con `{conceder, denegar, heredar}` en una transacción (`UsuarioPermisoService.actualizarLote`) | 1 petición al abrir y 1 al guardar; 8 sentencias para 5 permisos (medido: 9,3 ms frente a 20,0 ms) |
 | Media | Backend | `permisos.html:342` (versión `b21c714`): «La asignación se hace desde la pantalla de Roles»; dar un permiso nuevo a 5 roles exige 5 guardados, y cada uno ejecuta `autorizacionCache.invalidarTodo` (`RolPermisoService.java:95`), que vacía la caché de autorización de todos los usuarios | Reparto de un permiso por elemento: N invalidaciones globales de caché y N peticiones | Tablero inverso: `GET /api/permisos/{permisoId}/roles/tablero` y `PATCH /api/permisos/{permisoId}/roles` con `{agregar, quitar}` en una transacción (`RolPermisoService.actualizarRoles`) | 1 petición y 1 `invalidarTodo` por guardado en lugar de 5; 7 sentencias en lugar de 25 |
+| Media | Frontend | `launcher.html:6` y `panel-shell.html:14` (cabecera del selector y de todos los paneles): `atlasImg.png` pesa 572 790 B (1 360 × 1 600 px) y se muestra a 46 × 46 y 40 × 40 px; es el elemento LCP del selector (mediana 1 980 ms en QA local) y también el favicon (`index.html:13`) | Imagen 17 veces más ancha que su caja a 2× (92 px): payload > 100 KB en la ruta de entrada | `src="marca/atlas-logo-192.png"` (26 856 B, ya en `public/marca`, la misma marca) en las dos cabeceras y `marca/atlas-logo-64.png` (6 039 B) como favicon | Imagen LCP ≤ 27 KB (−95 %); LCP del selector ≤ 1 000 ms con el mismo protocolo (servidor de QA, 3 cargas, mediana) |
 
 ## 4. Clasificación
 
@@ -96,6 +102,9 @@
 | CSS global del diálogo anterior | Frontend | No aplicable | Las reglas `.perm-*` de `_components.scss` solo las usaba el diálogo reemplazado; se quitaron y el bundle inicial bajó 2,15 kB |
 | Consulta del tablero «Roles con este permiso» | Base de datos | No aplicable | 37,3 ms (catálogo con uso, sin buffers temporales) + 30,5 ms (usuarios alcanzados, `DISTINCT` en dos niveles) con un permiso en 1 322 de 2 002 roles y 150 002 asignaciones; dentro de 200 ms |
 | Componentes y estilos sin uso tras los tableros | Frontend | No aplicable | `ui/lista-asignacion.ts` y las reglas `.switch`, `.role-list` y `.role-item` de `_components.scss` ya no los usaba nadie; se quitaron y el bundle inicial bajó 1,18 kB más |
+| Marca de la cabecera sobredimensionada | Frontend | Aplicable | 572 790 B para una caja de 46 px y es el LCP del selector; corrección propuesta, no aplicada: cambia la cabecera de todos los paneles y el favicon, fuera de este pedido |
+| Logos del selector: 11 SVG por petición | Red | No aplicable | 20 879 B en total y todos terminan a los 503 ms; no son el LCP (mediana 2 000 ms frente a 1 980 ms, mismo elemento) ni mueven nada (CLS 0: cada `<img>` lleva `width` y `height`); los 5 de la segunda fila en escritorio van con `loading="lazy"`. Un sprite ahorraría 10 peticiones sin cambio medible |
+| Peso del selector | Frontend | No aplicable | Chunk perezoso 13,45 → 11,30 kB (4,11 → 3,82 kB gzip) al quitar los chips de módulos y los estilos de las tarjetas; bundle inicial sin cambio (446,30 kB) |
 | p95 HTTP con carga | API | Pendiente | Backend en marcha con datos + `k6` sobre los tres `/resumen` |
 | LCP / INP del Dashboard | Frontend | Pendiente | Lighthouse contra el servidor de QA; INP de campo con `web-vitals` |
 | Salud del pool Hikari | Backend | Pendiente | `analyze_pool_health.sh` con Actuator y carga |
@@ -114,6 +123,7 @@
 | 7 | N4 | Guardado en lote de los roles del usuario (aplicado) | 3/2 · Aprovechar (hecho) |
 | 8 | N4 | Tablero y guardado en lote de los permisos individuales (aplicado) | 3/2 · Aprovechar (hecho) |
 | 9 | N4 | Tablero inverso «Roles con este permiso» (aplicado) | 3/2 · Aprovechar (hecho) |
+| 10 | N4 | Marca de la cabecera en tamaño real (propuesto) | 3/1 · Aprovechar |
 
 ## 6. Verificación antes/después
 
@@ -149,6 +159,12 @@
 | Peticiones HTTP para conceder 5 permisos a un usuario | 5 | 1 | −80 % | Mejora |
 | Sentencias en la base para conceder 5 permisos | 35 (20,0 ms) | 8 (9,3 ms) | −54 % de tiempo | Mejora |
 | Bundle inicial | 449,55 kB | 446,30 kB | −3,25 kB | Mejora |
+| Chunk perezoso del selector de paneles (gzip) | 4,11 kB | 3,82 kB | −0,29 kB | Mejora |
+| Peticiones al abrir el selector | 14 | 25 (+11 logos SVG, 20,9 kB) | +11 | Regresión |
+| LCP del selector, 1366 × 768 (mediana de 3, alternando) | 1 980 ms | 2 000 ms | +20 ms (ruido del entorno) | Sin cambio |
+| CLS del selector (1366 × 768 y 390 × 844) | 0 | 0 | 0 | Sin cambio |
+| Alto del selector en celular (390 × 844) | 3 838 px | 1 106 px | −71 % | Mejora |
+| Paneles en la primera pantalla del celular (390 × 844) | 2 de 11 | 9 de 11 | +7 | Mejora |
 
 ## 7. Veredicto
 
@@ -157,3 +173,5 @@ El Dashboard de operación no depende del volumen de trazas: lee resúmenes por 
 En los permisos del rol, el problema no era la base sino la conversación: una petición, una transacción, una invalidación de la caché de autorización y un evento de auditoría por cada permiso, con un cupo de 60 escrituras por minuto que impedía armar un rol completo. El guardado en lote lo reduce a una petición por guardado (16 permisos: 4 sentencias, 1,98 ms en la base). Abrir el tablero cuesta 9 ms en la base con 40 veces el volumen real porque ahora también cuenta en cuántos roles está cada permiso; es una regresión aceptada, muy por debajo de 200 ms. El tablero, ya en el diálogo mediano con scroll en dos ejes y atajos de columna, suma 9,5 kB comprimidos solo a la ruta de Roles y se desplaza a 60 cuadros por segundo sin tareas largas.
 
 Los roles del usuario tenían el mismo problema, agravado: además de una petición por rol, cada una repetía los controles de escalada (6 sentencias por rol). El guardado en lote deja 1 petición y 8 sentencias para 5 roles. La primera versión de la consulta del tablero derramaba a disco (118 ms) por un `array_agg` ordenado en el mismo agregado que el conteo; separada en dos agregados queda en 36 ms sin buffers temporales con 2 002 roles y 150 001 asignaciones. PostgreSQL no es el cuello de botella en estas pantallas. Los permisos individuales repetían el patrón con tres peticiones al abrir y siete sentencias por permiso; con el tablero son una petición para abrir (0,16 ms en la base con 100 000 usuarios) y otra para guardar. Los tres tableros comparten la directiva de arrastre y los estilos: la ruta de Usuarios suma 15,4 kB comprimidos y el bundle inicial bajó 2,07 kB al quitar el CSS del diálogo anterior. «Roles con este permiso» pasó de solo lectura a tablero inverso: dar un permiso a varios roles es una petición y un solo vaciado de la caché de autorización en lugar de uno por rol. Abrirlo cuesta 68 ms en la base y guardar 29 ms porque cuenta a cuántos usuarios llega el permiso; con un permiso presente en 1 322 roles sigue muy por debajo de 200 ms. Al quitar el componente y el CSS que ya no usaba nadie, el bundle inicial quedó en 446,30 kB.
+
+En el selector de paneles, cambiar las tarjetas por logos 3D (11 SVG, 20,9 kB en total) y el nombre no movió el LCP: el elemento LCP antes y después es la marca de la cabecera, que pesa 572 790 B para una caja de 46 px y también se descarga en la cabecera de cada panel. Los logos suman 11 peticiones, pero terminan a los 503 ms, reservan su caja (CLS 0) y la ruta quedó 0,29 kB más liviana. En celular, el selector pasó de 3 838 a 1 106 px de alto y muestra 9 de los 11 paneles sin desplazarse. La corrección con más impacto en esta ruta es servir la marca en su tamaño real (`marca/atlas-logo-192.png`, 26 KB); queda propuesta porque toca la cabecera de todos los paneles y el favicon.
