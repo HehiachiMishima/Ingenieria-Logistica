@@ -25,13 +25,6 @@ export const SIMULACION_ROUTES: Routes = [
         loadComponent: () => import('./pages/registro/registro').then((m) => m.SimulacionRegistro),
       },
       {
-        // Registro v2 (diccionario de rutas): módulo nuevo e independiente, por ahora sin permiso
-        // propio: basta con entrar al panel (lo protege el canMatch del panel).
-        path: 'registro-v2',
-        loadComponent: () =>
-          import('./pages/registro-v2/registro-v2').then((m) => m.SimulacionRegistroV2),
-      },
-      {
         path: 'configuracion',
         canActivate: [permisoGuard(PERMISOS.VER_CONFIGURACION_SIMULACION)],
         // Salir con el equipo o un límite sin guardar pregunta antes de descartarlos.

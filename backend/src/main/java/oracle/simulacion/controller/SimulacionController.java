@@ -1,12 +1,10 @@
 package oracle.simulacion.controller;
 
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import oracle.common.exception.ApiError;
 import oracle.common.exception.SolicitudInvalidaException;
 import oracle.common.response.ApiResponse;
 import oracle.common.response.PaginaResponse;
@@ -20,7 +18,6 @@ import oracle.simulacion.request.LadoChute;
 import oracle.simulacion.request.Limites;
 import oracle.simulacion.request.MoverRutaRequest;
 import oracle.simulacion.request.MoverRutasRequest;
-import oracle.simulacion.request.RegistroActualizarRequest;
 import oracle.simulacion.response.ArchivoSimulacionResponse;
 import oracle.simulacion.response.BalanceoResponse;
 import oracle.simulacion.response.ComparativoLanzamientoResponse;
@@ -35,7 +32,6 @@ import oracle.simulacion.response.RutaSimulacionResponse;
 import oracle.simulacion.response.RutasDashboardResponse;
 import oracle.simulacion.response.VistaBalanceoResponse;
 import oracle.simulacion.service.SimulacionConfiguracionService;
-import oracle.simulacion.service.SimulacionExcel;
 import oracle.simulacion.service.SimulacionHistorialService;
 import oracle.simulacion.service.SimulacionRegistroService;
 import oracle.simulacion.service.SimulacionReporte;
@@ -44,7 +40,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -52,9 +47,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.multipart.MultipartFile;
 
 /** Registro, configuración y dashboard del panel Simulación. */
 @RestController
@@ -81,84 +74,11 @@ public class SimulacionController {
     this.reporte = reporte;
   }
 
-  @GetMapping
-  @PreAuthorize("hasAuthority('VER_REGISTRO_SIMULACION')")
-  public ApiResponse<PaginaResponse<ArchivoSimulacionResponse>> listar(
-      @RequestParam(defaultValue = "1") int pagina,
-      @RequestParam(defaultValue = "10") int tamano,
-      @RequestParam(required = false) String texto,
-      @RequestParam(required = false) List<String> estados) {
-    return registroService.listar(pagina, tamano, texto, estados);
-  }
-
   @GetMapping("/opciones")
   @PreAuthorize(
       "hasAnyAuthority('VER_REGISTRO_SIMULACION','VER_CONFIGURACION_SIMULACION','VER_DASHBOARD_SIMULACION')")
   public ApiResponse<List<ArchivoSimulacionResponse>> opciones() {
     return registroService.opciones();
-  }
-
-  /**
-   * Alta de un registro desde un .xlsx/.xls/.csv.
-   *
-   * <p>Un archivo inválido responde con su 4xx (400/413/415/422) y el mismo cuerpo ApiError; el
-   * resto de errores sigue en el GlobalExceptionHandler. La carga corre en el hilo virtual de la
-   * petición; si pasa de los 60 s del proxy, la carga termina igual y un reintento con el mismo
-   * archivo devuelve el registro ya creado (es idempotente).
-   */
-  @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-  @PreAuthorize("hasAuthority('CREAR_REGISTRO_SIMULACION')")
-  public ResponseEntity<?> subir(
-      @RequestPart("archivo") MultipartFile archivo,
-      @RequestParam(required = false) String nombreRegistro,
-      @RequestParam(required = false) String etiqueta,
-      @RequestParam(required = false) String colorHex,
-      HttpServletRequest peticion) {
-    try {
-      return ResponseEntity.ok(registroService.subir(archivo, nombreRegistro, etiqueta, colorHex));
-    } catch (SimulacionExcel.ArchivoInvalidoException error) {
-      return ResponseEntity.status(error.estado())
-          .body(
-              ApiError.de(
-                  error.estado().value(),
-                  error.estado().getReasonPhrase(),
-                  error.getMessage(),
-                  peticion.getRequestURI()));
-    }
-  }
-
-  /**
-   * Completa los locales de un registro ya subido con su Excel, sin tocar su balanceo: solo las
-   * rutas con el mismo código, tipo y totales reciben los locales.
-   */
-  @PostMapping(value = "/{id}/locales", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-  @PreAuthorize("hasAuthority('MODIFICAR_REGISTRO_SIMULACION')")
-  public ResponseEntity<?> completarLocales(
-      @PathVariable Long id, @RequestPart("archivo") MultipartFile archivo, HttpServletRequest peticion) {
-    try {
-      return ResponseEntity.ok(registroService.completarLocales(id, archivo));
-    } catch (SimulacionExcel.ArchivoInvalidoException error) {
-      return ResponseEntity.status(error.estado())
-          .body(
-              ApiError.de(
-                  error.estado().value(),
-                  error.estado().getReasonPhrase(),
-                  error.getMessage(),
-                  peticion.getRequestURI()));
-    }
-  }
-
-  @PutMapping("/{id}")
-  @PreAuthorize("hasAuthority('MODIFICAR_REGISTRO_SIMULACION')")
-  public ApiResponse<ArchivoSimulacionResponse> actualizar(
-      @PathVariable Long id, @Valid @RequestBody RegistroActualizarRequest req) {
-    return registroService.actualizar(id, req);
-  }
-
-  @DeleteMapping("/{id}")
-  @PreAuthorize("hasAuthority('ELIMINAR_REGISTRO_SIMULACION')")
-  public ApiResponse<Void> eliminar(@PathVariable Long id) {
-    return registroService.eliminar(id);
   }
 
   @GetMapping("/{id}/configuracion")

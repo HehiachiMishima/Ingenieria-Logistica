@@ -26,10 +26,12 @@ public final class DiccionarioPeticiones {
 
   private DiccionarioPeticiones() {}
 
-  /** Crear o editar una ruta: número, tipo (opcional: null = sin tipo) y uno o varios códigos. */
+  /**
+   * Crear o editar una ruta: número y uno o varios códigos. Nace en Datos (sin tipo, cluster,
+   * frecuencia ni grupo); el tipo se asigna con su acción, ya en un cluster.
+   */
   public record Ruta(
       @NotBlank(message = "Escribe el número de ruta.") @Size(max = 50) String codigoRuta,
-      @Pattern(regexp = "B2C|B2B", message = "El tipo debe ser B2C o B2B.") String tipo,
       @NotEmpty(message = "La ruta necesita al menos un código.")
           @Size(max = MAX_LOCALES)
           List<@NotNull @Valid Local> locales) {}
@@ -66,10 +68,11 @@ public final class DiccionarioPeticiones {
   /** Deshacer el último movimiento: cada ruta vuelve a su bloque y frecuencia de antes. */
   public record Restaurar(@NotEmpty @Size(max = MAX_SELECCION) List<@NotNull @Valid Ubicacion> rutas) {}
 
-  /** Dónde estaba una ruta: cluster (null = Datos), frecuencia y grupo (null = sin asignar). */
+  /** Dónde estaba una ruta: cluster (null = Datos), tipo, frecuencia y grupo (null = sin asignar). */
   public record Ubicacion(
       @NotNull @Positive Long id,
       @Positive Long clusterId,
+      @Pattern(regexp = "B2C|B2B", message = "El tipo debe ser B2C o B2B.") String tipo,
       @Pattern(regexp = "LXV|MJS|DIARIA", message = "La frecuencia debe ser LXV, MJS o DIARIA.")
           String frecuencia,
       @Size(max = 50) String grupo) {}

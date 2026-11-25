@@ -59,43 +59,4 @@ class PlanoChutesTest {
     assertEquals(List.of(101L, 112L, 133L), plano.idsVisibles());
   }
 
-  @Test
-  void laCargaRechazaRutasEnChutesBloqueadosOFueraDelPlano() {
-    SimulacionRegistroService servicio = registro();
-    SimulacionExcel.Analisis analisis =
-        new SimulacionExcel.Analisis(
-            List.of(fila("2001", "CHUTE 1"), fila("3001", "CHUTE 20"), fila("4001", "34")),
-            BigDecimal.TEN);
-
-    RuntimeException error = assertThrows(RuntimeException.class, () -> servicio.alPlano(analisis));
-
-    assertTrue(error.getMessage().contains("CHUTE 20 (el CHUTE 20 está bloqueado): 3001"), error.getMessage());
-    assertTrue(error.getMessage().contains("34 (no está entre el CHUTE 1 y el CHUTE 33): 4001"), error.getMessage());
-    assertFalse(error.getMessage().contains("2001"), error.getMessage());
-  }
-
-  @Test
-  void laCargaGuardaElChuteConSuNumero() {
-    SimulacionExcel.Analisis ajustado =
-        registro().alPlano(new SimulacionExcel.Analisis(List.of(fila("2001", "CHUTE 05")), BigDecimal.TEN));
-    assertEquals("5", ajustado.rutas().get(0).chute());
-    // Ajustar al plano solo cambia el chute: los locales de la ruta se conservan (antes se perdían).
-    assertEquals(
-        List.of(new SimulacionExcel.LocalRuta("L-2001", 1, 1000, 100, 100)), ajustado.rutas().get(0).locales());
-  }
-
-  private SimulacionRegistroService registro() {
-    return new SimulacionRegistroService(
-        mock(ArchivoExcelRepository.class),
-        mock(SimulacionLotesRepository.class),
-        mock(Transacciones.class),
-        plano,
-        Clock.systemUTC());
-  }
-
-  private static SimulacionExcel.FilaRuta fila(String codigo, String chute) {
-    return new SimulacionExcel.FilaRuta(
-        codigo, "CL1", chute, "A", "DIARIA", "L-M-X-J-V-S", TipoRuta.B2C, BigDecimal.TEN, BigDecimal.ONE, BigDecimal.ONE, 1,
-        List.of(new SimulacionExcel.LocalRuta("L-" + codigo, 1, 1000, 100, 100)));
-  }
 }

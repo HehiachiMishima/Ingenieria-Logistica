@@ -11,13 +11,15 @@ export interface ClusterDiccionario {
   id: number;
   orden: number;
   nombre: string;
+  /** Cerrado en Configuración: el Registro no lo muestra (ni sus rutas) hasta que se reabra. */
+  cerrado: boolean;
 }
 
 /** Una ruta con los totales de sus locales. */
 export interface RutaDiccionario {
   id: number;
   codigoRuta: string;
-  /** null = sin tipo (empieza vacío y se asigna con la acción Tipo). */
+  /** null = sin tipo (empieza vacío, se asigna con la acción Tipo en un cluster y Datos lo vacía). */
   tipo: TipoRutaDiccionario | null;
   /** null = está en Datos. */
   clusterId: number | null;
@@ -59,16 +61,17 @@ export interface CambioRutas {
   omitidas: number;
 }
 
+/** Crear o editar: número y locales. Nace en Datos; el tipo se asigna con su acción, ya en un cluster. */
 export interface RutaDiccionarioRequest {
   codigoRuta: string;
-  tipo: TipoRutaDiccionario | null;
   locales: { cod: string; bultos: number; unidades: number; lineas: number }[];
 }
 
-/** Dónde estaba una ruta antes de moverla (para deshacer). */
+/** Dónde estaba una ruta antes de moverla (para deshacer). En Datos todo lo demás es null. */
 export interface UbicacionRuta {
   id: number;
   clusterId: number | null;
+  tipo: TipoRutaDiccionario | null;
   frecuencia: FrecuenciaDiccionario | null;
   grupo: string | null;
 }

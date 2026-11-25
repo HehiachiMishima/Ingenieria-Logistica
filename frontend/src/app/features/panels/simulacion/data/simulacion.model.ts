@@ -231,18 +231,6 @@ export interface LocalesRuta {
   locales: LocalRuta[];
 }
 
-/** Resultado de completar los locales de un registro con su Excel. */
-export interface CompletarLocales {
-  /** Rutas que recibieron sus locales. */
-  completadas: number;
-  /** Rutas con el mismo código y tipo pero otros totales: no se tocaron. */
-  distintas: number;
-  /** Rutas del registro que no están en el Excel. */
-  sinExcel: number;
-  /** Rutas del Excel que no existen en el registro. */
-  soloEnExcel: number;
-}
-
 /** Rutas y totales de un cluster asignados a un chute. */
 export interface CargaSimulacion {
   clusterId: number;
@@ -302,12 +290,6 @@ export interface ConfiguracionSimulacionRequest {
   clusters: { clusterId: number; limiteHoras: number }[];
   /** Buff de los chutes (solo antes de balancear): base de operarios y si tiene buff. */
   chutes?: { chuteId: number; operarios: number; buff: boolean }[];
-}
-
-export interface RegistroSimulacionActualizarRequest {
-  nombreRegistro: string;
-  etiqueta: string;
-  colorHex: string;
 }
 
 export interface HistorialSimulacion {

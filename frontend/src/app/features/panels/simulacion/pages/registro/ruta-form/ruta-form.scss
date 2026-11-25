@@ -50,51 +50,12 @@
   }
 }
 
-/* ---------- Número y tipo ---------- */
+/* ---------- Número de ruta ---------- */
 .rf-cabeza {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
   margin-bottom: var(--space-3);
-}
-
-.rf-seg {
-  display: inline-flex;
-  overflow: hidden;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-}
-
-.rf-seg__op {
-  min-width: 64px;
-  min-height: 40px;
-  padding: 0 var(--space-3);
-  font-weight: 800;
-  color: var(--text-2);
-  background: var(--surface);
-  border: 0;
-  cursor: pointer;
-
-  & + & {
-    border-left: 1px solid var(--border-strong);
-  }
-
-  /* «Sin tipo» elegido: gris, como la pestaña vacía de la ficha. */
-  &--on {
-    color: var(--text);
-    background: color-mix(in srgb, var(--text-3) 30%, var(--surface));
-  }
-
-  /* El color de la pestaña de tipo de la ficha. */
-  &--on[data-tipo='B2C'] {
-    color: var(--surface);
-    background: color-mix(in srgb, var(--success) 80%, #000);
-  }
-
-  &--on[data-tipo='B2B'] {
-    color: #0b1f3a;
-    background: #f7c400;
-  }
 }
 
 .rf-num {
@@ -257,7 +218,6 @@
 @media (pointer: coarse) {
   .rf-quitar,
   .rf-agregar,
-  .rf-seg__op,
   .modal-foot .ui-btn {
     min-height: 44px;
   }

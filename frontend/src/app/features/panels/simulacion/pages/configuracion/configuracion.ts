@@ -2,17 +2,13 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  ElementRef,
   computed,
   effect,
   inject,
   signal,
-  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { NgTemplateOutlet } from '@angular/common';
-import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
   EMPTY,
@@ -63,21 +59,15 @@ import { SelectBuscable } from '../../../../../shared/ui/select-buscable/select-
 import { SelectMultiple } from '../../../../../shared/ui/select-multiple/select-multiple';
 import {
   LIMITES,
-  PALETA_REGISTROS,
   VELOCIDAD_INICIAL,
   compararChute,
   numeroChute,
   compararNombre,
-  datosCarga,
-  etiquetaRegistro,
   coloresGrupos,
   formatearEntero,
   formatearNumero,
   formatearHoras,
-  nombreRegistroSugerido,
   redondearArriba,
-  problemaArchivoExcel,
-  tamanoArchivo,
 } from '../../simulacion-formato';
 import {
   Paso,
@@ -283,7 +273,6 @@ interface EstadoRutasMatriz {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     NgTemplateOutlet,
-    ReactiveFormsModule,
     HasPermiso,
     EmptyState,
     FichaDetalle,
@@ -313,13 +302,9 @@ export class SimulacionConfiguracion {
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   private readonly sesion = inject(SesionStore);
-  private readonly fb = inject(FormBuilder);
   private readonly directorio = inject(DirectorioUsuarios);
-  private readonly inputArchivo = viewChild<ElementRef<HTMLInputElement>>('inputArchivo');
 
   readonly permisos = PERMISOS;
-  readonly paleta = PALETA_REGISTROS;
-  readonly tamanoArchivo = tamanoArchivo;
   readonly puedeModificar = computed(() =>
     this.sesion.permisos().includes(PERMISOS.MODIFICAR_CONFIGURACION_SIMULACION),
   );
@@ -1383,19 +1368,7 @@ export class SimulacionConfiguracion {
     null,
   );
 
-  // ---------------- Carga de Excel desde configuración ----------------
-  readonly subirAbierto = signal(false);
-  readonly archivoSeleccionado = signal<File | null>(null);
-  readonly subiendo = signal(false);
   readonly explicacionAbierta = signal(false);
-  readonly formulario = this.fb.nonNullable.group({
-    nombreRegistro: [
-      '',
-      [Validators.required, Validators.pattern(/\S/), Validators.maxLength(150)],
-    ],
-    etiqueta: ['', [Validators.maxLength(50)]],
-    colorHex: [PALETA_REGISTROS[0].hex],
-  });
 
   /**
    * Columnas de la matriz: los chutes del filtro (sin filtro, todos), en orden
@@ -1760,47 +1733,6 @@ export class SimulacionConfiguracion {
     this.reintentoLocales.update((n) => n + 1);
   }
 
-  /** Completar los locales de un registro con su Excel es modificar el registro. */
-  readonly puedeCompletarLocales = computed(() =>
-    this.sesion.permisos().includes(PERMISOS.MODIFICAR_REGISTRO_SIMULACION),
-  );
-  readonly completandoLocales = signal(false);
-
-  /**
-   * Completa los locales del registro con su Excel (sin tocar su balanceo) y vuelve a pedir los de
-   * la ruta abierta. Cambia el conteo de locales: la planilla se actualiza (si hay cambios sin
-   * guardar, `actualizar()` avisa en vez de descartarlos).
-   */
-  completarLocales(archivo: File): void {
-    const registro = this.seleccionado();
-    if (registro === null || this.completandoLocales()) {
-      return;
-    }
-    this.completandoLocales.set(true);
-    this.api
-      .completarLocales(registro, archivo)
-      .pipe(
-        finalize(() => this.completandoLocales.set(false)),
-        takeUntilDestroyed(this.destroyRef),
-      )
-      .subscribe({
-        next: (r) => {
-          const partes = [`${r.completadas} ${r.completadas === 1 ? 'ruta recibió' : 'rutas recibieron'} sus locales.`];
-          if (r.distintas > 0) {
-            partes.push(`${r.distintas} con otros totales en el Excel no se tocaron.`);
-          }
-          if (r.sinExcel > 0) {
-            partes.push(`${r.sinExcel} no están en el Excel y siguen sin detalle.`);
-          }
-          this.notificaciones.exito('Locales completados', partes.join(' '));
-          this.reintentarLocales();
-          this.actualizar();
-        },
-        // El error ya lo muestra el aviso global de la API.
-        error: () => undefined,
-      });
-  }
-
   /** Cluster de la ficha, con sus métricas vigentes. */
   readonly clusterDetalle = computed(() => {
     const abierto = this.detalle();
@@ -2009,10 +1941,6 @@ export class SimulacionConfiguracion {
       },
     };
   }
-
-  readonly opcionesRegistro = computed(() =>
-    this.registros().map((registro) => ({ id: registro.id, etiqueta: etiquetaRegistro(registro) })),
-  );
 
   /** Chutes que se pueden elegir (filtro y rango): sin los bloqueados. */
   readonly opcionesChute = computed(() =>
@@ -2451,11 +2379,6 @@ export class SimulacionConfiguracion {
     this.recargarRutas();
   }
 
-  campoInvalido(campo: 'nombreRegistro'): boolean {
-    const control = this.formulario.controls[campo];
-    return control.touched && control.invalid;
-  }
-
   /** Por qué el cluster de una ruta no se puede cambiar (título del chip). */
   motivoClusterFijo(ruta: RutaSimulacion): string {
     const propio = this.config()?.clusters.find((cluster) => cluster.id === ruta.clusterId);
@@ -2474,7 +2397,7 @@ export class SimulacionConfiguracion {
       `Líneas: ${n(ruta.totalLineas)} · COD: ${formatearEntero(ruta.conteoCod)}`;
     const origen =
       ruta.chuteId !== ruta.chuteOriginalId || ruta.clusterId !== ruta.clusterOriginalId
-        ? `\nEn el Excel: ${ruta.clusterOriginal} · chute ${ruta.chuteOriginal}`
+        ? `\nAl entrar: ${ruta.clusterOriginal} · chute ${ruta.chuteOriginal}`
         : '';
     if (!this.puedeModificar()) {
       return detalle + origen;
@@ -3389,89 +3312,6 @@ export class SimulacionConfiguracion {
     void this.router.navigate(['/simulacion/dashboard'], {
       queryParams: id ? { registro: id } : {},
     });
-  }
-
-  // ------------------------------------------------------------------
-  // Carga de Excel desde la configuración
-  // ------------------------------------------------------------------
-
-  abrirSelectorArchivo(): void {
-    if (!this.ocupado() && !this.avisarCambiosSinGuardar('cargar otro Excel')) {
-      this.inputArchivo()?.nativeElement.click();
-    }
-  }
-
-  seleccionarArchivo(evento: Event): void {
-    const input = evento.target as HTMLInputElement;
-    const archivo = input.files?.[0];
-    input.value = '';
-    if (!archivo) {
-      return;
-    }
-    const problema = problemaArchivoExcel(archivo);
-    if (problema) {
-      this.notificaciones.advertencia(problema.titulo, problema.mensaje);
-      return;
-    }
-    this.archivoSeleccionado.set(archivo);
-    this.formulario.reset({
-      nombreRegistro: nombreRegistroSugerido(archivo),
-      etiqueta: '',
-      colorHex: PALETA_REGISTROS[0].hex,
-    });
-    this.subirAbierto.set(true);
-  }
-
-  cerrarCarga(): void {
-    this.subirAbierto.set(false);
-    this.archivoSeleccionado.set(null);
-  }
-
-  fijarColor(color: string): void {
-    this.formulario.controls.colorHex.setValue(color);
-  }
-
-  confirmarCarga(): void {
-    if (this.subiendo()) {
-      return;
-    }
-    const archivo = this.archivoSeleccionado();
-    if (!archivo) {
-      return;
-    }
-    if (this.formulario.invalid) {
-      this.formulario.markAllAsTouched();
-      return;
-    }
-    this.subiendo.set(true);
-    this.api
-      .subir(datosCarga(archivo, this.formulario.getRawValue()))
-      .pipe(
-        finalize(() => this.subiendo.set(false)),
-        takeUntilDestroyed(this.destroyRef),
-      )
-      .subscribe({
-        next: (registro) => {
-          this.notificaciones.exito(
-            'Registro creado',
-            `${registro.rutas} rutas y ${registro.chutes} chutes cargados.`,
-          );
-          this.cerrarCarga();
-          this.cargarOpciones(registro.id);
-        },
-        error: (err: unknown) => {
-          // 503/504: la respuesta expiró pero el servidor pudo terminar de
-          // guardar. Se refresca la lista para no duplicar el registro.
-          if (err instanceof HttpErrorResponse && (err.status === 503 || err.status === 504)) {
-            this.notificaciones.info(
-              'Revisa la lista antes de reintentar',
-              'La carga tardó más de lo esperado y pudo haberse completado.',
-            );
-            this.cerrarCarga();
-            this.cargarOpciones();
-          }
-        },
-      });
   }
 
   irARegistro(): void {

@@ -156,13 +156,16 @@ las trazas existentes; aplícala con el backend detenido. Los resúmenes se cons
 Para habilitar el balanceo de rutas guardado por archivo en **Simulación Titan**, aplica
 `backend/migracion_balanceo_rutas.sql` a las bases existentes antes de actualizar el backend.
 
-Para ver los locales de cada ruta al hacer clic en ella (Simulación Titan), aplica
-`backend/migracion_locales_rutas.sql` antes de actualizar el backend: crea la tabla vacía
-`simulacion.rutas_locales` y se puede aplicar con el backend encendido. Cada fila del Excel es un
-local (una ruta de una sola fila tiene un local) y un COD repetido en la misma ruta se suma. Los
-registros subidos antes de la migración no tienen el detalle: en la ficha de cualquiera de sus rutas,
-«Completar con su Excel» (permiso `MODIFICAR_REGISTRO_SIMULACION`) relee el Excel y le pone los
-locales a cada ruta con el mismo código, tipo y totales, sin tocar el balanceo ni crear otro registro.
+En **Simulación Titan** el registro por Excel se reemplazó por el **Registro** (diccionario de
+rutas): las rutas se crean a mano con uno o varios locales, nacen en Datos y se arrastran a los
+clusters, donde reciben tipo, frecuencia y grupo. Configuración y el Dashboard trabajan sobre un
+único escenario que el backend arma solo con las rutas **completas** (cluster, tipo, frecuencia y
+grupo), cada una en un chute al azar que se fija la primera vez; el balanceo sigue igual. Un cluster
+cerrado en Configuración no se muestra en el Registro hasta que se reabre. Antes de actualizar el
+backend aplica `backend/migracion_registro_titan.sql`: crea los locales de las rutas, las tablas del
+Registro y el enlace con el escenario, y **borra los registros subidos por Excel** con todo lo que
+cuelga de ellos. Es una sola transacción y es re-ejecutable (pone al día lo que ya existía sin
+perder datos del Registro).
 
 Si la base ya estaba instalada antes del panel **Simulación Santa Anita**, aplicar
 `migracion_simulacion_santa.sql` **antes** de arrancar el backend que trae el panel

@@ -2,6 +2,7 @@ package oracle.simulacion.diccionario;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -26,10 +27,14 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 /**
- * Registro v2: diccionario de rutas. Cada ruta se crea con uno o varios códigos (locales) y nace
- * en Datos, sin cluster ni frecuencia. Al arrastrarla a un bloque de cluster toma ese cluster;
- * de vuelta a Datos los pierde los dos. La frecuencia (LXV, MJS o DIARIA) solo la reciben las
- * rutas que están en un cluster. Es independiente del registro por Excel.
+ * El Registro de Simulación Titan: diccionario de rutas. Cada ruta se crea con uno o varios
+ * códigos (locales) y nace en Datos, sin cluster, tipo, frecuencia ni grupo. Al arrastrarla a un
+ * bloque de cluster toma ese cluster; de vuelta a Datos los pierde todos. Tipo, frecuencia y grupo
+ * solo los reciben las rutas que están en un cluster.
+ *
+ * <p>Cada cambio pone al día, en la misma transacción, el escenario de Configuración ({@link
+ * EscenarioDiccionario}): ahí solo entran las rutas completas. Un cluster cerrado en Configuración
+ * no se muestra y no deja cambiar sus rutas hasta que se reabra.
  */
 @Service
 public class DiccionarioRutasService {
@@ -41,10 +46,33 @@ public class DiccionarioRutasService {
 
   private final DiccionarioRutasRepository repo;
   private final Transacciones transacciones;
+  private final EscenarioDiccionario escenario;
 
-  public DiccionarioRutasService(DiccionarioRutasRepository repo, Transacciones transacciones) {
+  public DiccionarioRutasService(
+      DiccionarioRutasRepository repo, Transacciones transacciones, EscenarioDiccionario escenario) {
     this.repo = repo;
     this.transacciones = transacciones;
+    this.escenario = escenario;
+  }
+
+  /**
+   * El escenario de Configuración (lo crea si falta), frenando el cambio si toca un cluster cerrado
+   * allá: el de destino o el de alguna de esas rutas.
+   */
+  private long abrir(Long actor, Collection<Long> rutaIds, Long clusterDestino) {
+    long archivoId = escenario.asegurar(actor);
+    Set<Long> cerrados = escenario.clustersCerrados(archivoId);
+    if (cerrados.isEmpty()) {
+      return archivoId;
+    }
+    if (clusterDestino != null && cerrados.contains(clusterDestino)) {
+      throw new ConflictoException("Ese cluster está cerrado en Configuración: reábrelo allá para cambiar sus rutas.");
+    }
+    if (rutaIds != null && !rutaIds.isEmpty() && repo.algunaEnClusters(rutaIds, cerrados)) {
+      throw new ConflictoException(
+          "Alguna ruta está en un cluster cerrado en Configuración: reábrelo allá para cambiarla.");
+    }
+    return archivoId;
   }
 
   // ---------------- Lectura ----------------
@@ -61,50 +89,57 @@ public class DiccionarioRutasService {
 
   // ---------------- Rutas ----------------
 
-  /** Crea la ruta en Datos con sus códigos (los repetidos se suman). */
+  /** Crea la ruta en Datos (sin tipo, cluster, frecuencia ni grupo) con sus códigos (los repetidos se suman). */
   public ApiResponse<Ruta> crear(DiccionarioPeticiones.Ruta req) {
     DatosRuta datos = normalizar(req);
     Long actor = ActorActual.id();
     Ruta ruta =
         sinRepetir(
-            datos,
+            datos.codigo(),
             () ->
                 transacciones.ejecutar(
                     () -> {
-                      exigirUnica(datos, null);
-                      long id = repo.insertarRuta(datos.codigo(), datos.tipo(), actor);
+                      exigirUnica(datos.codigo(), null, null);
+                      long id = repo.insertarRuta(datos.codigo(), null, actor);
                       repo.reemplazarLocales(id, datos.locales());
                       return repo.rutasPorIds(List.of(id)).getFirst();
                     }));
-    return ApiResponse.ok("Ruta " + nombre(ruta) + " creada en Datos." + avisoSumados(datos), ruta);
+    return ApiResponse.ok("Ruta " + ruta.codigoRuta() + " creada en Datos." + avisoSumados(datos), ruta);
   }
 
-  /** Cambia número, tipo y códigos; el cluster y la frecuencia se conservan. */
+  /** Cambia el número y los códigos; tipo, cluster, frecuencia y grupo se conservan. */
   public ApiResponse<Ruta> actualizar(Long id, DiccionarioPeticiones.Ruta req) {
     DatosRuta datos = normalizar(req);
     Long actor = ActorActual.id();
     Ruta ruta =
         sinRepetir(
-            datos,
+            datos.codigo(),
             () ->
                 transacciones.ejecutar(
                     () -> {
-                      exigirUnica(datos, id);
-                      if (!repo.actualizarRuta(id, datos.codigo(), datos.tipo(), actor)) {
+                      String tipo = rutaExistente(id).tipo();
+                      long archivoId = abrir(actor, List.of(id), null);
+                      exigirUnica(datos.codigo(), tipo, id);
+                      if (!repo.actualizarRuta(id, datos.codigo(), tipo, actor)) {
                         throw new RecursoNoEncontradoException("La ruta ya no existe: recarga el diccionario.");
                       }
                       repo.reemplazarLocales(id, datos.locales());
+                      escenario.sincronizar(archivoId, List.of(id), actor);
                       return repo.rutasPorIds(List.of(id)).getFirst();
                     }));
     return ApiResponse.ok("Ruta " + nombre(ruta) + " guardada." + avisoSumados(datos), ruta);
   }
 
+  /** Borra la ruta y sus locales; si estaba en Configuración, sale de ahí. */
   public ApiResponse<Void> eliminar(Long id) {
+    Long actor = ActorActual.id();
     Ruta ruta =
         transacciones.ejecutar(
             () -> {
               Ruta existente = rutaExistente(id);
+              long archivoId = abrir(actor, List.of(id), null);
               repo.eliminar(id);
+              escenario.sincronizar(archivoId, List.of(id), actor);
               return existente;
             });
     return ApiResponse.ok("Ruta " + nombre(ruta) + " eliminada.", null);
@@ -112,7 +147,11 @@ public class DiccionarioRutasService {
 
   // ---------------- Bloques y acciones ----------------
 
-  /** Rutas a un cluster (conservan su frecuencia) o a Datos (pierden cluster y frecuencia). */
+  /**
+   * Rutas a un cluster (conservan tipo, frecuencia y grupo) o a Datos (pierden cluster, tipo,
+   * frecuencia y grupo). En Datos dos rutas no pueden quedar con el mismo número sin tipo: si
+   * pasaría, no se mueve ninguna.
+   */
   public ApiResponse<Cambio> mover(DiccionarioPeticiones.Mover req) {
     List<Long> ids = distintos(req.rutaIds());
     Long actor = ActorActual.id();
@@ -120,6 +159,7 @@ public class DiccionarioRutasService {
     Movimiento movimiento =
         transacciones.ejecutar(
             () -> {
+              long archivoId = abrir(actor, ids, clusterId);
               String destino = "Datos";
               if (clusterId != null) {
                 destino =
@@ -128,17 +168,24 @@ public class DiccionarioRutasService {
                         .map(Cluster::nombre)
                         .findFirst()
                         .orElseThrow(() -> new ConflictoException("Ese cluster ya no existe: recarga el diccionario."));
+              } else {
+                List<String> repetidas = repo.repetidasConTipo(ids, null);
+                if (!repetidas.isEmpty()) {
+                  throw new ConflictoException(
+                      "No se movió a Datos: quedarían repetidas sin tipo las rutas " + lista(repetidas) + ".");
+                }
               }
               if (repo.mover(ids, clusterId, actor) != ids.size()) {
                 throw new ConflictoException("Alguna ruta ya no existe: recarga el diccionario.");
               }
+              escenario.sincronizar(archivoId, ids, actor);
               return new Movimiento(destino, new Cambio(repo.rutasPorIds(ids), 0));
             });
     String mensaje =
         cantidad(ids.size())
             + (ids.size() == 1 ? " movida a " : " movidas a ")
             + movimiento.destino()
-            + (clusterId == null ? ": sin cluster, frecuencia ni grupo." : ".");
+            + (clusterId == null ? ": sin cluster, tipo, frecuencia ni grupo." : ".");
     return ApiResponse.ok(mensaje, movimiento.cambio());
   }
 
@@ -153,11 +200,13 @@ public class DiccionarioRutasService {
         transacciones.ejecutar(
             () -> {
               exigirExistentes(ids);
+              long archivoId = abrir(actor, ids, null);
               List<Long> con = repo.asignarFrecuencia(ids, req.frecuencia(), actor);
               if (con.isEmpty()) {
                 throw new SolicitudInvalidaException(
                     "Esas rutas están en Datos: arrástralas a un cluster para asignarles frecuencia.");
               }
+              escenario.sincronizar(archivoId, con, actor);
               return new Cambio(repo.rutasPorIds(con), ids.size() - con.size());
             });
     int omitidas = cambio.omitidas();
@@ -186,11 +235,13 @@ public class DiccionarioRutasService {
         transacciones.ejecutar(
             () -> {
               exigirExistentes(ids);
+              long archivoId = abrir(actor, ids, null);
               List<Long> con = repo.asignarGrupo(ids, grupo, actor);
               if (con.isEmpty()) {
                 throw new SolicitudInvalidaException(
                     "Esas rutas están en Datos: arrástralas a un cluster para asignarles grupo.");
               }
+              escenario.sincronizar(archivoId, con, actor);
               return new Cambio(repo.rutasPorIds(con), ids.size() - con.size());
             });
     int omitidas = cambio.omitidas();
@@ -204,15 +255,24 @@ public class DiccionarioRutasService {
     return ApiResponse.ok(mensaje, cambio);
   }
 
-  /** Tipo para las elegidas: todas o ninguna, sin dejar dos rutas con el mismo número y tipo. */
+  /**
+   * Tipo para las elegidas que están en un cluster (las de Datos se dejan sin tipo): todas o
+   * ninguna, sin dejar dos rutas con el mismo número y tipo.
+   */
   public ApiResponse<Cambio> cambiarTipo(DiccionarioPeticiones.Tipo req) {
     List<Long> ids = distintos(req.rutaIds());
     Long actor = ActorActual.id();
-    List<Ruta> rutas =
+    Cambio cambio =
         transacciones.ejecutar(
             () -> {
               exigirExistentes(ids);
-              List<String> repetidas = repo.repetidasConTipo(ids, req.tipo());
+              long archivoId = abrir(actor, ids, null);
+              List<Long> con = repo.enCluster(ids);
+              if (con.isEmpty()) {
+                throw new SolicitudInvalidaException(
+                    "Esas rutas están en Datos: arrástralas a un cluster para asignarles tipo.");
+              }
+              List<String> repetidas = repo.repetidasConTipo(con, req.tipo());
               if (!repetidas.isEmpty()) {
                 throw new ConflictoException(
                     "No se cambió el tipo: quedarían repetidas como "
@@ -221,19 +281,27 @@ public class DiccionarioRutasService {
                         + lista(repetidas)
                         + ".");
               }
-              repo.cambiarTipo(ids, req.tipo(), actor);
-              return repo.rutasPorIds(ids);
+              repo.cambiarTipo(con, req.tipo(), actor);
+              escenario.sincronizar(archivoId, con, actor);
+              return new Cambio(repo.rutasPorIds(con), ids.size() - con.size());
             });
-    return ApiResponse.ok(
-        "Tipo " + req.tipo() + " asignado a " + cantidad(ids.size()) + ".", new Cambio(rutas, 0));
+    int omitidas = cambio.omitidas();
+    String mensaje =
+        "Tipo "
+            + req.tipo()
+            + " asignado a "
+            + cantidad(cambio.rutas().size())
+            + "."
+            + (omitidas > 0 ? " " + cantidad(omitidas) + " en Datos " + (omitidas == 1 ? "se dejó" : "se dejaron") + " sin tipo." : "");
+    return ApiResponse.ok(mensaje, cambio);
   }
 
-  /** Deshacer el último movimiento: cada ruta vuelve a su cluster, frecuencia y grupo de antes. */
+  /** Deshacer el último movimiento: cada ruta vuelve a su cluster, tipo, frecuencia y grupo de antes. */
   public ApiResponse<Cambio> restaurar(DiccionarioPeticiones.Restaurar req) {
     Set<Long> vistos = new HashSet<>();
     for (var u : req.rutas()) {
-      if ((u.frecuencia() != null || u.grupo() != null) && u.clusterId() == null) {
-        throw new SolicitudInvalidaException("Una ruta en Datos no puede tener frecuencia ni grupo.");
+      if ((u.tipo() != null || u.frecuencia() != null || u.grupo() != null) && u.clusterId() == null) {
+        throw new SolicitudInvalidaException("Una ruta en Datos no puede tener tipo, frecuencia ni grupo.");
       }
       if (u.grupo() != null && texto(u.grupo()).isEmpty()) {
         throw new SolicitudInvalidaException("El grupo no puede quedar en blanco.");
@@ -247,16 +315,22 @@ public class DiccionarioRutasService {
     List<Ruta> rutas =
         transacciones.ejecutar(
             () -> {
+              long archivoId = abrir(actor, ids, null);
+              Set<Long> cerrados = escenario.clustersCerrados(archivoId);
               Set<Long> clusters = new HashSet<>();
               repo.clusters().forEach(c -> clusters.add(c.id()));
               for (var u : req.rutas()) {
                 if (u.clusterId() != null && !clusters.contains(u.clusterId())) {
                   throw new ConflictoException("Su cluster ya no existe: no se puede deshacer.");
                 }
+                if (u.clusterId() != null && cerrados.contains(u.clusterId())) {
+                  throw new ConflictoException("Su cluster está cerrado en Configuración: no se puede deshacer.");
+                }
               }
               if (repo.restaurar(req.rutas(), actor) != req.rutas().size()) {
                 throw new ConflictoException("Alguna ruta ya no existe: no se puede deshacer.");
               }
+              escenario.sincronizar(archivoId, ids, actor);
               return repo.rutasPorIds(ids);
             });
     return ApiResponse.ok("Movimiento deshecho: " + cantidad(rutas.size()) + " como estaban.", new Cambio(rutas, 0));
@@ -270,13 +344,40 @@ public class DiccionarioRutasService {
     Diccionario diccionario =
         transacciones.ejecutar(
             () -> {
+              long archivoId = escenario.asegurar(actor);
               repo.bloquearClusters();
               int actual = repo.ultimoOrden();
               cambio[0] = actual;
               if (cantidad > actual) {
                 repo.agregarClusters(actual + 1, cantidad);
               } else if (cantidad < actual) {
+                // Un cluster cerrado en Configuración no se quita hasta que se reabra.
+                Set<Long> cerrados = escenario.clustersCerrados(archivoId);
+                List<String> cerradosQueSeQuitan =
+                    repo.clusters().stream()
+                        .filter(c -> c.orden() > cantidad && cerrados.contains(c.id()))
+                        .map(Cluster::nombre)
+                        .toList();
+                if (!cerradosQueSeQuitan.isEmpty()) {
+                  throw new ConflictoException(
+                      "No se quitaron los clusters: "
+                          + lista(cerradosQueSeQuitan)
+                          + (cerradosQueSeQuitan.size() == 1 ? " está cerrado" : " están cerrados")
+                          + " en Configuración.");
+                }
+                // Sus rutas vuelven a Datos sin tipo: dos con el mismo número no pueden quedar ahí.
+                List<Long> vuelven = repo.rutasDeClustersDespuesDe(cantidad);
+                List<String> repetidas = vuelven.isEmpty() ? List.of() : repo.repetidasConTipo(vuelven, null);
+                if (!repetidas.isEmpty()) {
+                  throw new ConflictoException(
+                      "No se quitaron los clusters: en Datos quedarían repetidas sin tipo las rutas "
+                          + lista(repetidas)
+                          + ". Mueve una de cada par a otro cluster.");
+                }
                 cambio[1] = repo.quitarClustersDespuesDe(cantidad, actor);
+                if (!vuelven.isEmpty()) {
+                  escenario.sincronizar(archivoId, vuelven, actor);
+                }
               }
               return leer();
             });
@@ -290,15 +391,15 @@ public class DiccionarioRutasService {
           "Ahora hay "
               + cantidad
               + (cantidad == 1 ? " cluster" : " clusters")
-              + (cambio[1] > 0 ? "; " + cantidad(cambio[1]) + " volvieron a Datos sin frecuencia ni grupo." : ".");
+              + (cambio[1] > 0 ? "; " + cantidad(cambio[1]) + " volvieron a Datos sin tipo, frecuencia ni grupo." : ".");
     }
     return ApiResponse.ok(mensaje, diccionario);
   }
 
   // ---------------- Reglas ----------------
 
-  /** Número, tipo y códigos ya limpios; los locales, con los códigos repetidos sumados. */
-  record DatosRuta(String codigo, String tipo, List<Local> locales, int sumados) {}
+  /** Número y códigos ya limpios; los locales, con los códigos repetidos sumados. */
+  record DatosRuta(String codigo, List<Local> locales, int sumados) {}
 
   /**
    * Limpia número y códigos (sin espacios de más y en mayúsculas: « f045 » y «F045» son el mismo)
@@ -327,7 +428,7 @@ public class DiccionarioRutasService {
       }
       locales.add(new Local(a.cod, a.filas, a.bultos, a.unidades, a.lineas));
     }
-    return new DatosRuta(codigo, req.tipo(), List.copyOf(locales), req.locales().size() - locales.size());
+    return new DatosRuta(codigo, List.copyOf(locales), req.locales().size() - locales.size());
   }
 
   static String texto(String valor) {
@@ -353,18 +454,18 @@ public class DiccionarioRutasService {
     }
   }
 
-  private void exigirUnica(DatosRuta datos, Long salvoId) {
-    if (repo.existe(datos.codigo(), datos.tipo(), salvoId)) {
-      throw new ConflictoException("La ruta " + nombre(datos.codigo(), datos.tipo()) + " ya existe.");
+  private void exigirUnica(String codigo, String tipo, Long salvoId) {
+    if (repo.existe(codigo, tipo, salvoId)) {
+      throw new ConflictoException("La ruta " + nombre(codigo, tipo) + " ya existe.");
     }
   }
 
   /** Si otra persona creó la misma ruta en el mismo instante, el índice único lo frena aquí. */
-  private static <T> T sinRepetir(DatosRuta datos, java.util.function.Supplier<T> trabajo) {
+  private static <T> T sinRepetir(String codigo, java.util.function.Supplier<T> trabajo) {
     try {
       return trabajo.get();
     } catch (DuplicateKeyException e) {
-      throw new ConflictoException("La ruta " + nombre(datos.codigo(), datos.tipo()) + " ya existe.");
+      throw new ConflictoException("Ya existe otra ruta " + codigo + " con el mismo tipo.");
     }
   }
 
@@ -383,7 +484,12 @@ public class DiccionarioRutasService {
   }
 
   private Diccionario leer() {
-    List<Cluster> clusters = repo.clusters();
+    // Los cerrados en Configuración van marcados: el Registro no los muestra hasta que se reabran.
+    Set<Long> cerrados = escenario.clustersCerrados(escenario.buscar());
+    List<Cluster> clusters =
+        repo.clusters().stream()
+            .map((c) -> new Cluster(c.id(), c.orden(), c.nombre(), cerrados.contains(c.id())))
+            .toList();
     List<Ruta> rutas = repo.rutas(MAX_RUTAS + 1);
     boolean truncado = rutas.size() > MAX_RUTAS;
     return new Diccionario(clusters, truncado ? List.copyOf(rutas.subList(0, MAX_RUTAS)) : rutas, truncado);

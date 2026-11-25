@@ -715,7 +715,7 @@ public class SimulacionConfiguracionService {
       String dias =
           ruta.getDias() != null && !ruta.getDias().isBlank()
               ? ruta.getDias()
-              : SimulacionExcel.textoFrecuencia(ruta.getFrecuencia());
+              : NombresSimulacion.textoFrecuencia(ruta.getFrecuencia());
       throw new ConflictoException(
           "La ruta "
               + ruta.getCodigoRuta()
@@ -3525,7 +3525,7 @@ public class SimulacionConfiguracionService {
             (g) ->
                 guardados
                     .computeIfAbsent(g.clusterId(), (id) -> new HashMap<>())
-                    .put(SimulacionExcel.clave(g.grupo()), g));
+                    .put(NombresSimulacion.clave(g.grupo()), g));
     Map<Long, List<GrupoClusterResponse>> resultado = new HashMap<>();
     rutas.forEach(
         (clusterId, porGrupo) -> {
@@ -3534,7 +3534,7 @@ public class SimulacionConfiguracionService {
           List<GrupoClusterResponse> lista = new ArrayList<>();
           for (int i = 0; i < orden.size(); i++) {
             String g = orden.get(i);
-            GrupoGuardado guardado = suyos.get(SimulacionExcel.clave(g));
+            GrupoGuardado guardado = suyos.get(NombresSimulacion.clave(g));
             Long desde = guardado == null ? null : guardado.chuteDesdeId();
             Long hasta = guardado == null ? null : guardado.chuteHastaId();
             int[] delGrupo = delDia.getOrDefault(clusterId, Map.of()).get(g);

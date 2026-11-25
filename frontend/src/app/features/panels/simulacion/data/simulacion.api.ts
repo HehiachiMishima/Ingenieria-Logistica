@@ -7,7 +7,6 @@ import {
   BalanceoCuerpo,
   BalanceoSimulacion,
   ComparativoLanzamiento,
-  CompletarLocales,
   ConfiguracionSimulacion,
   ConfiguracionSimulacionRequest,
   DashboardSimulacion,
@@ -18,7 +17,6 @@ import {
   LocalesRuta,
   PaginaRutas,
   PredeterminadosSimulacion,
-  RegistroSimulacionActualizarRequest,
   RutasDashboardFiltros,
   RutasDashboardSimulacion,
   RutasSimulacionFiltros,
@@ -33,41 +31,13 @@ import { Api } from '../../../../core/services/api';
 export class SimulacionApi {
   private readonly api = inject(Api);
 
-  listar(
-    pagina = 1,
-    tamano = 10,
-    texto = '',
-    estados: string[] = [],
-  ): Observable<Pagina<ArchivoSimulacion>> {
-    return this.api.get<Pagina<ArchivoSimulacion>>('/simulacion/registros', {
-      pagina,
-      tamano,
-      texto,
-      ...(estados.length > 0 ? { estados: estados.join(',') } : {}),
-    });
-  }
-
+  /** El registro único (el de las rutas completas del Registro), en una lista. */
   opciones(): Observable<ArchivoSimulacion[]> {
     return this.api.get<ArchivoSimulacion[]>('/simulacion/registros/opciones');
   }
 
-  subir(formulario: FormData): Observable<ArchivoSimulacion> {
-    return this.api.postForm<ArchivoSimulacion>('/simulacion/registros', formulario);
-  }
-
-  actualizar(
-    id: number,
-    peticion: RegistroSimulacionActualizarRequest,
-  ): Observable<ArchivoSimulacion> {
-    return this.api.put<ArchivoSimulacion>(`/simulacion/registros/${id}`, peticion);
-  }
-
-  eliminar(id: number): Observable<void> {
-    return this.api.delete<void>(`/simulacion/registros/${id}`);
-  }
-
   /**
-   * Locales de una ruta tal como vinieron en el Excel (la ficha de la ruta). Silenciosa: la ficha
+   * Locales de una ruta tal como están en el Registro (la ficha de la ruta). Silenciosa: la ficha
    * muestra el error en su lugar, sin aviso global.
    */
   localesRuta(id: number, rutaId: number): Observable<LocalesRuta> {
@@ -76,16 +46,6 @@ export class SimulacionApi {
       undefined,
       new HttpContext().set(PETICION_SILENCIOSA, true),
     );
-  }
-
-  /**
-   * Completa los locales de un registro ya subido con su Excel (sin tocar su balanceo): solo las
-   * rutas con el mismo código, tipo y totales reciben sus locales.
-   */
-  completarLocales(id: number, archivo: File): Observable<CompletarLocales> {
-    const formulario = new FormData();
-    formulario.append('archivo', archivo);
-    return this.api.postForm<CompletarLocales>(`/simulacion/registros/${id}/locales`, formulario);
   }
 
   /** Configuración de un balanceo (Diarias, L-X-V o M-J-S): sus clusters, su carga y los chutes. */

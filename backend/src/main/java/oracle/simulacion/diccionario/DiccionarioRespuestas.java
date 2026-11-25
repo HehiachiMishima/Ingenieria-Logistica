@@ -8,8 +8,13 @@ public final class DiccionarioRespuestas {
 
   private DiccionarioRespuestas() {}
 
-  /** Bloque de cluster del diccionario (CL1…CLn, en su orden). */
-  public record Cluster(Long id, int orden, String nombre) {}
+  /**
+   * Bloque de cluster del diccionario (CL1…CLn, en su orden).
+   *
+   * @param cerrado true si está cerrado en Configuración: el Registro no lo muestra hasta que se
+   *     reabra.
+   */
+  public record Cluster(Long id, int orden, String nombre, boolean cerrado) {}
 
   /**
    * Una ruta con los totales de sus locales.

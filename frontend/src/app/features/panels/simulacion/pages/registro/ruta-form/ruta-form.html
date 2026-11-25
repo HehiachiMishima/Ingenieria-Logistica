@@ -28,15 +28,6 @@
       <span class="ui-error">{{ err.codigo }}</span>
       }
     </div>
-    <div class="ui-field">
-      <span class="ui-label" id="rf-tipo">Tipo</span>
-      <div class="rf-seg" role="radiogroup" aria-labelledby="rf-tipo">
-        @for (t of tipos; track t.texto) {
-        <button type="button" role="radio" class="rf-seg__op" [attr.data-tipo]="t.valor" [class.rf-seg__op--on]="tipo() === t.valor"
-          [attr.aria-checked]="tipo() === t.valor" (click)="tipo.set(t.valor)">{{ t.texto }}</button>
-        }
-      </div>
-    </div>
   </div>
 
   @if (modo() === 'uno') {

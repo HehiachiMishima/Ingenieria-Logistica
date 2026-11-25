@@ -85,7 +85,7 @@ public class SimulacionPredeterminadosService {
   }
 
   /** Los predeterminados guardados; los de siempre si la base aún no tiene la fila. */
-  static Predeterminados actuales(SimulacionLotesRepository lotes) {
+  public static Predeterminados actuales(SimulacionLotesRepository lotes) {
     Predeterminados guardados = lotes.leerPredeterminados();
     return guardados == null ? Predeterminados.INICIALES : guardados;
   }

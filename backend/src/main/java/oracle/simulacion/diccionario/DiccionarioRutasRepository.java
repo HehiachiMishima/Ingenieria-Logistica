@@ -43,7 +43,7 @@ public class DiccionarioRutasRepository {
     // Q: uq_dicc_clusters_orden.
     return jdbc.query(
         "SELECT id, orden, nombre FROM simulacion.diccionario_clusters ORDER BY orden",
-        (rs, i) -> new Cluster(rs.getLong(1), rs.getInt(2), rs.getString(3)));
+        (rs, i) -> new Cluster(rs.getLong(1), rs.getInt(2), rs.getString(3), false));
   }
 
   /** Todas las rutas por número y tipo, hasta {@code tope} (una de más indica que hay más). */
@@ -94,6 +94,20 @@ public class DiccionarioRutasRepository {
     return Boolean.TRUE.equals(
         jdbc.queryForObject(
             "SELECT EXISTS (SELECT 1 FROM simulacion.diccionario_clusters WHERE id = ?)", Boolean.class, clusterId));
+  }
+
+  /** Alguna de esas rutas está en alguno de esos clusters. */
+  public boolean algunaEnClusters(Collection<Long> ids, Collection<Long> clusterIds) {
+    // Q: PK de diccionario_rutas (id = ANY).
+    return Boolean.TRUE.equals(
+        jdbc.queryForObject(
+            """
+            SELECT EXISTS (SELECT 1 FROM simulacion.diccionario_rutas
+                           WHERE id = ANY (?::bigint[]) AND cluster_id = ANY (?::bigint[]))
+            """,
+            Boolean.class,
+            arreglo(ids),
+            arreglo(clusterIds)));
   }
 
   /** Cuántas de esas rutas existen. */
@@ -162,8 +176,8 @@ public class DiccionarioRutasRepository {
   }
 
   /**
-   * Lleva las rutas a un cluster (conservan frecuencia y grupo) o a Datos ({@code clusterId} null:
-   * pierden cluster, frecuencia y grupo). Devuelve cuántas existían.
+   * Lleva las rutas a un cluster (conservan tipo, frecuencia y grupo) o a Datos ({@code clusterId}
+   * null: pierden cluster, tipo, frecuencia y grupo). Devuelve cuántas existían.
    */
   public int mover(Collection<Long> ids, Long clusterId, Long actor) {
     // Q: PK de diccionario_rutas (id = ANY).
@@ -171,7 +185,8 @@ public class DiccionarioRutasRepository {
       return jdbc.update(
           """
           UPDATE simulacion.diccionario_rutas
-          SET cluster_id = NULL, frecuencia = NULL, grupo = NULL, actualizado_por = ?, actualizado_en = now()
+          SET cluster_id = NULL, tipo = NULL, frecuencia = NULL, grupo = NULL,
+              actualizado_por = ?, actualizado_en = now()
           WHERE id = ANY (?::bigint[])
           """,
           actor,
@@ -219,8 +234,9 @@ public class DiccionarioRutasRepository {
   }
 
   /**
-   * Números de ruta que quedarían repetidos al pasar esas rutas a {@code tipo}: ya existe otra
-   * con ese número y tipo, o hay dos elegidas con el mismo número.
+   * Números de ruta que quedarían repetidos si esas rutas pasan a tener {@code tipo} (null = sin
+   * tipo, al volver a Datos): ya existe otra con ese número y tipo, o hay dos de ellas con el
+   * mismo número.
    */
   public List<String> repetidasConTipo(Collection<Long> ids, String tipo) {
     // Q: uq_dicc_rutas_codigo_tipo para el EXISTS.
@@ -230,7 +246,8 @@ public class DiccionarioRutasRepository {
         FROM simulacion.diccionario_rutas e
         WHERE e.id = ANY (?::bigint[]) AND e.tipo IS DISTINCT FROM ?
           AND EXISTS (SELECT 1 FROM simulacion.diccionario_rutas o
-                      WHERE o.codigo_ruta = e.codigo_ruta AND o.tipo = ? AND NOT (o.id = ANY (?::bigint[])))
+                      WHERE o.codigo_ruta = e.codigo_ruta AND o.tipo IS NOT DISTINCT FROM ?
+                        AND NOT (o.id = ANY (?::bigint[])))
         UNION
         SELECT codigo_ruta FROM simulacion.diccionario_rutas
         WHERE id = ANY (?::bigint[]) GROUP BY codigo_ruta HAVING count(*) > 1
@@ -244,35 +261,45 @@ public class DiccionarioRutasRepository {
         arreglo(ids));
   }
 
+  /** De esas rutas, las que están en un cluster (las únicas que reciben tipo). */
+  public List<Long> enCluster(Collection<Long> ids) {
+    return jdbc.queryForList(
+        "SELECT id FROM simulacion.diccionario_rutas WHERE id = ANY (?::bigint[]) AND cluster_id IS NOT NULL",
+        Long.class,
+        arreglo(ids));
+  }
+
+  /** Tipo para las que están en un cluster; devuelve cuántas lo recibieron. */
   public int cambiarTipo(Collection<Long> ids, String tipo, Long actor) {
     return jdbc.update(
         """
         UPDATE simulacion.diccionario_rutas
         SET tipo = ?, actualizado_por = ?, actualizado_en = now()
-        WHERE id = ANY (?::bigint[])
+        WHERE id = ANY (?::bigint[]) AND cluster_id IS NOT NULL
         """,
         tipo,
         actor,
         arreglo(ids));
   }
 
-  /** Deja cada ruta con el cluster, la frecuencia y el grupo indicados. Devuelve cuántas existían. */
+  /** Deja cada ruta con el cluster, tipo, frecuencia y grupo indicados. Devuelve cuántas existían. */
   public int restaurar(List<DiccionarioPeticiones.Ubicacion> rutas, Long actor) {
     int[][] filas =
         jdbc.batchUpdate(
             """
             UPDATE simulacion.diccionario_rutas
-            SET cluster_id = ?, frecuencia = ?, grupo = ?, actualizado_por = ?, actualizado_en = now()
+            SET cluster_id = ?, tipo = ?, frecuencia = ?, grupo = ?, actualizado_por = ?, actualizado_en = now()
             WHERE id = ?
             """,
             rutas,
             500,
             (ps, u) -> {
               ps.setObject(1, u.clusterId(), java.sql.Types.BIGINT);
-              ps.setString(2, u.frecuencia());
-              ps.setString(3, u.grupo());
-              ps.setLong(4, actor);
-              ps.setLong(5, u.id());
+              ps.setString(2, u.tipo());
+              ps.setString(3, u.frecuencia());
+              ps.setString(4, u.grupo());
+              ps.setLong(5, actor);
+              ps.setLong(6, u.id());
             });
     int total = 0;
     for (int[] lote : filas) {
@@ -310,9 +337,21 @@ public class DiccionarioRutasRepository {
         hasta);
   }
 
+  /** Rutas de los clusters después de {@code cantidad} (las que volverían a Datos al quitarlos). */
+  public List<Long> rutasDeClustersDespuesDe(int cantidad) {
+    // Q: ix_dicc_rutas_cluster (cluster_id IN …) y uq_dicc_clusters_orden (orden > ?).
+    return jdbc.queryForList(
+        """
+        SELECT id FROM simulacion.diccionario_rutas
+        WHERE cluster_id IN (SELECT id FROM simulacion.diccionario_clusters WHERE orden > ?)
+        """,
+        Long.class,
+        cantidad);
+  }
+
   /**
-   * Quita los clusters después de {@code cantidad}: sus rutas vuelven a Datos sin frecuencia.
-   * Devuelve cuántas rutas volvieron.
+   * Quita los clusters después de {@code cantidad}: sus rutas vuelven a Datos sin tipo, frecuencia
+   * ni grupo. Devuelve cuántas rutas volvieron.
    */
   public int quitarClustersDespuesDe(int cantidad, Long actor) {
     // Q: ix_dicc_rutas_cluster (cluster_id IN …) y uq_dicc_clusters_orden (orden > ?).
@@ -320,7 +359,8 @@ public class DiccionarioRutasRepository {
         jdbc.update(
             """
             UPDATE simulacion.diccionario_rutas
-            SET cluster_id = NULL, frecuencia = NULL, grupo = NULL, actualizado_por = ?, actualizado_en = now()
+            SET cluster_id = NULL, tipo = NULL, frecuencia = NULL, grupo = NULL,
+                actualizado_por = ?, actualizado_en = now()
             WHERE cluster_id IN (SELECT id FROM simulacion.diccionario_clusters WHERE orden > ?)
             """,
             actor,

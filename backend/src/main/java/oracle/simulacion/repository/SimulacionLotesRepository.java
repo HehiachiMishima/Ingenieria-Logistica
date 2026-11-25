@@ -14,7 +14,7 @@ import java.util.function.Predicate;
 import oracle.simulacion.model.Balanceo;
 import oracle.simulacion.model.HistorialBalanceo;
 import oracle.simulacion.response.LocalesRutaResponse;
-import oracle.simulacion.service.SimulacionExcel;
+import oracle.simulacion.service.NombresSimulacion;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -182,6 +182,24 @@ public class SimulacionLotesRepository {
   }
 
   /** Los operarios iniciales son la base de cada chute hasta que el usuario la cambie. */
+  /**
+   * Parámetros de estos clusters en los tres balanceos, solo los que falten (un cluster que recibe
+   * su primera ruta completa del Registro).
+   */
+  public void asegurarParametrosCluster(Long archivoId, Collection<Long> clusterIds) {
+    if (clusterIds.isEmpty()) {
+      return;
+    }
+    List<Object[]> filas = new ArrayList<>();
+    for (Balanceo balanceo : Balanceo.values()) {
+      clusterIds.forEach((clusterId) -> filas.add(new Object[] {archivoId, balanceo.name(), clusterId}));
+    }
+    jdbc.batchUpdate(
+        "INSERT INTO simulacion.parametros_clusters (archivo_id, balanceo, cluster_id, limite_horas)"
+            + " VALUES (?, ?, ?, 0) ON CONFLICT (archivo_id, balanceo, cluster_id) DO NOTHING",
+        filas);
+  }
+
   public void insertarParametrosChute(Long archivoId, Collection<Long> chuteIds, int operarios) {
     insertarParametrosChute(archivoId, chuteIds, operarios, java.util.Set.of());
   }
@@ -463,172 +481,8 @@ public class SimulacionLotesRepository {
         });
   }
 
-  public void insertarRutas(
-      Long archivoId,
-      List<SimulacionExcel.FilaRuta> rutas,
-      Map<String, Long> clusters,
-      Map<String, Long> chutes) {
-    // Las rutas repiten pocos clusters/chutes: la clave (normalización Unicode) se calcula una
-    // vez por nombre distinto, no dos veces por ruta.
-    Map<String, Long> idCluster = new HashMap<>();
-    Map<String, Long> idChute = new HashMap<>();
-    jdbc.batchUpdate(
-        """
-        INSERT INTO rutas_proyeccion
-            (archivo_id, chute_id, chute_original_id, cluster_id, codigo_ruta, tipo,
-             total_bultos, total_unidades, total_lineas, conteo_cod, cluster_original_id, grupo,
-             frecuencia, dias)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        rutas,
-        LOTE,
-        (ps, ruta) -> {
-          long chuteId = idChute.computeIfAbsent(ruta.chute(), (n) -> id(chutes, "chute", n));
-          ps.setLong(1, archivoId);
-          ps.setLong(2, chuteId);
-          // El chute original se congela al cargar: el balanceo solo cambia chute_id.
-          ps.setLong(3, chuteId);
-          long clusterId = idCluster.computeIfAbsent(ruta.cluster(), (n) -> id(clusters, "cluster", n));
-          ps.setLong(4, clusterId);
-          ps.setString(5, SimulacionExcel.nombre(ruta.codigoRuta()));
-          ps.setString(6, ruta.tipo().name());
-          ps.setBigDecimal(7, ruta.bultos());
-          ps.setBigDecimal(8, ruta.unidades());
-          ps.setBigDecimal(9, ruta.lineas());
-          ps.setInt(10, ruta.conteoCod());
-          // Igual que el chute: el cluster original se congela al cargar.
-          ps.setLong(11, clusterId);
-          ps.setString(12, SimulacionExcel.nombre(ruta.grupo()));
-          ps.setString(13, ruta.frecuencia());
-          ps.setString(14, ruta.dias());
-        });
-  }
-
   /** Tope de locales que devuelve el detalle de una ruta (la consulta pide uno más para saberlo). */
   public static final int MAX_LOCALES_DETALLE = 5_000;
-
-  /** Clave única de una ruta en su registro: código canónico y tipo (como en uq_rutas_archivo_ruta_tipo). */
-  public static String clave(SimulacionExcel.FilaRuta ruta) {
-    return SimulacionExcel.nombre(ruta.codigoRuta()) + '\u0000' + ruta.tipo().name();
-  }
-
-  /** Totales de una ruta guardada: para reconocer la misma ruta en el Excel al completar sus locales. */
-  public record TotalesRuta(long id, BigDecimal bultos, BigDecimal unidades, BigDecimal lineas) {
-    public boolean coincide(SimulacionExcel.FilaRuta fila) {
-      return bultos.compareTo(fila.bultos()) == 0
-          && unidades.compareTo(fila.unidades()) == 0
-          && lineas.compareTo(fila.lineas()) == 0;
-    }
-  }
-
-  /** Un local listo para insertar: su ruta, su orden en el Excel y sus totales. */
-  private record FilaLocal(long rutaId, int orden, SimulacionExcel.LocalRuta local) {}
-
-  /**
-   * Los locales de cada ruta del archivo recién insertado, en el orden del Excel. Las rutas se
-   * leen de una vez por su clave única (código, tipo) y los locales van por lotes.
-   */
-  public void insertarLocales(Long archivoId, List<SimulacionExcel.FilaRuta> rutas) {
-    Map<String, Long> ids = new HashMap<>(rutas.size() * 2);
-    jdbc.query(
-        "SELECT id, codigo_ruta, tipo FROM simulacion.rutas_proyeccion WHERE archivo_id = ?",
-        (java.sql.ResultSet rs) -> {
-          ids.put(rs.getString(2) + '\u0000' + rs.getString(3), rs.getLong(1));
-        },
-        archivoId);
-    List<FilaLocal> filas = new ArrayList<>();
-    for (SimulacionExcel.FilaRuta ruta : rutas) {
-      Long rutaId = ids.get(clave(ruta));
-      if (rutaId == null) {
-        throw new IllegalStateException("La ruta " + ruta.codigoRuta() + " no quedó insertada.");
-      }
-      agregarLocales(filas, rutaId, ruta);
-    }
-    insertarFilas(filas);
-  }
-
-  /** Totales de cada ruta del registro, por su clave (código canónico, tipo). */
-  public Map<String, TotalesRuta> totalesRutas(Long archivoId) {
-    Map<String, TotalesRuta> rutas = new HashMap<>();
-    // Q: idx_rutas_archivo_id (archivo_id, id).
-    jdbc.query(
-        """
-        SELECT id, codigo_ruta, tipo, total_bultos, total_unidades, total_lineas
-        FROM simulacion.rutas_proyeccion WHERE archivo_id = ?
-        """,
-        (java.sql.ResultSet rs) -> {
-          rutas.put(
-              rs.getString(2) + '\u0000' + rs.getString(3),
-              new TotalesRuta(rs.getLong(1), rs.getBigDecimal(4), rs.getBigDecimal(5), rs.getBigDecimal(6)));
-        },
-        archivoId);
-    return rutas;
-  }
-
-  /**
-   * Reemplaza los locales de estas rutas (id de ruta → su ruta del Excel) y deja su conteo de
-   * locales en el número de locales que trae.
-   */
-  public void reemplazarLocales(Map<Long, SimulacionExcel.FilaRuta> porRuta) {
-    if (porRuta.isEmpty()) {
-      return;
-    }
-    Long[] ids = porRuta.keySet().toArray(Long[]::new);
-    // Q: pk_rutas_locales (ruta_id, orden).
-    jdbc.update(
-        conexion -> {
-          var ps = conexion.prepareStatement("DELETE FROM simulacion.rutas_locales WHERE ruta_id = ANY (?)");
-          ps.setArray(1, conexion.createArrayOf("bigint", ids));
-          return ps;
-        });
-    List<FilaLocal> filas = new ArrayList<>();
-    porRuta.forEach((rutaId, ruta) -> agregarLocales(filas, rutaId, ruta));
-    insertarFilas(filas);
-    jdbc.batchUpdate(
-        "UPDATE simulacion.rutas_proyeccion SET conteo_cod = ? WHERE id = ?",
-        new ArrayList<>(porRuta.entrySet()),
-        LOTE,
-        (ps, e) -> {
-          ps.setInt(1, e.getValue().conteoCod());
-          ps.setLong(2, e.getKey());
-        });
-  }
-
-  /** Total de locales del registro (archivos_excel.total_cod) tras cambiar el de alguna ruta. */
-  public int totalCod(Long archivoId) {
-    Integer total =
-        jdbc.queryForObject(
-            "SELECT COALESCE(SUM(conteo_cod), 0)::int FROM simulacion.rutas_proyeccion WHERE archivo_id = ?",
-            Integer.class,
-            archivoId);
-    return total == null ? 0 : total;
-  }
-
-  private static void agregarLocales(List<FilaLocal> filas, long rutaId, SimulacionExcel.FilaRuta ruta) {
-    int orden = 0;
-    for (SimulacionExcel.LocalRuta local : ruta.locales()) {
-      filas.add(new FilaLocal(rutaId, ++orden, local));
-    }
-  }
-
-  private void insertarFilas(List<FilaLocal> filas) {
-    jdbc.batchUpdate(
-        """
-        INSERT INTO simulacion.rutas_locales (ruta_id, orden, cod, filas, bultos, unidades, lineas)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        filas,
-        LOTE,
-        (ps, f) -> {
-          ps.setLong(1, f.rutaId());
-          ps.setInt(2, f.orden());
-          ps.setString(3, f.local().cod());
-          ps.setInt(4, f.local().filas());
-          ps.setBigDecimal(5, f.local().bultos());
-          ps.setBigDecimal(6, f.local().unidades());
-          ps.setBigDecimal(7, f.local().lineas());
-        });
-  }
 
   /**
    * Locales de una ruta del archivo, en el orden del Excel, hasta {@link #MAX_LOCALES_DETALLE} + 1
@@ -675,7 +529,7 @@ public class SimulacionLotesRepository {
     // filas con la misma clave y el id resultante dependería del orden del SELECT.
     Map<String, String> porClave = new LinkedHashMap<>();
     nombres.forEach(
-        (nombre) -> porClave.putIfAbsent(SimulacionExcel.clave(nombre), SimulacionExcel.nombre(nombre)));
+        (nombre) -> porClave.putIfAbsent(NombresSimulacion.clave(nombre), NombresSimulacion.nombre(nombre)));
     List<String> unicos = new ArrayList<>(porClave.values());
     jdbc.batchUpdate(
         "INSERT INTO " + tabla + " (nombre, activo) VALUES (?, TRUE) ON CONFLICT (nombre) DO NOTHING",
@@ -690,7 +544,7 @@ public class SimulacionLotesRepository {
       jdbc.query(
           "SELECT id, nombre FROM " + tabla + " WHERE nombre IN (" + marcadores + ") FOR SHARE",
           (rs) -> {
-            ids.put(SimulacionExcel.clave(rs.getString("nombre")), rs.getLong("id"));
+            ids.put(NombresSimulacion.clave(rs.getString("nombre")), rs.getLong("id"));
           },
           bloque.toArray());
     }
@@ -702,13 +556,5 @@ public class SimulacionLotesRepository {
               throw new IllegalStateException("No se pudo registrar " + tabla + " " + faltante);
             });
     return ids;
-  }
-
-  private static long id(Map<String, Long> ids, String tipo, String nombre) {
-    Long id = ids.get(SimulacionExcel.clave(nombre));
-    if (id == null) {
-      throw new IllegalStateException("No se resolvió el id del " + tipo + " " + nombre);
-    }
-    return id;
   }
 }

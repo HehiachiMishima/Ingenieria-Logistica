@@ -22,16 +22,8 @@
   </div>
 </header>
 
-<input #inputArchivo type="file" accept=".xlsx,.xls,.csv" hidden (change)="seleccionarArchivo($event)" />
-
 <section class="config-panel">
   <div class="config-panel__campos">
-    <div class="config-panel__campo">
-      <label class="ui-label" for="config-registro">Registro guardado</label>
-      <ui-select-buscable campoId="config-registro" [opciones]="opcionesRegistro()" [valor]="seleccionado()"
-        [deshabilitado]="cargandoOpciones() || ocupado()" placeholder="Elegir registro…"
-        (valorCambia)="seleccionarDesdeSelector($event)" />
-    </div>
     <div class="config-panel__campo">
       <label class="ui-label" for="config-velocidad">Velocidad (bultos/h)</label>
       <input id="config-velocidad" type="number" class="ui-input" min="0.01" [max]="limitesValidos.velocidad" step="any"
@@ -78,11 +70,6 @@
       </button>
     </div>
     <div class="config-panel__acciones">
-      <button *hasPermiso="permisos.CREAR_REGISTRO_SIMULACION" type="button" class="ui-btn ui-btn--secondary"
-        [disabled]="cargandoOpciones() || ocupado()" (click)="abrirSelectorArchivo()">
-        <ui-icon name="almacen" [size]="16" />
-        Cargar Excel
-      </button>
       <button type="button" class="ui-btn ui-btn--secondary" (click)="actualizar()"
         [disabled]="cargandoOpciones() || ocupado()">
         <ui-icon name="refresh" [size]="16" />
@@ -124,8 +111,8 @@
 </div>
 } @else if (registros().length === 0) {
 <div class="table-card">
-  <ui-empty icono="almacen" titulo="Aún no hay registros"
-    mensaje="Sube un Excel de proyección para configurar límites y ejecutar el balanceo.">
+  <ui-empty icono="almacen" titulo="Aún no hay registro"
+    mensaje="Crea las rutas en el Registro: las que estén completas aparecen aquí.">
     <button *hasPermiso="permisos.VER_REGISTRO_SIMULACION" type="button" class="ui-btn ui-btn--primary ui-btn--sm"
       (click)="irARegistro()">
       Ir a Registro
@@ -147,7 +134,13 @@
 } @else if (config(); as cfg) {
 @if (cfg.archivo.rutas === 0) {
 <div class="table-card">
-  <ui-empty icono="paquete" titulo="Registro sin rutas" mensaje="El archivo no contiene rutas para simular." />
+  <ui-empty icono="paquete" titulo="Aún no hay rutas completas"
+    mensaje="En el Registro, pon las rutas en un cluster con tipo, frecuencia y grupo: así aparecen aquí.">
+    <button *hasPermiso="permisos.VER_REGISTRO_SIMULACION" type="button" class="ui-btn ui-btn--primary ui-btn--sm"
+      (click)="irARegistro()">
+      Ir a Registro
+    </button>
+  </ui-empty>
 </div>
 } @else {
 <div class="toolbar">
@@ -799,7 +792,7 @@
   <p class="confirm__desc">
     @if (accionBalanceoGuardado() === 'guardar') {
       Se guardará la distribución actual de {{ config()?.archivo?.nombreRegistro }}. Puedes usar la distribución
-      original del Excel o la de todos los clusters ya balanceados. Al cargarla, el siguiente paso será asignar operarios.
+      original del Registro o la de todos los clusters ya balanceados. Al cargarla, el siguiente paso será asignar operarios.
       @if (config()?.balanceoGuardado) { Reemplazará el balanceo guardado de este archivo. }
     } @else {
       Se recuperarán las rutas guardadas de {{ config()?.archivo?.nombreRegistro }}.
@@ -896,75 +889,13 @@
   </div>
 </ui-modal>
 
-<ui-modal [abierto]="subirAbierto()" titulo="Cargar Excel de proyección"
-  subtitulo="El archivo se procesa y agrupa por ruta y tipo (B2C/B2B)." (cerrar)="cerrarCarga()">
-  @if (archivoSeleccionado(); as archivo) {
-  <div class="archivo-chip">
-    <span class="archivo-chip__icono"><ui-icon name="almacen" [size]="20" /></span>
-    <div class="archivo-chip__datos">
-      <span class="archivo-chip__nombre">{{ archivo.name }}</span>
-      <span class="archivo-chip__meta">{{ tamanoArchivo(archivo) }} · se validará al registrar</span>
-    </div>
-    <span class="ui-badge">Excel</span>
-  </div>
-  }
-
-  <div class="grid-form">
-    <div class="ui-field">
-      <label class="ui-label" for="config-subir-nombre">Nombre del registro <span class="ui-required">*</span></label>
-      <input id="config-subir-nombre" class="ui-input" [class.ui-input--invalid]="campoInvalido('nombreRegistro')"
-        [formControl]="formulario.controls.nombreRegistro" maxlength="150" placeholder="Ej: Proyección enero" />
-      @if (campoInvalido('nombreRegistro')) {
-      <span class="ui-error">Escribe un nombre de hasta 150 caracteres.</span>
-      }
-    </div>
-    <div class="ui-field">
-      <label class="ui-label" for="config-subir-etiqueta">Etiqueta</label>
-      <input id="config-subir-etiqueta" class="ui-input" [formControl]="formulario.controls.etiqueta" maxlength="50"
-        placeholder="Ej: URGENTE" />
-      <span class="hint">Opcional. Se muestra como distintivo en el listado.</span>
-    </div>
-  </div>
-
-  <div class="ui-field">
-    <span class="ui-label" id="config-color-registro">Color del registro</span>
-    <div class="color-picker" role="group" aria-labelledby="config-color-registro">
-      @for (color of paleta; track color.hex) {
-      <button type="button" class="color-dot"
-        [class.color-dot--activo]="formulario.controls.colorHex.value === color.hex" [style.background]="color.hex"
-        [title]="color.nombre" [attr.aria-label]="color.nombre"
-        [attr.aria-pressed]="formulario.controls.colorHex.value === color.hex" (click)="fijarColor(color.hex)"></button>
-      }
-    </div>
-  </div>
-
-  <p class="hint">
-    Columnas requeridas: RUTA, CLUSTER, CHUTE, GRUPO, FRECUENCIA (L-M-X-J-V-S, L-X-V o M-J-S), TIPO (B2C o B2B) y BULTOS
-    PROMEDIO. Opcionales:
-    COD., UNIDADES y LÍNEAS. Cada ruta tiene un solo grupo. También se aceptan CSV.
-  </p>
-
-  <div modal-footer class="modal-foot">
-    <button type="button" class="ui-btn ui-btn--ghost" [disabled]="subiendo()" (click)="cerrarCarga()">
-      Cancelar
-    </button>
-    <button type="button" class="ui-btn ui-btn--primary" (click)="confirmarCarga()" [disabled]="subiendo()">
-      @if (subiendo()) {
-      <span class="ui-spinner config-spinner"></span>
-      }
-      Registrar
-    </button>
-  </div>
-</ui-modal>
-
 <!-- Ficha flotante: junto a la ruta o al botón «Detalle» del cluster (hoja inferior en celular). -->
 @if (detalle(); as d) {
 @let r = rutaDetalle();
 @let k = clusterDetalle();
 @if (r || k) {
 <app-ficha-detalle [posicion]="d.pos" [ruta]="r" [cluster]="k" [locales]="r ? localesRuta() : null"
-  [puedeCompletar]="puedeCompletarLocales()" [completando]="completandoLocales()"
-  (cerrar)="cerrarDetalle()" (reintentar)="reintentarLocales()" (completar)="completarLocales($event)" />
+  (cerrar)="cerrarDetalle()" (reintentar)="reintentarLocales()" />
 }
 }
 

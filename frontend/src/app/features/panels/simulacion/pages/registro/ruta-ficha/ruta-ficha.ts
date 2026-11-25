@@ -67,6 +67,9 @@ export class RutaFicha {
   /** Nombre del bloque donde está («Datos» o «CL2»). */
   readonly cluster = input.required<string>();
   readonly color = input<string | null>(null);
+  /** Permisos del registro: editar la ruta y eliminarla. */
+  readonly puedeEditar = input(true);
+  readonly puedeEliminar = input(true);
   readonly cerrar = output<void>();
   readonly editar = output<{ ruta: RutaDiccionario; locales: LocalDiccionario[] }>();
   readonly eliminar = output<RutaDiccionario>();

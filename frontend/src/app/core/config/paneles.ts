@@ -125,19 +125,10 @@ export const PANEL_SIMULACION: PanelDef = {
     {
       id: 'registro',
       nombre: 'Registro',
-      descripcion: 'Carga y administración de los archivos Excel de proyección.',
+      descripcion: 'Diccionario de rutas: créalas con sus locales y ordénalas por cluster.',
       icono: 'almacen',
       ruta: 'registro',
       permiso: PERMISOS.VER_REGISTRO_SIMULACION,
-    },
-    {
-      id: 'registro-v2',
-      nombre: 'Registro v2',
-      descripcion: 'Diccionario de rutas: crearlas con sus locales y ordenarlas por cluster.',
-      icono: 'layers',
-      ruta: 'registro-v2',
-      // Por ahora sin permiso propio: lo ve quien entra al panel.
-      permiso: PERMISOS.PANEL_SIMULACION,
     },
     {
       id: 'configuracion',

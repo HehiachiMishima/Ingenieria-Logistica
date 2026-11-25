@@ -31,7 +31,7 @@
     </div>
     <div class="ficha-cabeza__titulo">
       <strong>Ruta {{ r.ruta.codigoRuta }}</strong>
-      <span class="loc-sub">{{ r.ruta.conteoCod | entero }} {{ r.ruta.conteoCod === 1 ? 'local' : 'locales' }} del Excel ·
+      <span class="loc-sub">{{ r.ruta.conteoCod | entero }} {{ r.ruta.conteoCod === 1 ? 'local' : 'locales' }} ·
         {{ r.ruta.cluster }} · {{ r.ruta.chute }}</span>
     </div>
     <button type="button" class="ficha-cerrar" aria-label="Cerrar detalle" (click)="cerrar.emit()">
@@ -70,7 +70,7 @@
   <!-- Recorrido: de dónde venía en el Excel a dónde está hoy. -->
   <div class="ficha-recorrido" aria-label="Ruta movida">
     <span class="ficha-recorrido__punto">
-      <small>Excel</small>
+      <small>Registro</small>
       <strong>{{ r.ruta.clusterOriginal }} · {{ r.ruta.chuteOriginal }}</strong>
     </span>
     <ui-icon name="flecha" [size]="14" />
@@ -108,7 +108,7 @@
     <ul class="loc-grilla">
       @for (l of mostrados(); track $index) {
       <li class="loc-mini" [class.loc-mini--rep]="l.filas > 1"
-        [attr.aria-label]="(l.cod ?? 'Sin COD') + ': ' + (l.bultos | numero: 2) + ' bultos, ' + (l.unidades | numero: 2) + ' unidades, ' + (l.lineas | numero: 2) + ' líneas' + (l.filas > 1 ? ', en ' + l.filas + ' filas del Excel' : '')">
+        [attr.aria-label]="(l.cod ?? 'Sin COD') + ': ' + (l.bultos | numero: 2) + ' bultos, ' + (l.unidades | numero: 2) + ' unidades, ' + (l.lineas | numero: 2) + ' líneas' + (l.filas > 1 ? ', ingresado ' + l.filas + ' veces' : '')">
         <span class="loc-mini__arriba" aria-hidden="true">
           <span class="loc-mini__cod" [class.loc-mini__cod--sin]="!l.cod" [title]="l.cod ?? 'Sin COD'">{{ l.cod ?? 'Sin COD' }}</span>
           <span class="loc-mini__bultos" [title]="(l.bultos | numero: 2) + ' bultos'"><ng-container [ngTemplateOutlet]="caja" />{{ l.bultos | numero: 2 }}</span>
@@ -118,7 +118,7 @@
           <span [title]="(l.lineas | numero: 2) + ' líneas'"><small>Lín.</small>{{ l.lineas | numero: 2 }}</span>
         </span>
         @if (l.filas > 1) {
-        <i class="loc-rep" aria-hidden="true" [title]="'Aparece ' + l.filas + ' veces en el Excel: se suman'">×{{ l.filas }}</i>
+        <i class="loc-rep" aria-hidden="true" [title]="'Se ingresó ' + l.filas + ' veces: se sumaron'">×{{ l.filas }}</i>
         }
       </li>
       }
@@ -144,21 +144,7 @@
   <p class="loc-aviso"><ui-icon name="info" [size]="14" /> Se muestran los primeros {{ est.datos.locales.length | entero }} locales.</p>
   }
   } @else {
-  <div class="loc-aviso">
-    <ui-icon name="info" [size]="14" />
-    <span>Este registro se subió antes de guardar los locales.
-      {{ puedeCompletar() ? 'Complétalos con su Excel: el balanceo no cambia.' : 'Pide a quien administra los registros que los complete con su Excel.' }}</span>
-    @if (puedeCompletar()) {
-    <input #excel type="file" accept=".xlsx,.xls,.csv" hidden (change)="elegirExcel($event)" />
-    <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" [disabled]="completando()" (click)="excel.click()">
-      @if (completando()) {
-      <span class="ui-spinner" aria-hidden="true"></span> Completando…
-      } @else {
-      <ui-icon name="almacen" [size]="14" /> Completar con su Excel
-      }
-    </button>
-    }
-  </div>
+  <p class="loc-aviso"><ui-icon name="info" [size]="14" /> Esta ruta no tiene locales.</p>
   }
   }
   @case ('error') {

@@ -33,12 +33,10 @@ import { Icon } from '../../../../../shared/ui/icon/icon';
 import { Modal } from '../../../../../shared/ui/modal/modal';
 import { ChipFiltro, FiltrosActivos } from '../../../../../shared/ui/panel-filtros/filtros-activos';
 import { PanelFiltros } from '../../../../../shared/ui/panel-filtros/panel-filtros';
-import { SelectBuscable } from '../../../../../shared/ui/select-buscable/select-buscable';
 import { SelectMultiple } from '../../../../../shared/ui/select-multiple/select-multiple';
 import {
   colorCluster,
   etiquetaEstadoCluster,
-  etiquetaRegistro,
   formatearHoras,
   formatearEntero,
 } from '../../simulacion-formato';
@@ -143,7 +141,6 @@ const METRICAS: ReadonlyArray<{
     EmptyState,
     Icon,
     Modal,
-    SelectBuscable,
     SelectMultiple,
     PanelFiltros,
     FiltrosActivos,
@@ -236,7 +233,7 @@ export class SimulacionDashboard {
   });
 
   readonly subtituloDetalle =
-    'Las rutas que tenía al cargar el Excel y las que tiene tras el balanceo, agrupadas por cluster.';
+    'Las rutas que tenía al entrar desde el Registro y las que tiene tras el balanceo, agrupadas por cluster.';
 
   abrirDetalle(chute: ChuteComparativoSimulacion): void {
     this.detalleChute.set(chute);
@@ -304,10 +301,6 @@ export class SimulacionDashboard {
 
   readonly metricaActual = computed(
     () => METRICAS.find((m) => m.id === this.metrica()) ?? METRICAS[0],
-  );
-
-  readonly opcionesRegistro = computed(() =>
-    this.registros().map((registro) => ({ id: registro.id, etiqueta: etiquetaRegistro(registro) })),
   );
 
   readonly registroSeleccionado = computed(() => {

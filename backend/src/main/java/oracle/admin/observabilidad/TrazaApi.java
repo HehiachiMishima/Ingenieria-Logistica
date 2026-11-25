@@ -58,12 +58,11 @@ public class TrazaApi implements WebMvcConfigurer, HandlerInterceptor {
         agregar(m, "AuthController", "Cuenta", "cambiarContrasena", "Cambiar contraseña");
         // Simulación Titan: el registro es siempre el archivo
         agregar(m, "SimulacionController", "Archivo Titan",
-            "subir", "Subir", "actualizar", "Actualizar", "eliminar", "Eliminar",
             "guardarConfiguracion", "Guardar configuración", "moverRuta", "Mover ruta", "moverRutas", "Mover rutas",
             "cambiarClusterRuta", "Cambiar cluster de ruta", "balancear", "Balancear cluster",
             "restablecerCluster", "Restablecer cluster", "cerrar", "Cerrar cluster", "reabrir", "Reabrir cluster",
             "guardarBalanceoRutas", "Guardar predeterminado", "cargarBalanceoRutas", "Cargar predeterminado",
-            "restablecer", "Restablecer archivo", "completarLocales", "Completar locales");
+            "restablecer", "Restablecer archivo");
         agregar(m, "SimulacionPredeterminadosController", "Predeterminados Titan",
             "bloquear", "Bloquear", "desbloquear", "Desbloquear");
         agregar(m, "DiccionarioRutasController", "Ruta del diccionario Titan",

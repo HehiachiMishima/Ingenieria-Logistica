@@ -16,7 +16,6 @@ import {
   LocalDiccionario,
   RutaDiccionario,
   RutaDiccionarioRequest,
-  TipoRutaDiccionario,
   nombreRuta,
 } from '../../../data/diccionario.model';
 import { NumeroPipe } from '../../../numero.pipe';
@@ -63,12 +62,6 @@ export class RutaForm {
   readonly cerrar = output<void>();
   readonly guardado = output<{ ruta: RutaDiccionario; creada: boolean }>();
 
-  /** El tipo es opcional: empieza vacío y se puede asignar después con la acción Tipo. */
-  readonly tipos: readonly { valor: TipoRutaDiccionario | null; texto: string }[] = [
-    { valor: null, texto: 'Sin tipo' },
-    { valor: 'B2C', texto: 'B2C' },
-    { valor: 'B2B', texto: 'B2B' },
-  ];
   private claves = 0;
 
   readonly editando = computed(() => this.inicial()?.ruta ?? null);
@@ -79,10 +72,6 @@ export class RutaForm {
     computation: (ini) => (ini?.ruta ? (ini.locales.length > 1 ? 'varios' : 'uno') : null),
   });
   readonly codigo = linkedSignal({ source: this.inicial, computation: (ini) => ini?.ruta?.codigoRuta ?? '' });
-  readonly tipo = linkedSignal<RutaFormInicial | null, TipoRutaDiccionario | null>({
-    source: this.inicial,
-    computation: (ini) => ini?.ruta?.tipo ?? null,
-  });
   readonly lineas = linkedSignal<RutaFormInicial | null, LineaForm[]>({
     source: this.inicial,
     computation: (ini) =>
@@ -143,11 +132,11 @@ export class RutaForm {
 
   readonly subtitulo = computed(() => {
     if (this.editando()) {
-      return 'El cluster, la frecuencia y el grupo de la ruta no cambian.';
+      return 'El tipo, el cluster, la frecuencia y el grupo de la ruta no cambian.';
     }
     return this.modo() === null
       ? 'Primero indica si la ruta tiene un local o varios.'
-      : 'Se crea en Datos: sin cluster, frecuencia ni grupo (el tipo es opcional).';
+      : 'Se crea en Datos: sin tipo, cluster, frecuencia ni grupo (se asignan en un cluster).';
   });
 
   private linea(cod = '', bultos = '', unidades = '', lineas = ''): LineaForm {
@@ -229,7 +218,6 @@ export class RutaForm {
     }
     const peticion: RutaDiccionarioRequest = {
       codigoRuta: this.codigo().trim(),
-      tipo: this.tipo(),
       locales: this.lineas().map((l) => ({
         cod: l.cod.trim(),
         bultos: parsearNumero(l.bultos) ?? 0,

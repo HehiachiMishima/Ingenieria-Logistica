@@ -125,14 +125,20 @@
   }
   }
 
+  @if (puedeEditar() || puedeEliminar()) {
   <div class="ficha-acciones">
+    @if (puedeEliminar()) {
     <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm ficha-acciones__eliminar" (click)="eliminar.emit(r)">
       <ui-icon name="trash" [size]="14" /> Eliminar
     </button>
+    }
+    @if (puedeEditar()) {
     <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" [disabled]="est.estado !== 'listo'" (click)="pedirEdicion()">
       <ui-icon name="edit" [size]="14" /> Editar
     </button>
+    }
   </div>
+  }
 </div>
 
 <!-- Caja de cartón de los bultos (la misma del tablero). -->

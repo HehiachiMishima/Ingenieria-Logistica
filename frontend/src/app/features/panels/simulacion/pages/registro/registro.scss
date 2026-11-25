@@ -1,122 +1,566 @@
-.ui-table .num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
+@use 'breakpoints' as bp;
+
+/*
+ * Registro v2: los bloques usan la ficha de dos filas de Configuración (configuracion-ficha.scss,
+ * incluido en el componente). Aquí van sus variables, el tablero, la barra de acciones y el aviso
+ * de deshacer.
+ */
+:host {
+  /* Alto de una ficha de ruta y su marco (los mismos de la matriz de Configuración). */
+  --mz-fila-ruta: 54px;
+  --mz-marco: light-dark(#5b6f8f, #5a76a6);
+  /* Filas de fichas visibles por bloque antes del scroll propio del bloque. */
+  --v2-filas: 4;
+
+  display: block;
 }
 
-.registro-tag {
+.page-head {
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.v2-nueva {
   display: inline-flex;
   align-items: center;
-  max-width: 150px;
-  padding: 2px 8px;
-  overflow: hidden;
-  border-radius: var(--radius-xs);
-  font-size: 0.64rem;
-  font-weight: 800;
-  letter-spacing: 0.05em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--tag-color, var(--accent));
-  background: color-mix(in srgb, var(--tag-color, var(--accent)) 13%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--tag-color, var(--accent)) 30%, var(--border));
+  gap: 6px;
+}
 
-  &--vacia {
-    color: var(--text-3);
-    background: var(--surface-2);
-    border-color: var(--border);
+/* ---------- Barra de filtros ---------- */
+.v2-toolbar {
+  flex-wrap: wrap;
+}
+
+.v2-select {
+  flex: 0 1 170px;
+  width: auto;
+  min-width: 0;
+}
+
+.v2-clusters {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.v2-clusters__etq {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.v2-clusters__btn {
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.v2-clusters__n {
+  display: inline-flex;
+  justify-content: center;
+  min-width: 2ch;
+  font-variant-numeric: tabular-nums;
+
+  .ui-spinner {
+    width: 14px;
+    height: 14px;
   }
 }
 
-.cell-sub {
-  display: block;
-  max-width: 260px;
-  overflow: hidden;
-  margin-top: 2px;
-  font-size: var(--fs-xs);
-  color: var(--text-3);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.v2-modo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  &--activo {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  }
 }
 
-.archivo-chip {
+/* ---------- Avisos y carga ---------- */
+.v2-aviso {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  margin-bottom: var(--space-4);
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text);
+  font-size: var(--fs-sm);
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius);
 
-  &__icono {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 38px;
-    height: 38px;
-    flex: none;
-    border-radius: var(--radius);
-    color: var(--success);
-    background: var(--success-soft);
+  &--error {
+    background: var(--danger-soft);
+    border-color: color-mix(in srgb, var(--danger) 40%, transparent);
   }
+}
 
-  &__datos {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-    flex: 1;
+.v2-cargando {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.v2-cargando__bloque {
+  display: block;
+  height: 120px;
+  border-radius: var(--radius-xl);
+}
+
+/* ---------- Tablero de bloques ---------- */
+.v2-tablero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+
+  /* La barra de acciones fija no tapa el último bloque. */
+  &--con-barra {
+    padding-bottom: 180px;
   }
+}
 
-  &__nombre {
+.v2-bloque {
+  display: grid;
+  grid-template-columns: 176px minmax(0, 1fr); /* responsive:ok el panel de 176 px solo desde sm: en celular se apila en una columna (bp.down(sm)) */
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+
+  &--datos {
+    border-style: dashed;
+    border-color: var(--border-strong);
+  }
+}
+
+.v2-bloque__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: var(--space-3);
+  background: var(--surface-2);
+  border-right: 1px solid var(--border);
+}
+
+.v2-bloque__nombre {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--fs-base);
+  font-weight: 800;
+  color: var(--text);
+
+  > span:last-child {
     overflow: hidden;
-    font-size: var(--fs-sm);
-    font-weight: 700;
-    color: var(--text);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+}
 
-  &__meta {
-    font-size: var(--fs-xs);
-    color: var(--text-3);
+.v2-bloque__color {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--cluster-color);
+}
+
+.v2-bloque__dato {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.v2-bloque__nota {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+/* Rutas del cluster que aún no aparecen en Configuración (les falta tipo, frecuencia o grupo). */
+.v2-bloque__incompletas {
+  align-self: flex-start;
+  padding: 1px var(--space-2);
+  color: var(--text);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  white-space: nowrap; /* responsive:ok etiqueta corta («3 incompletas») */
+  background: var(--warning-soft);
+  border-radius: 999px;
+}
+
+.v2-bloque__elegir {
+  align-self: flex-start;
+  margin-top: auto;
+}
+
+/* Fichas de la misma medida que en la matriz, tantas por fila como quepan. */
+.v2-area {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr));
+  grid-auto-rows: var(--mz-fila-ruta);
+  gap: 3px 2px;
+  align-content: start;
+  min-width: 0;
+  min-height: calc(var(--mz-fila-ruta) + 12px);
+  max-height: calc((var(--mz-fila-ruta) + 3px) * var(--v2-filas) + 9px);
+  padding: 6px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  transition: background-color var(--transition), box-shadow var(--transition);
+}
+
+.v2-vacio {
+  grid-column: 1 / -1;
+  align-self: center;
+  margin: 0;
+  padding: var(--space-2);
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+.v2-pista {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+/* Arrastre: el bloque destino se resalta (lo marca appArrastreRutas) y la ruta tomada se atenúa. */
+.v2-area.matriz__celda--destino {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.v2-area.matriz__celda--prohibido {
+  background: var(--danger-soft);
+  box-shadow: inset 0 0 0 2px var(--danger);
+}
+
+.matriz-ruta--arrastrada {
+  opacity: 0.45;
+}
+
+.matriz-ruta--movible {
+  cursor: grab;
+
+  &:active {
+    cursor: grabbing;
   }
 }
 
-.color-picker {
+.v2-ficha {
+  height: var(--mz-fila-ruta);
+
+  &:hover .matriz-ruta__caja-codigo {
+    background-color: var(--table-hover);
+  }
+
+  &--activa {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+}
+
+/* Tipo o frecuencia aún sin asignar: pestaña gris clara con «—». */
+.matriz-ruta__pestana-tipo.v2-sin-dato,
+.matriz-ruta__frecuencia.v2-sin-dato {
+  color: var(--text-2);
+  background: color-mix(in srgb, var(--text-3) 30%, var(--surface));
+}
+
+/* ---------- Pie fijo: deshacer y acciones de la selección ---------- */
+.v2-pie {
+  position: fixed;
+  left: 50%;
+  bottom: max(var(--space-4), env(safe-area-inset-bottom));
+  z-index: var(--z-sticky);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  width: max-content;
+  max-width: calc(100% - 2 * var(--space-4));
+  transform: translateX(-50%);
+  pointer-events: none;
+
+  > * {
+    pointer-events: auto;
+  }
+
+  @include bp.down(sm) {
+    left: var(--space-3);
+    right: var(--space-3);
+    align-items: stretch;
+    width: auto;
+    max-width: none;
+    transform: none;
+  }
+}
+
+.v2-deshacer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  padding: 4px 6px 4px var(--space-3);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  box-shadow: var(--shadow-lg);
+
+  ui-icon {
+    flex: none;
+    color: var(--accent);
+  }
+}
+
+.v2-deshacer__texto {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.v2-deshacer__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 800;
+  color: var(--accent);
+
+  .ui-spinner {
+    width: 12px;
+    height: 12px;
+  }
+}
+
+.v2-acciones {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  max-width: 100%;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
 }
 
-.color-dot {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 2px solid transparent;
-  border-radius: 50%;
-  cursor: pointer;
-  transition:
-    transform var(--transition),
-    box-shadow var(--transition);
+.v2-acciones__cuenta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  min-width: 0;
+
+  > ui-icon {
+    flex: none;
+    color: var(--accent);
+  }
 }
 
-.color-dot:hover {
-  transform: scale(1.08);
+.v2-acciones__bultos {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
 }
 
-.color-dot:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.color-dot--activo {
-  border-color: var(--surface);
-  box-shadow: 0 0 0 2px var(--text);
-}
-
-.hint {
-  margin-top: var(--space-3);
+.v2-acciones__aviso {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px var(--space-2);
+  border-radius: 999px;
+  background: var(--warning-soft);
   font-size: var(--fs-xs);
-  line-height: 1.45;
-  color: var(--text-3);
+  white-space: nowrap; /* responsive:ok etiqueta corta («3 en Datos») */
+
+  ui-icon {
+    flex: none;
+    color: var(--warning);
+  }
+}
+
+.v2-accion {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.v2-accion__etq {
+  margin-right: 2px;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.v2-chip {
+  min-width: 36px;
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  cursor: pointer;
+
+  &:hover:not(:disabled),
+  &:focus-visible {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  /* El color de cada frecuencia y tipo en la ficha. */
+  &[data-frecuencia='LXV'] {
+    color: light-dark(#1d4ed8, #93c5fd);
+  }
+
+  &[data-frecuencia='MJS'] {
+    color: light-dark(#c2410c, #fdba74);
+  }
+
+  &[data-tipo='B2C'] {
+    color: light-dark(#15803d, #86efac);
+  }
+
+  &[data-tipo='B2B'] {
+    color: light-dark(#8a6d00, #f7c400);
+  }
+}
+
+.v2-accion__grupo {
+  width: 76px;
+  height: 30px;
+  padding: 0 8px;
+}
+
+.v2-acciones__pista {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+
+  ui-icon {
+    flex: none;
+    color: var(--accent);
+  }
+}
+
+.v2-acciones__limpiar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  white-space: nowrap; /* responsive:ok un botón corto («Limpiar») */
+}
+
+/* ---------- Celular ---------- */
+@include bp.down(sm) {
+  /* El panel del bloque pasa arriba, en una fila: nombre, rutas, bultos y «Elegir todas». */
+  .v2-bloque {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .v2-bloque__panel {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px var(--space-3);
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .v2-bloque__elegir {
+    margin: 0 0 0 auto;
+  }
+
+  .v2-select {
+    flex: 1 1 140px;
+  }
+
+  .v2-acciones__pista {
+    display: none;
+  }
+
+  .v2-tablero--con-barra {
+    padding-bottom: 260px;
+  }
+}
+
+/* Táctil: controles de 44 px y campos de 16 px (iOS no hace zoom al enfocarlos). */
+@media (pointer: coarse) {
+  .v2-chip,
+  .v2-accion__btn,
+  .v2-acciones__limpiar,
+  .v2-deshacer__btn,
+  .v2-deshacer__cerrar,
+  .v2-clusters__btn,
+  .v2-bloque__elegir {
+    min-height: 44px;
+  }
+
+  .v2-chip {
+    min-width: 44px;
+  }
+
+  .v2-clusters__btn,
+  .v2-deshacer__cerrar {
+    min-width: 44px;
+  }
+
+  .v2-accion__grupo {
+    height: 44px;
+    font-size: 16px;
+  }
+
+  /* Barra de filtros: buscador, selects y botones de 44 px; campos de 16 px. */
+  .v2-toolbar .ui-input,
+  .v2-select {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .v2-nueva,
+  .v2-modo,
+  .v2-toolbar > .ui-btn {
+    min-height: 44px;
+  }
 }

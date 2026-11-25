@@ -4,7 +4,6 @@ import { authGuard } from './core/guards/auth.guard';
 import { guestGuard } from './core/guards/guest.guard';
 import { introGuard } from './core/guards/intro.guard';
 import { permisoGuard } from './core/guards/permiso.guard';
-import { RUTAS_VERIFICACION } from './__verificacion/verificacion';
 
 /**
  * Los paneles se protegen con `canMatch`: la sesión y el permiso se comprueban
@@ -103,6 +102,5 @@ export const routes: Routes = [
         (m) => m.SINCRONIZACION_ROUTES,
       ),
   },
-  ...RUTAS_VERIFICACION,
   { path: '**', redirectTo: '' },
 ];

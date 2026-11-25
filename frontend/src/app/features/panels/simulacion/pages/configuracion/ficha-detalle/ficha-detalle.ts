@@ -54,13 +54,8 @@ export class FichaDetalle {
   readonly ruta = input<RutaDetalle | null>(null);
   readonly cluster = input<ClusterDetalle | null>(null);
   readonly locales = input<EstadoLocales | null>(null);
-  /** Puede completar los locales del registro con su Excel (permiso de modificar registros). */
-  readonly puedeCompletar = input(false);
-  /** Hay un Excel subiéndose para completar los locales. */
-  readonly completando = input(false);
   readonly cerrar = output<void>();
   readonly reintentar = output<void>();
-  readonly completar = output<File>();
 
   /** Búsqueda por COD (ya aplicada) y bultos mínimos: vuelven a vacío al abrir otra ruta. */
   readonly busqueda = linkedSignal({ source: () => this.ruta()?.ruta.id, computation: () => '' });
@@ -177,16 +172,6 @@ export class FichaDetalle {
 
   mostrarMas(): void {
     this.limite.update((n) => n + PASO);
-  }
-
-  elegirExcel(evento: Event): void {
-    const entrada = evento.target as HTMLInputElement;
-    const archivo = entrada.files?.[0];
-    // Se limpia: elegir el mismo archivo otra vez vuelve a disparar el cambio.
-    entrada.value = '';
-    if (archivo) {
-      this.completar.emit(archivo);
-    }
   }
 
   filtrarBultos(evento: Event): void {

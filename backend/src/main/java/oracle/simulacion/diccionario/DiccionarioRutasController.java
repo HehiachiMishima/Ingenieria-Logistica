@@ -17,8 +17,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Registro v2 de Simulación Titan: diccionario de rutas. Módulo independiente y, por ahora, sin
- * permisos propios: basta con entrar al panel Simulación Titan (PANEL_SIMULACION).
+ * Registro de Simulación Titan: diccionario de rutas (reemplaza al registro por Excel). Usa los
+ * permisos del registro: ver, crear, modificar y eliminar.
  */
 @RestController
 @RequestMapping("/api/simulacion/diccionario")
@@ -32,71 +32,71 @@ public class DiccionarioRutasController {
 
   /** Clusters y rutas (con totales y códigos) para dibujar los bloques. */
   @GetMapping
-  @PreAuthorize("hasAuthority('PANEL_SIMULACION')")
+  @PreAuthorize("hasAuthority('VER_REGISTRO_SIMULACION')")
   public ApiResponse<Diccionario> ver() {
     return servicio.ver();
   }
 
   /** Una ruta con todos sus locales (ficha de detalle y edición). */
   @GetMapping("/rutas/{id}")
-  @PreAuthorize("hasAuthority('PANEL_SIMULACION')")
+  @PreAuthorize("hasAuthority('VER_REGISTRO_SIMULACION')")
   public ApiResponse<Detalle> detalle(@PathVariable Long id) {
     return servicio.detalle(id);
   }
 
   @PostMapping("/rutas")
-  @PreAuthorize("hasAuthority('PANEL_SIMULACION')")
+  @PreAuthorize("hasAuthority('CREAR_REGISTRO_SIMULACION')")
   public ApiResponse<Ruta> crear(@Valid @RequestBody DiccionarioPeticiones.Ruta req) {
     return servicio.crear(req);
   }
 
   @PutMapping("/rutas/{id}")
-  @PreAuthorize("hasAuthority('PANEL_SIMULACION')")
+  @PreAuthorize("hasAuthority('MODIFICAR_REGISTRO_SIMULACION')")
   public ApiResponse<Ruta> actualizar(@PathVariable Long id, @Valid @RequestBody DiccionarioPeticiones.Ruta req) {
     return servicio.actualizar(id, req);
   }
 
   @DeleteMapping("/rutas/{id}")
-  @PreAuthorize("hasAuthority('PANEL_SIMULACION')")
+  @PreAuthorize("hasAuthority('ELIMINAR_REGISTRO_SIMULACION')")
   public ApiResponse<Void> eliminar(@PathVariable Long id) {
     return servicio.eliminar(id);
   }
 
   /** Arrastre: a un cluster (conservan frecuencia) o a Datos ({@code clusterId} null: la pierden). */
   @PutMapping("/rutas/mover")
-  @PreAuthorize("hasAuthority('PANEL_SIMULACION')")
+  @PreAuthorize("hasAuthority('MODIFICAR_REGISTRO_SIMULACION')")
   public ApiResponse<Cambio> mover(@Valid @RequestBody DiccionarioPeticiones.Mover req) {
     return servicio.mover(req);
   }
 
   @PutMapping("/rutas/frecuencia")
-  @PreAuthorize("hasAuthority('PANEL_SIMULACION')")
+  @PreAuthorize("hasAuthority('MODIFICAR_REGISTRO_SIMULACION')")
   public ApiResponse<Cambio> asignarFrecuencia(@Valid @RequestBody DiccionarioPeticiones.Frecuencia req) {
     return servicio.asignarFrecuencia(req);
   }
 
   @PutMapping("/rutas/grupo")
-  @PreAuthorize("hasAuthority('PANEL_SIMULACION')")
+  @PreAuthorize("hasAuthority('MODIFICAR_REGISTRO_SIMULACION')")
   public ApiResponse<Cambio> asignarGrupo(@Valid @RequestBody DiccionarioPeticiones.Grupo req) {
     return servicio.asignarGrupo(req);
   }
 
   @PutMapping("/rutas/tipo")
-  @PreAuthorize("hasAuthority('PANEL_SIMULACION')")
+  @PreAuthorize("hasAuthority('MODIFICAR_REGISTRO_SIMULACION')")
   public ApiResponse<Cambio> cambiarTipo(@Valid @RequestBody DiccionarioPeticiones.Tipo req) {
     return servicio.cambiarTipo(req);
   }
 
   /** Deshacer el último movimiento. */
   @PutMapping("/rutas/restaurar")
-  @PreAuthorize("hasAuthority('PANEL_SIMULACION')")
+  @PreAuthorize("hasAuthority('MODIFICAR_REGISTRO_SIMULACION')")
   public ApiResponse<Cambio> restaurar(@Valid @RequestBody DiccionarioPeticiones.Restaurar req) {
     return servicio.restaurar(req);
   }
 
   /** Cuántos bloques de cluster hay (CL1…CLn); al quitar, sus rutas vuelven a Datos. */
   @PutMapping("/clusters")
-  @PreAuthorize("hasAuthority('PANEL_SIMULACION')")
+  @PreAuthorize("hasAuthority('MODIFICAR_REGISTRO_SIMULACION')")
   public ApiResponse<Diccionario> cambiarClusters(@Valid @RequestBody DiccionarioPeticiones.Clusters req) {
     return servicio.cambiarClusters(req);
   }
