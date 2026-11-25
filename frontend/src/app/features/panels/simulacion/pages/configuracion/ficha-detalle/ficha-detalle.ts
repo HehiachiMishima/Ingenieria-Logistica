@@ -56,6 +56,9 @@ export class FichaDetalle {
   readonly locales = input<EstadoLocales | null>(null);
   readonly cerrar = output<void>();
   readonly reintentar = output<void>();
+  /** Solo rutas de DATA: abrir el formulario o eliminarla. */
+  readonly editar = output<void>();
+  readonly eliminar = output<void>();
 
   /** Búsqueda por COD (ya aplicada) y bultos mínimos: vuelven a vacío al abrir otra ruta. */
   readonly busqueda = linkedSignal({ source: () => this.ruta()?.ruta.id, computation: () => '' });

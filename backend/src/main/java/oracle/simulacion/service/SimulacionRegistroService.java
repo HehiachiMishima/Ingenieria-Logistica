@@ -6,15 +6,14 @@ import oracle.common.config.Transacciones;
 import oracle.common.response.ApiResponse;
 import oracle.common.support.ActorActual;
 import oracle.common.support.Trazas;
-import oracle.simulacion.diccionario.EscenarioDiccionario;
 import oracle.simulacion.repository.ArchivoExcelRepository;
 import oracle.simulacion.response.ArchivoSimulacionResponse;
 import org.springframework.stereotype.Service;
 
 /**
  * El registro con el que trabajan Configuración y el Dashboard. Ya no se suben Excel: hay un solo
- * escenario, armado con las rutas completas del Registro (diccionario de rutas). Se crea la
- * primera vez que alguien lo pide.
+ * escenario, donde las rutas se crean en DATA y se ordenan en los clusters. Se crea la primera vez
+ * que alguien lo pide.
  */
 @Slf4j
 @Service
@@ -22,10 +21,10 @@ public class SimulacionRegistroService {
 
   private final ArchivoExcelRepository archivoRepo;
   private final Transacciones transacciones;
-  private final EscenarioDiccionario escenario;
+  private final EscenarioUnico escenario;
 
   public SimulacionRegistroService(
-      ArchivoExcelRepository archivoRepo, Transacciones transacciones, EscenarioDiccionario escenario) {
+      ArchivoExcelRepository archivoRepo, Transacciones transacciones, EscenarioUnico escenario) {
     this.archivoRepo = archivoRepo;
     this.transacciones = transacciones;
     this.escenario = escenario;
@@ -50,6 +49,6 @@ public class SimulacionRegistroService {
                           .map(SimulacionRespuestas::archivo)
                           .toList());
             });
-    return ApiResponse.ok("Registro de rutas.", datos);
+    return ApiResponse.ok("Escenario de simulación.", datos);
   }
 }

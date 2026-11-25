@@ -38,6 +38,7 @@ import {
   CargaSimulacion,
   ConfiguracionSimulacion,
   ConfiguracionSimulacionRequest,
+  DATA_ID,
   PredeterminadosSimulacion,
   RutaSimulacion,
   VistaBalanceo,
@@ -76,8 +77,10 @@ import {
   normalizarLimite,
   normalizarPorChute,
   normalizarVelocidad,
+  clusterVacio,
   resumirClusters,
 } from './configuracion.logica';
+import { RutaForm, RutaFormInicial } from './ruta-form/ruta-form';
 import { SimulacionGuiaBalanceo } from './guia-balanceo/guia-balanceo';
 import { SimulacionHistorialCambios } from './historial-cambios/historial-cambios';
 import { ArrastreRutas, DestinoRuta } from './arrastre-rutas.directive';
@@ -122,6 +125,8 @@ export interface FiltrosCluster {
 
 /** Avance de un cluster en sus tres balanceos y su lugar en el orden de las olas. */
 export interface AvanceCluster {
+  /** Sin rutas (recién agregado o que devolvió las suyas a DATA): se salta en el balanceo. */
+  vacio: boolean;
   dia: string;
   lxv: string;
   mjs: string;
@@ -161,6 +166,8 @@ export interface AccionCluster {
 /** Un cluster de la matriz: una fila por nivel de apilado y una celda por chute. */
 interface BloqueMatriz {
   cluster: ResumenCluster;
+  /** Es el bloque DATA (rutas que no se balancean): sin pasos, filtros ni cierre. */
+  data: boolean;
   /** Lo que muestra el cluster. */
   vista: VistaCluster;
   /** Frecuencias que muestra (filtros del panel). */
@@ -180,6 +187,8 @@ interface BloqueMatriz {
  * --mz-filas). Con más rutas, la tabla crece y se recorre con scroll vertical.
  */
 const MIN_FILAS = 3;
+/** Clusters del escenario (CL1…CL30), como el servidor. */
+const MAX_CLUSTERS = 30;
 
 /**
  * Dónde se dibuja la ficha de detalle: junto a su ancla (abajo o arriba,
@@ -288,6 +297,7 @@ interface EstadoRutasMatriz {
     ScrollMatriz,
     ArrastreRutas,
     SimulacionExportar,
+    RutaForm,
     NumeroPipe,
     EnteroPipe,
     HorasPipe,
@@ -513,11 +523,13 @@ export class SimulacionConfiguracion {
     const lista = this.configs().LXV?.clusters ?? [];
     const propio = lista.find((c) => c.id === clusterId);
     const avance = propio?.avance;
-    const enCurso = lista.find((c) => c.estado !== 'CERRADO') ?? null;
+    // Los vacíos se saltan: el en curso es el primero con rutas sin cerrar.
+    const enCurso = lista.find((c) => c.estado !== 'CERRADO' && !clusterVacio(c)) ?? null;
     const indice = lista.findIndex((c) => c.id === clusterId);
     const cerrado = propio?.estado === 'CERRADO';
     const rutas = rutasPorFrecuencia(avance);
     return {
+      vacio: !!propio && clusterVacio(propio),
       dia: avance?.diarias ?? 'PENDIENTE',
       lxv: avance?.lxv ?? propio?.estado ?? 'PENDIENTE',
       mjs: avance?.mjs ?? 'PENDIENTE',
@@ -540,7 +552,9 @@ export class SimulacionConfiguracion {
       cerrado: a.cerrado,
       estado: a.cerrado
         ? 'Cerrado'
-        : a.esperaA
+        : a.vacio
+          ? 'Sin rutas: arrástralas desde DATA'
+          : a.esperaA
           ? `En espera de ${a.esperaA}`
           : `En curso · Diarias ${marca(a.dia)} · L-X-V ${marca(a.lxv, a.requiere.lxv)} · M-J-S ${marca(a.mjs, a.requiere.mjs)}`,
     };
@@ -554,6 +568,10 @@ export class SimulacionConfiguracion {
    */
   accionesDe(clusterId: number): AccionCluster[] {
     const a = this.avanceCluster(clusterId);
+    // Un cluster vacío no tiene pasos hasta que reciba rutas.
+    if (a.vacio) {
+      return [];
+    }
     if (a.cerrado) {
       return [
         {
@@ -711,6 +729,9 @@ export class SimulacionConfiguracion {
 
   pasosDe(clusterId: number): PasoAvance[] {
     const a = this.avanceCluster(clusterId);
+    if (a.vacio) {
+      return [];
+    }
     const siguiente = this.pasoPanel().get(clusterId)?.clave ?? null;
     const hecho = (estado: string) => estado !== 'PENDIENTE';
     const conOperarios = (!a.participa.lxv || a.lxv === 'LISTO') && (!a.participa.mjs || a.mjs === 'LISTO');
@@ -927,6 +948,10 @@ export class SimulacionConfiguracion {
   readonly rutasVisibles = computed(() => {
     const vistas = this.vistasEfectivas();
     return this.rutasMatriz().filter((ruta) => {
+      // DATA no tiene vista: se ven todas sus rutas.
+      if (ruta.clusterId === DATA_ID) {
+        return true;
+      }
       const vista = vistas[ruta.clusterId] ?? 'LXV';
       return vista === 'AMBOS' || rutaEnBalanceo(ruta.frecuencia, vista);
     });
@@ -1009,7 +1034,9 @@ export class SimulacionConfiguracion {
       this.recargando() ||
       this.rutaGuardando() !== null ||
       this.fijando() ||
-      this.rutasGuardando().size > 0,
+      this.rutasGuardando().size > 0 ||
+      this.cambiandoClusters() ||
+      this.asignandoData(),
   );
 
   /** Todos los clusters cerrados: la simulación terminó. */
@@ -1440,8 +1467,8 @@ export class SimulacionConfiguracion {
       movible: editable && !cerrados.has(ruta.clusterId),
       movida: ruta.chuteId !== ruta.chuteOriginalId || ruta.clusterId !== ruta.clusterOriginalId,
       cambioCluster: ruta.clusterId !== ruta.clusterOriginalId,
-      grupo: colores.get(ruta.clusterId)?.has(ruta.grupo) ? ruta.grupo : null,
-      grupoColor: colores.get(ruta.clusterId)?.get(ruta.grupo) ?? null,
+      grupo: ruta.grupo !== null && colores.get(ruta.clusterId)?.has(ruta.grupo) ? ruta.grupo : null,
+      grupoColor: ruta.grupo === null ? null : (colores.get(ruta.clusterId)?.get(ruta.grupo) ?? null),
       bultos: formatearEntero(ruta.totalBultos),
       frecuencia: pestanaFrecuencia(ruta),
     });
@@ -1474,17 +1501,34 @@ export class SimulacionConfiguracion {
     // bloques no aparezcan y desaparezcan mientras llegan las páginas).
     const elegidos = new Set(this.filtroCluster());
     const conBusqueda = this.filtroTexto().trim() !== '' && !this.cargandoRutas();
-    return this.resumenClusters()
+    const clusters: BloqueMatriz[] = this.resumenClusters()
       .filter((cluster) => elegidos.size === 0 || elegidos.has(cluster.id))
       .filter((cluster) => !conBusqueda || celdas.has(cluster.id))
       .map((cluster) => ({
         cluster,
+        data: false,
         vista: this.vistaDe(cluster.id),
         filtros: this.filtrosDe(cluster.id),
         ...this.estadoBloque(cluster.id),
         filas: celdas.get(cluster.id) ?? vacias(),
         fuera: this.fueraPorCluster().get(cluster.id) ?? [],
       }));
+    // DATA va arriba (las rutas sin balancear): se ve sin filtro de clusters y, al buscar, si tiene
+    // alguna que coincide.
+    if (elegidos.size > 0 || (conBusqueda && !celdas.has(DATA_ID))) {
+      return clusters;
+    }
+    const data: BloqueMatriz = {
+      cluster: bloqueData(this.rutasMatriz().filter((ruta) => ruta.clusterId === DATA_ID).length),
+      data: true,
+      vista: 'AMBOS',
+      filtros: { lxv: true, mjs: true, diaria: true, sinLxv: false, sinMjs: false, sinDiarias: false },
+      cerrado: false,
+      estado: 'Rutas que no se balancean',
+      filas: celdas.get(DATA_ID) ?? vacias(),
+      fuera: [],
+    };
+    return [data, ...clusters];
   });
 
   /**
@@ -1676,6 +1720,9 @@ export class SimulacionConfiguracion {
     const cerrado = this.clusterCerrado(ruta.clusterId);
     return {
       ruta,
+      /** En DATA: se edita o se elimina desde su ficha (con permiso). */
+      enData: ruta.clusterId === DATA_ID,
+      editable: ruta.clusterId === DATA_ID && this.puedeModificar(),
       color: this.resumenClusters().find((cluster) => cluster.id === ruta.clusterId)?.color ?? null,
       /** El mismo color de la pestaña del grupo en la cuadrícula y en el PDF. */
       colorGrupo: ruta.grupo ? (this.coloresGrupo().get(ruta.clusterId)?.get(ruta.grupo) ?? null) : null,
@@ -2391,6 +2438,16 @@ export class SimulacionConfiguracion {
   /** Detalle de la ruta al pasar el mouse y, si no se puede mover, el motivo. */
   tituloRuta(ruta: RutaSimulacion): string {
     const n = (valor: number) => formatearEntero(valor);
+    if (ruta.clusterId === DATA_ID) {
+      const falta = faltaParaCluster(ruta);
+      return (
+        `${ruta.codigoRuta} · ${ruta.tipo ?? 'sin tipo'}${ruta.grupo ? ` · Grupo ${ruta.grupo}` : ''} · ` +
+        `${ruta.frecuencia ? textoFrecuencia(ruta.frecuencia, ruta.dias) : 'sin frecuencia'}\n` +
+        `Bultos: ${n(ruta.totalBultos)} · Unidades: ${n(ruta.totalUnidades)} · Líneas: ${n(ruta.totalLineas)} · ` +
+        `Locales: ${formatearEntero(ruta.conteoCod)}\n` +
+        (falta ? `Falta ${falta} para pasarla a un cluster.` : 'Arrástrala a un cluster para balancearla.')
+      );
+    }
     const detalle =
       `${ruta.codigoRuta} · ${ruta.tipo}${ruta.grupo ? ` · Grupo ${ruta.grupo}` : ''} · ${textoFrecuencia(ruta.frecuencia, ruta.dias)}${ruta.diariaFija ? ' (fija)' : ''}\n` +
       `Bultos: ${n(ruta.totalBultos)} · Unidades: ${n(ruta.totalUnidades)} · ` +
@@ -2440,6 +2497,9 @@ export class SimulacionConfiguracion {
     if (ruta.clusterId === clusterId && ruta.chuteId === chuteId) {
       return SIN_CAMBIO;
     }
+    if (ruta.clusterId === DATA_ID || clusterId === DATA_ID) {
+      return this.motivoData(ruta, clusterId, chuteId);
+    }
     const destino = cfg.clusters.find((cluster) => cluster.id === clusterId);
     // Chute bloqueado (solo visible si un registro antiguo aún tiene rutas ahí):
     // sus rutas pueden salir, pero ninguna puede entrar.
@@ -2470,6 +2530,62 @@ export class SimulacionConfiguracion {
     }
     return null;
   };
+
+  /**
+   * Reglas de DATA (las mismas del servidor): a un cluster solo pasa una ruta completa, a un cluster
+   * abierto y, si está vacío, que no quede antes de uno que ya empezó; a DATA vuelve una ruta cuyo
+   * cluster aún no empezó a balancearse.
+   */
+  private motivoData(ruta: RutaSimulacion, clusterId: number, chuteId: number): string | null {
+    const cfg = this.config();
+    const chute = cfg?.chutes.find((c) => c.id === chuteId);
+    if (chute?.bloqueado && chuteId !== ruta.chuteId) {
+      return `${etiquetaChute(chute.nombre)} está bloqueado: no se pueden mover rutas ahí.`;
+    }
+    if (clusterId === DATA_ID) {
+      if (ruta.clusterId === DATA_ID) {
+        return null;
+      }
+      const origen = this.avanceCluster(ruta.clusterId);
+      if (origen.cerrado) {
+        return `${ruta.cluster} está cerrado: reábrelo y restablécelo para devolver sus rutas a DATA.`;
+      }
+      if (this.empezado(ruta.clusterId)) {
+        return `${ruta.cluster} ya empezó a balancearse: restablécelo para devolver sus rutas a DATA.`;
+      }
+      return null;
+    }
+    if (ruta.clusterId !== DATA_ID) {
+      return 'Desde un cluster se mueve a otro cluster o a DATA, no a la vez con rutas de DATA.';
+    }
+    const falta = faltaParaCluster(ruta);
+    if (falta) {
+      return `${ruta.codigoRuta}: asígnale ${falta} en DATA antes de pasarla a un cluster.`;
+    }
+    const lista = cfg?.clusters ?? [];
+    const destino = lista.find((c) => c.id === clusterId);
+    if (!destino || this.avanceCluster(clusterId).cerrado) {
+      return `${destino?.nombre ?? 'Ese cluster'} está cerrado: reábrelo para recibir rutas.`;
+    }
+    const vistaDestino = this.vistaDe(clusterId);
+    if (vistaDestino !== 'AMBOS' && !rutaEnBalanceo(ruta.frecuencia, vistaDestino)) {
+      return `${destino.nombre} muestra ${ETIQUETA_BALANCEO[vistaDestino]}: cambia su filtro para recibir esta ruta.`;
+    }
+    if (clusterVacio(destino)) {
+      const siguientes = lista.slice(lista.indexOf(destino) + 1);
+      const empezado = siguientes.find((c) => !clusterVacio(c) && this.empezado(c.id));
+      if (empezado) {
+        return `${destino.nombre} va antes de ${empezado.nombre}, que ya empezó a balancearse: usa un cluster posterior.`;
+      }
+    }
+    return null;
+  }
+
+  /** Ya se balanceó algo del cluster (en cualquier balanceo). */
+  private empezado(clusterId: number): boolean {
+    const a = this.avanceCluster(clusterId);
+    return a.cerrado || a.dia !== 'PENDIENTE' || a.lxv !== 'PENDIENTE' || a.mjs !== 'PENDIENTE';
+  }
 
   /** Rutas del cluster en el registro: L-X-V + M-J-S − Diarias (cada diaria una vez). */
   private rutasDelCluster(clusterId: number): number {
@@ -2527,14 +2643,17 @@ export class SimulacionConfiguracion {
     const porId = this.rutasPorId();
     let bultos = 0;
     let diarias = 0;
+    let enData = 0;
     for (const id of ids) {
       const ruta = porId.get(id);
       if (ruta) {
         bultos += Number(ruta.totalBultos ?? 0);
-        diarias += esDiaria(ruta) ? 1 : 0;
+        enData += ruta.clusterId === DATA_ID ? 1 : 0;
+        diarias += ruta.clusterId !== DATA_ID && esDiaria(ruta) ? 1 : 0;
       }
     }
-    return { rutas: ids.size, bultos, diarias };
+    // Solo de DATA: se les puede asignar tipo, frecuencia y grupo.
+    return { rutas: ids.size, bultos, diarias, soloData: enData === ids.size };
   });
 
   /**
@@ -2622,6 +2741,23 @@ export class SimulacionConfiguracion {
       return this.motivoNoMover(rutaIds[0], clusterId, chuteId);
     }
     const porId = this.rutasPorId();
+    // Con DATA de por medio no hay regla de «cluster sin rutas»: basta que cada una pueda.
+    const conData = rutaIds.some((id) => porId.get(id)?.clusterId === DATA_ID);
+    if (conData || clusterId === DATA_ID) {
+      let cambia = false;
+      for (const id of rutaIds) {
+        const motivo = this.motivoNoMover(id, clusterId, chuteId);
+        if (motivo === SIN_CAMBIO) {
+          continue;
+        }
+        if (motivo !== null) {
+          const ruta = porId.get(id);
+          return ruta ? `Ruta ${ruta.codigoRuta}: ${motivo}` : motivo;
+        }
+        cambia = true;
+      }
+      return cambia ? null : SIN_CAMBIO;
+    }
     const salenDe = new Map<number, number>();
     let cambia = false;
     for (const id of rutaIds) {
@@ -2718,6 +2854,11 @@ export class SimulacionConfiguracion {
       }
       return;
     }
+    const porId = this.rutasPorId();
+    if (clusterId === DATA_ID || rutaIds.some((id) => porId.get(id)?.clusterId === DATA_ID)) {
+      this.moverData(rutaIds, clusterId, chuteId);
+      return;
+    }
     if (rutaIds.length > 1) {
       this.moverVarias(rutaIds, clusterId, chuteId);
       return;
@@ -2770,6 +2911,50 @@ export class SimulacionConfiguracion {
         // El interceptor ya muestra el motivo del servidor; el cambio es todo o nada.
         error: () => undefined,
       });
+  }
+
+  /**
+   * Rutas de DATA a un cluster, o de vuelta a DATA: cambia la carga de los clusters y su avance,
+   * así que se recarga la configuración entera (y la matriz, sin parpadeo).
+   */
+  private moverData(rutaIds: readonly number[], clusterId: number, chuteId: number): void {
+    const id = this.seleccionado();
+    if (id === null) {
+      return;
+    }
+    const porId = this.rutasPorId();
+    const ids = new Set(
+      rutaIds.filter((rutaId) => {
+        const ruta = porId.get(rutaId);
+        return !!ruta && (ruta.clusterId !== clusterId || ruta.chuteId !== chuteId);
+      }),
+    );
+    if (ids.size === 0) {
+      return;
+    }
+    this.rutasGuardando.set(ids);
+    this.api
+      .moverData(id, [...ids], clusterId, chuteId)
+      .pipe(
+        finalize(() => this.rutasGuardando.set(new Set())),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: (cambio) => {
+          this.notificaciones.exito(clusterId === DATA_ID ? 'Rutas a DATA' : 'Rutas a un cluster', cambio.mensaje);
+          this.limpiarSeleccion();
+          this.recargarTodo(id);
+        },
+        // El interceptor ya muestra el motivo del servidor; el cambio es todo o nada.
+        error: () => undefined,
+      });
+  }
+
+  /** Tras un cambio en DATA o en los clusters: configuración y matriz al día. */
+  private recargarTodo(id: number): void {
+    if (this.seleccionado() === id) {
+      this.cargarConfiguracion(id);
+    }
   }
 
   /**
@@ -3307,6 +3492,132 @@ export class SimulacionConfiguracion {
     return vista === 'AMBOS' ? 'LXV' : vista;
   }
 
+  // ---------------- DATA: rutas que no se balancean ----------------
+
+  /** Formulario de ruta abierto: una nueva (sin ruta) o una de DATA para editar. */
+  readonly rutaForm = signal<RutaFormInicial | null>(null);
+  /** Grupo escrito en la barra de la selección (rutas de DATA). */
+  readonly grupoData = signal('');
+  readonly asignandoData = signal(false);
+  readonly cambiandoClusters = signal(false);
+  readonly maxClusters = MAX_CLUSTERS;
+
+  /** Clusters del escenario, también los vacíos (se agregan y quitan desde el último). */
+  readonly cantidadClusters = computed(() => this.configs().LXV?.clusters.length ?? 0);
+
+  nuevaRuta(): void {
+    this.detalle.set(null);
+    this.rutaForm.set({ ruta: null, locales: [] });
+  }
+
+  /** Editar la ruta de DATA abierta en su ficha, con sus locales ya cargados. */
+  editarRuta(): void {
+    const ruta = this.rutaDetalle()?.ruta;
+    const locales = this.localesRuta();
+    if (!ruta || ruta.clusterId !== DATA_ID || locales?.estado !== 'listo') {
+      return;
+    }
+    this.detalle.set(null);
+    this.rutaForm.set({
+      ruta: { id: ruta.id, codigoRuta: ruta.codigoRuta, tipo: ruta.tipo ?? null },
+      locales: locales.datos.locales,
+    });
+  }
+
+  eliminarRuta(): void {
+    const ruta = this.rutaDetalle()?.ruta;
+    const id = this.seleccionado();
+    if (!ruta || id === null || ruta.clusterId !== DATA_ID) {
+      return;
+    }
+    const nombre = `${ruta.codigoRuta}${ruta.tipo ? ' ' + ruta.tipo : ''}`;
+    if (!window.confirm(`¿Eliminar la ruta ${nombre} y sus locales? No se puede deshacer.`)) {
+      return;
+    }
+    this.api
+      .eliminarRutaData(id, ruta.id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((cambio) => {
+        this.detalle.set(null);
+        this.notificaciones.exito('Ruta eliminada', cambio.mensaje);
+        this.recargarRutas(true);
+      });
+  }
+
+  rutaGuardada({ mensaje, creada }: { mensaje: string; creada: boolean }): void {
+    this.rutaForm.set(null);
+    this.notificaciones.exito(creada ? 'Ruta creada' : 'Ruta guardada', mensaje);
+    this.recargarRutas(true);
+  }
+
+  /** Tipo, frecuencia o grupo para las rutas elegidas de DATA. */
+  asignarData(que: 'tipo' | 'frecuencia' | 'grupo', valor: string): void {
+    const id = this.seleccionado();
+    const ids = [...this.seleccion()];
+    if (id === null || ids.length === 0 || this.ocupado()) {
+      return;
+    }
+    const texto = valor.trim();
+    if (texto === '') {
+      this.notificaciones.advertencia('Falta el grupo', 'Escribe el grupo antes de asignarlo.');
+      return;
+    }
+    this.asignandoData.set(true);
+    this.api
+      .asignarData(id, que, ids, texto)
+      .pipe(
+        finalize(() => this.asignandoData.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((cambio) => {
+        this.notificaciones.exito('Rutas de DATA', cambio.mensaje);
+        if (que === 'grupo') {
+          this.grupoData.set('');
+        }
+        this.recargarRutas(true);
+      });
+  }
+
+  /** Agrega un cluster al final o quita el último (sus rutas vuelven a DATA). */
+  cambiarClusters(delta: 1 | -1): void {
+    const id = this.seleccionado();
+    const lista = this.configs().LXV?.clusters ?? [];
+    const cantidad = lista.length + delta;
+    if (id === null || this.ocupado() || cantidad < 0 || cantidad > MAX_CLUSTERS) {
+      return;
+    }
+    if (delta < 0) {
+      const ultimo = lista[lista.length - 1];
+      if (this.empezado(ultimo.id)) {
+        this.notificaciones.advertencia(
+          'No se puede quitar',
+          `${ultimo.nombre} ya empezó a balancearse: restablécelo antes de quitarlo.`,
+        );
+        return;
+      }
+      const rutas = clusterVacio(ultimo) ? 0 : this.rutasDelCluster(ultimo.id);
+      if (
+        rutas > 0 &&
+        !window.confirm(
+          `${ultimo.nombre} tiene ${rutas === 1 ? '1 ruta' : rutas + ' rutas'}: volverán a DATA. ¿Quitar ${ultimo.nombre}?`,
+        )
+      ) {
+        return;
+      }
+    }
+    this.cambiandoClusters.set(true);
+    this.api
+      .cambiarClusters(id, cantidad)
+      .pipe(
+        finalize(() => this.cambiandoClusters.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((cambio) => {
+        this.notificaciones.exito('Clusters', cambio.mensaje);
+        this.recargarTodo(id);
+      });
+  }
+
   irADashboard(): void {
     const id = this.seleccionado();
     void this.router.navigate(['/simulacion/dashboard'], {
@@ -3314,9 +3625,6 @@ export class SimulacionConfiguracion {
     });
   }
 
-  irARegistro(): void {
-    void this.router.navigate(['/simulacion/registro']);
-  }
 }
 
 /** Etiqueta de la columna: el nombre del chute con el prefijo del Excel. */
@@ -3348,7 +3656,7 @@ export function textoFrecuencia(frecuencia: string | null | undefined, dias?: st
 export interface PestanaFrecuencia {
   /** «Diaria» (toda diaria, también la de días mezclados) o sus días: «L-X-V», «M-J-S», «L-X»… */
   dias: string;
-  tipo: 'D' | 'LXV' | 'MJS';
+  tipo: 'D' | 'LXV' | 'MJS' | 'SIN';
   titulo: string;
   /** Diaria ya balanceada (paso Diarias): bloque de días más oscuro. */
   fija: boolean;
@@ -3360,6 +3668,10 @@ function esDiaria(ruta: RutaSimulacion): boolean {
 }
 
 function pestanaFrecuencia(ruta: RutaSimulacion): PestanaFrecuencia {
+  // En DATA puede no tener frecuencia todavía.
+  if (!ruta.frecuencia && ruta.clusterId === DATA_ID) {
+    return { dias: '—', tipo: 'SIN', titulo: 'Sin frecuencia', fija: false };
+  }
   const dias = textoFrecuencia(ruta.frecuencia, ruta.dias);
   const diaria = esDiaria(ruta);
   // Toda diaria (también la de días mezclados, p. ej. L-M) se lee «Diaria»; sus días van en el
@@ -3420,4 +3732,43 @@ function inicialesCluster(nombre: string): string {
     return (palabras[0][0] + palabras[palabras.length - 1].slice(0, 2)).toUpperCase();
   }
   return (palabras[0] ?? '?').slice(0, 2).toUpperCase();
+}
+
+/** Lo que le falta a una ruta de DATA para pasar a un cluster («tipo y grupo»), o null si nada. */
+function faltaParaCluster(ruta: RutaSimulacion): string | null {
+  const falta = [!ruta.tipo ? 'tipo' : null, !ruta.frecuencia ? 'frecuencia' : null, !ruta.grupo ? 'grupo' : null].filter(
+    (campo): campo is string => campo !== null,
+  );
+  if (falta.length === 0) {
+    return null;
+  }
+  return falta.length === 1 ? falta[0] : `${falta.slice(0, -1).join(', ')} y ${falta[falta.length - 1]}`;
+}
+
+/** El bloque DATA como si fuera un cluster: solo su nombre y sus rutas (no se balancea). */
+function bloqueData(rutas: number): ResumenCluster {
+  return {
+    id: DATA_ID,
+    nombre: 'DATA',
+    color: 'var(--border-strong)',
+    paso: 0,
+    pasos: [],
+    enCurso: false,
+    cerrado: false,
+    balanceado: false,
+    conOperarios: false,
+    rutas,
+    bultos: 0,
+    chutes: 0,
+    dispersion: null,
+    diferenciaOriginal: null,
+    operarios: 0,
+    tiempo: 0,
+    limite: 0,
+    cumple: true,
+    uso: null,
+    previo: null,
+    siguen: 0,
+    siguiente: null,
+  };
 }

@@ -38,7 +38,7 @@
     <div class="ui-field rf-uno__cod">
       <label class="ui-label" for="rf-cod">Código (local) <span class="ui-required">*</span></label>
       <input id="rf-cod" class="ui-input" [class.ui-input--invalid]="intento() && e.cod" maxlength="100" autocomplete="off"
-        placeholder="7875" [value]="l.cod" (input)="cambiar(l.clave, 'cod', $event)" (paste)="pegar($event, 0)" />
+        placeholder="7875" [value]="l.cod" (input)="cambiar(l.clave, 'cod', $event)" (paste)="pegar($event, 0, 'cod')" />
     </div>
     <div class="ui-field">
       <label class="ui-label" for="rf-bultos">Bultos <span class="ui-required">*</span></label>
@@ -76,25 +76,25 @@
         <span class="rf-etq">Código</span>
         <input class="ui-input" [class.ui-input--invalid]="intento() && e.cod" maxlength="100" autocomplete="off"
           [attr.aria-label]="'Código de la línea ' + (i + 1)" [value]="l.cod" (input)="cambiar(l.clave, 'cod', $event)"
-          (paste)="pegar($event, i)" />
+          (paste)="pegar($event, i, 'cod')" />
       </label>
       <label class="rf-celda">
         <span class="rf-etq">Bultos</span>
         <input class="ui-input rf-num" [class.ui-input--invalid]="intento() && e.bultos" inputmode="decimal" autocomplete="off"
           placeholder="0" [attr.aria-label]="'Bultos de la línea ' + (i + 1)" [value]="l.bultos"
-          (input)="cambiar(l.clave, 'bultos', $event)" (paste)="pegar($event, i)" />
+          (input)="cambiar(l.clave, 'bultos', $event)" (paste)="pegar($event, i, 'bultos')" />
       </label>
       <label class="rf-celda">
         <span class="rf-etq">Unidades</span>
         <input class="ui-input rf-num" [class.ui-input--invalid]="intento() && e.unidades" inputmode="decimal" autocomplete="off"
           placeholder="0" [attr.aria-label]="'Unidades de la línea ' + (i + 1)" [value]="l.unidades"
-          (input)="cambiar(l.clave, 'unidades', $event)" />
+          (input)="cambiar(l.clave, 'unidades', $event)" (paste)="pegar($event, i, 'unidades')" />
       </label>
       <label class="rf-celda">
         <span class="rf-etq">Líneas</span>
         <input class="ui-input rf-num" [class.ui-input--invalid]="intento() && e.lineas" inputmode="decimal" autocomplete="off"
           placeholder="0" [attr.aria-label]="'Líneas de la línea ' + (i + 1)" [value]="l.lineas"
-          (input)="cambiar(l.clave, 'lineas', $event)" />
+          (input)="cambiar(l.clave, 'lineas', $event)" (paste)="pegar($event, i, 'lineas')" />
       </label>
       <button type="button" class="ui-icon-btn rf-quitar" [disabled]="lineas().length === 1"
         [attr.aria-label]="'Quitar la línea ' + (i + 1)" (click)="quitarLinea(l.clave)">

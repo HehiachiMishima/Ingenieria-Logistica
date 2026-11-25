@@ -35,6 +35,10 @@ public interface RutaProyeccionRepository
   /** Rutas del registro con esos ids (mover varias): por clave primaria, filtradas por registro. */
   List<RutaProyeccion> findByArchivoIdAndIdIn(Long archivoId, Collection<Long> ids);
 
+  /** Clusters con alguna ruta (los vacíos se saltan en el balanceo): idx_rutas_archivo_cluster. */
+  @Query("SELECT DISTINCT r.clusterId FROM RutaProyeccion r WHERE r.archivoId = :archivoId AND r.clusterId IS NOT NULL")
+  java.util.Set<Long> clustersConRutas(@Param("archivoId") Long archivoId);
+
   /** Rutas del cluster: idx_rutas_archivo_cluster (solo el índice). */
   long countByArchivoIdAndClusterId(Long archivoId, Long clusterId);
 
@@ -71,6 +75,7 @@ public interface RutaProyeccionRepository
              r.frecuencia AS frecuencia
         FROM RutaProyeccion r
        WHERE r.archivoId = :archivoId
+         AND r.clusterId IS NOT NULL
        GROUP BY r.clusterId, r.chuteId, r.frecuencia
       """)
   List<CargaRutas> cargaPorArchivo(@Param("archivoId") Long archivoId);
@@ -105,6 +110,7 @@ public interface RutaProyeccionRepository
              r.frecuencia AS frecuencia
         FROM RutaProyeccion r
        WHERE r.archivoId = :archivoId
+         AND r.clusterId IS NOT NULL
        GROUP BY r.clusterId, r.grupo, r.chuteId, r.frecuencia
       """)
   List<CargaGrupo> cargaPorGrupo(@Param("archivoId") Long archivoId);
@@ -125,6 +131,7 @@ public interface RutaProyeccionRepository
              r.frecuencia AS frecuencia
         FROM RutaProyeccion r
        WHERE r.archivoId = :archivoId
+         AND r.clusterOriginalId IS NOT NULL
        GROUP BY r.clusterOriginalId, r.chuteOriginalId, r.frecuencia
       """)
   List<CargaRutas> cargaOriginalPorArchivo(@Param("archivoId") Long archivoId);
@@ -190,6 +197,7 @@ public interface RutaProyeccionRepository
              COALESCE(SUM(conteo_cod), 0)::numeric AS cod
         FROM rutas_proyeccion
        WHERE archivo_id = :archivoId
+         AND cluster_id IS NOT NULL
          AND (CAST(:texto AS text) IS NULL OR codigo_ruta LIKE CAST(:texto AS text))
          AND (CAST(:tipo AS text) IS NULL OR tipo = CAST(:tipo AS text))
          AND (:soloCambios = FALSE OR movida OR cluster_cambiado)

@@ -123,17 +123,9 @@ export const PANEL_SIMULACION: PanelDef = {
   acento: 'var(--cyan)',
   modulos: [
     {
-      id: 'registro',
-      nombre: 'Registro',
-      descripcion: 'Diccionario de rutas: créalas con sus locales y ordénalas por cluster.',
-      icono: 'almacen',
-      ruta: 'registro',
-      permiso: PERMISOS.VER_REGISTRO_SIMULACION,
-    },
-    {
       id: 'configuracion',
       nombre: 'Configuración',
-      descripcion: 'Balanceo de rutas por cluster para igualar los bultos de sus chutes.',
+      descripcion: 'Rutas en DATA y balanceo por cluster para igualar los bultos de sus chutes.',
       icono: 'control',
       ruta: 'configuracion',
       permiso: PERMISOS.VER_CONFIGURACION_SIMULACION,

@@ -145,7 +145,7 @@ public class SimulacionConfiguracionService {
   private static final int TOPE_TRANSACCION_LECTURA_S = 18;
   private static final int ESCALA = 4;
   /** Ordena CHUTE 2 antes que CHUTE 10 (comparación natural, no lexicográfica). */
-  private static final Comparator<String> ORDEN_NATURAL =
+  static final Comparator<String> ORDEN_NATURAL =
       SimulacionConfiguracionService::compararNatural;
 
   private final ArchivoExcelRepository archivoRepo;
@@ -310,11 +310,15 @@ public class SimulacionConfiguracionService {
           Long despues = null;
           while (true) {
             Long desde = despues;
+            // Solo las rutas de los clusters: las de DATA no se balancean ni van al reporte.
             Specification<RutaProyeccion> lote =
                 (root, query, cb) ->
                     desde == null
-                        ? cb.equal(root.get("archivoId"), archivoId)
-                        : cb.and(cb.equal(root.get("archivoId"), archivoId), cb.greaterThan(root.get("id"), desde));
+                        ? cb.and(cb.equal(root.get("archivoId"), archivoId), cb.isNotNull(root.get("clusterId")))
+                        : cb.and(
+                            cb.equal(root.get("archivoId"), archivoId),
+                            cb.isNotNull(root.get("clusterId")),
+                            cb.greaterThan(root.get("id"), desde));
             List<RutaProyeccion> filas =
                 rutaRepo.findBy(lote, (q) -> q.sortBy(Sort.by("id").ascending()).limit(LOTE_TODAS_RUTAS).all());
             filas.forEach((ruta) -> todas.add(aRuta(ctx, ruta)));
@@ -376,6 +380,8 @@ public class SimulacionConfiguracionService {
         (root, query, cb) -> {
           List<Predicate> condiciones = new ArrayList<>();
           condiciones.add(cb.equal(root.get("archivoId"), archivoId));
+          // Las rutas de DATA no se balancean: el dashboard no las cuenta.
+          condiciones.add(cb.isNotNull(root.get("clusterId")));
           if (patron != null) {
             condiciones.add(cb.like(root.get("codigoRuta"), patron, '\\'));
           }
@@ -430,6 +436,8 @@ public class SimulacionConfiguracionService {
   }
 
   private static RutaSimulacionResponse aRuta(Contexto ctx, RutaProyeccion ruta) {
+    // En DATA (sin cluster) tipo, frecuencia y grupo van tal cual, aunque falten: no se balancea.
+    boolean enData = ruta.getClusterId() == null;
     return new RutaSimulacionResponse(
         ruta.getId(),
         ruta.getChuteId(),
@@ -437,19 +445,19 @@ public class SimulacionConfiguracionService {
         ruta.getChuteOriginalId(),
         ctx.nombreChute(ruta.getChuteOriginalId()),
         ruta.getClusterId(),
-        ctx.nombreCluster(ruta.getClusterId()),
+        enData ? null : ctx.nombreCluster(ruta.getClusterId()),
         ruta.getClusterOriginalId(),
-        ctx.nombreCluster(ruta.getClusterOriginalId()),
-        rutaEditable(ctx, ruta),
+        enData ? null : ctx.nombreCluster(ruta.getClusterOriginalId()),
+        !enData && rutaEditable(ctx, ruta),
         ruta.getCodigoRuta(),
         ruta.getTipo() == null ? null : ruta.getTipo().name(),
         ruta.getTotalBultos(),
         ruta.getTotalUnidades(),
         ruta.getTotalLineas(),
         ruta.getConteoCod(),
-        grupo(ruta),
-        frecuencia(ruta),
-        Balanceo.diaria(ruta.getFrecuencia()) && diariasFijas(ctx, ruta.getClusterId()),
+        enData ? ruta.getGrupo() : grupo(ruta),
+        enData ? ruta.getFrecuencia() : frecuencia(ruta),
+        !enData && Balanceo.diaria(ruta.getFrecuencia()) && diariasFijas(ctx, ruta.getClusterId()),
         ruta.getDias());
   }
 
@@ -711,6 +719,10 @@ public class SimulacionConfiguracionService {
         rutaRepo
             .findByIdAndArchivoId(rutaId, ctx.archivo().getId())
             .orElseThrow(() -> new RecursoNoEncontradoException("No existe la ruta " + rutaId + "."));
+    if (ruta.getClusterId() == null) {
+      throw new ConflictoException(
+          "La ruta " + ruta.getCodigoRuta() + " está en DATA: arrástrala desde DATA a un cluster.");
+    }
     if (!visible(ctx, ruta.getFrecuencia())) {
       String dias =
           ruta.getDias() != null && !ruta.getDias().isBlank()
@@ -858,6 +870,10 @@ public class SimulacionConfiguracionService {
             RutaProyeccion ruta = porId.get(id);
             if (ruta == null) {
               throw new RecursoNoEncontradoException("No existe la ruta " + id + ".");
+            }
+            if (ruta.getClusterId() == null) {
+              throw new ConflictoException(
+                  "La ruta " + ruta.getCodigoRuta() + " está en DATA: arrástrala desde DATA a un cluster.");
             }
             boolean otroCluster = !ruta.getClusterId().equals(clusterDestino);
             boolean otroChute = !ruta.getChuteId().equals(chuteDestino);
@@ -1122,8 +1138,8 @@ public class SimulacionConfiguracionService {
     if (carga.isEmpty()) {
       throw new ConflictoException("El archivo no tiene rutas para asignar operarios.");
     }
+    // Los clusters sin rutas (recién agregados o que devolvieron todas a DATA) no cuentan.
     var clusters = new LinkedHashSet<>(orden(ctx));
-    clusters.addAll(ctx.clusters().keySet());
     clusters.addAll(carga.keySet());
     for (Long id : clusters) {
       String nombre = ctx.nombreCluster(id);
@@ -2347,10 +2363,20 @@ public class SimulacionConfiguracionService {
    * PROYECCION si ningún cluster empezó; FINALIZADO con todos cerrados; si no,
    * EN_PROCESO.
    */
-  private static void actualizarEstado(Contexto ctx) {
-    // El registro termina cuando los tres balanceos cerraron todos sus clusters.
+  static void actualizarEstado(Contexto ctx) {
+    // El registro termina cuando los tres balanceos cerraron todos sus clusters (los vacíos no
+    // cuentan: se saltan en el balanceo).
     List<ParametroCluster> clusters = new ArrayList<>();
-    ctx.parametros().values().forEach((porCluster) -> clusters.addAll(porCluster.values()));
+    ctx.parametros()
+        .values()
+        .forEach(
+            (porCluster) ->
+                porCluster.forEach(
+                    (id, parametro) -> {
+                      if (ctx.conRutas().contains(id)) {
+                        clusters.add(parametro);
+                      }
+                    }));
     if (!clusters.isEmpty()
         && clusters.stream().allMatch((p) -> ParametroCluster.ESTADO_CERRADO.equals(p.getEstado()))) {
       ctx.archivo().setEstado(ArchivoExcel.ESTADO_FINALIZADO);
@@ -2362,9 +2388,13 @@ public class SimulacionConfiguracionService {
     }
   }
 
-  /** Clusters en el orden de las olas (CL1 → CL2 → …): el orden en que se trabajan. */
-  private static List<Long> orden(Contexto ctx) {
+  /**
+   * Clusters en el orden de las olas (CL1 → CL2 → …): el orden en que se trabajan. Los vacíos se
+   * saltan: no están en curso ni cuentan como anteriores o siguientes.
+   */
+  static List<Long> orden(Contexto ctx) {
     return ctx.parametrosCluster().keySet().stream()
+        .filter(ctx.conRutas()::contains)
         .sorted(Comparator.comparing(ctx::nombreCluster, ORDEN_NATURAL))
         .toList();
   }
@@ -2401,12 +2431,12 @@ public class SimulacionConfiguracionService {
   }
 
   /** El chute está bloqueado en el plano (19, 20, 21): no recibe rutas. */
-  private boolean bloqueado(Contexto ctx, Long chuteId) {
+  boolean bloqueado(Contexto ctx, Long chuteId) {
     return plano.bloqueado(ctx.nombreChute(chuteId));
   }
 
   /** «CHUTE 20» para los mensajes, aunque el catálogo lo guarde como «20». */
-  private static String etiquetaChute(Contexto ctx, Long chuteId) {
+  static String etiquetaChute(Contexto ctx, Long chuteId) {
     String nombre = ctx.nombreChute(chuteId);
     return nombre != null && nombre.trim().toUpperCase(java.util.Locale.ROOT).startsWith("CHUTE")
         ? nombre
@@ -2460,7 +2490,7 @@ public class SimulacionConfiguracionService {
     return ctx.balanceo().incluye(frecuencia);
   }
 
-  private static boolean pendiente(ParametroCluster parametro) {
+  static boolean pendiente(ParametroCluster parametro) {
     return parametro == null || ParametroCluster.ESTADO_PENDIENTE.equals(parametro.getEstado());
   }
 
@@ -2500,7 +2530,7 @@ public class SimulacionConfiguracionService {
   }
 
   /** Invalida los operarios de esos clusters en los días de la lista (Diarias no tiene). */
-  private void invalidarOperariosEn(
+  void invalidarOperariosEn(
       Contexto ctx, Collection<Balanceo> balanceos, Collection<Long> clusterIds) {
     for (Balanceo b : balanceos) {
       if (b.esDia()) {
@@ -3337,7 +3367,12 @@ public class SimulacionConfiguracionService {
       Map<Long, String> clusters,
       Map<Long, String> chutes,
       /** Chutes del plano agregados en memoria (sin fila en parametros_chutes). */
-      Set<Long> chutesAgregados) {
+      Set<Long> chutesAgregados,
+      /**
+       * Clusters con alguna ruta. Uno vacío (recién agregado o que devolvió sus rutas a DATA) se
+       * salta en el balanceo. Se puede corregir en memoria tras mover rutas (DATA).
+       */
+      Set<Long> conRutas) {
 
     /** El mismo registro visto desde otro balanceo (sin volver a leer nada). */
     Contexto en(Balanceo otro) {
@@ -3345,7 +3380,7 @@ public class SimulacionConfiguracionService {
           ? this
           : new Contexto(
               archivo, otro, config, parametros, parametrosChute, olas, clusters, chutes,
-              chutesAgregados);
+              chutesAgregados, conRutas);
     }
 
     /** Parámetros de los clusters en este balanceo. */
@@ -3462,7 +3497,7 @@ public class SimulacionConfiguracionService {
             .collect(Collectors.toMap(Cluster::getId, Cluster::getNombre));
     return new Contexto(
         archivo, balanceo, config, parametros, parametrosChute, olas, clusters, chutes,
-        Set.copyOf(agregados));
+        Set.copyOf(agregados), new HashSet<>(rutaRepo.clustersConRutas(archivoId)));
   }
 
   /** Balanceo de una fila guardada; sin dato (filas anteriores a las frecuencias), L-X-V. */
@@ -3769,7 +3804,7 @@ public class SimulacionConfiguracionService {
         : horas.setScale(2, RoundingMode.HALF_UP).toPlainString() + " h";
   }
 
-  private void tocar(ArchivoExcel archivo, Long actor) {
+  void tocar(ArchivoExcel archivo, Long actor) {
     Auditoria.alActualizar(archivo, actor);
     archivoRepo.save(archivo);
   }

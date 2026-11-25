@@ -119,6 +119,14 @@ class SimulacionFrecuenciasTest {
             PlanoChutes.fijo(1, 3, Set.of(), Map.of()));
     historialServicio =
         new SimulacionHistorialService(servicio, historialRepo, lanzamientoRepo, rutaRepo, transacciones);
+    // Todos los clusters del registro tienen rutas (como con el Excel): ninguno se salta.
+    lenient()
+        .when(rutaRepo.clustersConRutas(org.mockito.ArgumentMatchers.anyLong()))
+        .thenAnswer(
+            invocacion ->
+                parametroClusterRepo.findByIdArchivoId(invocacion.getArgument(0)).stream()
+                    .map((p) -> p.getId().getClusterId())
+                    .collect(java.util.stream.Collectors.toSet()));
     lenient()
         .when(transacciones.ejecutar(any()))
         .thenAnswer(invocacion -> ((Supplier<?>) invocacion.getArgument(0)).get());

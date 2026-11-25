@@ -233,7 +233,7 @@ export class SimulacionDashboard {
   });
 
   readonly subtituloDetalle =
-    'Las rutas que tenía al entrar desde el Registro y las que tiene tras el balanceo, agrupadas por cluster.';
+    'Las rutas que tenía al pasar de DATA a su cluster y las que tiene tras el balanceo, agrupadas por cluster.';
 
   abrirDetalle(chute: ChuteComparativoSimulacion): void {
     this.detalleChute.set(chute);
@@ -805,7 +805,4 @@ export class SimulacionDashboard {
     });
   }
 
-  irARegistro(): void {
-    void this.router.navigate(['/simulacion/registro']);
-  }
 }

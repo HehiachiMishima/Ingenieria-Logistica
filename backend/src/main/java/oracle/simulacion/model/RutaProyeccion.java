@@ -12,7 +12,10 @@ import java.math.BigDecimal;
 import lombok.Getter;
 import lombok.Setter;
 
-/** Ruta proyectada de un archivo (agrupada desde el Excel). */
+/**
+ * Ruta del escenario. En DATA (sin cluster) no se balancea y puede no tener tipo, frecuencia ni
+ * grupo; en un cluster está completa. Las escrituras de DATA van por JDBC ({@code RutasDataRepository}).
+ */
 @Entity
 @Table(schema = "simulacion", name = "rutas_proyeccion")
 @Getter
@@ -29,7 +32,7 @@ public class RutaProyeccion {
   @Column(name = "chute_id", nullable = false)
   private Long chuteId;
 
-  /** Chute al que pertenecía la ruta al cargar el Excel (no lo altera el balanceo). */
+  /** Chute al pasar de DATA a un cluster (no lo altera el balanceo). En DATA, igual a chuteId. */
   @Column(name = "chute_original_id", nullable = false)
   private Long chuteOriginalId;
 
@@ -40,29 +43,30 @@ public class RutaProyeccion {
   @Column(name = "movida", insertable = false, updatable = false)
   private boolean movida;
 
-  @Column(name = "cluster_id", nullable = false)
+  /** Cluster de hoy; null = la ruta está en DATA. */
+  @Column(name = "cluster_id")
   private Long clusterId;
 
-  /** Cluster al cargar el Excel: no cambia nunca (restablecer vuelve a él). */
-  @Column(name = "cluster_original_id", nullable = false, updatable = false)
+  /** Cluster al pasar de DATA: el balanceo no lo cambia (restablecer vuelve a él). Null en DATA. */
+  @Column(name = "cluster_original_id", updatable = false)
   private Long clusterOriginalId;
 
-  /** Columna generada (STORED): cluster_id <> cluster_original_id. Solo lectura. */
+  /** Columna generada (STORED): cluster_id IS DISTINCT FROM cluster_original_id (false en DATA). Solo lectura. */
   @Column(name = "cluster_cambiado", insertable = false, updatable = false)
   private boolean clusterCambiado;
 
   /**
-   * Grupo de rutas dentro de su cluster (columna GRUPO del Excel). No cambia: el
-   * balanceo automático reparte cada grupo en su propio tramo de chutes.
+   * Grupo de rutas dentro de su cluster (se asigna en DATA). El balanceo no lo cambia: reparte
+   * cada grupo en su propio tramo de chutes. Null solo en DATA.
    */
-  @Column(name = "grupo", length = 50, nullable = false, updatable = false)
+  @Column(name = "grupo", length = 50, updatable = false)
   private String grupo;
 
   /**
-   * Días de la ruta (columna FRECUENCIA del Excel): DIARIA aparece en los dos
-   * balanceos; LXV o MJS solo en el suyo. Ver {@link Balanceo}.
+   * Días de la ruta (se asigna en DATA): DIARIA aparece en los dos balanceos; LXV o MJS solo en
+   * el suyo. Ver {@link Balanceo}. Null solo en DATA.
    */
-  @Column(name = "frecuencia", length = 10, nullable = false, updatable = false)
+  @Column(name = "frecuencia", length = 10, updatable = false)
   private String frecuencia;
 
   /** Días tal como vienen en el Excel («L-X», «V», «L-X-V»); null en rutas anteriores a las frecuencias. */
@@ -73,7 +77,7 @@ public class RutaProyeccion {
   private String codigoRuta;
 
   @Enumerated(EnumType.STRING)
-  @Column(name = "tipo", length = 10, nullable = false)
+  @Column(name = "tipo", length = 10)
   private TipoRuta tipo;
 
   @Column(name = "total_bultos", precision = 12, scale = 2, nullable = false)

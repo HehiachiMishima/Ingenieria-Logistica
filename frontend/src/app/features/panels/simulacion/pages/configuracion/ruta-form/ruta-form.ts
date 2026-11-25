@@ -11,25 +11,29 @@ import {
 import { finalize } from 'rxjs';
 import { Icon } from '../../../../../../shared/ui/icon/icon';
 import { Modal } from '../../../../../../shared/ui/modal/modal';
-import { DiccionarioApi } from '../../../data/diccionario.api';
-import {
-  LocalDiccionario,
-  RutaDiccionario,
-  RutaDiccionarioRequest,
-  nombreRuta,
-} from '../../../data/diccionario.model';
+import { SimulacionApi } from '../../../data/simulacion.api';
+import { LocalRuta, RutaDataRequest } from '../../../data/simulacion.model';
 import { NumeroPipe } from '../../../numero.pipe';
 
-/** Lo que abre el formulario: una ruta para editar (con sus locales) o ninguna para crear. */
+/** La ruta de DATA que se edita: su número y su tipo (si ya lo tiene). */
+export interface RutaFormRuta {
+  id: number;
+  codigoRuta: string;
+  tipo: string | null;
+}
+
+/** Lo que abre el formulario: una ruta de DATA para editar (con sus locales) o ninguna para crear. */
 export interface RutaFormInicial {
-  ruta: RutaDiccionario | null;
-  locales: LocalDiccionario[];
+  ruta: RutaFormRuta | null;
+  locales: LocalRuta[];
 }
 
 type Campo = 'cod' | 'bultos' | 'unidades' | 'lineas';
 
 interface LineaForm {
   clave: number;
+  /** Veces que ya se había ingresado ese código (al editar se conserva). */
+  filas: number;
   cod: string;
   bultos: string;
   unidades: string;
@@ -43,7 +47,7 @@ const MAXIMO = 9_999_999_999.99;
 const CAMPOS: readonly Campo[] = ['cod', 'bultos', 'unidades', 'lineas'];
 
 /**
- * Crear o editar una ruta del diccionario. Al crear, primero se elige si tiene un local o varios
+ * Crear o editar una ruta de DATA. Al crear, primero se elige si tiene un local o varios
  * (con uno, los volúmenes escritos son los de la ruta; con varios, una línea por código y los
  * totales se suman solos). Se pueden pegar filas copiadas del Excel. Un código repetido se suma
  * al guardar, como en el Excel.
@@ -56,11 +60,13 @@ const CAMPOS: readonly Campo[] = ['cod', 'bultos', 'unidades', 'lineas'];
   styleUrl: './ruta-form.scss',
 })
 export class RutaForm {
-  private readonly api = inject(DiccionarioApi);
+  private readonly api = inject(SimulacionApi);
 
+  /** Escenario donde se crea o edita la ruta. */
+  readonly registroId = input<number | null>(null);
   readonly inicial = input<RutaFormInicial | null>(null);
   readonly cerrar = output<void>();
-  readonly guardado = output<{ ruta: RutaDiccionario; creada: boolean }>();
+  readonly guardado = output<{ mensaje: string; creada: boolean }>();
 
   private claves = 0;
 
@@ -76,7 +82,9 @@ export class RutaForm {
     source: this.inicial,
     computation: (ini) =>
       ini && ini.locales.length > 0
-        ? ini.locales.map((l) => this.linea(l.cod, texto(l.bultos), texto(l.unidades), texto(l.lineas)))
+        ? ini.locales.map((l) =>
+            this.linea(l.cod ?? '', texto(l.bultos), texto(l.unidades), texto(l.lineas), Math.max(1, l.filas || 1)),
+          )
         : [this.linea()],
   });
   /** Se intentó guardar: desde ahí se muestran los errores. */
@@ -127,20 +135,20 @@ export class RutaForm {
 
   readonly titulo = computed(() => {
     const r = this.editando();
-    return r ? `Editar ruta ${nombreRuta(r)}` : 'Nueva ruta';
+    return r ? `Editar ruta ${r.codigoRuta}${r.tipo ? ' ' + r.tipo : ''}` : 'Nueva ruta';
   });
 
   readonly subtitulo = computed(() => {
     if (this.editando()) {
-      return 'El tipo, el cluster, la frecuencia y el grupo de la ruta no cambian.';
+      return 'El tipo, la frecuencia y el grupo de la ruta no cambian.';
     }
     return this.modo() === null
       ? 'Primero indica si la ruta tiene un local o varios.'
-      : 'Se crea en Datos: sin tipo, cluster, frecuencia ni grupo (se asignan en un cluster).';
+      : 'Se crea en DATA, sin tipo, frecuencia ni grupo: se los asignas ahí antes de pasarla a un cluster.';
   });
 
-  private linea(cod = '', bultos = '', unidades = '', lineas = ''): LineaForm {
-    return { clave: ++this.claves, cod, bultos, unidades, lineas };
+  private linea(cod = '', bultos = '', unidades = '', lineas = '', filas = 1): LineaForm {
+    return { clave: ++this.claves, filas, cod, bultos, unidades, lineas };
   }
 
   elegirModo(modo: 'uno' | 'varios'): void {
@@ -169,10 +177,11 @@ export class RutaForm {
   }
 
   /**
-   * Pegar varias filas copiadas del Excel (código, bultos, unidades, líneas): se escriben desde
-   * la línea donde se pegó, como en una planilla. Un pegado normal (un solo valor) no se toca.
+   * Pegar varias celdas copiadas del Excel: se escriben desde la línea y la columna donde se pegó,
+   * como en una planilla (en «Bultos», la primera celda es bultos y el código no cambia). Un pegado
+   * normal (un solo valor) no se toca.
    */
-  pegar(evento: ClipboardEvent, indice: number): void {
+  pegar(evento: ClipboardEvent, indice: number, campo: Campo = 'cod'): void {
     const textoPegado = evento.clipboardData?.getData('text/plain') ?? '';
     if (!/[\t\n]/.test(textoPegado.trim())) {
       return;
@@ -183,17 +192,28 @@ export class RutaForm {
       .split('\n')
       .map((f) => f.split('\t').map((c) => c.trim()))
       .filter((f) => f.some((c) => c !== ''));
-    // Encabezado («COD BULTOS…»): su segunda celda no es un número.
-    if (filas.length > 0 && filas[0].length > 1 && Number.isNaN(parsearNumero(filas[0][1]) ?? 0)) {
+    const desde = CAMPOS.indexOf(campo);
+    // Encabezado («COD BULTOS…»): su primera celda numérica no es un número.
+    const numerica = desde === 0 ? 1 : 0;
+    if (filas.length > 0 && filas[0].length > numerica && Number.isNaN(parsearNumero(filas[0][numerica]) ?? 0)) {
       filas.shift();
     }
     if (filas.length === 0) {
       return;
     }
-    const nuevas = filas.map((f) => this.linea(f[0] ?? '', f[1] ?? '', f[2] ?? '', f[3] ?? ''));
     this.lineas.update((lista) => {
       const copia = [...lista];
-      copia.splice(indice, Math.min(nuevas.length, copia.length - indice), ...nuevas);
+      filas.forEach((celdas, n) => {
+        const actual = copia[indice + n] ?? this.linea();
+        const nueva: LineaForm = { ...actual };
+        celdas.forEach((valor, c) => {
+          const destino = CAMPOS[desde + c];
+          if (destino) {
+            nueva[destino] = valor;
+          }
+        });
+        copia[indice + n] = nueva;
+      });
       return copia;
     });
     if (this.lineas().length > 1) {
@@ -216,20 +236,28 @@ export class RutaForm {
     if (this.errores().hay || this.guardando()) {
       return;
     }
-    const peticion: RutaDiccionarioRequest = {
+    const registro = this.registroId();
+    if (registro === null) {
+      return;
+    }
+    const peticion: RutaDataRequest = {
       codigoRuta: this.codigo().trim(),
       locales: this.lineas().map((l) => ({
         cod: l.cod.trim(),
         bultos: parsearNumero(l.bultos) ?? 0,
         unidades: parsearNumero(l.unidades) ?? 0,
         lineas: parsearNumero(l.lineas) ?? 0,
+        ...(l.filas > 1 ? { filas: l.filas } : {}),
       })),
     };
     const editando = this.editando();
     this.guardando.set(true);
-    (editando ? this.api.actualizar(editando.id, peticion) : this.api.crear(peticion))
+    (editando
+      ? this.api.actualizarRutaData(registro, editando.id, peticion)
+      : this.api.crearRutaData(registro, peticion)
+    )
       .pipe(finalize(() => this.guardando.set(false)))
-      .subscribe((ruta) => this.guardado.emit({ ruta, creada: !editando }));
+      .subscribe((cambio) => this.guardado.emit({ mensaje: cambio.mensaje, creada: !editando }));
   }
 }
 

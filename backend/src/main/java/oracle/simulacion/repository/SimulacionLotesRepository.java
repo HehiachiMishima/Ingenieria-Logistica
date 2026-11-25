@@ -95,6 +95,10 @@ public class SimulacionLotesRepository {
         FROM simulacion.archivos_excel a,
              jsonb_populate_recordset(NULL::simulacion.rutas_proyeccion, a.balanceo_guardado -> 'rutas') s
         WHERE a.id = ? AND r.archivo_id = a.id AND r.id = s.id
+          -- Una ruta que volvió a DATA después de guardar se queda en DATA; un cluster quitado no vuelve.
+          AND r.cluster_id IS NOT NULL AND s.cluster_id IS NOT NULL
+          AND EXISTS (SELECT 1 FROM simulacion.parametros_clusters p
+                      WHERE p.archivo_id = r.archivo_id AND p.cluster_id = s.cluster_id)
         """, id);
     jdbc.update("""
         UPDATE simulacion.parametros_clusters p
@@ -111,6 +115,9 @@ public class SimulacionLotesRepository {
         FROM simulacion.archivos_excel a,
              jsonb_populate_recordset(NULL::simulacion.parametros_grupos, a.balanceo_guardado -> 'grupos') s
         WHERE a.id = ?
+          -- Solo los clusters que siguen en el escenario.
+          AND EXISTS (SELECT 1 FROM simulacion.parametros_clusters p
+                      WHERE p.archivo_id = s.archivo_id AND p.cluster_id = s.cluster_id)
         """, id);
     jdbc.update("""
         INSERT INTO simulacion.lanzamientos_balanceo (
@@ -122,6 +129,8 @@ public class SimulacionLotesRepository {
         FROM simulacion.archivos_excel a,
              jsonb_populate_recordset(NULL::simulacion.lanzamientos_balanceo, a.balanceo_guardado -> 'lanzamientos') s
         WHERE a.id = ?
+          AND EXISTS (SELECT 1 FROM simulacion.parametros_clusters p
+                      WHERE p.archivo_id = s.archivo_id AND p.cluster_id = s.cluster_id)
         """, id);
     jdbc.update("""
         INSERT INTO simulacion.historial_balanceo (
@@ -135,6 +144,11 @@ public class SimulacionLotesRepository {
         FROM simulacion.archivos_excel a,
              jsonb_populate_recordset(NULL::simulacion.historial_balanceo, a.balanceo_guardado -> 'historial') s
         WHERE a.id = ?
+          -- Sin las rutas que se eliminaron o volvieron a DATA, ni los lanzamientos que ya no están.
+          AND (s.ruta_id IS NULL OR EXISTS (SELECT 1 FROM simulacion.rutas_proyeccion r
+                                            WHERE r.id = s.ruta_id AND r.cluster_id IS NOT NULL))
+          AND (s.lanzamiento_id IS NULL OR EXISTS (SELECT 1 FROM simulacion.lanzamientos_balanceo l
+                                                   WHERE l.id = s.lanzamiento_id))
         """, id);
   }
 

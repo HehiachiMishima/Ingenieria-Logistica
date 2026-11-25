@@ -65,11 +65,10 @@ public class TrazaApi implements WebMvcConfigurer, HandlerInterceptor {
             "restablecer", "Restablecer archivo");
         agregar(m, "SimulacionPredeterminadosController", "Predeterminados Titan",
             "bloquear", "Bloquear", "desbloquear", "Desbloquear");
-        agregar(m, "DiccionarioRutasController", "Ruta del diccionario Titan",
-            "crear", "Crear", "actualizar", "Actualizar", "eliminar", "Eliminar",
-            "mover", "Mover rutas", "asignarFrecuencia", "Asignar frecuencia", "asignarGrupo", "Asignar grupo",
-            "cambiarTipo", "Cambiar tipo",
-            "restaurar", "Deshacer movimiento", "cambiarClusters", "Cambiar clusters");
+        agregar(m, "SimulacionDataController", "Ruta de DATA Titan",
+            "crearRuta", "Crear", "actualizarRuta", "Actualizar", "eliminarRuta", "Eliminar",
+            "asignarTipo", "Asignar tipo", "asignarFrecuencia", "Asignar frecuencia", "asignarGrupo", "Asignar grupo",
+            "mover", "Mover rutas de DATA", "cambiarClusters", "Cambiar clusters");
         // Simulación Santa Anita
         agregar(m, "SimulacionSantaController", "Archivo Santa Anita",
             "subir", "Subir", "renombrar", "Renombrar", "eliminar", "Eliminar",

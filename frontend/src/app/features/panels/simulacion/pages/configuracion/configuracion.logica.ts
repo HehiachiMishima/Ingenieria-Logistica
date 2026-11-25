@@ -67,7 +67,8 @@ export function resumirClusters(
   velocidad: number,
   limites: Record<number, number>,
 ): ResumenCluster[] {
-  const enCurso = cfg.clusters.find((cluster) => cluster.estado !== 'CERRADO')?.id ?? null;
+  // Un cluster vacío (recién agregado o que devolvió sus rutas a DATA) se salta: no está en curso.
+  const enCurso = cfg.clusters.find((cluster) => cluster.estado !== 'CERRADO' && !clusterVacio(cluster))?.id ?? null;
   const acumulado = new Map<
     number,
     { bultos: number; rutas: number; porChute: Map<number, number>; operarios: Map<number, number> }
@@ -216,4 +217,15 @@ export function tonoSemaforo(nivel: number | null): 'bajo' | 'medio' | 'alto' | 
     return null;
   }
   return nivel < 1 / 3 ? 'bajo' : nivel < 2 / 3 ? 'medio' : 'alto';
+}
+
+/**
+ * Cluster sin rutas (recién agregado o que devolvió las suyas a DATA): se salta en el balanceo
+ * hasta que reciba rutas. Sin avance (respuestas antiguas) no se considera vacío.
+ */
+export function clusterVacio(cluster: {
+  avance?: { rutasDiarias: number; rutasLxv: number; rutasMjs: number } | null;
+}): boolean {
+  const a = cluster.avance;
+  return !!a && a.rutasDiarias + a.rutasLxv + a.rutasMjs === 0;
 }

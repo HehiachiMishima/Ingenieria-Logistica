@@ -1,28 +1,25 @@
--- Simulación Titan: el Registro (diccionario de rutas) reemplaza al registro por Excel.
--- Una sola migración con todo lo necesario, en una transacción:
+-- Simulación Titan: las rutas se crean y se ordenan en Configuración. El registro por Excel y el
+-- módulo Registro (diccionario de rutas) desaparecen. Una sola migración, en una transacción:
 --
---   1. Locales de las rutas de Configuración (simulacion.rutas_locales): el detalle que se ve al
---      hacer clic en una ruta.
---   2. El Registro: clusters, rutas y locales del diccionario. Una ruta en «Datos» (fuera de todo
---      cluster) no tiene cluster, tipo, frecuencia ni grupo: la base lo exige. Tipo, frecuencia y
---      grupo se asignan solo a rutas que ya están en un cluster; volver a Datos los vacía.
---   3. El escenario único de Configuración y el Dashboard (archivos_excel.es_diccionario), que el
---      backend crea solo y llena con las rutas COMPLETAS del Registro (cluster, tipo, frecuencia y
---      grupo), cada una con un chute al azar que se fija la primera vez. Los registros subidos por
---      Excel se BORRAN con todo lo que cuelga de ellos (rutas, parámetros, operarios, balanceos e
---      historial).
+--   1. Locales de cada ruta (simulacion.rutas_locales): el detalle que se ve al hacer clic en una
+--      ruta.
+--   2. Se quita el Registro (diccionario de rutas): sus tablas y el enlace con el escenario.
+--   3. El escenario único de Configuración y el Dashboard (archivos_excel.es_unico), que el
+--      backend crea solo. Los registros subidos por Excel se BORRAN con todo lo que cuelga de
+--      ellos (rutas, parámetros, operarios, balanceos e historial).
+--   4. DATA: el bloque de Configuración con las rutas que no se balancean. Son rutas del escenario
+--      sin cluster; ahí reciben tipo, frecuencia y grupo, y solo completas pasan a un cluster.
 --
--- Es re-ejecutable: crea lo que falta, pone al día lo que ya existía de versiones anteriores sin
--- perder datos del Registro y nunca borra el escenario del Registro. Se aplica ANTES de reiniciar
--- el backend que trae el Registro. Reemplaza a migracion_locales_rutas.sql,
--- migracion_diccionario_rutas.sql y migracion_registro_diccionario.sql.
+-- Es re-ejecutable: crea lo que falta, pone al día lo que ya existía de versiones anteriores y
+-- nunca borra el escenario único. Se aplica ANTES de reiniciar el backend. Requiere PostgreSQL 15
+-- o superior (UNIQUE NULLS NOT DISTINCT).
 --
 --   psql -d ingenieria_logistica -v ON_ERROR_STOP=1 -f backend/migracion_registro_titan.sql
 
 BEGIN;
 
 -- =============================================================================================
--- 1. Locales de las rutas de Configuración
+-- 1. Locales de cada ruta
 -- =============================================================================================
 
 CREATE TABLE IF NOT EXISTS simulacion.rutas_locales (
@@ -38,136 +35,96 @@ CREATE TABLE IF NOT EXISTS simulacion.rutas_locales (
     CONSTRAINT ck_rutas_locales CHECK (
         orden > 0 AND filas > 0 AND bultos >= 0 AND unidades >= 0 AND lineas >= 0)
 );
-COMMENT ON TABLE simulacion.rutas_locales IS 'Locales de cada ruta del escenario (salen del Registro; el código repetido se suma).';
+COMMENT ON TABLE simulacion.rutas_locales IS 'Locales de cada ruta del escenario (el código repetido se suma); los totales de la ruta son su suma.';
 COMMENT ON COLUMN simulacion.rutas_locales.orden IS 'Orden del local dentro de su ruta.';
 COMMENT ON COLUMN simulacion.rutas_locales.cod IS 'Código del local.';
 COMMENT ON COLUMN simulacion.rutas_locales.filas IS 'Veces que se ingresó ese código en la ruta (más de una: se sumaron).';
 
 -- =============================================================================================
--- 2. El Registro: diccionario de rutas
+-- 2. Se quita el Registro (diccionario de rutas)
 -- =============================================================================================
 
--- Clusters del Registro: bloques CL1…CLn. Se agregan o quitan desde el final (orden).
-CREATE TABLE IF NOT EXISTS simulacion.diccionario_clusters (
-    id        BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    orden     INTEGER      NOT NULL,
-    nombre    VARCHAR(50)  NOT NULL,
-    creado_en TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    -- Q: lista de clusters (ORDER BY orden) y quitar los últimos (WHERE orden > ?).
-    CONSTRAINT uq_dicc_clusters_orden UNIQUE (orden),
-    CONSTRAINT ck_dicc_clusters_orden CHECK (orden > 0)
-);
-COMMENT ON TABLE simulacion.diccionario_clusters IS 'Registro: bloques de cluster del diccionario de rutas (CL1…CLn).';
+-- Sus índices (uq_rutas_diccionario, ix_rutas_diccionario) se van con la columna.
+ALTER TABLE simulacion.rutas_proyeccion DROP COLUMN IF EXISTS diccionario_ruta_id;
+DROP TABLE IF EXISTS simulacion.diccionario_locales;
+DROP TABLE IF EXISTS simulacion.diccionario_rutas;
+DROP TABLE IF EXISTS simulacion.diccionario_clusters;
 
--- Rutas del Registro: número y tipo las identifican; tipo, cluster, frecuencia y grupo empiezan
--- vacíos. Sin tipo (en Datos), el número tampoco se repite (NULLS NOT DISTINCT).
-CREATE TABLE IF NOT EXISTS simulacion.diccionario_rutas (
-    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    codigo_ruta     VARCHAR(50)  COLLATE "C" NOT NULL,
-    tipo            VARCHAR(10),
-    cluster_id      BIGINT       REFERENCES simulacion.diccionario_clusters (id),
-    frecuencia      VARCHAR(10),
-    grupo           VARCHAR(50),
-    creado_por      BIGINT       NOT NULL,
-    actualizado_por BIGINT       NOT NULL,
-    creado_en       TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    actualizado_en  TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    -- Q: la ruta no se repite (crear/editar) y la lista ordenada por número y tipo.
-    CONSTRAINT uq_dicc_rutas_codigo_tipo UNIQUE NULLS NOT DISTINCT (codigo_ruta, tipo),
-    CONSTRAINT ck_dicc_rutas_tipo CHECK (tipo IN ('B2C', 'B2B')),
-    CONSTRAINT ck_dicc_rutas_frecuencia CHECK (frecuencia IN ('LXV', 'MJS', 'DIARIA')),
-    CONSTRAINT ck_dicc_rutas_grupo CHECK (grupo IS NULL OR btrim(grupo) <> ''),
-    CONSTRAINT ck_dicc_rutas_ubicacion
-        CHECK (cluster_id IS NOT NULL OR (tipo IS NULL AND frecuencia IS NULL AND grupo IS NULL))
-);
+-- =============================================================================================
+-- 3. El escenario único
+-- =============================================================================================
 
--- Puesta al día si la tabla ya existía de una versión anterior (tipo obligatorio, sin grupo,
--- Datos con tipo): el tipo pasa a opcional, una ruta sin tipo tampoco se repite y en Datos no hay
--- tipo. Sin efecto si ya está.
-ALTER TABLE simulacion.diccionario_rutas ADD COLUMN IF NOT EXISTS grupo VARCHAR(50);
-ALTER TABLE simulacion.diccionario_rutas ALTER COLUMN tipo DROP NOT NULL;
 DO $$
 BEGIN
-    -- La unicidad vieja (NULLS DISTINCT) dejaba repetir un número sin tipo: se reemplaza.
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint
-                   WHERE conrelid = 'simulacion.diccionario_rutas'::regclass AND conname = 'uq_dicc_rutas_codigo_tipo'
-                     AND pg_get_constraintdef(oid) LIKE '%NULLS NOT DISTINCT%') THEN
-        ALTER TABLE simulacion.diccionario_rutas DROP CONSTRAINT IF EXISTS uq_dicc_rutas_codigo_tipo;
-        ALTER TABLE simulacion.diccionario_rutas
-            ADD CONSTRAINT uq_dicc_rutas_codigo_tipo UNIQUE NULLS NOT DISTINCT (codigo_ruta, tipo);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint
-                   WHERE conrelid = 'simulacion.diccionario_rutas'::regclass AND conname = 'ck_dicc_rutas_grupo') THEN
-        ALTER TABLE simulacion.diccionario_rutas
-            ADD CONSTRAINT ck_dicc_rutas_grupo CHECK (grupo IS NULL OR btrim(grupo) <> '');
-    END IF;
-    -- La regla de Datos incluye el tipo y el grupo. Las rutas que ya estén en Datos con tipo lo
-    -- pierden; si dos quedaran con el mismo número sin tipo, se detiene sin cambiar nada.
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint
-                   WHERE conrelid = 'simulacion.diccionario_rutas'::regclass AND conname = 'ck_dicc_rutas_ubicacion'
-                     AND pg_get_constraintdef(oid) LIKE '%tipo IS NULL%') THEN
-        IF EXISTS (SELECT 1 FROM simulacion.diccionario_rutas WHERE cluster_id IS NULL
-                   GROUP BY codigo_ruta HAVING count(*) > 1) THEN
-            RAISE EXCEPTION 'Hay rutas con el mismo número en Datos y distinto tipo: déjalas en un cluster o elimina una antes de migrar.';
-        END IF;
-        UPDATE simulacion.diccionario_rutas SET tipo = NULL WHERE cluster_id IS NULL AND tipo IS NOT NULL;
-        ALTER TABLE simulacion.diccionario_rutas DROP CONSTRAINT IF EXISTS ck_dicc_rutas_ubicacion;
-        ALTER TABLE simulacion.diccionario_rutas ADD CONSTRAINT ck_dicc_rutas_ubicacion
-            CHECK (cluster_id IS NOT NULL OR (tipo IS NULL AND frecuencia IS NULL AND grupo IS NULL));
+    -- La versión anterior lo llamaba es_diccionario: se renombra (conserva el escenario).
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'simulacion' AND table_name = 'archivos_excel' AND column_name = 'es_diccionario')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+                       WHERE table_schema = 'simulacion' AND table_name = 'archivos_excel' AND column_name = 'es_unico') THEN
+        ALTER TABLE simulacion.archivos_excel RENAME COLUMN es_diccionario TO es_unico;
     END IF;
 END $$;
--- Q: al quitar clusters, sus rutas vuelven a Datos (WHERE cluster_id IN (…)); y la FK.
-CREATE INDEX IF NOT EXISTS ix_dicc_rutas_cluster
-    ON simulacion.diccionario_rutas (cluster_id) WHERE cluster_id IS NOT NULL;
-COMMENT ON TABLE simulacion.diccionario_rutas IS 'Registro: diccionario de rutas. Sin cluster (bloque Datos) no hay tipo, frecuencia ni grupo.';
-COMMENT ON COLUMN simulacion.diccionario_rutas.tipo IS 'B2C o B2B; NULL hasta asignarlo (y siempre NULL en Datos). Se conserva al pasar a otro cluster.';
-COMMENT ON COLUMN simulacion.diccionario_rutas.cluster_id IS 'Bloque de cluster; NULL = en Datos.';
-COMMENT ON COLUMN simulacion.diccionario_rutas.frecuencia IS 'LXV, MJS o DIARIA; NULL hasta asignarla (y siempre NULL en Datos).';
-COMMENT ON COLUMN simulacion.diccionario_rutas.grupo IS 'Grupo dentro de su cluster («1», «2», «A»); NULL hasta asignarlo (y siempre NULL en Datos). Se conserva al pasar a otro cluster.';
-
--- Locales de cada ruta: uno o varios códigos con sus volúmenes; el código repetido se suma.
-CREATE TABLE IF NOT EXISTS simulacion.diccionario_locales (
-    ruta_id  BIGINT        NOT NULL REFERENCES simulacion.diccionario_rutas (id) ON DELETE CASCADE,
-    orden    INTEGER       NOT NULL,
-    cod      VARCHAR(100)  NOT NULL,
-    filas    INTEGER       NOT NULL DEFAULT 1,
-    bultos   NUMERIC(12,2) NOT NULL DEFAULT 0,
-    unidades NUMERIC(12,2) NOT NULL DEFAULT 0,
-    lineas   NUMERIC(12,2) NOT NULL DEFAULT 0,
-    -- Q: locales de una ruta (WHERE ruta_id = ? ORDER BY orden), totales por ruta y la FK.
-    CONSTRAINT pk_dicc_locales PRIMARY KEY (ruta_id, orden),
-    CONSTRAINT uq_dicc_locales_cod UNIQUE (ruta_id, cod),
-    CONSTRAINT ck_dicc_locales CHECK (
-        orden > 0 AND filas > 0 AND bultos >= 0 AND unidades >= 0 AND lineas >= 0)
-);
-COMMENT ON TABLE simulacion.diccionario_locales IS 'Registro: locales de cada ruta del diccionario (los totales de la ruta son su suma).';
-COMMENT ON COLUMN simulacion.diccionario_locales.filas IS 'Veces que se ingresó ese código en la ruta (más de una: se sumaron).';
-
--- =============================================================================================
--- 3. El escenario de Configuración y el Dashboard
--- =============================================================================================
-
--- El escenario único del Registro (lo crea el backend la primera vez que se usa).
-ALTER TABLE simulacion.archivos_excel ADD COLUMN IF NOT EXISTS es_diccionario BOOLEAN NOT NULL DEFAULT FALSE;
--- Q: escenario único (WHERE es_diccionario); también impide que haya dos.
-CREATE UNIQUE INDEX IF NOT EXISTS uq_archivos_es_diccionario
-    ON simulacion.archivos_excel (es_diccionario) WHERE es_diccionario;
-COMMENT ON COLUMN simulacion.archivos_excel.es_diccionario IS 'TRUE en el único escenario que Configuración arma con las rutas completas del Registro.';
-
--- Cada ruta del escenario apunta a su ruta del Registro; si se elimina allá, sale de aquí.
-ALTER TABLE simulacion.rutas_proyeccion ADD COLUMN IF NOT EXISTS diccionario_ruta_id BIGINT
-    REFERENCES simulacion.diccionario_rutas (id) ON DELETE CASCADE;
--- Q: sincronizar una ruta del Registro con su fila del escenario (archivo_id, diccionario_ruta_id).
-CREATE UNIQUE INDEX IF NOT EXISTS uq_rutas_diccionario
-    ON simulacion.rutas_proyeccion (archivo_id, diccionario_ruta_id) WHERE diccionario_ruta_id IS NOT NULL;
--- Q: la FK (borrar una ruta del Registro busca su fila por diccionario_ruta_id).
-CREATE INDEX IF NOT EXISTS ix_rutas_diccionario
-    ON simulacion.rutas_proyeccion (diccionario_ruta_id) WHERE diccionario_ruta_id IS NOT NULL;
-COMMENT ON COLUMN simulacion.rutas_proyeccion.diccionario_ruta_id IS 'Ruta del Registro (diccionario) de la que sale esta fila del escenario.';
+ALTER TABLE simulacion.archivos_excel ADD COLUMN IF NOT EXISTS es_unico BOOLEAN NOT NULL DEFAULT FALSE;
+DROP INDEX IF EXISTS simulacion.uq_archivos_es_diccionario;
+-- Q: escenario único (WHERE es_unico); también impide que haya dos.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_archivos_es_unico
+    ON simulacion.archivos_excel (es_unico) WHERE es_unico;
+COMMENT ON COLUMN simulacion.archivos_excel.es_unico IS 'TRUE en el único escenario de Configuración y el Dashboard (lo crea el backend).';
 
 -- Los registros por Excel se borran (en cascada: rutas, locales, parámetros, operarios,
--- lanzamientos e historial). El escenario del Registro se conserva.
-DELETE FROM simulacion.archivos_excel WHERE NOT es_diccionario;
+-- lanzamientos e historial). El escenario único se conserva.
+DELETE FROM simulacion.archivos_excel WHERE NOT es_unico;
+
+-- =============================================================================================
+-- 4. DATA: rutas del escenario sin cluster
+-- =============================================================================================
+
+-- En DATA una ruta no tiene cluster (ni original) y puede no tener tipo, frecuencia ni grupo; su
+-- chute es la columna donde se ve. En un cluster está completa.
+ALTER TABLE simulacion.rutas_proyeccion ALTER COLUMN cluster_id DROP NOT NULL;
+ALTER TABLE simulacion.rutas_proyeccion ALTER COLUMN cluster_original_id DROP NOT NULL;
+ALTER TABLE simulacion.rutas_proyeccion ALTER COLUMN tipo DROP NOT NULL;
+ALTER TABLE simulacion.rutas_proyeccion ALTER COLUMN frecuencia DROP NOT NULL;
+ALTER TABLE simulacion.rutas_proyeccion ALTER COLUMN grupo DROP NOT NULL;
+
+DO $$
+BEGIN
+    -- cluster_cambiado con «<>» da NULL en DATA (sin cluster): pasa a IS DISTINCT FROM (FALSE en
+    -- DATA). Una columna generada no cambia de expresión en PostgreSQL 15/16: se vuelve a crear.
+    IF NOT EXISTS (SELECT 1 FROM pg_attrdef d
+                   JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+                   WHERE d.adrelid = 'simulacion.rutas_proyeccion'::regclass AND a.attname = 'cluster_cambiado'
+                     AND pg_get_expr(d.adbin, d.adrelid) LIKE '%DISTINCT%') THEN
+        ALTER TABLE simulacion.rutas_proyeccion DROP COLUMN IF EXISTS cluster_cambiado;
+        ALTER TABLE simulacion.rutas_proyeccion ADD COLUMN cluster_cambiado BOOLEAN
+            GENERATED ALWAYS AS (cluster_id IS DISTINCT FROM cluster_original_id) STORED;
+    END IF;
+    -- Sin tipo (en DATA) el número tampoco se repite.
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conrelid = 'simulacion.rutas_proyeccion'::regclass AND conname = 'uq_rutas_archivo_ruta_tipo'
+                     AND pg_get_constraintdef(oid) LIKE '%NULLS NOT DISTINCT%') THEN
+        ALTER TABLE simulacion.rutas_proyeccion DROP CONSTRAINT IF EXISTS uq_rutas_archivo_ruta_tipo;
+        ALTER TABLE simulacion.rutas_proyeccion ADD CONSTRAINT uq_rutas_archivo_ruta_tipo
+            UNIQUE NULLS NOT DISTINCT (archivo_id, codigo_ruta, tipo);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conrelid = 'simulacion.rutas_proyeccion'::regclass AND conname = 'ck_rutas_data') THEN
+        ALTER TABLE simulacion.rutas_proyeccion ADD CONSTRAINT ck_rutas_data CHECK (
+            (cluster_id IS NULL AND cluster_original_id IS NULL)
+            OR (cluster_id IS NOT NULL AND cluster_original_id IS NOT NULL
+                AND tipo IS NOT NULL AND frecuencia IS NOT NULL AND grupo IS NOT NULL));
+    END IF;
+END $$;
+-- Q: rutas cambiadas de cluster (historial y dashboard); se recrea si la columna se volvió a crear.
+CREATE INDEX IF NOT EXISTS idx_rutas_cluster_cambiado
+    ON simulacion.rutas_proyeccion (archivo_id, cluster_original_id, cluster_id) WHERE cluster_cambiado;
+COMMENT ON COLUMN simulacion.rutas_proyeccion.cluster_id IS 'Cluster de hoy; NULL = la ruta está en DATA (no se balancea).';
+COMMENT ON COLUMN simulacion.rutas_proyeccion.cluster_original_id IS 'Cluster al pasar de DATA (el «antes» del Dashboard); un cambio manual cambia cluster_id. NULL en DATA.';
+COMMENT ON COLUMN simulacion.rutas_proyeccion.chute_original_id IS 'Chute al pasar de DATA (el «antes»); el balanceo no lo cambia. En DATA, igual a chute_id.';
+COMMENT ON COLUMN simulacion.rutas_proyeccion.cluster_cambiado IS 'Calculada: la ruta está hoy en un cluster distinto al original (FALSE en DATA).';
+COMMENT ON COLUMN simulacion.rutas_proyeccion.tipo IS 'B2C o B2B; puede faltar solo en DATA.';
+COMMENT ON COLUMN simulacion.rutas_proyeccion.frecuencia IS 'Días de la ruta: DIARIA (L-M-X-J-V-S) aparece en los dos balanceos; LXV solo en L-X-V; MJS solo en M-J-S. Puede faltar solo en DATA.';
+COMMENT ON COLUMN simulacion.rutas_proyeccion.grupo IS 'Grupo de la ruta dentro de su cluster; el balanceo automático reparte cada grupo en su propio tramo de chutes. Puede faltar solo en DATA.';
 
 -- =============================================================================================
 -- Privilegios de la aplicación
@@ -176,9 +133,7 @@ DELETE FROM simulacion.archivos_excel WHERE NOT es_diccionario;
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'atlas_app') THEN
-        GRANT SELECT, INSERT, UPDATE, DELETE ON simulacion.rutas_locales, simulacion.diccionario_clusters,
-            simulacion.diccionario_rutas, simulacion.diccionario_locales TO atlas_app;
-        GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA simulacion TO atlas_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON simulacion.rutas_locales TO atlas_app;
     END IF;
 END $$;
 

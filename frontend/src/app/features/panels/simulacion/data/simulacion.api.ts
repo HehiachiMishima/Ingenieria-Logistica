@@ -1,8 +1,10 @@
 import { Service, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, map } from 'rxjs';
 import {
   ArchivoSimulacion,
   Balanceo,
+  CambioData,
+  DATA_ID,
   DiaBalanceo,
   BalanceoCuerpo,
   BalanceoSimulacion,
@@ -20,6 +22,8 @@ import {
   RutasDashboardFiltros,
   RutasDashboardSimulacion,
   RutasSimulacionFiltros,
+  RutaDataRequest,
+  RutaSimulacion,
   VistaBalanceo,
 } from './simulacion.model';
 import { HttpContext } from '@angular/common/http';
@@ -31,13 +35,13 @@ import { Api } from '../../../../core/services/api';
 export class SimulacionApi {
   private readonly api = inject(Api);
 
-  /** El registro único (el de las rutas completas del Registro), en una lista. */
+  /** El escenario único de Configuración y el Dashboard, en una lista. */
   opciones(): Observable<ArchivoSimulacion[]> {
     return this.api.get<ArchivoSimulacion[]>('/simulacion/registros/opciones');
   }
 
   /**
-   * Locales de una ruta tal como están en el Registro (la ficha de la ruta). Silenciosa: la ficha
+   * Locales de una ruta (la ficha de la ruta). Silenciosa: la ficha
    * muestra el error en su lugar, sin aviso global.
    */
   localesRuta(id: number, rutaId: number): Observable<LocalesRuta> {
@@ -53,16 +57,63 @@ export class SimulacionApi {
     return this.api.get<ConfiguracionSimulacion>(`/simulacion/registros/${id}/configuracion`, { balanceo });
   }
 
-  /** Rutas paginadas del registro; el texto filtra por prefijo del código. */
-  /** Rutas de la planilla por keyset (cursor = id de la última recibida). */
+  /**
+   * Rutas de la planilla por keyset (cursor = id de la última recibida); el texto filtra por prefijo
+   * del código. Las de DATA llegan sin cluster: quedan con {@link DATA_ID}, como un bloque más.
+   */
   rutas(id: number, filtros: RutasSimulacionFiltros): Observable<PaginaRutas> {
-    return this.api.get<PaginaRutas>(`/simulacion/registros/${id}/rutas`, {
-      ...(filtros.despues !== null ? { despues: filtros.despues } : {}),
-      tamano: filtros.tamano,
-      texto: filtros.texto,
-      ...(filtros.clusterIds.length > 0 ? { clusterIds: filtros.clusterIds.join(',') } : {}),
-      ...(filtros.chuteIds.length > 0 ? { chuteIds: filtros.chuteIds.join(',') } : {}),
+    return this.api
+      .get<PaginaRutas>(`/simulacion/registros/${id}/rutas`, {
+        ...(filtros.despues !== null ? { despues: filtros.despues } : {}),
+        tamano: filtros.tamano,
+        texto: filtros.texto,
+        ...(filtros.clusterIds.length > 0 ? { clusterIds: filtros.clusterIds.join(',') } : {}),
+        ...(filtros.chuteIds.length > 0 ? { chuteIds: filtros.chuteIds.join(',') } : {}),
+      })
+      .pipe(map((pagina) => ({ ...pagina, contenido: pagina.contenido.map(conData) })));
+  }
+
+  // ---------------- DATA: rutas que no se balancean ----------------
+
+  /** Crea la ruta en DATA (sin tipo, frecuencia ni grupo), en un chute al azar. */
+  crearRutaData(id: number, peticion: RutaDataRequest): Observable<CambioData> {
+    return this.api.post<CambioData>(`/simulacion/registros/${id}/data/rutas`, peticion);
+  }
+
+  /** Cambia el número y los locales de una ruta de DATA. */
+  actualizarRutaData(id: number, rutaId: number, peticion: RutaDataRequest): Observable<CambioData> {
+    return this.api.put<CambioData>(`/simulacion/registros/${id}/data/rutas/${rutaId}`, peticion);
+  }
+
+  eliminarRutaData(id: number, rutaId: number): Observable<CambioData> {
+    return this.api.delete<CambioData>(`/simulacion/registros/${id}/data/rutas/${rutaId}`);
+  }
+
+  /** Tipo, frecuencia o grupo para las rutas elegidas de DATA (las de un cluster se dejan igual). */
+  asignarData(
+    id: number,
+    que: 'tipo' | 'frecuencia' | 'grupo',
+    rutaIds: readonly number[],
+    valor: string,
+  ): Observable<CambioData> {
+    return this.api.put<CambioData>(`/simulacion/registros/${id}/data/${que}`, { rutaIds, [que]: valor });
+  }
+
+  /**
+   * Rutas a una celda: a un cluster (solo de DATA y completas) o a DATA ({@link DATA_ID}). Todas o
+   * ninguna.
+   */
+  moverData(id: number, rutaIds: readonly number[], clusterId: number, chuteId: number): Observable<CambioData> {
+    return this.api.put<CambioData>(`/simulacion/registros/${id}/data/mover`, {
+      rutaIds,
+      clusterId: clusterId === DATA_ID ? null : clusterId,
+      chuteId,
     });
+  }
+
+  /** Cuántos clusters hay: se agregan al final; al quitar, sus rutas vuelven a DATA. */
+  cambiarClusters(id: number, cantidad: number): Observable<CambioData> {
+    return this.api.put<CambioData>(`/simulacion/registros/${id}/clusters/cantidad`, { cantidad });
   }
 
   /** Distribución de rutas por cluster y chute (lo que imprime el PDF; el Excel lleva lo mismo). */
@@ -295,4 +346,12 @@ export class SimulacionApi {
       balanceo,
     });
   }
+}
+
+/** Una ruta de DATA (sin cluster) queda con {@link DATA_ID} y el nombre «DATA». */
+function conData(ruta: RutaSimulacion): RutaSimulacion {
+  // El servidor manda null en DATA aunque el tipo diga number (ya convertido, siempre lo es).
+  return (ruta.clusterId as number | null) === null
+    ? { ...ruta, clusterId: DATA_ID, cluster: 'DATA', clusterOriginalId: DATA_ID, clusterOriginal: 'DATA' }
+    : ruta;
 }

@@ -179,31 +179,38 @@ export interface ChuteParametroSimulacion {
   buff?: boolean;
 }
 
+/**
+ * Bloque DATA de Configuración: las rutas que no se balancean. El servidor las manda sin cluster
+ * (null) y la API las deja con este id para tratarlas como un bloque más de la matriz.
+ */
+export const DATA_ID = 0;
+
 export interface RutaSimulacion {
   id: number;
   chuteId: number;
   chute: string;
-  /** Chute que tenía la ruta al cargar el Excel (no lo cambia el balanceo). */
+  /** Chute al pasar de DATA a un cluster (no lo cambia el balanceo). En DATA, igual a chuteId. */
   chuteOriginalId: number;
   chuteOriginal: string;
+  /** Cluster de la ruta; {@link DATA_ID} si está en DATA. */
   clusterId: number;
   cluster: string;
-  /** Cluster que tenía la ruta al cargar el Excel (distinto si se cambió a mano). */
+  /** Cluster al pasar de DATA (distinto si se cambió a mano); {@link DATA_ID} en DATA. */
   clusterOriginalId: number;
   clusterOriginal: string;
   /** Su cluster y algún otro siguen sin cerrar: se puede pasar a otro cluster (antes o después de balancear). */
   clusterEditable: boolean;
   codigoRuta: string;
-  /** Tipo de operación de la ruta: B2C o B2B. */
-  tipo: 'B2C' | 'B2B' | string;
+  /** Tipo de operación de la ruta: B2C o B2B (null solo en DATA, mientras no se asigna). */
+  tipo: 'B2C' | 'B2B' | string | null;
   totalBultos: number;
   totalUnidades: number;
   totalLineas: number;
   conteoCod: number;
-  /** Grupo de la ruta dentro de su cluster (columna GRUPO del Excel). */
-  grupo: string;
-  /** DIARIA, LXV o MJS. */
-  frecuencia?: FrecuenciaRuta;
+  /** Grupo de la ruta dentro de su cluster (null solo en DATA, mientras no se asigna). */
+  grupo: string | null;
+  /** DIARIA, LXV o MJS (null solo en DATA, mientras no se asigna). */
+  frecuencia?: FrecuenciaRuta | null;
   /** Ruta diaria ya balanceada (paso Diarias): el automático de los días no la vuelve a mover. */
   diariaFija?: boolean;
   /** Días tal como vienen en el Excel («L-X», «V», «L-X-V»); null en rutas antiguas. */
@@ -267,6 +274,17 @@ export interface ConfiguracionSimulacion {
 }
 
 /** Página de rutas por keyset: `siguiente` es el cursor de la próxima; `total` solo en la primera. */
+/** Crear o editar una ruta de DATA: número y uno o varios códigos (los repetidos se suman). */
+export interface RutaDataRequest {
+  codigoRuta: string;
+  locales: { cod: string; bultos: number; unidades: number; lineas: number; filas?: number }[];
+}
+
+/** Lo que se hizo en DATA o en los clusters, para avisarlo tal cual. */
+export interface CambioData {
+  mensaje: string;
+}
+
 export interface PaginaRutas {
   contenido: RutaSimulacion[];
   total: number | null;

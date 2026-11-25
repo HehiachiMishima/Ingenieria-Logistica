@@ -156,16 +156,16 @@ las trazas existentes; aplícala con el backend detenido. Los resúmenes se cons
 Para habilitar el balanceo de rutas guardado por archivo en **Simulación Titan**, aplica
 `backend/migracion_balanceo_rutas.sql` a las bases existentes antes de actualizar el backend.
 
-En **Simulación Titan** el registro por Excel se reemplazó por el **Registro** (diccionario de
-rutas): las rutas se crean a mano con uno o varios locales, nacen en Datos y se arrastran a los
-clusters, donde reciben tipo, frecuencia y grupo. Configuración y el Dashboard trabajan sobre un
-único escenario que el backend arma solo con las rutas **completas** (cluster, tipo, frecuencia y
-grupo), cada una en un chute al azar que se fija la primera vez; el balanceo sigue igual. Un cluster
-cerrado en Configuración no se muestra en el Registro hasta que se reabre. Antes de actualizar el
-backend aplica `backend/migracion_registro_titan.sql`: crea los locales de las rutas, las tablas del
-Registro y el enlace con el escenario, y **borra los registros subidos por Excel** con todo lo que
-cuelga de ellos. Es una sola transacción y es re-ejecutable (pone al día lo que ya existía sin
-perder datos del Registro).
+En **Simulación Titan** ya no hay registro por Excel ni módulo Registro: todo pasa en
+**Configuración**, sobre un único escenario que el backend crea solo. Arriba de los clusters está el
+bloque **DATA** (mismo diseño, con su scroll), con las rutas que no se balancean: ahí se crean (uno o
+varios locales), se editan, se eliminan y reciben tipo, frecuencia y grupo. Solo una ruta completa
+pasa a un cluster, y la celda donde se suelta (cluster y chute) es su posición original, el «antes»
+del Dashboard; el balanceo sigue igual. Un cluster que aún no empezó a balancearse puede devolver
+rutas a DATA y se puede quitar; los clusters se agregan al final y uno vacío se salta en el balanceo.
+Antes de actualizar el backend aplica `backend/migracion_registro_titan.sql`: crea los locales de las
+rutas, quita las tablas del Registro, prepara DATA y **borra los registros subidos por Excel** con
+todo lo que cuelga de ellos. Es una sola transacción y es re-ejecutable.
 
 Si la base ya estaba instalada antes del panel **Simulación Santa Anita**, aplicar
 `migracion_simulacion_santa.sql` **antes** de arrancar el backend que trae el panel

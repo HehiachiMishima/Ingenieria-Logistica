@@ -15,7 +15,7 @@
       <div class="matriz-ruta" [class.matriz-ruta--movida]="r.movida" [class.matriz-ruta--grupo]="grupo !== null"
         [style.--grupo-color]="r.colorGrupo">
         <span class="matriz-ruta__datos">
-          <span class="matriz-ruta__pestana-tipo" [attr.data-tipo]="r.ruta.tipo">{{ r.ruta.tipo }}</span>
+          <span class="matriz-ruta__pestana-tipo" [attr.data-tipo]="r.ruta.tipo">{{ r.ruta.tipo ?? '—' }}</span>
           <span class="matriz-ruta__frecuencia" [attr.data-frecuencia]="r.frecuencia.tipo"
             [class.matriz-ruta__frecuencia--fija]="r.frecuencia.fija">{{ r.frecuencia.dias }}</span>
           <span class="matriz-ruta__bultos"><ng-container [ngTemplateOutlet]="caja" />{{ r.ruta.totalBultos | entero }}</span>
@@ -67,10 +67,10 @@
   }
 
   @if (r.movida) {
-  <!-- Recorrido: de dónde venía en el Excel a dónde está hoy. -->
+  <!-- Recorrido: dónde entró desde DATA y dónde está hoy. -->
   <div class="ficha-recorrido" aria-label="Ruta movida">
     <span class="ficha-recorrido__punto">
-      <small>Registro</small>
+      <small>Al entrar</small>
       <strong>{{ r.ruta.clusterOriginal }} · {{ r.ruta.chuteOriginal }}</strong>
     </span>
     <ui-icon name="flecha" [size]="14" />
@@ -167,6 +167,18 @@
   <p class="ficha-pie" [class.ficha-pie--cerrado]="r.cerrado">
     <ui-icon [name]="r.cerrado ? 'lock' : 'info'" [size]="13" /> {{ r.aviso }}
   </p>
+  }
+  @if (r.editable) {
+  <!-- En DATA la ruta se edita o se elimina; en un cluster ya no (vuelve a DATA para cambiarla). -->
+  <div class="ficha-acciones">
+    <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm ficha-acciones__eliminar" (click)="eliminar.emit()">
+      <ui-icon name="trash" [size]="14" /> Eliminar
+    </button>
+    <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" [disabled]="locales()?.estado !== 'listo'"
+      (click)="editar.emit()">
+      <ui-icon name="edit" [size]="14" /> Editar
+    </button>
+  </div>
   }
   } @else if (k) {
   <!-- ============ Cluster ============ -->

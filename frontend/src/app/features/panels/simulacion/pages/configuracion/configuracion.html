@@ -111,11 +111,9 @@
 </div>
 } @else if (registros().length === 0) {
 <div class="table-card">
-  <ui-empty icono="almacen" titulo="Aún no hay registro"
-    mensaje="Crea las rutas en el Registro: las que estén completas aparecen aquí.">
-    <button *hasPermiso="permisos.VER_REGISTRO_SIMULACION" type="button" class="ui-btn ui-btn--primary ui-btn--sm"
-      (click)="irARegistro()">
-      Ir a Registro
+  <ui-empty icono="almacen" titulo="Aún no hay escenario" mensaje="Pulsa «Actualizar» para crearlo.">
+    <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="cargarOpciones()">
+      <ui-icon name="refresh" [size]="16" /> Actualizar
     </button>
   </ui-empty>
 </div>
@@ -132,17 +130,6 @@
   </ui-empty>
 </div>
 } @else if (config(); as cfg) {
-@if (cfg.archivo.rutas === 0) {
-<div class="table-card">
-  <ui-empty icono="paquete" titulo="Aún no hay rutas completas"
-    mensaje="En el Registro, pon las rutas en un cluster con tipo, frecuencia y grupo: así aparecen aquí.">
-    <button *hasPermiso="permisos.VER_REGISTRO_SIMULACION" type="button" class="ui-btn ui-btn--primary ui-btn--sm"
-      (click)="irARegistro()">
-      Ir a Registro
-    </button>
-  </ui-empty>
-</div>
-} @else {
 <div class="toolbar">
   <div class="ui-search toolbar__grow">
     <!-- responsive:ok la lupa va dentro del campo a propósito (patrón ui-search) -->
@@ -159,6 +146,25 @@
     }
   </button>
   <div class="toolbar__acciones">
+    @if (puedeModificar()) {
+    <!-- Clusters del escenario: se agregan al final; al quitar el último, sus rutas vuelven a DATA. -->
+    <div class="mz-clusters" role="group" aria-label="Cantidad de clusters">
+      <span class="mz-clusters__etq">Clusters</span>
+      <button type="button" class="ui-icon-btn mz-clusters__btn" aria-label="Quitar el último cluster"
+        title="Quitar el último cluster (sus rutas vuelven a DATA)"
+        [disabled]="cantidadClusters() === 0 || ocupado()" (click)="cambiarClusters(-1)">−</button>
+      <strong class="mz-clusters__n" aria-live="polite">
+        @if (cambiandoClusters()) {
+        <span class="ui-spinner" aria-label="Cambiando clusters"></span>
+        } @else {
+        {{ cantidadClusters() }}
+        }
+      </strong>
+      <button type="button" class="ui-icon-btn mz-clusters__btn" aria-label="Agregar un cluster"
+        title="Agregar un cluster al final" [disabled]="cantidadClusters() >= maxClusters || ocupado()"
+        (click)="cambiarClusters(1)">+</button>
+    </div>
+    }
     <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="alternarMinimizado()"
       [disabled]="bloquesMatriz().length === 0" [attr.aria-pressed]="minimizado()">
       <ui-icon [name]="minimizado() ? 'chevronRight' : 'chevronLeft'" [size]="16" />
@@ -342,6 +348,28 @@
     @let plegado = minimizado();
     @let abierto = totalesAbiertos().has(bloque.cluster.id);
     <section class="mz-bloque" [class.mz-bloque--min]="plegado" [style.--cluster-color]="bloque.cluster.color">
+      @if (bloque.data) {
+      <!-- DATA: rutas que no se balancean. Ahí se crean y reciben tipo, frecuencia y grupo. -->
+      <aside class="mz-panel mz-panel--data">
+        <div class="mz-panel__cabeza">
+          <span class="mz-panel__nombre" title="Rutas que no se balancean">
+            <ui-icon name="layers" [size]="13" />
+            <span>DATA</span>
+          </span>
+        </div>
+        <p class="mz-data__cuenta">{{ bloque.cluster.rutas | entero }} {{ bloque.cluster.rutas === 1 ? 'ruta' : 'rutas' }}</p>
+        @if (!plegado) {
+        <p class="mz-data__ayuda">Sin balancear. Con tipo, frecuencia y grupo, arrástralas a un cluster.</p>
+        }
+        @if (puedeModificar()) {
+        <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm mz-data__nueva" [disabled]="ocupado()"
+          (click)="nuevaRuta()" title="Nueva ruta en DATA">
+          <ui-icon name="plus" [size]="14" />
+          @if (!plegado) { Nueva ruta }
+        </button>
+        }
+      </aside>
+      } @else {
       <aside class="mz-panel">
         @let c = bloque.cluster;
         @let menuAbierto = menuAcciones()?.id === c.id;
@@ -462,6 +490,7 @@
         </div>
         }
       </aside>
+      }
 
       <div class="mz-scroll" data-scroll-matriz>
         <table class="ui-table mz-tabla">
@@ -486,7 +515,7 @@
                   [class.matriz-ruta--elegida]="elegida"
                   [title]="movible ? celda.titulo + '\nCtrl/⌘+clic: elegir varias · Mayús+clic: un tramo' : celda.titulo"
                   role="button" tabindex="0" aria-haspopup="dialog"
-                  [attr.aria-label]="(elegida ? 'Seleccionada. ' : '') + 'Detalle de la ruta ' + ruta.codigoRuta + ' ' + ruta.tipo + ', ' + celda.bultos + ' bultos' + (celda.grupo !== null ? ', grupo ' + celda.grupo : '') + ', ' + celda.frecuencia.titulo"
+                  [attr.aria-label]="(elegida ? 'Seleccionada. ' : '') + 'Detalle de la ruta ' + ruta.codigoRuta + ' ' + (ruta.tipo ?? 'sin tipo') + ', ' + celda.bultos + ' bultos' + (celda.grupo !== null ? ', grupo ' + celda.grupo : '') + ', ' + celda.frecuencia.titulo"
                   [class.matriz-ruta--grupo]="celda.grupoColor !== null" [style.--grupo-color]="celda.grupoColor"
                   (mousedown)="presionarRuta($event)" (contextmenu)="menuRuta($event, ruta.id)"
                   (click)="clicRuta($event, ruta.id)" (keydown.enter)="clicRuta($event, ruta.id)"
@@ -495,7 +524,7 @@
                        dos), días y bultos. Abajo: grupo y número de ruta centrado. El aria-label de
                        la ruta ya lo dice todo, por eso las piezas de color van aria-hidden. -->
                   <span class="matriz-ruta__datos">
-                    <span class="matriz-ruta__pestana-tipo" [attr.data-tipo]="ruta.tipo" aria-hidden="true">{{ ruta.tipo }}</span>
+                    <span class="matriz-ruta__pestana-tipo" [attr.data-tipo]="ruta.tipo" aria-hidden="true">{{ ruta.tipo ?? '—' }}</span>
                     <span class="matriz-ruta__frecuencia" [attr.data-frecuencia]="celda.frecuencia.tipo"
                       [class.matriz-ruta__frecuencia--fija]="celda.frecuencia.fija" aria-hidden="true">{{ celda.frecuencia.dias }}</span>
                     <span class="matriz-ruta__bultos" [title]="celda.bultos + ' bultos'">
@@ -559,6 +588,27 @@
       </span>
       }
     </p>
+    @if (sel.soloData && puedeModificar()) {
+    <!-- Solo rutas de DATA: tipo, frecuencia y grupo (en un cluster ya no cambian). -->
+    <div class="sel-barra__acciones" role="group" aria-label="Asignar a las rutas elegidas">
+      <span class="sel-barra__grupo" role="group" aria-label="Tipo">
+        <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" [disabled]="ocupado()" (click)="asignarData('tipo', 'B2C')">B2C</button>
+        <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" [disabled]="ocupado()" (click)="asignarData('tipo', 'B2B')">B2B</button>
+      </span>
+      <span class="sel-barra__grupo" role="group" aria-label="Frecuencia">
+        <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" [disabled]="ocupado()" (click)="asignarData('frecuencia', 'LXV')">L-X-V</button>
+        <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" [disabled]="ocupado()" (click)="asignarData('frecuencia', 'MJS')">M-J-S</button>
+        <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" [disabled]="ocupado()" (click)="asignarData('frecuencia', 'DIARIA')">Diaria</button>
+      </span>
+      <span class="sel-barra__grupo">
+        <input class="ui-input sel-barra__input" maxlength="50" placeholder="Grupo" aria-label="Grupo para las rutas elegidas"
+          [value]="grupoData()" (input)="grupoData.set($any($event.target).value)"
+          (keydown.enter)="asignarData('grupo', grupoData())" />
+        <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" [disabled]="ocupado() || grupoData().trim() === ''"
+          (click)="asignarData('grupo', grupoData())">Asignar grupo</button>
+      </span>
+    </div>
+    }
     <p class="sel-barra__pista">
       @if (rutasGuardando().size > 0) {
       <span class="ui-spinner" aria-hidden="true"></span> Moviendo…
@@ -574,7 +624,6 @@
   }
   }
 </section>
-}
 }
 
 @if (menuAcciones(); as menu) {
@@ -792,7 +841,7 @@
   <p class="confirm__desc">
     @if (accionBalanceoGuardado() === 'guardar') {
       Se guardará la distribución actual de {{ config()?.archivo?.nombreRegistro }}. Puedes usar la distribución
-      original del Registro o la de todos los clusters ya balanceados. Al cargarla, el siguiente paso será asignar operarios.
+      con la que entraron desde DATA o la de todos los clusters ya balanceados. Al cargarla, el siguiente paso será asignar operarios.
       @if (config()?.balanceoGuardado) { Reemplazará el balanceo guardado de este archivo. }
     } @else {
       Se recuperarán las rutas guardadas de {{ config()?.archivo?.nombreRegistro }}.
@@ -895,9 +944,12 @@
 @let k = clusterDetalle();
 @if (r || k) {
 <app-ficha-detalle [posicion]="d.pos" [ruta]="r" [cluster]="k" [locales]="r ? localesRuta() : null"
-  (cerrar)="cerrarDetalle()" (reintentar)="reintentarLocales()" />
+  (cerrar)="cerrarDetalle()" (reintentar)="reintentarLocales()" (editar)="editarRuta()" (eliminar)="eliminarRuta()" />
 }
 }
+
+<app-ruta-form [registroId]="seleccionado()" [inicial]="rutaForm()" (cerrar)="rutaForm.set(null)"
+  (guardado)="rutaGuardada($event)" />
 
 <app-simulacion-guia-balanceo [abierto]="explicacionAbierta()" (cerrar)="explicacionAbierta.set(false)" />
 

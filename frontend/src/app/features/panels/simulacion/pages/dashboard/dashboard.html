@@ -135,15 +135,15 @@
     <ui-empty
       icono="almacen"
       titulo="Aún no hay registro"
-      mensaje="Crea las rutas en el Registro y balancéalas en Configuración para ver el comparativo."
+      mensaje="Crea las rutas en DATA y balancéalas en Configuración para ver el comparativo."
     >
       <button
-        *hasPermiso="permisos.VER_REGISTRO_SIMULACION"
+        *hasPermiso="permisos.VER_CONFIGURACION_SIMULACION"
         type="button"
         class="ui-btn ui-btn--primary ui-btn--sm"
-        (click)="irARegistro()"
+        (click)="irAConfiguracion()"
       >
-        Ir a Registro
+        Ir a Configuración
       </button>
     </ui-empty>
   </div>
@@ -255,7 +255,7 @@
             </h2>
             <p class="dash-card__sub">
               {{ formatearNumero(cambios.rutas) }} ruta(s) cambiadas de cluster a mano antes de
-              balancear. «Antes» es como entraron desde el Registro; «después», la de hoy.
+              balancear. «Antes» es como entraron desde DATA; «después», la de hoy.
             </p>
           </div>
         </header>

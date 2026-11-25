@@ -1,4 +1,4 @@
-package oracle.simulacion.diccionario;
+package oracle.simulacion.request;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
@@ -14,69 +14,66 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.util.List;
 
-/** Lo que recibe el Registro v2 (diccionario de rutas de Simulación Titan). */
-public final class DiccionarioPeticiones {
+/**
+ * Lo que recibe DATA, el bloque de Configuración con las rutas que no se balancean: crear y editar
+ * rutas, asignarles tipo, frecuencia y grupo, moverlas entre DATA y los clusters, y cuántos
+ * clusters hay.
+ */
+public final class DataRequest {
 
   /** Rutas por acción: una selección a mano no llega a tanto y acota la transacción. */
   public static final int MAX_SELECCION = 5_000;
   /** Códigos (locales) por ruta. */
   public static final int MAX_LOCALES = 5_000;
-  /** Bloques de cluster (CL1…CLn). */
+  /** Clusters del escenario (CL1…CLn). */
   public static final int MAX_CLUSTERS = 30;
 
-  private DiccionarioPeticiones() {}
+  private DataRequest() {}
 
-  /**
-   * Crear o editar una ruta: número y uno o varios códigos. Nace en Datos (sin tipo, cluster,
-   * frecuencia ni grupo); el tipo se asigna con su acción, ya en un cluster.
-   */
+  /** Crear o editar una ruta: número y uno o varios códigos. Nace en DATA, sin tipo, frecuencia ni grupo. */
   public record Ruta(
       @NotBlank(message = "Escribe el número de ruta.") @Size(max = 50) String codigoRuta,
       @NotEmpty(message = "La ruta necesita al menos un código.")
           @Size(max = MAX_LOCALES)
           List<@NotNull @Valid Local> locales) {}
 
-  /** Un código (local) con sus bultos, unidades y líneas (dos decimales). */
+  /**
+   * Un código (local) con sus bultos, unidades y líneas (dos decimales). {@code filas}: cuántas veces
+   * se ingresó ya sumado (al editar se conserva; null = 1).
+   */
   public record Local(
       @NotBlank(message = "Cada línea necesita su código.") @Size(max = 100) String cod,
       @NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal bultos,
       @NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal unidades,
-      @NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal lineas) {}
+      @NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal lineas,
+      @Min(1) @Max(1_000_000) Integer filas) {}
 
-  /** Rutas a un bloque: un cluster, o Datos con {@code clusterId} null (pierden cluster y frecuencia). */
-  public record Mover(
+  /** Tipo para las rutas elegidas de DATA (todas o ninguna: sin rutas repetidas). */
+  public record Tipo(
       @NotEmpty @Size(max = MAX_SELECCION) List<@NotNull @Positive Long> rutaIds,
-      @Positive Long clusterId) {}
+      @NotNull @Pattern(regexp = "B2C|B2B", message = "El tipo debe ser B2C o B2B.") String tipo) {}
 
-  /** Frecuencia para las rutas elegidas que están en un cluster. */
+  /** Frecuencia para las rutas elegidas de DATA. */
   public record Frecuencia(
       @NotEmpty @Size(max = MAX_SELECCION) List<@NotNull @Positive Long> rutaIds,
       @NotNull
           @Pattern(regexp = "LXV|MJS|DIARIA", message = "La frecuencia debe ser LXV, MJS o DIARIA.")
           String frecuencia) {}
 
-  /** Grupo («1», «2», «A») para las rutas elegidas que están en un cluster. */
+  /** Grupo («1», «2», «A») para las rutas elegidas de DATA. */
   public record Grupo(
       @NotEmpty @Size(max = MAX_SELECCION) List<@NotNull @Positive Long> rutaIds,
       @NotBlank(message = "Escribe el grupo.") @Size(max = 50) String grupo) {}
 
-  /** Tipo para las rutas elegidas (todas o ninguna: sin rutas repetidas). */
-  public record Tipo(
-      @NotEmpty @Size(max = MAX_SELECCION) List<@NotNull @Positive Long> rutaIds,
-      @NotNull @Pattern(regexp = "B2C|B2B", message = "El tipo debe ser B2C o B2B.") String tipo) {}
-
-  /** Deshacer el último movimiento: cada ruta vuelve a su bloque y frecuencia de antes. */
-  public record Restaurar(@NotEmpty @Size(max = MAX_SELECCION) List<@NotNull @Valid Ubicacion> rutas) {}
-
-  /** Dónde estaba una ruta: cluster (null = Datos), tipo, frecuencia y grupo (null = sin asignar). */
-  public record Ubicacion(
-      @NotNull @Positive Long id,
+  /**
+   * Rutas a una celda: un cluster y un chute, o DATA ({@code clusterId} null) en ese chute. Todas
+   * se mueven o ninguna.
+   */
+  public record Mover(
+      @NotEmpty @Size(max = MoverRutasRequest.MAXIMO) List<@NotNull @Positive Long> rutaIds,
       @Positive Long clusterId,
-      @Pattern(regexp = "B2C|B2B", message = "El tipo debe ser B2C o B2B.") String tipo,
-      @Pattern(regexp = "LXV|MJS|DIARIA", message = "La frecuencia debe ser LXV, MJS o DIARIA.")
-          String frecuencia,
-      @Size(max = 50) String grupo) {}
+      @NotNull @Positive Long chuteId) {}
 
-  /** Cuántos bloques de cluster hay: se agregan o se quitan desde el último. */
+  /** Cuántos clusters hay: se agregan o se quitan desde el último. */
   public record Clusters(@NotNull @Min(0) @Max(MAX_CLUSTERS) Integer cantidad) {}
 }

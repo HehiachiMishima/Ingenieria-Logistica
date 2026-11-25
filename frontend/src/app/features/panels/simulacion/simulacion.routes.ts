@@ -20,11 +20,6 @@ export const SIMULACION_ROUTES: Routes = [
     children: [
       { path: '', pathMatch: 'full', redirectTo: aPrimerModulo(PANEL_SIMULACION) },
       {
-        path: 'registro',
-        canActivate: [permisoGuard(PERMISOS.VER_REGISTRO_SIMULACION)],
-        loadComponent: () => import('./pages/registro/registro').then((m) => m.SimulacionRegistro),
-      },
-      {
         path: 'configuracion',
         canActivate: [permisoGuard(PERMISOS.VER_CONFIGURACION_SIMULACION)],
         // Salir con el equipo o un límite sin guardar pregunta antes de descartarlos.

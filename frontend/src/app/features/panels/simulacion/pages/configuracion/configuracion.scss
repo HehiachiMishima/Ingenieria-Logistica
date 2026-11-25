@@ -1449,3 +1449,114 @@
     min-height: 44px;
   }
 }
+
+/* ---------- Clusters del escenario: − N + en la barra (se agregan y quitan desde el último) ---------- */
+.mz-clusters {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.mz-clusters__etq {
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+}
+
+.mz-clusters__n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2ch;
+  font-variant-numeric: tabular-nums;
+}
+
+.mz-clusters__btn {
+  font-size: var(--fs-base);
+  font-weight: 700;
+}
+
+@media (pointer: coarse) {
+  .mz-clusters__btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* ---------- DATA: rutas que no se balancean (bloque de arriba, mismo diseño que un cluster) ---------- */
+.mz-panel--data {
+  background: color-mix(in srgb, var(--surface-2) 70%, var(--surface));
+}
+
+.mz-data__cuenta {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.mz-data__ayuda {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+}
+
+.mz-data__nueva {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  align-self: stretch;
+
+  ui-icon {
+    flex: none;
+  }
+}
+
+@media (pointer: coarse) {
+  .mz-data__nueva {
+    min-height: 44px;
+  }
+}
+
+/* ---------- Selección solo de DATA: tipo, frecuencia y grupo ---------- */
+.sel-barra__acciones {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+
+  @include bp.down(sm) {
+    flex: 1 1 100%;
+    order: 2;
+  }
+}
+
+.sel-barra__grupo {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.sel-barra__input {
+  width: 9ch;
+  min-width: 0;
+}
+
+@media (pointer: coarse) {
+  .sel-barra__acciones .ui-btn {
+    min-height: 44px;
+  }
+
+  .sel-barra__input {
+    min-height: 44px;
+    font-size: 16px;
+  }
+}
