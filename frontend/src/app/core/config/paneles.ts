@@ -131,6 +131,15 @@ export const PANEL_SIMULACION: PanelDef = {
       permiso: PERMISOS.VER_REGISTRO_SIMULACION,
     },
     {
+      id: 'registro-v2',
+      nombre: 'Registro v2',
+      descripcion: 'Diccionario de rutas: crearlas con sus locales y ordenarlas por cluster.',
+      icono: 'layers',
+      ruta: 'registro-v2',
+      // Por ahora sin permiso propio: lo ve quien entra al panel.
+      permiso: PERMISOS.PANEL_SIMULACION,
+    },
+    {
       id: 'configuracion',
       nombre: 'Configuración',
       descripcion: 'Balanceo de rutas por cluster para igualar los bultos de sus chutes.',

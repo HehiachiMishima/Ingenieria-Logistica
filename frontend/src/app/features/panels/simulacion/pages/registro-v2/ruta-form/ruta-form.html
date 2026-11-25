@@ -1,0 +1,150 @@
+<ui-modal [abierto]="inicial() !== null" [titulo]="titulo()" [subtitulo]="subtitulo()" ancho="lg" (cerrar)="cerrarFormulario()">
+  @if (modo() === null) {
+  <!-- Primero: ¿un local o varios? Así cada caso tiene su formulario y no se mezclan. -->
+  <div class="rf-opciones" role="group" aria-label="Cantidad de locales de la ruta">
+    <button type="button" class="rf-opcion" (click)="elegirModo('uno')">
+      <ui-icon name="almacen" [size]="22" />
+      <span>
+        <strong>Un local</strong>
+        <small>Un código. Los totales de la ruta son los de ese local.</small>
+      </span>
+    </button>
+    <button type="button" class="rf-opcion" (click)="elegirModo('varios')">
+      <ui-icon name="layers" [size]="22" />
+      <span>
+        <strong>Varios locales</strong>
+        <small>Una línea por código. Los totales se suman solos.</small>
+      </span>
+    </button>
+  </div>
+  } @else {
+  @let err = errores();
+  <div class="rf-cabeza">
+    <div class="ui-field">
+      <label class="ui-label" for="rf-codigo">Número de ruta <span class="ui-required">*</span></label>
+      <input id="rf-codigo" class="ui-input" [class.ui-input--invalid]="intento() && err.codigo" maxlength="50"
+        autocomplete="off" placeholder="2002" [value]="codigo()" (input)="escribirCodigo($event)" />
+      @if (intento() && err.codigo) {
+      <span class="ui-error">{{ err.codigo }}</span>
+      }
+    </div>
+    <div class="ui-field">
+      <span class="ui-label" id="rf-tipo">Tipo</span>
+      <div class="rf-seg" role="radiogroup" aria-labelledby="rf-tipo">
+        @for (t of tipos; track t.texto) {
+        <button type="button" role="radio" class="rf-seg__op" [attr.data-tipo]="t.valor" [class.rf-seg__op--on]="tipo() === t.valor"
+          [attr.aria-checked]="tipo() === t.valor" (click)="tipo.set(t.valor)">{{ t.texto }}</button>
+        }
+      </div>
+    </div>
+  </div>
+
+  @if (modo() === 'uno') {
+  <!-- Un local: sus volúmenes son los de la ruta. -->
+  @let l = lineas()[0];
+  @let e = err.lineas[0];
+  <div class="rf-uno">
+    <div class="ui-field rf-uno__cod">
+      <label class="ui-label" for="rf-cod">Código (local) <span class="ui-required">*</span></label>
+      <input id="rf-cod" class="ui-input" [class.ui-input--invalid]="intento() && e.cod" maxlength="100" autocomplete="off"
+        placeholder="7875" [value]="l.cod" (input)="cambiar(l.clave, 'cod', $event)" (paste)="pegar($event, 0)" />
+    </div>
+    <div class="ui-field">
+      <label class="ui-label" for="rf-bultos">Bultos <span class="ui-required">*</span></label>
+      <input id="rf-bultos" class="ui-input rf-num" [class.ui-input--invalid]="intento() && e.bultos" inputmode="decimal"
+        autocomplete="off" placeholder="0" [value]="l.bultos" (input)="cambiar(l.clave, 'bultos', $event)" />
+    </div>
+    <div class="ui-field">
+      <label class="ui-label" for="rf-unidades">Unidades</label>
+      <input id="rf-unidades" class="ui-input rf-num" [class.ui-input--invalid]="intento() && e.unidades" inputmode="decimal"
+        autocomplete="off" placeholder="0" [value]="l.unidades" (input)="cambiar(l.clave, 'unidades', $event)" />
+    </div>
+    <div class="ui-field">
+      <label class="ui-label" for="rf-lineas">Líneas</label>
+      <input id="rf-lineas" class="ui-input rf-num" [class.ui-input--invalid]="intento() && e.lineas" inputmode="decimal"
+        autocomplete="off" placeholder="0" [value]="l.lineas" (input)="cambiar(l.clave, 'lineas', $event)" />
+    </div>
+  </div>
+  @if (intento() && primerError(e); as error) {
+  <p class="ui-error rf-error">Revisa el local: {{ error }}.</p>
+  }
+  <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm rf-agregar" (click)="agregarLinea()">
+    <ui-icon name="plus" [size]="14" /> Agregar otro código
+  </button>
+  } @else {
+  <!-- Varios locales: una línea por código; los totales de la ruta son su suma. -->
+  <p class="rf-ayuda">Una línea por código. Puedes pegar varias filas copiadas del Excel (código, bultos, unidades y líneas).</p>
+  <div class="rf-lineas">
+    <div class="rf-fila rf-fila--cab" aria-hidden="true">
+      <span>Código</span><span>Bultos</span><span>Unidades</span><span>Líneas</span><span></span>
+    </div>
+    @for (l of lineas(); track l.clave; let i = $index) {
+    @let e = err.lineas[i];
+    <div class="rf-fila">
+      <label class="rf-celda rf-celda--cod">
+        <span class="rf-etq">Código</span>
+        <input class="ui-input" [class.ui-input--invalid]="intento() && e.cod" maxlength="100" autocomplete="off"
+          [attr.aria-label]="'Código de la línea ' + (i + 1)" [value]="l.cod" (input)="cambiar(l.clave, 'cod', $event)"
+          (paste)="pegar($event, i)" />
+      </label>
+      <label class="rf-celda">
+        <span class="rf-etq">Bultos</span>
+        <input class="ui-input rf-num" [class.ui-input--invalid]="intento() && e.bultos" inputmode="decimal" autocomplete="off"
+          placeholder="0" [attr.aria-label]="'Bultos de la línea ' + (i + 1)" [value]="l.bultos"
+          (input)="cambiar(l.clave, 'bultos', $event)" (paste)="pegar($event, i)" />
+      </label>
+      <label class="rf-celda">
+        <span class="rf-etq">Unidades</span>
+        <input class="ui-input rf-num" [class.ui-input--invalid]="intento() && e.unidades" inputmode="decimal" autocomplete="off"
+          placeholder="0" [attr.aria-label]="'Unidades de la línea ' + (i + 1)" [value]="l.unidades"
+          (input)="cambiar(l.clave, 'unidades', $event)" />
+      </label>
+      <label class="rf-celda">
+        <span class="rf-etq">Líneas</span>
+        <input class="ui-input rf-num" [class.ui-input--invalid]="intento() && e.lineas" inputmode="decimal" autocomplete="off"
+          placeholder="0" [attr.aria-label]="'Líneas de la línea ' + (i + 1)" [value]="l.lineas"
+          (input)="cambiar(l.clave, 'lineas', $event)" />
+      </label>
+      <button type="button" class="ui-icon-btn rf-quitar" [disabled]="lineas().length === 1"
+        [attr.aria-label]="'Quitar la línea ' + (i + 1)" (click)="quitarLinea(l.clave)">
+        <ui-icon name="close" [size]="14" />
+      </button>
+    </div>
+    @if (intento() && primerError(e); as error) {
+    <p class="ui-error rf-error">Línea {{ i + 1 }}: {{ error }}.</p>
+    }
+    }
+    @let t = totales();
+    <div class="rf-fila rf-fila--total" aria-live="polite">
+      <span class="rf-celda--cod">Total · {{ lineas().length }} {{ lineas().length === 1 ? 'local' : 'locales' }}</span>
+      <span><small class="rf-etq">Bultos</small>{{ t.bultos | numero: 2 }}</span>
+      <span><small class="rf-etq">Unidades</small>{{ t.unidades | numero: 2 }}</span>
+      <span><small class="rf-etq">Líneas</small>{{ t.lineas | numero: 2 }}</span>
+      <span></span>
+    </div>
+  </div>
+  <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm rf-agregar" (click)="agregarLinea()">
+    <ui-icon name="plus" [size]="14" /> Agregar código
+  </button>
+  }
+
+  @if (repetidos().length > 0) {
+  <p class="rf-aviso" role="status">
+    <ui-icon name="alerta" [size]="14" />
+    <span>{{ repetidos().join(', ') }}: {{ repetidos().length === 1 ? 'aparece' : 'aparecen' }} más de una vez y se sumarán al guardar.</span>
+  </p>
+  }
+  }
+
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" [disabled]="guardando()" (click)="cerrarFormulario()">Cancelar</button>
+    @if (modo() !== null) {
+    <button type="button" class="ui-btn ui-btn--primary" [disabled]="guardando()" (click)="guardar()">
+      @if (guardando()) {
+      <span class="ui-spinner" style="width: 16px; height: 16px"></span>
+      }
+      {{ editando() ? 'Guardar cambios' : 'Crear ruta' }}
+    </button>
+    }
+  </div>
+</ui-modal>

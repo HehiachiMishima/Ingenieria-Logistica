@@ -1,0 +1,277 @@
+/* Formulario de una ruta del diccionario (un local o varios). */
+
+/* ---------- ¿Un local o varios? ---------- */
+.rf-opciones {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: var(--space-3);
+}
+
+.rf-opcion {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4);
+  text-align: left;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: border-color var(--transition), background-color var(--transition);
+
+  ui-icon {
+    flex: none;
+    color: var(--accent);
+  }
+
+  span {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  strong {
+    font-size: var(--fs-base);
+  }
+
+  small {
+    color: var(--text-2);
+    font-size: var(--fs-sm);
+    line-height: 1.4;
+  }
+
+  &:hover,
+  &:focus-visible {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+  }
+}
+
+/* ---------- Número y tipo ---------- */
+.rf-cabeza {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.rf-seg {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+}
+
+.rf-seg__op {
+  min-width: 64px;
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  font-weight: 800;
+  color: var(--text-2);
+  background: var(--surface);
+  border: 0;
+  cursor: pointer;
+
+  & + & {
+    border-left: 1px solid var(--border-strong);
+  }
+
+  /* «Sin tipo» elegido: gris, como la pestaña vacía de la ficha. */
+  &--on {
+    color: var(--text);
+    background: color-mix(in srgb, var(--text-3) 30%, var(--surface));
+  }
+
+  /* El color de la pestaña de tipo de la ficha. */
+  &--on[data-tipo='B2C'] {
+    color: var(--surface);
+    background: color-mix(in srgb, var(--success) 80%, #000);
+  }
+
+  &--on[data-tipo='B2B'] {
+    color: #0b1f3a;
+    background: #f7c400;
+  }
+}
+
+.rf-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ---------- Un local ---------- */
+.rf-uno {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.rf-uno__cod {
+  grid-column: 1 / -1;
+}
+
+/* ---------- Varios locales ---------- */
+.rf-ayuda {
+  margin: 0 0 var(--space-2);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.rf-lineas {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  container-type: inline-size;
+}
+
+.rf-fila {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) repeat(3, minmax(0, 1fr)) 36px;
+  gap: 6px;
+  align-items: center;
+
+  &--cab {
+    padding: 0 2px;
+    color: var(--text-2);
+    font-size: var(--fs-xs);
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+
+    span:not(:first-child) {
+      text-align: right;
+    }
+  }
+
+  &--total {
+    padding: var(--space-2) 2px 0;
+    border-top: 1px solid var(--border);
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+
+    > span:not(:first-child) {
+      text-align: right;
+    }
+  }
+}
+
+.rf-celda {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+
+  .ui-input {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+/* La etiqueta de cada celda solo se ve cuando la cabecera de columnas no cabe. */
+.rf-etq {
+  display: none;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+.rf-quitar {
+  justify-self: center;
+}
+
+@container (max-width: 480px) {
+  .rf-fila {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) 36px;
+    padding-bottom: 6px;
+    border-bottom: 1px dashed var(--border);
+  }
+
+  .rf-fila--cab {
+    display: none;
+  }
+
+  .rf-celda--cod {
+    grid-column: 1 / 4;
+    grid-row: 1;
+  }
+
+  .rf-quitar {
+    grid-column: 4;
+    grid-row: 1;
+    align-self: end;
+  }
+
+  .rf-fila > :not(.rf-celda--cod):not(.rf-quitar) {
+    grid-row: 2;
+  }
+
+  .rf-fila--total {
+    border-bottom: 0;
+  }
+
+  .rf-etq {
+    display: block;
+  }
+}
+
+.rf-agregar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--space-3);
+}
+
+.rf-error {
+  display: block;
+  margin: 2px 0 0;
+}
+
+.rf-aviso {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  background: var(--warning-soft);
+  border-radius: var(--radius);
+
+  ui-icon {
+    flex: none;
+    margin-top: 2px;
+    color: var(--warning);
+  }
+}
+
+@media (max-width: 480px) {
+  .rf-uno {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Táctil: controles de 44 px y campos de 16 px (iOS no hace zoom al enfocarlos). */
+@media (pointer: coarse) {
+  .rf-quitar,
+  .rf-agregar,
+  .rf-seg__op,
+  .modal-foot .ui-btn {
+    min-height: 44px;
+  }
+
+  .rf-quitar {
+    min-width: 44px;
+  }
+
+  /* El campo de cada línea mide 44 px (también los números). */
+  .ui-input {
+    min-height: 44px;
+  }
+
+  .ui-input {
+    font-size: 16px;
+  }
+}
