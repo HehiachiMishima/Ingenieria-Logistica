@@ -63,27 +63,26 @@ export function nivelApi(e: Pick<EndpointMonitoreo, 'p95' | 'porcentaje'>): Nive
 export const TEXTO_NIVEL_API: Record<Nivel, string> = { ok: 'En meta', aviso: 'Atención', riesgo: 'Crítico' };
 
 /** Clase de insignia para un estado HTTP (sin estado = traza purgada). */
+/**
+ * Código HTTP como etiqueta de código (pestaña «HTTP» con `data-tab`): solo el número lleva el
+ * color, verde < 400, ámbar 4xx y rojo 5xx; gris si la traza ya no tiene estado.
+ */
 export function badgeEstado(estado: number | null | undefined): string {
   if (estado == null) {
-    return 'ui-badge--neutral';
+    return 'ui-badge--codigo ui-badge--codigo-nulo';
   }
   if (estado >= 500) {
-    return 'ui-badge--danger';
+    return 'ui-badge--codigo ui-badge--codigo-error';
   }
-  return estado >= 400 ? 'ui-badge--warning' : 'ui-badge--success';
+  return estado >= 400 ? 'ui-badge--codigo ui-badge--codigo-aviso' : 'ui-badge--codigo ui-badge--codigo-ok';
 }
 
-export function badgeMetodo(metodo: string | null | undefined): string {
-  switch (metodo) {
-    case 'GET':
-      return 'ui-badge--info';
-    case 'DELETE':
-      return 'ui-badge--danger';
-    case 'POST':
-      return 'ui-badge--brand';
-    default:
-      return 'ui-badge--neutral';
-  }
+/**
+ * Método HTTP: identidad técnica, no un estado. Antes POST y DELETE salían en rojo, como un
+ * error; ahora todos van en el mismo bloque navy y el texto los distingue.
+ */
+export function badgeMetodo(_metodo: string | null | undefined): string {
+  return 'ui-badge--metodo';
 }
 
 export const BADGE_RESULTADO: Record<string, string> = {

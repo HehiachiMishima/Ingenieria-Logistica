@@ -146,8 +146,10 @@
               </td>
               <td>
                 @if (e.estado != null) {
-                  <span class="ui-badge" [class]="badgeEstado(e.estado)">HTTP {{ e.estado }}</span>
-                  <span class="u-muted"> {{ e.duracion_ms | number }} ms</span>
+                  <span class="au-peticion">
+                    <span class="ui-badge" data-tab="HTTP" [class]="badgeEstado(e.estado)">{{ e.estado }}</span>
+                    <span class="u-muted au-peticion__ms">{{ e.duracion_ms | number }} ms</span>
+                  </span>
                 } @else {
                   <span class="u-muted" title="La traza HTTP ya se purgó; el evento se conserva">Purgada</span>
                 }

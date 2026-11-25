@@ -141,7 +141,7 @@
                   <span class="u-muted" title="Consulta: no cambió datos">—</span>
                 }
               </td>
-              <td><span class="ui-badge" [class]="badgeEstado(e.estado)">HTTP {{ e.estado }}</span></td>
+              <td><span class="ui-badge" data-tab="HTTP" [class]="badgeEstado(e.estado)">{{ e.estado ?? "—" }}</span></td>
               <td class="obs-num">{{ e.duracion_ms | number }} ms</td>
               <td><span class="obs-correlacion" [title]="e.correlacion">{{ e.correlacion }}</span></td>
             </tr>

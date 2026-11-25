@@ -28,7 +28,7 @@ export interface ChipFiltro {
             @if (chip.icono) {
               <ui-icon [name]="chip.icono" [size]="13" />
             }
-            <span class="ui-chip__etiqueta">{{ chip.etiqueta }}:</span>
+            <span class="ui-chip__etiqueta">{{ chip.etiqueta }}</span>
             <strong class="ui-chip__valor" [title]="chip.valor">{{ chip.valor }}</strong>
             <button
               type="button"

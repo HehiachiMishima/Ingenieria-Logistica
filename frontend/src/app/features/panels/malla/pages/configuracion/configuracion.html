@@ -938,7 +938,7 @@
       <ul class="historial__lista">
         @for (c of historial(); track $index) {
           <li>
-            <span class="ui-badge ui-badge--neutral">{{ nombreAccion[c.accion] ?? c.accion }}</span>
+            <span class="ui-badge">{{ nombreAccion[c.accion] ?? c.accion }}</span>
             <span class="historial__resumen">{{ c.resumen }}</span>
             <span class="historial__quien"
               >{{ quien(c.creadoPor) }} · {{ c.creadoEn | date: 'dd/MM/yyyy HH:mm' }}</span

@@ -17,6 +17,19 @@
   white-space: nowrap;
 }
 
+// Petición: código HTTP y duración; si no caben en una línea, la duración baja entera debajo
+// («20 ms» no se parte ni se monta sobre la etiqueta).
+.au-peticion {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--space-2);
+}
+
+.au-peticion__ms {
+  white-space: nowrap;
+}
+
 .filtro-seccion .ui-field + .ui-field {
   margin-top: var(--space-3);
 }

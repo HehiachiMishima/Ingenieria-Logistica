@@ -154,7 +154,7 @@
                       @for (cambio of pagina.contenido; track cambio.id) {
                         <tr>
                           @if (cambio.tipoAccion === 'ASIGNAR_OPERARIOS') {
-                            <td><span class="ui-badge ui-badge--info">Operarios</span></td>
+                            <td><span class="ui-badge">Operarios</span></td>
                             <td class="u-muted">—</td>
                             <td class="u-muted">—</td>
                             <td class="num u-muted">—</td>
@@ -164,7 +164,7 @@
                               {{ cambio.operariosDestino ?? 0 }} operario(s)
                             </td>
                           } @else if (cambio.tipoAccion === 'CAMBIAR_CLUSTER') {
-                            <td><span class="ui-badge ui-badge--info">Cambio de cluster</span></td>
+                            <td><span class="ui-badge">Cambio de cluster</span></td>
                             <td class="u-mono">{{ cambio.ruta ?? '—' }}</td>
                             <td>
                               {{ cambio.cluster ?? '—' }}

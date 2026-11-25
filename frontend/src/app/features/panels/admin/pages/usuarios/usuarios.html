@@ -217,7 +217,7 @@
                 } @else if (fila.roles.length) {
                   <span class="tag-list">
                     @for (rol of fila.roles; track rol) {
-                      <span class="ui-badge ui-badge--brand">{{ rol }}</span>
+                      <span class="ui-badge">{{ rol }}</span>
                     }
                   </span>
                 } @else {
@@ -228,7 +228,7 @@
                 @if (!fila.conResumen) {
                   <span class="u-muted">—</span>
                 } @else if (fila.permisos.length) {
-                  <span class="ui-badge ui-badge--info" [title]="fila.permisosTitulo">
+                  <span class="ui-badge" [title]="fila.permisosTitulo">
                     {{ fila.permisos.length }}
                   </span>
                 } @else {

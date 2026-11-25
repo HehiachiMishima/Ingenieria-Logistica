@@ -201,10 +201,9 @@
     color: var(--edad);
   }
 
+  // Etiqueta «Abierta»: la pestaña toma el color de su antigüedad (verde, ámbar, rojo).
   .estado--abierta {
-    color: var(--edad);
-    background: color-mix(in srgb, var(--edad) 12%, var(--surface));
-    border-color: color-mix(in srgb, var(--edad) 26%, var(--border));
+    --badge-color: var(--edad);
   }
 }
 
@@ -212,27 +211,21 @@
   white-space: nowrap;
 }
 
-// Punto que late: la abierta «tiene vida». Sin animación si el usuario la reduce.
-.estado__pulso {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: currentColor;
-  animation: pulso-abierta 1.8s ease-out infinite;
+// Cuadro blanco de la pestaña que late: la abierta «tiene vida». Sin animación si el usuario la reduce.
+.estado--abierta::before {
+  animation: pulso-abierta 1.8s ease-in-out infinite;
 }
 
 @keyframes pulso-abierta {
-  0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 55%, transparent);
-  }
-  70%,
-  100% {
-    box-shadow: 0 0 0 6px transparent;
+  50% {
+    background-size:
+      2px 2px,
+      auto;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .estado__pulso {
+  .estado--abierta::before {
     animation: none;
   }
 }
