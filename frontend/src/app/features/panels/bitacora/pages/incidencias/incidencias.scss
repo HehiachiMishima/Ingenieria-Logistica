@@ -1,7 +1,5 @@
 @use 'breakpoints' as bp;
-
-
-
+@use 'ficha-titan';
 
 .cell-sub {
   display: block;
@@ -21,39 +19,129 @@
   grid-column: 1 / -1;
 }
 
-.detalle {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-4);
-}
+/* ---------------- Detalle de la incidencia: ficha Titan y fichas de dato ---------------- */
+@include ficha-titan.estilos;
 
-.detalle__item {
+// Color de la pestaña y de «Fin» cuando sigue abierta: verde < 1 h · ámbar 1–4 h · rojo > 4 h;
+// verde también si ya está cerrada (la misma regla que las filas de la tabla).
+.ver {
+  --ft-color: var(--success);
+
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-3);
   min-width: 0;
+
+  &[data-nivel='media'] {
+    --ft-color: var(--warning);
+  }
+
+  &[data-nivel='antigua'] {
+    --ft-color: var(--danger);
+  }
 }
 
-.detalle__item--full {
-  grid-column: 1 / -1;
+// Sistema y tiempo a su ancho; el tipo toma el resto y se acorta con «…» (completo en el título).
+.ver__tipo {
+  background: #475569;
 }
 
-.detalle__label {
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-3);
-}
-
-.detalle__valor {
-  color: var(--text);
+.ver__descripcion {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
   overflow-wrap: anywhere;
+  white-space: pre-line;
+  color: var(--text);
+  background: var(--surface-2);
+  border-left: 3px solid light-dark(#5b6f8f, #5a76a6);
 }
 
+// Seis datos: 3 columnas, 2 en celular (nunca una sola: el modal quedaría el doble de alto).
+.ver__datos {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+
+  @include bp.down(sm) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+// «Fin» de una abierta: filete del color de su antigüedad y el texto «Sigue abierta» en gris.
+.ver__fin--abierta {
+  --ft-dato-color: var(--ft-color);
+
+  dd {
+    color: var(--text-2);
+  }
+}
+
+// Pie: «Eliminar» a la izquierda, separado de las acciones que siguen el trabajo.
+.ver__eliminar {
+  color: var(--danger);
+}
+
+@include bp.up(sm) {
+  .ver__acciones {
+    flex-wrap: wrap;
+  }
+
+  .ver__eliminar {
+    margin-right: auto;
+  }
+}
+
+// Celular: dos columnas en vez de cuatro botones apilados (que dejaban medio modal para el
+// detalle). Arriba «Editar · Registrar fin»; abajo «Volver · Eliminar».
 @include bp.down(sm) {
-  .detalle {
-    grid-template-columns: 1fr;
+  .modal-foot.ver__acciones {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+
+    .ui-btn {
+      width: 100%;
+      min-width: 0;
+    }
+  }
+
+  .ver__volver {
+    order: 2;
+  }
+
+  .ver__eliminar {
+    order: 3;
+  }
+}
+
+// Ficha angosta (celular): sistema y tipo arriba, el tiempo en su propia línea; así un sistema
+// o un tipo largos se acortan con «…» en vez de aplastar al otro o salirse de la ficha.
+.ver {
+  container: ver / inline-size;
+}
+
+@container ver (max-width: 480px) {
+  .ver__ficha {
+    grid-template-rows: auto minmax(52px, auto);
+
+    .ft__datos {
+      flex-wrap: wrap;
+    }
+
+    .ft__dato {
+      min-height: 28px;
+
+      &:first-child {
+        flex: 0 1 auto;
+        max-width: 50%;
+      }
+    }
+  }
+
+  .ver__tiempo {
+    flex: 1 1 100%;
+    text-align: center;
   }
 }
 

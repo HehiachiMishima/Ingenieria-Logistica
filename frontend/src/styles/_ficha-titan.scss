@@ -1,0 +1,164 @@
+/*
+ * Ficha Titan para mostrar datos (modales de detalle): el mismo lenguaje que las rutas de
+ * Simulación Titan y el tablero de permisos (marco azul pizarra de 2 px, esquinas rectas,
+ * bloques separados por 1 px), sin arrastre. Cada componente la incluye con
+ *   @use 'ficha-titan';
+ *   @include ficha-titan.estilos;
+ *
+ * Ficha (.ft): fila de datos arriba (.ft__datos con .ft__dato) y abajo una pestaña de color
+ * (.ft__pestana) y el código centrado (.ft__codigo). El color de la pestaña se hereda de
+ * --ft-color (lo fija el contenedor o la ficha; por defecto, el acento).
+ * Ficha de dato (.ft-dato): un <div> con <dt> (etiqueta en barra navy con filete de
+ * --ft-dato-color, por defecto el marco) y <dd> con el valor.
+ */
+@mixin estilos {
+  .ft {
+    --ft-marco: light-dark(#5b6f8f, #5a76a6);
+
+    display: grid;
+    grid-template-rows: 22px minmax(30px, auto);
+    gap: 1px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    font: inherit;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--text);
+    text-align: inherit;
+    background: color-mix(in srgb, var(--border) 55%, var(--surface));
+    border: 2px solid var(--ft-marco);
+    border-radius: 0;
+  }
+
+  .ft__datos,
+  .ft__fila {
+    display: flex;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  // Bloque (no flex): así un texto largo termina en «…»; el ícono va en línea con el texto.
+  .ft__dato {
+    display: block;
+    flex: none;
+    align-content: center;
+    min-width: 0;
+    max-width: 100%;
+    padding: 0 6px;
+    overflow: hidden;
+    font-size: 0.75rem; // 12 px: lo mínimo legible (--fs-xs mide 11,5 px)
+    color: #fff;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    background: #1f2937;
+
+    ui-icon {
+      margin-right: 4px;
+      vertical-align: -2px;
+    }
+
+    // El dato que crece ocupa el resto de la fila y se acorta con «…».
+    &--flex {
+      flex: 1 1 auto;
+    }
+
+    // Dato claro (cifras, tiempos): texto oscuro sobre la superficie.
+    &--claro {
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      background: var(--surface);
+    }
+
+    // Dato fuera de lo normal (p. ej. más lenta que el p95): ámbar.
+    &--alerta {
+      color: light-dark(#3b2a00, #fde68a);
+      background: light-dark(#fef3c7, #4a3a10);
+    }
+  }
+
+  // Su color oscurecido para que el texto blanco se lea en cualquier tono.
+  .ft__pestana {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    padding: 0 8px;
+    font-size: 0.75rem; // 12 px: lo mínimo legible (--fs-xs mide 11,5 px)
+    letter-spacing: 0.04em;
+    color: #fff;
+    text-transform: uppercase;
+    background: color-mix(in srgb, var(--ft-color, var(--accent)) 82%, #000);
+  }
+
+  .ft__codigo {
+    display: block;
+    flex: 1 1 auto;
+    align-content: center;
+    min-width: 0;
+    text-align: center;
+    padding: 0 8px;
+    overflow: hidden;
+    font-size: var(--fs-sm);
+    letter-spacing: 0.02em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    background: var(--surface);
+  }
+
+  /* Ficha protagonista del detalle: filas más altas y el código en grande. */
+  .ft--grande {
+    grid-template-rows: 28px minmax(52px, auto);
+
+    .ft__dato,
+    .ft__pestana {
+      font-size: var(--fs-sm);
+    }
+
+    .ft__pestana {
+      min-width: 96px;
+    }
+
+    .ft__codigo {
+      font-size: clamp(1.2rem, 4vw, 1.6rem);
+      letter-spacing: 0.04em;
+      overflow-wrap: anywhere;
+      white-space: normal;
+    }
+  }
+
+  /* Ficha de dato: etiqueta en barra navy con filete de color y el valor debajo. */
+  .ft-dato {
+    --ft-marco: light-dark(#5b6f8f, #5a76a6);
+
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    margin: 0;
+    background: var(--surface);
+    border: 2px solid var(--ft-marco);
+
+    dt {
+      padding: 3px 8px;
+      font-size: 0.75rem; // 12 px: lo mínimo legible (--fs-xs mide 11,5 px)
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: #fff;
+      text-transform: uppercase;
+      background: light-dark(#0f2140, #0b1729);
+      border-top: 3px solid var(--ft-dato-color, var(--ft-marco));
+    }
+
+    dd {
+      min-width: 0;
+      margin: 0;
+      padding: 7px 8px;
+      overflow: hidden;
+      font-weight: 600;
+      color: var(--text);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+}

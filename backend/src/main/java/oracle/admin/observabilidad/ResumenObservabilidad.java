@@ -37,8 +37,9 @@ public class ResumenObservabilidad {
     public record ResumenMonitoreo(long peticiones, long peticionesPrevias, long errores, long erroresPrevios,
                                    long erroresServidor, long erroresServidorPrevios, long p95, long p95Previo,
                                    List<PuntoMonitoreo> serie, List<CeldaMonitoreo> calor) {}
+    /** {@code maxima}: petición más lenta del período en ms (0 = sin dato, horas anteriores a la columna). */
     public record EndpointMonitoreo(String metodo, String ruta, long peticiones, long errores,
-                                    double porcentaje, long p95) {}
+                                    double porcentaje, long p95, long maxima) {}
     public record CeldaActividad(int dia, int hora, long acciones) {}
     public record PanelActividad(String panel, long usuarios, long acciones) {}
     public record PuntoActividad(String periodo, long usuarios, long acciones) {}
@@ -149,7 +150,7 @@ public class ResumenObservabilidad {
         validar(dias, PERIODOS);
         return transacciones.consultar(() -> jdbc.query("""
                 SELECT metodo, ruta, sum(peticiones) AS peticiones,
-                       sum(errores_cliente + errores_servidor) AS errores, %s
+                       sum(errores_cliente + errores_servidor) AS errores, max(duracion_max_ms) AS maxima, %s
                 FROM bitacora.peticiones_hora
                 WHERE hora >= now() - make_interval(days => ?)
                 GROUP BY metodo, ruta
@@ -159,7 +160,8 @@ public class ResumenObservabilidad {
                     long errores = rs.getLong("errores");
                     double porcentaje = peticiones == 0 ? 0 : Math.round(1000.0 * errores / peticiones) / 10.0;
                     return new EndpointMonitoreo(rs.getString("metodo"), rs.getString("ruta"), peticiones, errores,
-                            porcentaje, Histograma.percentil(peticiones, Histograma.leer(rs), PERCENTIL));
+                            porcentaje, Histograma.percentil(peticiones, Histograma.leer(rs), PERCENTIL),
+                            rs.getLong("maxima"));
                 }, dias))
             .stream()
             .sorted(Comparator.comparingLong(EndpointMonitoreo::errores).reversed()

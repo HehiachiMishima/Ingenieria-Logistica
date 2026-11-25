@@ -7,7 +7,7 @@ import { Icon } from '../../../../../shared/ui/icon/icon';
 import { Modal } from '../../../../../shared/ui/modal/modal';
 import { Paginador } from '../../../../../shared/ui/paginador/paginador';
 import { ObservabilidadApi } from '../../data/observabilidad.api';
-import { EndpointMonitoreo, Evento, Periodo } from '../../data/observabilidad.model';
+import { EndpointMonitoreo, Evento, FiltroPeticiones, Periodo } from '../../data/observabilidad.model';
 import { ListadoPaginado } from '../../state/listado-paginado';
 import {
   BADGE_NIVEL,
@@ -15,7 +15,6 @@ import {
   Nivel,
   PERIODOS_MONITOREO,
   TEXTO_NIVEL_API,
-  badgeEstado,
   badgeMetodo,
   nivelApi,
 } from '../../ui/observabilidad.util';
@@ -41,7 +40,6 @@ export class Monitoreo {
   readonly meta = META_P95_MS;
   readonly badgeNivel = BADGE_NIVEL;
   readonly textoNivel = TEXTO_NIVEL_API;
-  readonly badgeEstado = badgeEstado;
   readonly badgeMetodo = badgeMetodo;
 
   readonly dias = signal<Periodo>(1);
@@ -82,13 +80,15 @@ export class Monitoreo {
 
   // --- Peticiones de una API (modal) ---
   readonly detalle = signal<EndpointMonitoreo | null>(null);
-  readonly soloErrores = signal(false);
+  readonly filtro = signal<FiltroPeticiones>('todas');
   readonly peticiones = new ListadoPaginado<Evento>((pagina, tamano) => {
     const endpoint = this.detalle();
     return endpoint
-      ? this.api.peticiones(this.dias(), endpoint, this.soloErrores(), pagina, tamano)
+      ? this.api.peticiones(this.dias(), endpoint, this.filtro(), pagina, tamano)
       : of({ contenido: [], total: 0, totalPaginas: 0 });
   });
+  /** Aviso para lectores de pantalla al copiar un ID de correlación. */
+  readonly copiado = signal('');
 
   constructor() {
     this.cargar();
@@ -124,7 +124,8 @@ export class Monitoreo {
 
   abrir(endpoint: EndpointMonitoreo): void {
     this.detalle.set(endpoint);
-    this.soloErrores.set(false);
+    this.filtro.set('todas');
+    this.copiado.set('');
     // Sin filas de la API anterior mientras carga la nueva.
     this.peticiones.listado.vaciar();
     this.peticiones.reiniciar();
@@ -134,8 +135,32 @@ export class Monitoreo {
     this.detalle.set(null);
   }
 
-  alternarErrores(): void {
-    this.soloErrores.update((v) => !v);
+  filtrar(filtro: FiltroPeticiones): void {
+    if (filtro === this.filtro()) {
+      return;
+    }
+    this.filtro.set(filtro);
     this.peticiones.reiniciar();
+  }
+
+  /** Hora de la ficha: con 24 h basta la hora; con más días, también el día. */
+  formatoHora(): string {
+    return this.dias() === 1 ? 'HH:mm:ss' : 'dd/MM HH:mm';
+  }
+
+  /** Color de la pestaña HTTP: verde < 400, ámbar 4xx, rojo 5xx y gris si la traza ya no lo tiene. */
+  claseEstado(estado: number | null | undefined): string {
+    if (estado == null) {
+      return 'pa-ficha--sin-estado';
+    }
+    return estado >= 500 ? 'pa-ficha--servidor' : estado >= 400 ? 'pa-ficha--cliente' : 'pa-ficha--ok';
+  }
+
+  /** Copia el ID de correlación (para buscarlo en los logs) y lo anuncia. */
+  copiar(correlacion: string): void {
+    void navigator.clipboard?.writeText(correlacion).then(
+      () => this.copiado.set(`ID ${correlacion} copiado.`),
+      () => this.copiado.set('No se pudo copiar: selecciona el ID y cópialo a mano.'),
+    );
   }
 }

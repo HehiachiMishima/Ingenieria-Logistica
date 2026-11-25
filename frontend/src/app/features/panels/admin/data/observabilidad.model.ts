@@ -33,7 +33,12 @@ export interface EndpointMonitoreo {
   porcentaje: number;
   /** p95 aproximado por intervalos, en ms. */
   p95: number;
+  /** Petición más lenta del período en ms; 0 = sin dato (horas anteriores a guardarla). */
+  maxima: number;
 }
+
+/** Qué peticiones de una API se listan: todas, solo errores (≥ 400) o solo las más lentas que su p95. */
+export type FiltroPeticiones = 'todas' | 'errores' | 'lentas';
 
 export interface PuntoMonitoreo {
   /** «yyyy-MM-ddTHH:00» (24 h) o «yyyy-MM-dd» en la zona del negocio. */

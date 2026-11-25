@@ -13,11 +13,29 @@
   </button>
 </header>
 
+<!-- Barra estándar de las tablas: buscador que crece, período y Filtros. El buscador es el filtro de
+     usuario (igualdad con índice sobre millones de trazas: el nombre va completo); se aplica con Enter. -->
 <div class="toolbar">
+  <div class="ui-search toolbar__grow">
+    <ui-icon name="search" [size]="18" />
+    <input
+      type="search"
+      class="ui-input"
+      placeholder="Buscar por usuario, p. ej. @jperez…"
+      aria-label="Buscar por nombre de usuario completo (Enter para buscar)"
+      title="Nombre de usuario completo; no distingue mayúsculas ni tildes. Enter para buscar."
+      autocomplete="off"
+      enterkeyhint="search"
+      [value]="filtros().usuario"
+      (change)="aplicarTexto('usuario', $any($event.target).value)"
+      (keydown.enter)="aplicarTexto('usuario', $any($event.target).value)"
+      (input)="$any($event.target).value === '' && aplicarTexto('usuario', '')"
+    />
+  </div>
   <app-selector-periodo [opciones]="periodos" [valor]="filtros().dias" (cambio)="cambiarPeriodo($event)" />
   <button
     type="button"
-    class="ui-btn ui-btn--secondary ui-btn--sm toolbar__fin"
+    class="ui-btn ui-btn--secondary ui-btn--sm"
     [attr.aria-expanded]="filtrosAbierto()"
     aria-controls="auditoria-filtros"
     (click)="filtrosAbierto.set(true)"
@@ -57,22 +75,9 @@
     </div>
     <span class="filtro-nota">Los indicadores y gráficos de control están en el Dashboard.</span>
   </section>
+  <!-- El usuario se busca en la barra; aquí queda el registro, que se puede combinar con él. -->
   <section class="filtro-seccion">
-    <h3 class="filtro-seccion__titulo"><ui-icon name="user" [size]="15" /> Quién y qué</h3>
-    <div class="ui-field">
-      <label class="ui-label" for="auditoria-usuario">Nombre de usuario</label>
-      <input
-        id="auditoria-usuario"
-        name="usuario"
-        class="ui-input"
-        placeholder="Todos"
-        autocomplete="off"
-        [value]="filtros().usuario"
-        (change)="aplicarTexto('usuario', $any($event.target).value)"
-        (keydown.enter)="aplicarTexto('usuario', $any($event.target).value)"
-      />
-      <span class="filtro-nota">Completo; no distingue mayúsculas ni tildes.</span>
-    </div>
+    <h3 class="filtro-seccion__titulo"><ui-icon name="key" [size]="15" /> Registro</h3>
     <div class="ui-field">
       <label class="ui-label" for="auditoria-registro">ID del registro</label>
       <input
@@ -85,6 +90,7 @@
         (change)="aplicarTexto('registro', $any($event.target).value)"
         (keydown.enter)="aplicarTexto('registro', $any($event.target).value)"
       />
+      <span class="filtro-nota">Combínalo con el usuario de la barra para ver qué le hizo a ese registro.</span>
     </div>
   </section>
 </ui-panel-filtros>

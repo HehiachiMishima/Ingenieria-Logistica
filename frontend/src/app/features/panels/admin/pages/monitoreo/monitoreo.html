@@ -127,67 +127,123 @@
   [subtitulo]="detalle() ? detalle()!.metodo + ' ' + detalle()!.ruta : ''"
   (cerrar)="cerrarDetalle()"
 >
-  <div class="obs-pie obs-pie--arriba">
-    <button
-      type="button"
-      class="ui-btn ui-btn--secondary ui-btn--sm"
-      [attr.aria-pressed]="soloErrores()"
-      (click)="alternarErrores()"
-    >
-      <ui-icon name="alertTriangle" [size]="16" />
-      Solo errores
-    </button>
-    <span class="obs-nota">Las más recientes primero. El detalle se conserva 30 días.</span>
-  </div>
-
-  <div class="table-card" [class.table-card--refrescando]="peticiones.listado.refrescando()">
-    @if (peticiones.listado.cargaInicial()) {
-      <div class="loading"><span class="ui-spinner"></span> Cargando peticiones…</div>
-    } @else if (peticiones.listado.error()) {
-      <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="peticiones.listado.error()!">
-        <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="peticiones.reiniciar()">
-          <ui-icon name="refresh" [size]="16" /> Reintentar
-        </button>
-      </ui-empty>
-    } @else if (peticiones.listado.items().length === 0) {
-      <ui-empty
-        icono="activity"
-        [titulo]="soloErrores() ? 'Sin errores' : 'Sin peticiones'"
-        [mensaje]="soloErrores() ? 'Esta API no tuvo errores en el período.' : 'No hay peticiones guardadas en el período.'"
-      />
-    } @else {
-      <div class="ui-table-wrap">
-        <table class="ui-table">
-          <thead>
-            <tr>
-              <th>Fecha y hora</th>
-              <th>Estado</th>
-              <th class="obs-num">Duración</th>
-              <th>ID de correlación</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (p of peticiones.listado.items(); track p.id) {
-              <tr>
-                <td class="obs-fecha">{{ p.fecha | date: 'dd/MM/yyyy HH:mm:ss' }}</td>
-                <td><span class="ui-badge" [class]="badgeEstado(p.estado)">HTTP {{ p.estado }}</span></td>
-                <td class="obs-num">{{ p.duracion_ms | number }} ms</td>
-                <td><span class="obs-correlacion" [title]="p.correlacion">{{ p.correlacion }}</span></td>
-              </tr>
-            }
-          </tbody>
-        </table>
+  @if (detalle(); as api) {
+    <!-- Cifras de la API en el período: salen del resumen por hora, sin leer las trazas. -->
+    <dl class="pa-kpis">
+      <div class="ft-dato">
+        <dt>Peticiones</dt>
+        <dd>{{ api.peticiones | number }}</dd>
       </div>
-      <ui-paginador
-        [pagina]="peticiones.paginaActual()"
-        [total]="peticiones.listado.total()"
-        [porPagina]="peticiones.porPagina()"
-        (paginaCambia)="peticiones.cambiarPagina($event)"
-        (porPaginaCambia)="peticiones.cambiarPorPagina($event)"
-      />
-      @if (peticiones.enTope()) {
-        <p class="obs-tope">Se muestran las 10 000 peticiones más recientes: acota el período o activa Solo errores.</p>
+      <div class="ft-dato" [class.pa-kpi--alerta]="api.porcentaje > 2">
+        <dt>Con error</dt>
+        <dd>{{ api.porcentaje | number: '1.0-1' }} %</dd>
+      </div>
+      <div class="ft-dato" [class.pa-kpi--alerta]="api.p95 > meta">
+        <dt>p95</dt>
+        <dd>{{ api.p95 | number }} ms</dd>
+      </div>
+      <div class="ft-dato">
+        <dt>Más lenta</dt>
+        <dd [title]="api.maxima ? '' : 'Sin dato: las horas anteriores a guardar este valor no lo tienen'">
+          {{ api.maxima ? (api.maxima | number) + ' ms' : '—' }}
+        </dd>
+      </div>
+    </dl>
+
+    <div class="pa-barra">
+      <div class="pa-filtros" role="group" aria-label="Qué peticiones ver">
+        <button type="button" class="pa-filtro" [attr.aria-pressed]="filtro() === 'todas'" (click)="filtrar('todas')">
+          Todas
+        </button>
+        <button
+          type="button"
+          class="pa-filtro"
+          [attr.aria-pressed]="filtro() === 'errores'"
+          [disabled]="api.errores === 0"
+          (click)="filtrar('errores')"
+        >
+          Errores <span class="pa-filtro__n">{{ api.errores | number }}</span>
+        </button>
+        <button
+          type="button"
+          class="pa-filtro"
+          [attr.aria-pressed]="filtro() === 'lentas'"
+          [disabled]="api.p95 === 0"
+          [title]="'Más lentas que el p95 de esta API (' + api.p95 + ' ms)'"
+          (click)="filtrar('lentas')"
+        >
+          Lentas <span class="pa-filtro__n">&gt; {{ api.p95 | number }} ms</span>
+        </button>
+      </div>
+      <span class="obs-nota">Las más recientes primero. Clic en una ficha copia su ID de correlación. El detalle se conserva 30 días.</span>
+    </div>
+
+    <p class="pa-lector" role="status" aria-live="polite">{{ copiado() }}</p>
+
+    <div class="pa-lista" [class.pa-lista--refrescando]="peticiones.listado.refrescando()">
+      @if (peticiones.listado.cargaInicial()) {
+        <div class="loading"><span class="ui-spinner"></span> Cargando peticiones…</div>
+      } @else if (peticiones.listado.error()) {
+        <ui-empty icono="alerta" titulo="No se pudo cargar" [mensaje]="peticiones.listado.error()!">
+          <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="peticiones.reiniciar()">
+            <ui-icon name="refresh" [size]="16" /> Reintentar
+          </button>
+        </ui-empty>
+      } @else if (peticiones.listado.items().length === 0) {
+        <ui-empty
+          icono="activity"
+          [titulo]="filtro() === 'errores' ? 'Sin errores' : filtro() === 'lentas' ? 'Sin peticiones lentas' : 'Sin peticiones'"
+          [mensaje]="
+            filtro() === 'errores'
+              ? 'Esta API no tuvo errores en el período.'
+              : filtro() === 'lentas'
+                ? 'Ninguna petición pasó el p95 en el período.'
+                : 'No hay peticiones guardadas en el período.'
+          "
+        />
+      } @else {
+        <!-- Cada petición, una ficha Titan: hora · quién · duración arriba; HTTP y correlación abajo. -->
+        <ul class="pa-fichas">
+          @for (p of peticiones.listado.items(); track p.id) {
+            @let lenta = (p.duracion_ms ?? 0) > api.p95 && api.p95 > 0;
+            <li>
+              <button
+                type="button"
+                class="ft pa-ficha"
+                [class]="claseEstado(p.estado)"
+                [attr.aria-label]="
+                  'HTTP ' + (p.estado ?? 'sin estado') + ', ' + (p.duracion_ms ?? 0) + ' ms, ' +
+                  (p.usuario ?? 'sin sesión') + '. Copiar ID de correlación ' + p.correlacion
+                "
+                [title]="(p.fecha | date: 'dd/MM/yyyy HH:mm:ss') + ' · ' + p.correlacion"
+                (click)="copiar(p.correlacion)"
+              >
+                <span class="ft__datos">
+                  <span class="ft__dato u-mono">{{ p.fecha | date: formatoHora() }}</span>
+                  <span class="ft__dato ft__dato--flex pa-ficha__usuario">{{ p.usuario ?? 'Sin sesión' }}</span>
+                  <span class="ft__dato ft__dato--claro" [class.ft__dato--alerta]="lenta">
+                    {{ p.duracion_ms | number }} ms
+                  </span>
+                </span>
+                <span class="ft__fila">
+                  <span class="ft__pestana">{{ p.estado ?? '—' }}</span>
+                  <span class="ft__codigo u-mono">{{ p.correlacion }}</span>
+                </span>
+              </button>
+            </li>
+          }
+        </ul>
+        <ui-paginador
+          [pagina]="peticiones.paginaActual()"
+          [total]="peticiones.listado.total()"
+          [porPagina]="peticiones.porPagina()"
+          (paginaCambia)="peticiones.cambiarPagina($event)"
+          (porPaginaCambia)="peticiones.cambiarPorPagina($event)"
+        />
+        @if (peticiones.enTope()) {
+          <p class="obs-tope">Se muestran las 10 000 peticiones más recientes: acota el período o usa Errores o Lentas.</p>
+        }
       }
-    }
-  </div>
+    </div>
+  }
 </ui-modal>

@@ -456,69 +456,100 @@
 <ui-modal
   [abierto]="verAbierto()"
   ancho="lg"
-  [titulo]="aVer()?.ticket ?? 'Incidencia'"
-  subtitulo="Detalle de la incidencia"
+  titulo="Detalle de la incidencia"
   (cerrar)="cerrarVer()"
 >
   @if (aVer(); as incidencia) {
-    <div class="detalle">
-      <div class="detalle__item detalle__item--full">
-        <span class="detalle__label">Descripción</span>
-        <span class="detalle__valor">{{ incidencia.descripcion }}</span>
+    @let abierta = incidencia.estado === 'ABIERTA';
+    @let inicio = fechaCorta(fechaInicio(incidencia)) + ' · ' + hhmm(incidencia.horaInicio);
+    @let fin = abierta ? 'Sigue abierta' : fechaCorta(fechaFin(incidencia)) + ' · ' + hhmm(incidencia.horaFin);
+    @let registro = incidencia.creadoPor | actorLabel;
+    <div class="ver" [attr.data-nivel]="nivelFicha(incidencia)">
+      <!-- Ficha del ticket: sistema, tipo y tiempo arriba; estado (color por antigüedad) y ticket abajo. -->
+      <div class="ft ft--grande ver__ficha">
+        <div class="ft__datos">
+          <span class="ft__dato" [title]="'Sistema: ' + (incidencia.sistema ?? 'sin sistema')">
+            {{ incidencia.sistema ?? 'Sin sistema' }}
+          </span>
+          <span class="ft__dato ft__dato--flex ver__tipo" [title]="'Tipo: ' + (incidencia.tipoIncidencia ?? 'sin tipo')">
+            {{ incidencia.tipoIncidencia ?? 'Sin tipo' }}
+          </span>
+          <span class="ft__dato ft__dato--claro ver__tiempo">
+            <ui-icon name="reloj" [size]="14" />
+            {{ tiempoFicha(incidencia) }}
+          </span>
+        </div>
+        <div class="ft__fila">
+          <span class="ft__pestana">{{ etiquetaEstado[incidencia.estado] }}</span>
+          <span class="ft__codigo u-mono">{{ incidencia.ticket }}</span>
+        </div>
       </div>
-      <div class="detalle__item">
-        <span class="detalle__label">Ticket</span>
-        <span class="detalle__valor u-mono">{{ incidencia.ticket }}</span>
-      </div>
-      <div class="detalle__item">
-        <span class="detalle__label">Centro</span>
-        <span class="detalle__valor">{{ incidencia.centro ?? '—' }}</span>
-      </div>
-      <div class="detalle__item">
-        <span class="detalle__label">Sistema</span>
-        <span class="detalle__valor">{{ incidencia.sistema ?? '—' }}</span>
-      </div>
-      <div class="detalle__item">
-        <span class="detalle__label">Tipo</span>
-        <span class="detalle__valor">{{ incidencia.tipoIncidencia ?? '—' }}</span>
-      </div>
-      <div class="detalle__item">
-        <span class="detalle__label">Área</span>
-        <span class="detalle__valor">{{ incidencia.area ?? '—' }}</span>
-      </div>
-      <div class="detalle__item">
-        <span class="detalle__label">Responsable</span>
-        <span class="detalle__valor">{{ incidencia.responsable ?? '—' }}</span>
-      </div>
-      <div class="detalle__item">
-        <span class="detalle__label">Estado</span>
-        <span class="detalle__valor">{{ etiquetaEstado[incidencia.estado] }}</span>
-      </div>
-      <div class="detalle__item">
-        <span class="detalle__label">Inicio</span>
-        <span class="detalle__valor u-mono">{{ fechaCorta(fechaInicio(incidencia)) }} · {{ hhmm(incidencia.horaInicio) }}</span>
-      </div>
-      <div class="detalle__item">
-        <span class="detalle__label">Fin</span>
-        <span class="detalle__valor u-mono">
-          {{ incidencia.estado === 'ABIERTA' ? '—' : fechaCorta(fechaFin(incidencia)) + ' · ' + hhmm(incidencia.horaFin) }}
-        </span>
-      </div>
-      <div class="detalle__item">
-        <span class="detalle__label">{{ incidencia.estado === 'ABIERTA' ? 'Abierta hace' : 'Duración' }}</span>
-        <span class="detalle__valor u-mono">
-          {{ incidencia.estado === 'ABIERTA' ? edadAbierta(incidencia) : duracionHhmm(incidencia.tiempoSolucionSeg) }}
-        </span>
-      </div>
-      <div class="detalle__item">
-        <span class="detalle__label">Registrado por</span>
-        <span class="detalle__valor">{{ incidencia.creadoPor | actorLabel }}</span>
-      </div>
+
+      <p class="ver__descripcion">{{ incidencia.descripcion }}</p>
+
+      <dl class="ver__datos">
+        <div class="ft-dato">
+          <dt>Centro</dt>
+          <dd [title]="incidencia.centro ?? ''">{{ incidencia.centro ?? '—' }}</dd>
+        </div>
+        <div class="ft-dato">
+          <dt>Área</dt>
+          <dd [title]="incidencia.area ?? ''">{{ incidencia.area ?? '—' }}</dd>
+        </div>
+        <div class="ft-dato">
+          <dt>Responsable</dt>
+          <dd [title]="incidencia.responsable ?? ''">{{ incidencia.responsable ?? '—' }}</dd>
+        </div>
+        <div class="ft-dato">
+          <dt>Inicio</dt>
+          <dd class="u-mono">{{ inicio }}</dd>
+        </div>
+        <div class="ft-dato" [class.ver__fin--abierta]="abierta">
+          <dt>Fin</dt>
+          <dd [class.u-mono]="!abierta">{{ fin }}</dd>
+        </div>
+        <div class="ft-dato">
+          <dt>Registrada por</dt>
+          <dd [title]="registro">{{ registro }}</dd>
+        </div>
+      </dl>
     </div>
   }
 
-  <div modal-footer class="modal-foot">
-    <button type="button" class="ui-btn ui-btn--primary" (click)="cerrarVer()">Cerrar</button>
+  <!-- Las mismas acciones y permisos que la fila de la tabla: el detalle ya no es un callejón sin salida. -->
+  <div modal-footer class="modal-foot ver__acciones">
+    @if (aVer(); as incidencia) {
+      <button
+        *hasPermiso="permisos.ELIMINAR_INCIDENCIAS"
+        type="button"
+        class="ui-btn ui-btn--ghost ver__eliminar"
+        (click)="verAEliminar(incidencia)"
+      >
+        <ui-icon name="trash" [size]="16" />
+        Eliminar
+      </button>
+      <button type="button" class="ui-btn ui-btn--secondary ver__volver" (click)="cerrarVer()">Volver</button>
+      <button
+        *hasPermiso="permisos.MODIFICAR_INCIDENCIAS"
+        type="button"
+        class="ui-btn ui-btn--secondary"
+        (click)="verAEditar(incidencia)"
+      >
+        <ui-icon name="edit" [size]="16" />
+        Editar
+      </button>
+      @if (incidencia.estado === 'ABIERTA') {
+        <button
+          *hasPermiso="permisos.MODIFICAR_INCIDENCIAS"
+          type="button"
+          class="ui-btn ui-btn--primary"
+          (click)="verACerrar(incidencia)"
+        >
+          <ui-icon name="check" [size]="16" />
+          Registrar fin
+        </button>
+      }
+    }
   </div>
 </ui-modal>
 

@@ -2,6 +2,13 @@
 
 // --- estructura -------------------------------------------------------------------------
 
+// El texto de la cabecera toma el ancho que sobra y «Actualizar» queda a su derecha; sin esto,
+// en pantallas medianas el texto se reacomodaba al llegar los datos (CLS 0,14 en 683 px).
+.page-head > div {
+  flex: 1 1 0;
+  min-width: min(100%, 280px);
+}
+
 // Nombres de usuario largos (correos, 60+ caracteres) se cortan con … y el título muestra el completo.
 .ui-person .ui-table__primary {
   max-width: 22ch;

@@ -27,6 +27,8 @@ public class ConsultasObservabilidad {
      * nadie recorre más de 1 000 páginas. Con filtros (usuario, registro, período corto) el total es exacto.
      */
     static final int TOPE_TOTAL = 10_000;
+    /** Tope del filtro «Lentas»: una hora en ms (ninguna petición dura más sin cortarse antes). */
+    static final long MAX_LENTAS_MS = 3_600_000;
     private static final Set<String> RESULTADOS = Set.of("Éxito", "Fallo", "Denegado");
 
     public ConsultasObservabilidad(JdbcTemplate jdbc, ResumenObservabilidad resumen,
@@ -174,13 +176,22 @@ public class ConsultasObservabilidad {
     @PreAuthorize("hasAuthority('VER_MONITOREO')")
     public ApiResponse<PaginaResponse<Map<String, Object>>> peticiones(@RequestParam(defaultValue="1") int dias,
             @RequestParam String metodo, @RequestParam String ruta, @RequestParam(defaultValue="false") boolean errores,
+            @RequestParam(required=false) Long lentas,
             @RequestParam(defaultValue="1") int pagina, @RequestParam(defaultValue="" + TAMANO) int tamano) {
         var f = new Filtro("p", dias);
         f.igual("p.metodo", metodo);
         f.igual("p.ruta", ruta);
         if (errores) f.y("p.estado >= 400");
+        // «Lentas»: más de N ms (el frontend manda el p95 de la API). Mismo plan que «errores»: la página
+        // recorre peticiones_pkey hacia atrás y el total se cuenta con el mismo tope (medido en el informe).
+        if (lentas != null) {
+            if (lentas < 1 || lentas > MAX_LENTAS_MS) {
+                throw new SolicitudInvalidaException("La duración mínima debe ser de 1 a " + MAX_LENTAS_MS + " ms.");
+            }
+            f.y("p.duracion_ms > ?", lentas);
+        }
         return pagina("""
-            SELECT p.id,p.ocurrido_en AS fecha,p.metodo,p.ruta,p.estado,p.duracion_ms,p.correlacion
+            SELECT p.id,p.ocurrido_en AS fecha,p.usuario,p.metodo,p.ruta,p.estado,p.duracion_ms,p.correlacion
             FROM bitacora.peticiones p
             """, "bitacora.peticiones p", "p", f, pagina, tamano);
     }

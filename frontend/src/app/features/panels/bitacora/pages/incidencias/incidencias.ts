@@ -667,6 +667,35 @@ export class Incidencias {
     this.aVer.set(null);
   }
 
+  /** Color de la ficha del detalle: antigüedad si sigue abierta (reciente/media/antigua), si no «cerrada». */
+  nivelFicha(incidencia: Incidencia): string {
+    return incidencia.estado === 'ABIERTA' ? this.nivelAbierta(incidencia) : 'cerrada';
+  }
+
+  /** Tiempo en la ficha: cuánto lleva abierta (avanza con el reloj por minuto) o cuánto duró. */
+  tiempoFicha(incidencia: Incidencia): string {
+    if (incidencia.estado === 'ABIERTA') {
+      return `Abierta hace ${this.edadAbierta(incidencia)}`;
+    }
+    return incidencia.tiempoSolucionSeg == null ? 'Cerrada' : `Duró ${edad(incidencia.tiempoSolucionSeg)}`;
+  }
+
+  /* Acciones del detalle: cierran el detalle y abren el mismo modal que la fila de la tabla. */
+  verAEditar(incidencia: Incidencia): void {
+    this.cerrarVer();
+    this.abrirEditar(incidencia);
+  }
+
+  verACerrar(incidencia: Incidencia): void {
+    this.cerrarVer();
+    this.abrirCierre(incidencia);
+  }
+
+  verAEliminar(incidencia: Incidencia): void {
+    this.cerrarVer();
+    this.confirmarEliminar(incidencia);
+  }
+
   eliminar(): void {
     const incidencia = this.aEliminar();
     if (!incidencia || this.eliminando()) {

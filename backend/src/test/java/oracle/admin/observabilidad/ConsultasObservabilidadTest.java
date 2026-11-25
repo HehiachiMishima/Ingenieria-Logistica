@@ -56,6 +56,7 @@ class ConsultasObservabilidadTest {
         assertThat(endpoint.errores()).isEqualTo(2);
         assertThat(endpoint.porcentaje()).isEqualTo(66.7);
         assertThat(endpoint.p95()).isEqualTo(1000);
+        assertThat(endpoint.maxima()).isEqualTo(900);
 
         var actividad = resumen.actividad(1, usuario);
         assertThat(actividad.usuarios()).isEqualTo(1);
@@ -128,6 +129,48 @@ class ConsultasObservabilidadTest {
         assertThat(despues).hasSize(1);
         assertThat(despues.getFirst()).containsEntry("usuario", usuario)
                 .containsEntry("resultado", "Éxito").containsEntry("estado", null);
+    }
+
+    @Test
+    void laMasLentaDeCadaHoraSoloSubeYLlegaAlResumenDeLaApi() {
+        String usuario = UUID.randomUUID().toString();
+        String ruta = "/api/picking/" + usuario;
+        cola.guardar(List.of(traza(usuario, ruta, 200, 40), traza(usuario, ruta, 200, 900)));
+        cola.guardar(List.of(traza(usuario, ruta, 200, 1500)));
+        cola.guardar(List.of(traza(usuario, ruta, 200, 15))); // una más rápida no baja el máximo
+
+        Long hora = jdbc.queryForObject("SELECT max(duracion_max_ms) FROM bitacora.peticiones_hora WHERE ruta = ?",
+                Long.class, ruta);
+        assertThat(hora).isEqualTo(1500);
+        var endpoint = resumen.endpoints(1).stream().filter(e -> e.ruta().equals(ruta)).findFirst().orElseThrow();
+        assertThat(endpoint.maxima()).isEqualTo(1500);
+        assertThat(endpoint.peticiones()).isEqualTo(4);
+    }
+
+    @Test
+    @WithMockUser(authorities = "VER_MONITOREO")
+    void lasPeticionesDeUnaApiTraenElUsuarioYFiltranLasLentasYLosErrores() {
+        String usuario = UUID.randomUUID().toString();
+        String ruta = "/api/picking/" + usuario;
+        cola.guardar(List.of(traza(usuario, ruta, 200, 10), traza(usuario, ruta, 200, 300),
+                traza(usuario, ruta, 500, 900), traza(usuario, ruta, 404, 5)));
+
+        var todas = consultas.peticiones(1, "GET", ruta, false, null, 1, 10).datos();
+        assertThat(todas.total()).isEqualTo(4);
+        assertThat(todas.contenido()).allMatch(f -> usuario.equals(f.get("usuario")));
+
+        var lentas = consultas.peticiones(1, "GET", ruta, false, 299L, 1, 10).datos();
+        assertThat(lentas.total()).isEqualTo(2);
+        assertThat(lentas.contenido()).allMatch(f -> ((Number) f.get("duracion_ms")).longValue() > 299);
+
+        var erroresLentos = consultas.peticiones(1, "GET", ruta, true, 299L, 1, 10).datos();
+        assertThat(erroresLentos.total()).isEqualTo(1);
+        assertThat(erroresLentos.contenido().getFirst()).containsEntry("estado", 500);
+
+        assertThatThrownBy(() -> consultas.peticiones(1, "GET", ruta, false, 0L, 1, 10))
+                .isInstanceOf(SolicitudInvalidaException.class);
+        assertThatThrownBy(() -> consultas.peticiones(1, "GET", ruta, false, 3_600_001L, 1, 10))
+                .isInstanceOf(SolicitudInvalidaException.class);
     }
 
     @Test

@@ -4,8 +4,8 @@
 
 | Campo | Valor |
 |---|---|
-| Fecha | 2026-11-19 (observabilidad) · 2026-11-20 (permisos del rol, roles del usuario, permisos individuales y roles con un permiso) · 2026-11-21 (selector de paneles) |
-| Commit | 19a57b7 + cambios sin commit (rama update_16) · 2a6d074 + cambios sin commit (rama update_19) · 8215938 + cambios sin commit (roles del usuario) · de8a47e + cambios sin commit (permisos individuales) · b21c714 + cambios sin commit (roles con un permiso) · c754505 + cambios sin commit (selector de paneles, rama update_21) |
+| Fecha | 2026-11-19 (observabilidad) · 2026-11-20 (permisos del rol, roles del usuario, permisos individuales y roles con un permiso) · 2026-11-21 (selector de paneles) · 2026-11-25 (detalle de incidencia, peticiones de una API y buscador de Auditoría y Actividad) |
+| Commit | 19a57b7 + cambios sin commit (rama update_16) · 2a6d074 + cambios sin commit (rama update_19) · 8215938 + cambios sin commit (roles del usuario) · de8a47e + cambios sin commit (permisos individuales) · b21c714 + cambios sin commit (roles con un permiso) · c754505 + cambios sin commit (selector de paneles, rama update_21; detalle de incidencia y peticiones de una API) |
 | Entorno | local, macOS arm64, una instancia; volumen sintético de 1 000 000 trazas, 200 000 eventos de auditoría y 80 569 filas en `roles_permisos` (2 000 roles × 40 permisos, 563 permisos), y para los roles del usuario 100 000 usuarios con 150 001 asignaciones de rol y 50 000 excepciones, todo dentro de transacciones revertidas |
 | Backend | Spring Boot 4.1.2, Hibernate 7.4.13, HikariCP 7.0.2, driver PostgreSQL 42.7.14, JDK 25, virtual threads sí (`spring.threads.virtual.enabled=true`), open-in-view false |
 | Base de datos | PostgreSQL 18.6 local, max_connections 100, sin PgBouncer, pg_stat_statements no cargado |
@@ -54,6 +54,15 @@
 | CLS del selector (antes) | 1366 × 768 y 390 × 844 | 0 | 0,1 | `PerformanceObserver('layout-shift')` | 2026-11-21 |
 | Imágenes del selector (antes) | 1366 × 768 | `atlasImg.png` 572 790 B (1 360 × 1 600 px, mostrada a 46 × 46 px) y `atlas-carga.webp` 153 702 B; 14 peticiones en total | — | Resource Timing (`encodedBodySize`) | 2026-11-21 |
 | Alto del selector en celular (antes) | 390 × 844 | 3 838 px; 2 de 11 paneles en la primera pantalla | — | `document.documentElement.scrollHeight` | 2026-11-21 |
+| Peticiones de una API: total con «Solo errores» (antes) | 1 000 000 de trazas, 250 000 de una API, 30 días; datos confirmados con VACUUM | 30,0 ms (Bitmap Heap Scan, 22 012 buffers); 364 ms con la caché fría y datos sin confirmar | 200 ms | `EXPLAIN (ANALYZE, BUFFERS)` en `BenchPeticiones2.java` sobre copias TEMP de `bitacora.peticiones` (scratchpad) y en `BenchPeticiones.java` en una transacción revertida | 2026-11-25 |
+| Peticiones de una API: primera página (antes) | ídem, «Todas» y «Solo errores» | 0,009 ms y 0,103 ms (Index Scan Backward de `peticiones_pkey`) | 200 ms | ídem | 2026-11-25 |
+| «Más lenta» calculada sobre las trazas (alternativa) | ídem, 30 días | 54,4 ms (22 012 buffers); 484 ms con la caché fría | 200 ms | ídem: `SELECT max(duracion_ms) … WHERE ocurrido_en >= … AND metodo AND ruta` | 2026-11-25 |
+| Inserción de 500 trazas | copia TEMP de `bitacora.peticiones`, media de 20 | 5,65 ms | — | `BenchPeticiones2.java` | 2026-11-25 |
+| Chunk perezoso de Monitoreo (antes) | `ng build` producción | 11,71 kB (4,13 kB gzip) | — | build `qa-nuevo` (scratchpad), archivo con «Peticiones de la API» | 2026-11-25 |
+| Chunk perezoso de Incidencias (antes) | `ng build` producción | 42,97 kB (11,54 kB gzip) | — | ídem, archivo con «Detalle de la incidencia» | 2026-11-25 |
+| Filtrar Auditoría o Actividad por usuario (antes) | 1366 × 768, servidor de QA | 1 petición y 4 pasos (abrir Filtros, ir al campo, Enter, cerrar el panel); 0 peticiones al escribir | — | Playwright: `medir-busqueda.mjs` (scratchpad) cuenta las peticiones a `/api/admin/auditoria` y `/api/admin/actividad` | 2026-11-25 |
+| CLS de Auditoría y Actividad (antes) | primera carga, servidor de QA, 3 cargas | Auditoría 0,140 en 683 × 384; Actividad 0,186 en 1366 × 768 (la descripción baja 21 px y el contenido se corre 5 px); 0 en las cargas siguientes | 0,1 | `PerformanceObserver("layout-shift")` con sus fuentes en `medir-cls.mjs` (scratchpad) | 2026-11-25 |
+| Chunks perezosos de Auditoría y Actividad (antes) | `ng build` producción | 4,05 y 4,22 kB gzip | — | build `qa-modales` (scratchpad) | 2026-11-25 |
 
 ## 3. Hallazgos
 
@@ -69,6 +78,8 @@
 | Media | API | `permisos-usuario.ts:156` y `:133` (versión `de8a47e`): un PUT o DELETE por permiso, cada uno con `verificarPuedeAdministrar` y `verificarPuedeOtorgar` (7 sentencias por permiso); abrir el diálogo hacía 3 peticiones en paralelo (`permisos-usuario.ts:86`) | API conversadora: una escritura HTTP por elemento y tres lecturas para una pantalla | `GET /api/usuarios/{usuarioId}/permisos/tablero` (una consulta con lo que dan los roles, las excepciones y si se puede conceder) y `PATCH /api/usuarios/{usuarioId}/permisos` con `{conceder, denegar, heredar}` en una transacción (`UsuarioPermisoService.actualizarLote`) | 1 petición al abrir y 1 al guardar; 8 sentencias para 5 permisos (medido: 9,3 ms frente a 20,0 ms) |
 | Media | Backend | `permisos.html:342` (versión `b21c714`): «La asignación se hace desde la pantalla de Roles»; dar un permiso nuevo a 5 roles exige 5 guardados, y cada uno ejecuta `autorizacionCache.invalidarTodo` (`RolPermisoService.java:95`), que vacía la caché de autorización de todos los usuarios | Reparto de un permiso por elemento: N invalidaciones globales de caché y N peticiones | Tablero inverso: `GET /api/permisos/{permisoId}/roles/tablero` y `PATCH /api/permisos/{permisoId}/roles` con `{agregar, quitar}` en una transacción (`RolPermisoService.actualizarRoles`) | 1 petición y 1 `invalidarTodo` por guardado en lugar de 5; 7 sentencias en lugar de 25 |
 | Media | Frontend | `launcher.html:6` y `panel-shell.html:14` (cabecera del selector y de todos los paneles): `atlasImg.png` pesa 572 790 B (1 360 × 1 600 px) y se muestra a 46 × 46 y 40 × 40 px; es el elemento LCP del selector (mediana 1 980 ms en QA local) y también el favicon (`index.html:13`) | Imagen 17 veces más ancha que su caja a 2× (92 px): payload > 100 KB en la ruta de entrada | `src="marca/atlas-logo-192.png"` (26 856 B, ya en `public/marca`, la misma marca) en las dos cabeceras y `marca/atlas-logo-64.png` (6 039 B) como favicon | Imagen LCP ≤ 27 KB (−95 %); LCP del selector ≤ 1 000 ms con el mismo protocolo (servidor de QA, 3 cargas, mediana) |
+| Alta | Base de datos | «Más lenta» del detalle de una API calculada como `max(duracion_ms)` sobre `bitacora.peticiones` (alternativa medida, no publicada): 54,4 ms con caché caliente y 484 ms en frío (Parallel Seq Scan, 33 907 bloques leídos) a 30 días con 250 000 trazas de una API | Agregado sobre la tabla de trazas en cada apertura del modal, que crece con el volumen | Columna `duracion_max_ms` en `bitacora.peticiones_hora` (`postgresql.sql`), escrita con `max()` y `GREATEST` en el mismo lote (`ColaPeticiones.java:56`) y leída con `max(duracion_max_ms)` en `ResumenObservabilidad.endpoints` | ≤ 5 ms para la cifra a 30 días (medido: 1,4 ms) y 0 peticiones extra al abrir el modal |
+| Media | Frontend | `auditoria.html:1` y `actividad.html:1` (cabecera `.page-head`): el bloque de texto no tiene ancho flexible; al llegar los datos se reacomoda y la descripción baja 21 px: CLS 0,140 (Auditoría, 683 × 384) y 0,186 (Actividad, 1366 × 768) en la primera carga | Cabecera sin ancho reservado que se reacomoda al cargar | `.page-head > div { flex: 1 1 0; min-width: min(100%, 280px) }` en `auditoria.scss` y `actividad.scss` | CLS ≤ 0,05 en la primera carga en 390, 683 y 1366 px (medido: ≤ 0,011) |
 
 ## 4. Clasificación
 
@@ -102,6 +113,15 @@
 | CSS global del diálogo anterior | Frontend | No aplicable | Las reglas `.perm-*` de `_components.scss` solo las usaba el diálogo reemplazado; se quitaron y el bundle inicial bajó 2,15 kB |
 | Consulta del tablero «Roles con este permiso» | Base de datos | No aplicable | 37,3 ms (catálogo con uso, sin buffers temporales) + 30,5 ms (usuarios alcanzados, `DISTINCT` en dos niveles) con un permiso en 1 322 de 2 002 roles y 150 002 asignaciones; dentro de 200 ms |
 | Componentes y estilos sin uso tras los tableros | Frontend | No aplicable | `ui/lista-asignacion.ts` y las reglas `.switch`, `.role-list` y `.role-item` de `_components.scss` ya no los usaba nadie; se quitaron y el bundle inicial bajó 1,18 kB más |
+| «Más lenta» de una API sobre las trazas | Base de datos | Aplicable | Recorre todas las trazas de la API del período (484 ms en frío a 30 días); se guarda el máximo por hora en `peticiones_hora` (1,4 ms) |
+| Índice (ruta, metodo, ocurrido_en) INCLUDE (estado, duracion_ms) en `bitacora.peticiones` | Base de datos | No aplicable | Con caché caliente los totales con filtro bajan de 25–30 ms a 12–14 ms, ya bajo 200 ms; a cambio pesa 65 MB y encarece cada lote de trazas un 34 % (5,65 → 7,58 ms por 500) |
+| Totales con «Errores» o «Lentas» en frío | Base de datos | Pendiente | 364 y 622 ms con la caché fría en el banco con datos sin confirmar; medir en producción con `pg_stat_statements` (`mean_exec_time` de `SELECT count(*) FROM (SELECT 1 FROM bitacora.peticiones p WHERE … LIMIT 10000)`) antes de decidir el índice |
+| Peticiones extra al abrir el detalle de una API | API | No aplicable | Las cuatro cifras salen de la fila de la tabla (`/admin/monitoreo`); el modal sigue haciendo 1 petición por página |
+| Costo de guardar el máximo por hora | Backend | Pendiente | Un `max()` más en el `GROUP BY` del lote y un `GREATEST` en el `ON CONFLICT` (`ColaPeticiones.java:56`); medir 20 lotes de 500 con la sentencia real antes y después |
+| Peso de los modales nuevos | Frontend | No aplicable | Monitoreo +2,12 kB gzip y Incidencias +1,18 kB gzip, solo en sus rutas perezosas; bundle inicial sin cambio (446,30 kB) |
+| Salto de la cabecera de Auditoría y Actividad | Frontend | Aplicable | CLS 0,140 y 0,186 en la primera carga; corregido con ancho flexible para el texto (0,011 y 0,010) |
+| Peticiones del buscador de Auditoría y Actividad | API | No aplicable | Usa el mismo filtro por igualdad con índice (`peticiones_usuario`, `auditoria_usuario`) y se aplica con Enter: 1 petición por búsqueda y 0 mientras se escribe, igual que el campo del panel |
+| Búsqueda «contiene» sobre las trazas | Base de datos | No aplicable | No se agrega: con millones de filas un `ILIKE '%…%'` recorrería la tabla; el buscador exige el nombre completo y lo dice en su título |
 | Marca de la cabecera sobredimensionada | Frontend | Aplicable | 572 790 B para una caja de 46 px y es el LCP del selector; corrección propuesta, no aplicada: cambia la cabecera de todos los paneles y el favicon, fuera de este pedido |
 | Logos del selector: 11 SVG por petición | Red | No aplicable | 20 879 B en total y todos terminan a los 503 ms; no son el LCP (mediana 2 000 ms frente a 1 980 ms, mismo elemento) ni mueven nada (CLS 0: cada `<img>` lleva `width` y `height`); los 5 de la segunda fila en escritorio van con `loading="lazy"`. Un sprite ahorraría 10 peticiones sin cambio medible |
 | Peso del selector | Frontend | No aplicable | Chunk perezoso 13,45 → 11,30 kB (4,11 → 3,82 kB gzip) al quitar los chips de módulos y los estilos de las tarjetas; bundle inicial sin cambio (446,30 kB) |
@@ -119,11 +139,13 @@
 | 3 | N3 | Derrame a disco de los usuarios distintos del Dashboard (aplicado) | 3/2 · Aprovechar (hecho) |
 | 4 | N3 | Resumen diario de actividad para el peor caso | 1/3 · Backlog hasta medir el volumen real |
 | 5 | N3 | Derrame a disco del tablero de roles del usuario (aplicado) | 3/1 · Aprovechar (hecho) |
-| 6 | N4 | Guardado en lote de los permisos del rol (aplicado) | 3/2 · Aprovechar (hecho) |
-| 7 | N4 | Guardado en lote de los roles del usuario (aplicado) | 3/2 · Aprovechar (hecho) |
-| 8 | N4 | Tablero y guardado en lote de los permisos individuales (aplicado) | 3/2 · Aprovechar (hecho) |
-| 9 | N4 | Tablero inverso «Roles con este permiso» (aplicado) | 3/2 · Aprovechar (hecho) |
-| 10 | N4 | Marca de la cabecera en tamaño real (propuesto) | 3/1 · Aprovechar |
+| 6 | N3 | «Más lenta» desde el resumen por hora (aplicado) | 3/2 · Aprovechar (hecho) |
+| 7 | N4 | Guardado en lote de los permisos del rol (aplicado) | 3/2 · Aprovechar (hecho) |
+| 8 | N4 | Guardado en lote de los roles del usuario (aplicado) | 3/2 · Aprovechar (hecho) |
+| 9 | N4 | Tablero y guardado en lote de los permisos individuales (aplicado) | 3/2 · Aprovechar (hecho) |
+| 10 | N4 | Tablero inverso «Roles con este permiso» (aplicado) | 3/2 · Aprovechar (hecho) |
+| 11 | N4 | Marca de la cabecera en tamaño real (propuesto) | 3/1 · Aprovechar |
+| 12 | N4 | Cabecera de Auditoría y Actividad sin salto al cargar (aplicado) | 2/1 · Aprovechar (hecho) |
 
 ## 6. Verificación antes/después
 
@@ -165,6 +187,19 @@
 | CLS del selector (1366 × 768 y 390 × 844) | 0 | 0 | 0 | Sin cambio |
 | Alto del selector en celular (390 × 844) | 3 838 px | 1 106 px | −71 % | Mejora |
 | Paneles en la primera pantalla del celular (390 × 844) | 2 de 11 | 9 de 11 | +7 | Mejora |
+| «Más lenta» de una API, 30 días, 250 000 trazas | 54,4 ms sobre las trazas (484 ms en frío) | 1,4 ms desde `peticiones_hora` | −97 % | Mejora |
+| Peticiones HTTP al abrir el detalle de una API | 1 | 1 | 0 | Sin cambio |
+| Chunk perezoso de Monitoreo (gzip) | 4,13 kB | 6,25 kB | +2,12 kB | Regresión |
+| Chunk perezoso de Incidencias (gzip) | 11,54 kB | 12,72 kB | +1,18 kB | Regresión |
+| Defectos críticos del verificador responsive en los dos modales (103 pantallas) | 175 | 175 | 0 (todos del fondo del modal, iguales antes y después) | Sin cambio |
+| Advertencias del verificador responsive en las dos rutas | 4 791 | 3 463 | −1 328 | Mejora |
+| Pasos para filtrar Auditoría o Actividad por usuario | 4 | 2 | −50 % | Mejora |
+| Peticiones por búsqueda de usuario (y mientras se escribe) | 1 (0) | 1 (0) | 0 | Sin cambio |
+| CLS de Auditoría en la primera carga (683 × 384) | 0,140 | 0,011 | −92 % | Mejora |
+| CLS de Actividad en la primera carga (1366 × 768) | 0,186 | 0,010 | −95 % | Mejora |
+| Chunk perezoso de Auditoría (gzip) | 4,05 kB | 4,19 kB | +0,14 kB | Regresión |
+| Chunk perezoso de Actividad (gzip) | 4,22 kB | 4,29 kB | +0,07 kB | Regresión |
+| Defectos críticos del verificador en Auditoría y Actividad (92 pantallas) | 320 | 318 | −2 (los dos saltos de diseño) | Mejora |
 
 ## 7. Veredicto
 
@@ -175,3 +210,8 @@ En los permisos del rol, el problema no era la base sino la conversación: una p
 Los roles del usuario tenían el mismo problema, agravado: además de una petición por rol, cada una repetía los controles de escalada (6 sentencias por rol). El guardado en lote deja 1 petición y 8 sentencias para 5 roles. La primera versión de la consulta del tablero derramaba a disco (118 ms) por un `array_agg` ordenado en el mismo agregado que el conteo; separada en dos agregados queda en 36 ms sin buffers temporales con 2 002 roles y 150 001 asignaciones. PostgreSQL no es el cuello de botella en estas pantallas. Los permisos individuales repetían el patrón con tres peticiones al abrir y siete sentencias por permiso; con el tablero son una petición para abrir (0,16 ms en la base con 100 000 usuarios) y otra para guardar. Los tres tableros comparten la directiva de arrastre y los estilos: la ruta de Usuarios suma 15,4 kB comprimidos y el bundle inicial bajó 2,07 kB al quitar el CSS del diálogo anterior. «Roles con este permiso» pasó de solo lectura a tablero inverso: dar un permiso a varios roles es una petición y un solo vaciado de la caché de autorización en lugar de uno por rol. Abrirlo cuesta 68 ms en la base y guardar 29 ms porque cuenta a cuántos usuarios llega el permiso; con un permiso presente en 1 322 roles sigue muy por debajo de 200 ms. Al quitar el componente y el CSS que ya no usaba nadie, el bundle inicial quedó en 446,30 kB.
 
 En el selector de paneles, cambiar las tarjetas por logos 3D (11 SVG, 20,9 kB en total) y el nombre no movió el LCP: el elemento LCP antes y después es la marca de la cabecera, que pesa 572 790 B para una caja de 46 px y también se descarga en la cabecera de cada panel. Los logos suman 11 peticiones, pero terminan a los 503 ms, reservan su caja (CLS 0) y la ruta quedó 0,29 kB más liviana. En celular, el selector pasó de 3 838 a 1 106 px de alto y muestra 9 de los 11 paneles sin desplazarse. La corrección con más impacto en esta ruta es servir la marca en su tamaño real (`marca/atlas-logo-192.png`, 26 KB); queda propuesta porque toca la cabecera de todos los paneles y el favicon.
+
+En el detalle de una API (Monitoreo), las cuatro cifras salen de la fila de la tabla, sin peticiones extra. La única cifra nueva que no estaba en el resumen, la petición más lenta, se guarda por hora en `peticiones_hora` (`duracion_max_ms`, con `GREATEST` al sumar cada lote); leerla cuesta 1,4 ms frente a 54 ms recorriendo las trazas (484 ms en frío). El filtro «Lentas» reutiliza el plan de «Errores»: la página sale del índice primario en menos de 0,1 ms y el total con tope cuesta 25 ms a 30 días con 250 000 trazas de una API. Un índice por API y fecha los dejaría en 12–14 ms, pero pesa 65 MB y encarece un 34 % cada escritura de trazas, así que no se agrega hasta medir en producción el costo en frío. PostgreSQL no es el cuello de botella en estos modales. El detalle de la incidencia es solo de presentación (sin cambios de API); los dos modales suman 3,3 kB comprimidos repartidos en sus rutas perezosas y bajaron las advertencias de responsividad de 4 791 a 3 463 sin agregar ningún defecto crítico.
+
+
+Auditoría y Actividad tienen ahora la barra estándar de las tablas: el buscador crece a la izquierda, luego el período y Filtros. El buscador es el mismo filtro de usuario que estaba escondido en el panel (igualdad con índice sobre las trazas), así que no cambia ninguna consulta: 1 petición por búsqueda, ninguna mientras se escribe, y filtrar pasa de 4 pasos a 2. En Auditoría el ID del registro sigue en Filtros para combinarlo con el usuario. Al alinear las cabeceras desapareció el salto de la primera carga (CLS 0,140 y 0,186 → 0,011 y 0,010). No se agregó una búsqueda «contiene»: sobre millones de trazas recorrería la tabla.

@@ -54,10 +54,10 @@ public class ColaPeticiones {
             RETURNING ocurrido_en, actor_id, usuario, metodo, ruta, estado, duracion_ms
         ), por_api AS (
             INSERT INTO bitacora.peticiones_hora AS h
-              (hora, metodo, ruta, peticiones, errores_cliente, errores_servidor, duracion_total_ms, %s)
+              (hora, metodo, ruta, peticiones, errores_cliente, errores_servidor, duracion_total_ms, duracion_max_ms, %s)
             SELECT date_trunc('hour', ocurrido_en, 'UTC'), metodo, ruta, count(*),
                    count(*) FILTER (WHERE estado BETWEEN 400 AND 499), count(*) FILTER (WHERE estado >= 500),
-                   sum(duracion_ms), %s
+                   sum(duracion_ms), max(duracion_ms), %s
             FROM nuevas
             GROUP BY 1, 2, 3
             ORDER BY 1, 2, 3
@@ -66,6 +66,7 @@ public class ColaPeticiones {
                 errores_cliente = h.errores_cliente + EXCLUDED.errores_cliente,
                 errores_servidor = h.errores_servidor + EXCLUDED.errores_servidor,
                 duracion_total_ms = h.duracion_total_ms + EXCLUDED.duracion_total_ms,
+                duracion_max_ms = GREATEST(h.duracion_max_ms, EXCLUDED.duracion_max_ms),
                 %s
         )
         INSERT INTO bitacora.actividad_hora AS a (hora, usuario, panel, peticiones)

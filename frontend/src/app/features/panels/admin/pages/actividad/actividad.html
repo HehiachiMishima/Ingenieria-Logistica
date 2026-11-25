@@ -14,11 +14,29 @@
   </button>
 </header>
 
+<!-- Barra estándar de las tablas: buscador que crece, período y Filtros. El buscador es el filtro de
+     usuario (igualdad con índice sobre millones de trazas: el nombre va completo); se aplica con Enter. -->
 <div class="toolbar">
+  <div class="ui-search toolbar__grow">
+    <ui-icon name="search" [size]="18" />
+    <input
+      type="search"
+      class="ui-input"
+      placeholder="Buscar por usuario, p. ej. @jperez…"
+      aria-label="Buscar por nombre de usuario completo (Enter para buscar)"
+      title="Nombre de usuario completo; no distingue mayúsculas ni tildes. Enter para buscar."
+      autocomplete="off"
+      enterkeyhint="search"
+      [value]="usuario()"
+      (change)="aplicarUsuario($any($event.target).value)"
+      (keydown.enter)="aplicarUsuario($any($event.target).value)"
+      (input)="$any($event.target).value === '' && aplicarUsuario('')"
+    />
+  </div>
   <app-selector-periodo [opciones]="periodos" [valor]="dias()" (cambio)="cambiarPeriodo($event)" />
   <button
     type="button"
-    class="ui-btn ui-btn--secondary ui-btn--sm toolbar__fin"
+    class="ui-btn ui-btn--secondary ui-btn--sm"
     [attr.aria-expanded]="filtrosAbierto()"
     aria-controls="actividad-filtros"
     (click)="filtrosAbierto.set(true)"
@@ -58,23 +76,7 @@
     </div>
     <span class="filtro-nota">«Solo cambios» oculta las consultas y deja lo que creó, editó o eliminó datos.</span>
   </section>
-  <section class="filtro-seccion">
-    <h3 class="filtro-seccion__titulo"><ui-icon name="user" [size]="15" /> Usuario</h3>
-    <div class="ui-field">
-      <label class="ui-label" for="actividad-usuario">Nombre de usuario</label>
-      <input
-        id="actividad-usuario"
-        name="usuario"
-        class="ui-input"
-        placeholder="Todos"
-        autocomplete="off"
-        [value]="usuario()"
-        (change)="aplicarUsuario($any($event.target).value)"
-        (keydown.enter)="aplicarUsuario($any($event.target).value)"
-      />
-    </div>
-    <span class="filtro-nota">Completo; no distingue mayúsculas ni tildes.</span>
-  </section>
+  <!-- El usuario se busca en la barra. -->
 </ui-panel-filtros>
 
 <div class="table-card" [class.table-card--refrescando]="lista.listado.refrescando()">

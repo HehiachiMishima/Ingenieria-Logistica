@@ -7,6 +7,7 @@ import { PaginaRemota } from '../../../../core/utils/listado-remoto';
 import {
   EndpointMonitoreo,
   Evento,
+  FiltroPeticiones,
   FiltrosAuditoria,
   Periodo,
   ResumenActividad,
@@ -32,16 +33,25 @@ export class ObservabilidadApi {
     return this.api.get<EndpointMonitoreo[]>('/admin/monitoreo', { dias }, this.silenciosa);
   }
 
+  /** Peticiones de una API; «lentas» = más lentas que su p95 (el backend recibe ese umbral en ms). */
   peticiones(
     dias: Periodo,
-    endpoint: Pick<EndpointMonitoreo, 'metodo' | 'ruta'>,
-    soloErrores: boolean,
+    endpoint: Pick<EndpointMonitoreo, 'metodo' | 'ruta' | 'p95'>,
+    filtro: FiltroPeticiones,
     pagina: number,
     tamano: number,
   ): Observable<PaginaRemota<Evento>> {
     return this.api.get<PaginaRemota<Evento>>(
       '/admin/monitoreo/peticiones',
-      { dias, metodo: endpoint.metodo, ruta: endpoint.ruta, errores: soloErrores || undefined, pagina, tamano },
+      {
+        dias,
+        metodo: endpoint.metodo,
+        ruta: endpoint.ruta,
+        errores: filtro === 'errores' || undefined,
+        lentas: filtro === 'lentas' ? endpoint.p95 : undefined,
+        pagina,
+        tamano,
+      },
       this.silenciosa,
     );
   }
