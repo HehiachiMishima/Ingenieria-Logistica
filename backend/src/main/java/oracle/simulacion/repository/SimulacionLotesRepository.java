@@ -40,16 +40,21 @@ public class SimulacionLotesRepository {
     this.jdbc = jdbc;
   }
 
-  /** Al aceptar la proyección original, sus rutas quedan listas para operarios solo en la copia. */
-  public void guardarBalanceoRutas(Long id, boolean distribucionOriginal) {
+  /**
+   * Foto del balanceo de rutas: dónde está cada ruta (DATA o cluster y chute, con su posición
+   * original), esté o no balanceada. Con DATA la posición original cambia (es la celda donde se
+   * suelta), así que no basta con guardar las movidas. Cada cluster se guarda como ya balanceado
+   * (RUTAS): al cargar, solo pide operarios. El trabajo actual no cambia.
+   */
+  public void guardarBalanceoRutas(Long id) {
     jdbc.update("""
         UPDATE simulacion.archivos_excel SET balanceo_guardado = jsonb_build_object(
-            'rutas', (SELECT coalesce(jsonb_agg(to_jsonb(s)), '[]'::jsonb) FROM (
-                SELECT id, cluster_id, chute_id
-                FROM simulacion.rutas_proyeccion WHERE archivo_id = ? AND (movida OR cluster_cambiado)) s),
+            'posiciones', (SELECT coalesce(jsonb_agg(to_jsonb(s)), '[]'::jsonb) FROM (
+                SELECT id, cluster_id, chute_id, cluster_original_id, chute_original_id
+                FROM simulacion.rutas_proyeccion WHERE archivo_id = ?) s),
             'clusters', (SELECT coalesce(jsonb_agg(to_jsonb(s)), '[]'::jsonb) FROM (
                 SELECT cluster_id, balanceo, chute_desde_id, chute_hasta_id,
-                       CASE WHEN ? OR estado <> 'PENDIENTE' THEN 'RUTAS' ELSE 'PENDIENTE' END AS estado
+                       'RUTAS' AS estado
                 FROM simulacion.parametros_clusters WHERE archivo_id = ?) s),
             'grupos', (SELECT coalesce(jsonb_agg(to_jsonb(s)), '[]'::jsonb) FROM (
                 SELECT archivo_id, cluster_id, grupo, prioridad, chute_desde_id, chute_hasta_id
@@ -63,7 +68,7 @@ public class SimulacionLotesRepository {
                        chute_destino_id, cluster_origen_id, cluster_destino_id, cluster_trabajo_id, motivo,
                        creado_por, creado_en
                 FROM simulacion.historial_balanceo WHERE archivo_id = ? AND tipo_accion IN ('MOVER_RUTA', 'CAMBIAR_CLUSTER')) s)) WHERE id = ?
-        """, id, distribucionOriginal, id, id, id, id, id);
+        """, id, id, id, id, id, id);
   }
 
   public Optional<String> clusterSinRestablecer(Long id) {
@@ -90,12 +95,30 @@ public class SimulacionLotesRepository {
         UPDATE simulacion.rutas_proyeccion SET cluster_id = cluster_original_id, chute_id = chute_original_id
         WHERE archivo_id = ? AND (movida OR cluster_cambiado)
         """, id);
+    // Cada ruta vuelve a donde estaba al guardar (DATA o cluster y chute, con su original), estuviera
+    // o no balanceada. Un cluster quitado después no vuelve: sus rutas se quedan donde están. Las
+    // rutas nuevas o eliminadas desde entonces no se tocan.
+    jdbc.update("""
+        UPDATE simulacion.rutas_proyeccion r
+        SET cluster_id = s.cluster_id, chute_id = s.chute_id,
+            cluster_original_id = s.cluster_original_id, chute_original_id = s.chute_original_id
+        FROM simulacion.archivos_excel a,
+             jsonb_populate_recordset(NULL::simulacion.rutas_proyeccion, a.balanceo_guardado -> 'posiciones') s
+        WHERE a.id = ? AND r.archivo_id = a.id AND r.id = s.id
+          AND (s.cluster_id IS NULL
+               OR (r.tipo IS NOT NULL AND r.frecuencia IS NOT NULL AND r.grupo IS NOT NULL
+                   AND EXISTS (SELECT 1 FROM simulacion.parametros_clusters p
+                               WHERE p.archivo_id = r.archivo_id AND p.cluster_id = s.cluster_id)
+                   AND EXISTS (SELECT 1 FROM simulacion.parametros_clusters p
+                               WHERE p.archivo_id = r.archivo_id AND p.cluster_id = s.cluster_original_id)))
+        """, id);
+    // Guardados anteriores: solo traen las rutas movidas (las demás ya están en su original).
     jdbc.update("""
         UPDATE simulacion.rutas_proyeccion r SET cluster_id = s.cluster_id, chute_id = s.chute_id
         FROM simulacion.archivos_excel a,
              jsonb_populate_recordset(NULL::simulacion.rutas_proyeccion, a.balanceo_guardado -> 'rutas') s
         WHERE a.id = ? AND r.archivo_id = a.id AND r.id = s.id
-          -- Una ruta que volvió a DATA después de guardar se queda en DATA; un cluster quitado no vuelve.
+          AND a.balanceo_guardado -> 'posiciones' IS NULL
           AND r.cluster_id IS NOT NULL AND s.cluster_id IS NOT NULL
           AND EXISTS (SELECT 1 FROM simulacion.parametros_clusters p
                       WHERE p.archivo_id = r.archivo_id AND p.cluster_id = s.cluster_id)
@@ -108,6 +131,14 @@ public class SimulacionLotesRepository {
              jsonb_populate_recordset(NULL::simulacion.parametros_clusters, a.balanceo_guardado -> 'clusters') s
         WHERE a.id = ? AND p.archivo_id = a.id AND p.cluster_id = s.cluster_id AND p.balanceo = s.balanceo
           -- Un cluster que hoy no tiene rutas queda pendiente: vacío se salta y no podría restablecerse.
+          AND EXISTS (SELECT 1 FROM simulacion.rutas_proyeccion r
+                      WHERE r.archivo_id = p.archivo_id AND r.cluster_id = p.cluster_id)
+        """, id);
+    // Cargar deja cada cluster con rutas como ya balanceado (solo pide operarios), aunque la foto
+    // sea de un guardado anterior o el cluster se haya agregado después.
+    jdbc.update("""
+        UPDATE simulacion.parametros_clusters p SET estado = 'RUTAS', operarios_ola = NULL
+        WHERE p.archivo_id = ? AND p.estado = 'PENDIENTE'
           AND EXISTS (SELECT 1 FROM simulacion.rutas_proyeccion r
                       WHERE r.archivo_id = p.archivo_id AND r.cluster_id = p.cluster_id)
         """, id);

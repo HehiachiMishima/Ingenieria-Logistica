@@ -95,4 +95,18 @@ public class SimulacionDataController {
   public ApiResponse<CambioDataResponse> cambiarClusters(@PathVariable Long id, @Valid @RequestBody DataRequest.Clusters req) {
     return service.cambiarClusters(id, req);
   }
+
+  /** Agrega «CL{numero}» con el número elegido (puede llenar un hueco, como CL2 entre CL1 y CL4). */
+  @PostMapping("/{id}/clusters")
+  @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
+  public ApiResponse<CambioDataResponse> agregarCluster(@PathVariable Long id, @Valid @RequestBody DataRequest.NuevoCluster req) {
+    return service.agregarCluster(id, req);
+  }
+
+  /** Quita ese cluster (no solo el último) si no empezó; sus rutas vuelven a DATA. */
+  @DeleteMapping("/{id}/clusters/{clusterId}")
+  @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
+  public ApiResponse<CambioDataResponse> quitarCluster(@PathVariable Long id, @PathVariable Long clusterId) {
+    return service.quitarCluster(id, clusterId);
+  }
 }

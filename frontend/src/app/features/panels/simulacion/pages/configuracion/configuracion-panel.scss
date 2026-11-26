@@ -502,3 +502,177 @@
     }
   }
 }
+
+/* Papelera del cluster: quita ese cluster (no solo el último). Roja solo al apuntarla. */
+.mz-icono--quitar:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+/* ---------- «Nuevo cluster»: recuadro del «+» de la barra ----------
+   Fijo bajo su «+» (o encima, si abajo no cabe) y dentro de la pantalla, como el menú
+   «Acciones». Números libres (huecos primero), «CL __», dónde queda y si espera a otro. */
+.mz-nuevo {
+  position: fixed;
+  z-index: var(--z-modal);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(320px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+
+  .mz-menu__titulo {
+    padding-inline: 0;
+  }
+
+  p {
+    margin: 0;
+  }
+}
+
+.mz-nuevo__existen,
+.mz-nuevo__ayuda {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.mz-nuevo__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mz-nuevo__chip {
+  min-width: 52px;
+  height: 32px;
+  padding: 0 var(--space-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--surface-2);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  &--activo,
+  &--activo:hover {
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-color: var(--accent);
+  }
+}
+
+.mz-nuevo__fila {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.mz-nuevo__campo {
+  display: inline-flex;
+  flex: none;
+  align-items: stretch;
+  height: 34px;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+
+  &:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  &--invalido,
+  &--invalido:focus-within {
+    border-color: var(--danger);
+  }
+}
+
+.mz-nuevo__prefijo {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border-right: 1px solid var(--border);
+}
+
+.mz-nuevo__input {
+  width: 6ch;
+  padding: 0 var(--space-2);
+  font: inherit;
+  font-size: var(--fs-base);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  outline: none;
+
+  /* El anillo de foco lo lleva el campo entero («CL» + número). */
+  &:focus,
+  &:focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
+}
+
+.mz-nuevo__agregar {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.mz-nuevo__error {
+  color: var(--danger);
+}
+
+.mz-nuevo__aviso {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  padding: var(--space-2);
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--warning-soft);
+  border-radius: var(--radius-sm);
+
+  ui-icon {
+    flex: none;
+    margin-top: 1px;
+    color: var(--warning);
+  }
+}
+
+/* Táctil: números, campo y botón de 44 px; el número a 16 px (iOS no hace zoom). */
+@media (pointer: coarse) {
+  .mz-nuevo__chip,
+  .mz-nuevo__campo,
+  .mz-nuevo__agregar {
+    min-height: 44px;
+  }
+
+  .mz-nuevo__input {
+    font-size: 16px;
+  }
+}

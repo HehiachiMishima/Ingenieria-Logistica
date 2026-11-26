@@ -24,6 +24,7 @@ import java.util.function.Supplier;
 import oracle.common.config.CacheRespuestas;
 import oracle.common.config.Transacciones;
 import oracle.common.exception.ConflictoException;
+import oracle.common.exception.RecursoNoEncontradoException;
 import oracle.common.exception.SolicitudInvalidaException;
 import oracle.common.response.ApiResponse;
 import oracle.simulacion.model.ArchivoExcel;
@@ -514,7 +515,7 @@ class SimulacionDataServiceTest {
 
     verify(repo).borrarHistorialDeRutas(ARCHIVO, List.of(6L));
     verify(repo).quitarClusters(ARCHIVO, List.of(CL2));
-    assertTrue(r.mensaje().contains("1 ruta volvieron a DATA"), r.mensaje());
+    assertTrue(r.mensaje().contains("1 ruta volvió a DATA"), r.mensaje());
   }
 
   @Test
@@ -552,6 +553,100 @@ class SimulacionDataServiceTest {
     clusters(Set.of(CL1, CL2), parametros);
 
     assertThrows(ConflictoException.class, () -> servicio.cambiarClusters(ARCHIVO, new DataRequest.Clusters(1)));
+    verify(repo, never()).quitarClusters(anyLong(), anyList());
+  }
+
+  // ---------------- Cluster con número elegido y quitar uno concreto ----------------
+
+  @Test
+  void elNumeroElegidoLlenaElHuecoEntreDosClusters() {
+    List<ParametroCluster> parametros = new ArrayList<>(cluster(CL1, PENDIENTE));
+    parametros.addAll(cluster(3L, PENDIENTE));
+    clusters(Set.of(CL1), parametros);
+    when(lotes.asegurarClusters(List.of("CL2"))).thenReturn(Map.of("CL2", CL2));
+
+    ApiResponse<oracle.simulacion.response.CambioDataResponse> r =
+        servicio.agregarCluster(ARCHIVO, new DataRequest.NuevoCluster(2));
+
+    verify(lotes).asegurarParametrosCluster(eq(ARCHIVO), argThat((ids) -> List.copyOf(ids).equals(List.of(CL2))));
+    assertEquals("CL2 agregado. Ahora hay 3 clusters.", r.mensaje());
+  }
+
+  @Test
+  void noSeAgregaUnClusterQueYaEstaEnElEscenario() {
+    List<ParametroCluster> parametros = new ArrayList<>(cluster(CL1, PENDIENTE));
+    parametros.addAll(cluster(CL2, PENDIENTE));
+    clusters(Set.of(), parametros);
+
+    ConflictoException e =
+        assertThrows(ConflictoException.class, () -> servicio.agregarCluster(ARCHIVO, new DataRequest.NuevoCluster(2)));
+    assertEquals("CL2 ya existe en este escenario.", e.getMessage());
+    verify(lotes, never()).asegurarClusters(any());
+  }
+
+  @Test
+  void unClusterAntesDeUnoQueYaEmpezoSeCreaConAviso() {
+    List<ParametroCluster> parametros = new ArrayList<>(cluster(CL1, ParametroCluster.ESTADO_CERRADO));
+    parametros.addAll(cluster(3L, ParametroCluster.ESTADO_RUTAS));
+    clusters(Set.of(CL1, 3L), parametros);
+    when(lotes.asegurarClusters(List.of("CL2"))).thenReturn(Map.of("CL2", CL2));
+
+    ApiResponse<oracle.simulacion.response.CambioDataResponse> r =
+        servicio.agregarCluster(ARCHIVO, new DataRequest.NuevoCluster(2));
+
+    verify(lotes).asegurarParametrosCluster(eq(ARCHIVO), argThat((ids) -> List.copyOf(ids).equals(List.of(CL2))));
+    assertTrue(r.mensaje().contains("Va antes de CL3, que ya empezó"), r.mensaje());
+  }
+
+  @Test
+  void noSePasaDelMaximoDeClusters() {
+    List<ParametroCluster> parametros = new ArrayList<>();
+    List<Cluster> catalogo = new ArrayList<>();
+    for (long id = 1; id <= DataRequest.MAX_CLUSTERS; id++) {
+      parametros.addAll(cluster(id, PENDIENTE));
+      catalogo.add(catalogoCluster(id, "CL" + id));
+    }
+    clusters(Set.of(), parametros);
+    when(clusterRepo.findAllById(any())).thenReturn(catalogo);
+
+    ConflictoException e =
+        assertThrows(ConflictoException.class, () -> servicio.agregarCluster(ARCHIVO, new DataRequest.NuevoCluster(31)));
+    assertTrue(e.getMessage().contains("el máximo"), e.getMessage());
+    verify(lotes, never()).asegurarClusters(any());
+  }
+
+  @Test
+  void seQuitaUnClusterDelMedioYSusRutasVuelvenAData() {
+    List<ParametroCluster> parametros = new ArrayList<>(cluster(CL1, PENDIENTE));
+    parametros.addAll(cluster(CL2, PENDIENTE));
+    parametros.addAll(cluster(3L, PENDIENTE));
+    clusters(Set.of(CL1, CL2, 3L), parametros);
+    when(repo.devolverADataEnSuChute(ARCHIVO, List.of(CL2))).thenReturn(List.of(6L));
+
+    ApiResponse<oracle.simulacion.response.CambioDataResponse> r = servicio.quitarCluster(ARCHIVO, CL2);
+
+    verify(repo).borrarHistorialDeRutas(ARCHIVO, List.of(6L));
+    verify(repo).quitarClusters(ARCHIVO, List.of(CL2));
+    assertEquals("CL2 quitado; 1 ruta volvió a DATA. Ahora hay 2 clusters.", r.mensaje());
+  }
+
+  @Test
+  void unClusterDelMedioQueYaEmpezoNoSeQuita() {
+    List<ParametroCluster> parametros = new ArrayList<>(cluster(CL1, ParametroCluster.ESTADO_CERRADO));
+    parametros.addAll(cluster(CL2, ParametroCluster.ESTADO_RUTAS));
+    parametros.addAll(cluster(3L, PENDIENTE));
+    clusters(Set.of(CL1, CL2), parametros);
+
+    ConflictoException e = assertThrows(ConflictoException.class, () -> servicio.quitarCluster(ARCHIVO, CL2));
+    assertTrue(e.getMessage().contains("CL2 ya empezó"), e.getMessage());
+    verify(repo, never()).quitarClusters(anyLong(), anyList());
+  }
+
+  @Test
+  void quitarUnClusterQueYaNoEstaAvisaSinTocarNada() {
+    clusters(Set.of(), cluster(CL1, PENDIENTE));
+
+    assertThrows(RecursoNoEncontradoException.class, () -> servicio.quitarCluster(ARCHIVO, CL2));
     verify(repo, never()).quitarClusters(anyLong(), anyList());
   }
 

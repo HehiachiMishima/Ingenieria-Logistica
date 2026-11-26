@@ -191,6 +191,14 @@ interface BloqueMatriz {
 const MIN_FILAS = 3;
 /** Clusters del escenario (CL1…CL30), como el servidor. */
 const MAX_CLUSTERS = 30;
+/** Número más alto de un cluster (CL999), como el servidor. */
+const MAX_NUMERO_CLUSTER = 999;
+
+/** Número de «CL7» (0 si el nombre no tiene esa forma), como el servidor. */
+function numeroCluster(nombre: string): number {
+  const m = /^CL\s*(\d+)$/i.exec(nombre.trim());
+  return m ? Number(m[1]) : 0;
+}
 /** Topes del servidor: rutas por movimiento y por asignación (tipo, frecuencia, grupo). */
 const MAX_MOVER = 500;
 const MAX_ASIGNAR = 5_000;
@@ -3866,7 +3874,7 @@ export class SimulacionConfiguracion {
   readonly eliminando = signal(false);
   readonly maxClusters = MAX_CLUSTERS;
 
-  /** Clusters del escenario, también los vacíos (se agregan y quitan desde el último). */
+  /** Clusters del escenario, también los vacíos. */
   readonly cantidadClusters = computed(() => this.configs().LXV?.clusters.length ?? 0);
 
   nuevaRuta(): void {
@@ -4020,36 +4028,214 @@ export class SimulacionConfiguracion {
     this.rutasMatriz().map((ruta) => ({ id: ruta.id, codigo: ruta.codigoRuta, tipo: ruta.tipo ?? null })),
   );
 
-  /** Agrega un cluster al final o quita el último (sus rutas vuelven a DATA). */
-  cambiarClusters(delta: 1 | -1): void {
-    const id = this.seleccionado();
-    const lista = this.configs().LXV?.clusters ?? [];
-    const cantidad = lista.length + delta;
-    if (id === null || this.ocupado() || cantidad < 0 || cantidad > MAX_CLUSTERS) {
+  // ---------------- Clusters: agregar con su número y quitar uno ----------------
+
+  /** Recuadro «Nuevo cluster» bajo el «+» (o encima, si abajo no cabe) y el botón que lo abrió. */
+  readonly nuevoCluster = signal<{
+    left: number;
+    top: number | null;
+    bottom: number | null;
+    /** Alto disponible de ese lado: si no cabe, se desplaza por dentro (no sale de la pantalla). */
+    maxAlto: number;
+    ancla: HTMLElement;
+  } | null>(null);
+  /** Lo escrito en «CL __». */
+  readonly numeroNuevo = signal('');
+  /** Cluster con rutas por quitar: se confirma antes (sus rutas vuelven a DATA). */
+  readonly quitarPendiente = signal<{ id: number; nombre: string; rutas: number } | null>(null);
+
+  /** Clusters del escenario en el orden del balanceo (CL1, CL2…, CL10). */
+  private readonly clustersOrdenados = computed(() =>
+    [...(this.configs().LXV?.clusters ?? [])].sort((a, b) => compararNombre(a.nombre, b.nombre)),
+  );
+
+  /** «Ya existen CL1 y CL4». */
+  readonly clustersExistentes = computed(() => {
+    const nombres = this.clustersOrdenados().map((c) => c.nombre);
+    if (nombres.length === 0) {
+      return 'Aún no hay clusters.';
+    }
+    const primeros = nombres.slice(0, 6);
+    const resto = nombres.length - primeros.length;
+    const texto =
+      resto > 0
+        ? `${primeros.join(', ')} y ${resto} más`
+        : primeros.length === 1
+          ? primeros[0]
+          : `${primeros.slice(0, -1).join(', ')} y ${primeros.at(-1)}`;
+    return (nombres.length === 1 ? 'Ya existe ' : 'Ya existen ') + texto + '.';
+  });
+
+  /** Números de un toque: primero los huecos (CL2 si hay CL1 y CL4) y luego el siguiente al mayor. */
+  readonly sugerenciasCluster = computed(() => {
+    const usados = new Set(this.clustersOrdenados().map((c) => numeroCluster(c.nombre)));
+    const mayor = Math.max(0, ...usados);
+    const huecos: number[] = [];
+    for (let n = 1; n < mayor && huecos.length < 5; n++) {
+      if (!usados.has(n)) {
+        huecos.push(n);
+      }
+    }
+    return mayor < MAX_NUMERO_CLUSTER ? [...huecos, mayor + 1] : huecos;
+  });
+
+  /** El número escrito: si vale, dónde queda en el orden del balanceo y si espera a otro cluster. */
+  readonly infoNuevoCluster = computed<{
+    numero: number | null;
+    nombre: string | null;
+    error: string | null;
+    orden: string | null;
+    aviso: string | null;
+  }>(() => {
+    const texto = this.numeroNuevo().trim();
+    const numero = /^\d{1,3}$/.test(texto) ? Number(texto) : 0;
+    if (numero < 1 || numero > MAX_NUMERO_CLUSTER) {
+      const error = texto === '' ? 'Escribe el número del cluster.' : `Escribe un número del 1 al ${MAX_NUMERO_CLUSTER}.`;
+      return { numero: null, nombre: null, error, orden: null, aviso: null };
+    }
+    const nombre = 'CL' + numero;
+    const lista = this.clustersOrdenados();
+    const repetido = lista.find((c) => numeroCluster(c.nombre) === numero);
+    if (repetido) {
+      return { numero, nombre, error: `${repetido.nombre} ya existe.`, orden: null, aviso: null };
+    }
+    const antes = lista.filter((c) => compararNombre(c.nombre, nombre) < 0).at(-1)?.nombre;
+    const despues = lista.filter((c) => compararNombre(c.nombre, nombre) > 0);
+    const siguiente = despues[0]?.nombre;
+    const orden =
+      antes && siguiente
+        ? `Queda entre ${antes} y ${siguiente}.`
+        : antes
+          ? `Queda después de ${antes}.`
+          : siguiente
+            ? `Queda antes de ${siguiente}.`
+            : 'Será el primer cluster.';
+    // Un cluster no recibe rutas si va antes de uno que ya empezó (cada uno usa el equipo del anterior).
+    const espera = despues.find((c) => !clusterVacio(c) && this.empezado(c.id));
+    const aviso = espera
+      ? `${espera.nombre} ya empezó: ${nombre} se crea, pero no recibirá rutas hasta que restablezcas ${espera.nombre}.`
+      : null;
+    return { numero, nombre, error: null, orden, aviso };
+  });
+
+  /** Abre (o cierra) «Nuevo cluster» con el primer número sugerido. */
+  abrirNuevoCluster(evento: Event): void {
+    const boton = evento.currentTarget;
+    if (!(boton instanceof HTMLElement) || this.ocupado()) {
       return;
     }
-    if (delta < 0) {
-      const ultimo = lista[lista.length - 1];
-      if (this.empezado(ultimo.id)) {
-        this.notificaciones.advertencia(
-          'No se puede quitar',
-          `${ultimo.nombre} ya empezó a balancearse: restablécelo antes de quitarlo.`,
-        );
-        return;
-      }
-      const rutas = clusterVacio(ultimo) ? 0 : this.rutasDelCluster(ultimo.id);
-      if (
-        rutas > 0 &&
-        !window.confirm(
-          `${ultimo.nombre} tiene ${rutas === 1 ? '1 ruta' : rutas + ' rutas'}: volverán a DATA. ¿Quitar ${ultimo.nombre}?`,
-        )
-      ) {
-        return;
-      }
+    if (this.nuevoCluster()) {
+      this.nuevoCluster.set(null);
+      return;
     }
-    const quitado = delta < 0 ? lista[lista.length - 1].id : null;
+    this.menuAcciones.set(null);
+    this.detalle.set(null);
+    this.numeroNuevo.set(String(this.sugerenciasCluster()[0] ?? ''));
+    this.nuevoCluster.set({ ...this.posicionNuevoCluster(boton), ancla: boton });
+    // Con mouse, el foco va al número (listo para escribir); en el celular, al primer número
+    // sugerido: el teclado no tapa las sugerencias.
+    setTimeout(() => {
+      const tactil = window.matchMedia('(pointer: coarse)').matches;
+      const destino = document.querySelector<HTMLElement>(tactil ? '.mz-nuevo__chip' : '#nuevo-cluster-numero');
+      destino?.focus();
+      if (destino instanceof HTMLInputElement) {
+        destino.select();
+      }
+    });
+  }
+
+  /** Cierra «Nuevo cluster»; con `devolverFoco`, el foco vuelve al «+». */
+  cerrarNuevoCluster(devolverFoco = true): void {
+    const abierto = this.nuevoCluster();
+    this.nuevoCluster.set(null);
+    if (devolverFoco) {
+      abierto?.ancla.focus({ preventScroll: true });
+    }
+  }
+
+  private posicionNuevoCluster(boton: HTMLElement): {
+    left: number;
+    top: number | null;
+    bottom: number | null;
+    maxAlto: number;
+  } {
+    const caja = boton.getBoundingClientRect();
+    const ancho = Math.min(320, window.innerWidth - 32);
+    // Alineado al borde derecho del «+», dentro de la pantalla.
+    const left = Math.min(Math.max(16, caja.right - ancho), window.innerWidth - ancho - 16);
+    const alto = 280;
+    const abajo = window.innerHeight - caja.bottom - 16;
+    const arriba = caja.top - 16;
+    const encima = abajo < alto && arriba > abajo;
+    return {
+      left,
+      top: encima ? null : caja.bottom + 6,
+      bottom: encima ? window.innerHeight - caja.top + 6 : null,
+      maxAlto: Math.max(120, (encima ? arriba : abajo) - 6),
+    };
+  }
+
+  /** Botón que abrió «Nuevo cluster»: cambia solo al abrirlo o cerrarlo (no al reubicarlo). */
+  private readonly anclaNuevoCluster = computed(() => this.nuevoCluster()?.ancla ?? null);
+
+  /**
+   * «Nuevo cluster» se cierra al tocar fuera o con Escape. Al desplazar o cambiar el tamaño (en el
+   * celular, al abrirse el teclado) sigue a su «+»; si el «+» sale de la pantalla, se cierra.
+   */
+  private readonly cierreNuevoCluster = effect((alLimpiar) => {
+    const ancla = this.anclaNuevoCluster();
+    if (!ancla) {
+      return;
+    }
+    const alTocar = (e: PointerEvent) => {
+      const objetivo = e.target;
+      if (!(objetivo instanceof Element) || (!objetivo.closest('.mz-nuevo') && !ancla.contains(objetivo))) {
+        this.nuevoCluster.set(null);
+      }
+    };
+    const alTeclear = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        this.cerrarNuevoCluster();
+      }
+    };
+    let cuadro = 0;
+    const reubicar = () => {
+      cancelAnimationFrame(cuadro);
+      cuadro = requestAnimationFrame(() => {
+        if (this.anclaNuevoCluster() !== ancla) {
+          return;
+        }
+        const caja = ancla.getBoundingClientRect();
+        if (!ancla.isConnected || caja.bottom < 0 || caja.top > window.innerHeight) {
+          this.nuevoCluster.set(null);
+          return;
+        }
+        this.nuevoCluster.set({ ...this.posicionNuevoCluster(ancla), ancla });
+      });
+    };
+    document.addEventListener('pointerdown', alTocar, true);
+    document.addEventListener('keydown', alTeclear);
+    document.addEventListener('scroll', reubicar, { capture: true, passive: true });
+    window.addEventListener('resize', reubicar);
+    alLimpiar(() => {
+      cancelAnimationFrame(cuadro);
+      document.removeEventListener('pointerdown', alTocar, true);
+      document.removeEventListener('keydown', alTeclear);
+      document.removeEventListener('scroll', reubicar, true);
+      window.removeEventListener('resize', reubicar);
+    });
+  });
+
+  /** Agrega «CL{número}» con el número elegido (puede llenar un hueco). */
+  agregarCluster(): void {
+    const id = this.seleccionado();
+    const info = this.infoNuevoCluster();
+    const numero = info.numero;
+    if (id === null || this.ocupado() || numero === null || info.error !== null || this.cantidadClusters() >= MAX_CLUSTERS) {
+      return;
+    }
     this.cambiandoClusters.set(true);
-    const { cambio: pedido, enviado } = this.trasGuardar(id, () => this.api.cambiarClusters(id, cantidad));
+    const { cambio: pedido, enviado } = this.trasGuardar(id, () => this.api.agregarCluster(id, numero));
     pedido
       .pipe(
         finalize(() => this.cambiandoClusters.set(false)),
@@ -4057,15 +4243,81 @@ export class SimulacionConfiguracion {
       )
       .subscribe({
         next: (cambio) => {
+          this.cerrarNuevoCluster();
+          this.notificaciones.exito('Clusters', cambio.mensaje);
+          this.recargarTodo(id);
+        },
+        // Si falló el guardado previo, no se recarga: se perdería lo editado. «Nuevo cluster»
+        // queda abierto: al recargar, avisa si ese número ya existe.
+        error: () => {
+          if (enviado()) {
+            this.recargarTodo(id);
+          }
+        },
+      });
+  }
+
+  /** Papelera de un cluster: si tiene rutas, se confirma antes; si ya empezó, se explica por qué no. */
+  pedirQuitarCluster(cluster: { id: number; nombre: string }): void {
+    if (this.ocupado()) {
+      return;
+    }
+    if (this.empezado(cluster.id)) {
+      this.notificaciones.advertencia(
+        'No se puede quitar',
+        this.avanceCluster(cluster.id).cerrado
+          ? `${cluster.nombre} está cerrado: reábrelo y restablécelo antes de quitarlo.`
+          : `${cluster.nombre} ya empezó a balancearse: restablécelo antes de quitarlo.`,
+      );
+      return;
+    }
+    const propio = this.configs().LXV?.clusters.find((c) => c.id === cluster.id);
+    const rutas = propio && clusterVacio(propio) ? 0 : this.rutasDelCluster(cluster.id);
+    if (rutas === 0) {
+      this.quitarCluster(cluster.id);
+      return;
+    }
+    this.quitarPendiente.set({ id: cluster.id, nombre: cluster.nombre, rutas });
+  }
+
+  /** «Quitar» en la confirmación. */
+  confirmarQuitarCluster(): void {
+    const pendiente = this.quitarPendiente();
+    if (pendiente) {
+      this.quitarCluster(pendiente.id);
+    }
+  }
+
+  /** Quita ese cluster (no solo el último): sus rutas vuelven a DATA. */
+  quitarCluster(clusterId: number): void {
+    const id = this.seleccionado();
+    if (id === null || this.ocupado()) {
+      return;
+    }
+    this.cambiandoClusters.set(true);
+    const { cambio: pedido, enviado } = this.trasGuardar(id, () => this.api.quitarCluster(id, clusterId));
+    pedido
+      .pipe(
+        finalize(() => this.cambiandoClusters.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: (cambio) => {
+          this.quitarPendiente.set(null);
           this.notificaciones.exito('Clusters', cambio.mensaje);
           // Un filtro por el cluster quitado quedaría activo sin chip para quitarlo.
-          if (quitado !== null && this.filtroCluster().includes(quitado)) {
-            this.filtroCluster.update((elegidos) => elegidos.filter((x) => x !== quitado));
+          if (this.filtroCluster().includes(clusterId)) {
+            this.filtroCluster.update((elegidos) => elegidos.filter((x) => x !== clusterId));
+          }
+          const detalle = this.detalle();
+          if (detalle?.tipo === 'cluster' && detalle.id === clusterId) {
+            this.detalle.set(null);
           }
           this.recargarTodo(id);
         },
         // Si falló el guardado previo, no se recarga: se perdería lo editado.
         error: () => {
+          this.quitarPendiente.set(null);
           if (enviado()) {
             this.recargarTodo(id);
           }

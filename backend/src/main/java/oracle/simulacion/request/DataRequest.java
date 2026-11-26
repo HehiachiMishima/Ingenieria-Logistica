@@ -27,6 +27,8 @@ public final class DataRequest {
   public static final int MAX_LOCALES = 5_000;
   /** Clusters del escenario (CL1…CLn). */
   public static final int MAX_CLUSTERS = 30;
+  /** Número más alto de un cluster (CL999). */
+  public static final int MAX_NUMERO_CLUSTER = 999;
 
   private DataRequest() {}
 
@@ -89,4 +91,11 @@ public final class DataRequest {
 
   /** Cuántos clusters hay: se agregan o se quitan desde el último. */
   public record Clusters(@NotNull @Min(0) @Max(MAX_CLUSTERS) Integer cantidad) {}
+
+  /** Un cluster nuevo, «CL{numero}»: el número lo elige el usuario (puede llenar un hueco). */
+  public record NuevoCluster(
+      @NotNull(message = "Elige el número del cluster.")
+          @Min(value = 1, message = "El número del cluster va de 1 a " + MAX_NUMERO_CLUSTER + ".")
+          @Max(value = MAX_NUMERO_CLUSTER, message = "El número del cluster va de 1 a " + MAX_NUMERO_CLUSTER + ".")
+          Integer numero) {}
 }

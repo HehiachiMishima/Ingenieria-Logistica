@@ -167,7 +167,14 @@ rutas de DATA se eliminan juntas: se eligen (Ctrl/⌘+clic o «Elegir todas» en
 confirmación; si alguna está en un cluster, no se elimina ninguna. Solo una ruta completa
 pasa a un cluster, y la celda donde se suelta (cluster y chute) es su posición original, el «antes»
 del Dashboard; el balanceo sigue igual. Un cluster que aún no empezó a balancearse puede devolver
-rutas a DATA y se puede quitar; los clusters se agregan al final y uno vacío se salta en el balanceo.
+rutas a DATA y se puede quitar con la papelera de su panel (sus rutas vuelven a DATA). Al agregar un
+cluster con «+» se elige su número (CLn): se sugieren primero los que faltan (CL2 si hay CL1 y CL4) y
+el balanceo los ordena por nombre, así que llena el hueco; si va antes de uno que ya empezó, se crea
+pero no recibe rutas hasta restablecer ese. Un cluster vacío se salta en el balanceo.
+«Guardar balanceo de rutas» es una foto: guarda dónde está cada ruta (DATA o cluster y chute), esté
+balanceada, a medias o movida a mano, sin cambiar el trabajo. «Cargar balanceo guardado» devuelve cada
+ruta ahí (las de un cluster quitado se quedan donde están) y deja cada cluster con rutas como ya
+balanceado: solo pide operarios.
 Antes de actualizar el backend aplica `backend/migracion_registro_titan.sql`: crea los locales de las
 rutas, quita las tablas del Registro, prepara DATA y **borra los registros subidos por Excel** con
 todo lo que cuelga de ellos. Es una sola transacción y es re-ejecutable.

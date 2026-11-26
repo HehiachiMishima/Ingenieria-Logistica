@@ -497,38 +497,8 @@ public class SimulacionDataService {
                 lotes.asegurarParametrosCluster(archivoId, lotes.asegurarClusters(nuevos).values());
                 hecho = "Ahora hay " + cantidad + (cantidad == 1 ? " cluster." : " clusters.");
               } else if (cantidad < actual) {
-                List<Long> quitar = todos.subList(cantidad, actual);
-                for (Long id : quitar) {
-                  exigirSinEmpezar(ctx, id, "quitarlo");
-                }
-                // Rutas movidas a mano entre un cluster que se quita y otro: las que llegaron desde uno
-                // que ya empezó no se pierden; las que salieron hacia otro toman ese como su original
-                // (si no, al restablecer volverían a un cluster que ya no existe).
-                List<Long> fijar = new ArrayList<>();
-                for (RutaData ruta : repo.rutasCruzadas(archivoId, quitar)) {
-                  boolean sale = quitar.contains(ruta.clusterId());
-                  boolean venia = quitar.contains(ruta.clusterOriginalId());
-                  if (sale && !venia) {
-                    exigirOrigenSinEmpezar(ctx, ruta, "quitar " + ctx.nombreCluster(ruta.clusterId()));
-                  } else if (venia && !sale) {
-                    if (SimulacionConfiguracionService.empezadoEnAlguno(ctx, ruta.clusterId())) {
-                      throw new ConflictoException(
-                          "La ruta " + ruta.codigo() + " salió de " + ctx.nombreCluster(ruta.clusterOriginalId())
-                              + " a " + ctx.nombreCluster(ruta.clusterId()) + ", que ya empezó a balancearse: devuélvela a "
-                              + ctx.nombreCluster(ruta.clusterOriginalId()) + " o restablece "
-                              + ctx.nombreCluster(ruta.clusterId()) + " antes de quitar el cluster.");
-                    }
-                    fijar.add(ruta.id());
-                  }
-                }
-                repo.fijarOrigenEnSuCluster(archivoId, fijar);
-                repo.borrarHistorialDeRutas(archivoId, fijar);
-                List<Long> vuelven = repo.devolverADataEnSuChute(archivoId, quitar);
-                repo.borrarHistorialDeRutas(archivoId, vuelven);
-                repo.quitarClusters(archivoId, quitar);
-                hecho =
-                    "Ahora hay " + cantidad + (cantidad == 1 ? " cluster" : " clusters")
-                        + (vuelven.isEmpty() ? "." : "; " + cantidad(vuelven.size()) + " volvieron a DATA.");
+                List<Long> vuelven = quitar(ctx, todos.subList(cantidad, actual));
+                hecho = "Ahora hay " + cantidad + (cantidad == 1 ? " cluster" : " clusters") + volvieron(vuelven.size()) + ".";
               } else {
                 hecho = "Los clusters ya eran " + cantidad + ".";
               }
@@ -536,6 +506,112 @@ public class SimulacionDataService {
               return hecho;
             });
     return listo(mensaje);
+  }
+
+  /**
+   * Agrega «CL{numero}» con el número que elige el usuario: puede llenar un hueco (CL2 entre CL1 y
+   * CL4). El balanceo ordena por nombre, así que queda en su lugar. Si va antes de uno que ya empezó,
+   * se crea igual, pero no recibe rutas hasta restablecer ese (lo avisa el mensaje).
+   */
+  public ApiResponse<CambioDataResponse> agregarCluster(Long archivoId, DataRequest.NuevoCluster req) {
+    int numero = req.numero();
+    String nombre = "CL" + numero;
+    Long actor = ActorActual.id();
+    String mensaje =
+        escribir(
+            "agregarCluster id=" + archivoId + " " + nombre,
+            () -> {
+              Contexto ctx = bloquear(archivoId);
+              List<Long> todos = SimulacionConfiguracionService.todosLosClusters(ctx);
+              Long repetido = todos.stream().filter((id) -> numero(ctx.nombreCluster(id)) == numero).findFirst().orElse(null);
+              if (repetido != null) {
+                throw new ConflictoException(ctx.nombreCluster(repetido) + " ya existe en este escenario.");
+              }
+              if (todos.size() >= DataRequest.MAX_CLUSTERS) {
+                throw new ConflictoException(
+                    "Ya hay " + DataRequest.MAX_CLUSTERS + " clusters, el máximo: quita uno antes de agregar otro.");
+              }
+              String bloqueadoPor =
+                  todos.stream()
+                      .filter((id) -> SimulacionConfiguracionService.ORDEN_NATURAL.compare(nombre, ctx.nombreCluster(id)) < 0)
+                      .filter((id) -> ctx.conRutas().contains(id) && SimulacionConfiguracionService.empezadoEnAlguno(ctx, id))
+                      .findFirst()
+                      .map(ctx::nombreCluster)
+                      .orElse(null);
+              lotes.asegurarParametrosCluster(archivoId, lotes.asegurarClusters(List.of(nombre)).values());
+              alCambiarRutas(ctx, actor);
+              int total = todos.size() + 1;
+              return nombre + " agregado. Ahora hay " + total + (total == 1 ? " cluster." : " clusters.")
+                  + (bloqueadoPor == null
+                      ? ""
+                      : " Va antes de " + bloqueadoPor + ", que ya empezó: recibirá rutas cuando restablezcas "
+                          + bloqueadoPor + ".");
+            });
+    return listo(mensaje);
+  }
+
+  /** Quita el cluster elegido (no solo el último) si no empezó; sus rutas vuelven a DATA. */
+  public ApiResponse<CambioDataResponse> quitarCluster(Long archivoId, Long clusterId) {
+    Long actor = ActorActual.id();
+    String mensaje =
+        escribir(
+            "quitarCluster id=" + archivoId + " cluster=" + clusterId,
+            () -> {
+              Contexto ctx = bloquear(archivoId);
+              List<Long> todos = SimulacionConfiguracionService.todosLosClusters(ctx);
+              if (!todos.contains(clusterId)) {
+                throw new RecursoNoEncontradoException("Ese cluster ya no está en el escenario. Actualiza la página.");
+              }
+              String nombre = ctx.nombreCluster(clusterId);
+              List<Long> vuelven = quitar(ctx, List.of(clusterId));
+              alCambiarRutas(ctx, actor);
+              int total = todos.size() - 1;
+              return nombre + " quitado" + volvieron(vuelven.size()) + ". Ahora hay " + total
+                  + (total == 1 ? " cluster." : " clusters.");
+            });
+    return listo(mensaje);
+  }
+
+  /**
+   * Quita esos clusters del escenario (ninguno puede haber empezado); sus rutas vuelven a DATA en su
+   * chute. Devuelve las rutas que volvieron.
+   */
+  private List<Long> quitar(Contexto ctx, List<Long> quitar) {
+    Long archivoId = ctx.archivo().getId();
+    for (Long id : quitar) {
+      exigirSinEmpezar(ctx, id, "quitarlo");
+    }
+    // Rutas movidas a mano entre un cluster que se quita y otro: las que llegaron desde uno
+    // que ya empezó no se pierden; las que salieron hacia otro toman ese como su original
+    // (si no, al restablecer volverían a un cluster que ya no existe).
+    List<Long> fijar = new ArrayList<>();
+    for (RutaData ruta : repo.rutasCruzadas(archivoId, quitar)) {
+      boolean sale = quitar.contains(ruta.clusterId());
+      boolean venia = quitar.contains(ruta.clusterOriginalId());
+      if (sale && !venia) {
+        exigirOrigenSinEmpezar(ctx, ruta, "quitar " + ctx.nombreCluster(ruta.clusterId()));
+      } else if (venia && !sale) {
+        if (SimulacionConfiguracionService.empezadoEnAlguno(ctx, ruta.clusterId())) {
+          throw new ConflictoException(
+              "La ruta " + ruta.codigo() + " salió de " + ctx.nombreCluster(ruta.clusterOriginalId())
+                  + " a " + ctx.nombreCluster(ruta.clusterId()) + ", que ya empezó a balancearse: devuélvela a "
+                  + ctx.nombreCluster(ruta.clusterOriginalId()) + " o restablece "
+                  + ctx.nombreCluster(ruta.clusterId()) + " antes de quitar el cluster.");
+        }
+        fijar.add(ruta.id());
+      }
+    }
+    repo.fijarOrigenEnSuCluster(archivoId, fijar);
+    repo.borrarHistorialDeRutas(archivoId, fijar);
+    List<Long> vuelven = repo.devolverADataEnSuChute(archivoId, quitar);
+    repo.borrarHistorialDeRutas(archivoId, vuelven);
+    repo.quitarClusters(archivoId, quitar);
+    return vuelven;
+  }
+
+  /** «; 1 ruta volvió a DATA», «; 3 rutas volvieron a DATA» o nada. */
+  private static String volvieron(int n) {
+    return n == 0 ? "" : "; " + cantidad(n) + (n == 1 ? " volvió" : " volvieron") + " a DATA";
   }
 
   // ---------------- Reglas ----------------

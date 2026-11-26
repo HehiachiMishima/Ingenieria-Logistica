@@ -1103,14 +1103,20 @@ public class SimulacionConfiguracionService {
         aConfiguracion(ctx));
   }
 
+  /**
+   * Guarda dónde está cada ruta, esté o no balanceada (también a medias o movida a mano): no pide
+   * nada más que tener rutas en los clusters. Al cargarlo, cada cluster con rutas queda como ya
+   * balanceado y solo pide operarios.
+   */
   public ApiResponse<Void> guardarBalanceoRutas(Long id) {
     return escribir("guardarBalanceoRutas id=" + id, () -> {
       var ctx = contexto(id, true);
-      boolean distribucionOriginal = lotes.clusterSinRestablecer(id).isEmpty();
-      validarDistribucionRutas(ctx, distribucionOriginal);
-      var archivo = ctx.archivo();
-      lotes.guardarBalanceoRutas(id, distribucionOriginal);
-      tocar(archivo, ActorActual.id());
+      if (rutasPorFrecuencia(rutaRepo.cargaPorArchivo(id)).isEmpty()) {
+        throw new ConflictoException(
+            "Aún no hay rutas en los clusters: pásalas desde DATA antes de guardar el balanceo.");
+      }
+      lotes.guardarBalanceoRutas(id);
+      tocar(ctx.archivo(), ActorActual.id());
       return null;
     }, "Balanceo de rutas guardado.");
   }
@@ -1127,16 +1133,16 @@ public class SimulacionConfiguracionService {
       });
       lotes.cargarBalanceoRutas(id);
       var ctx = contexto(id, false);
-      // Comprueba también los estados guardados con versiones anteriores. Ante un fallo,
-      // la transacción revierte la recuperación completa.
-      validarDistribucionRutas(ctx, false);
+      // Cada cluster con rutas debe quedar listo para operarios. Ante un fallo, la transacción
+      // revierte la recuperación completa.
+      validarBalanceoCargado(ctx);
       actualizarEstado(ctx);
       tocar(archivo, ActorActual.id());
       return null;
     }, "Balanceo de rutas cargado.");
   }
 
-  private void validarDistribucionRutas(Contexto ctx, boolean distribucionOriginal) {
+  private void validarBalanceoCargado(Contexto ctx) {
     var carga = rutasPorFrecuencia(rutaRepo.cargaPorArchivo(ctx.archivo().getId()));
     if (carga.isEmpty()) {
       throw new ConflictoException("El archivo no tiene rutas para asignar operarios.");
@@ -1153,9 +1159,9 @@ public class SimulacionConfiguracionService {
       for (Balanceo b : List.of(Balanceo.DIA, Balanceo.LXV, Balanceo.MJS)) {
         var parametro = ctx.parametro(b, id);
         boolean requerido = b == Balanceo.DIA || rutas[b == Balanceo.LXV ? 1 : 2] > 0;
-        if (parametro == null || (!distribucionOriginal && requerido && pendiente(parametro))) {
-          throw new ConflictoException("Balanceo de rutas incompleto en " + nombre + " ("
-              + b.etiqueta() + "). Completa el balanceo antes de guardarlo como predeterminado.");
+        if (parametro == null || (requerido && pendiente(parametro))) {
+          throw new ConflictoException("El balanceo guardado quedó incompleto en " + nombre + " ("
+              + b.etiqueta() + "). Guárdalo de nuevo.");
         }
       }
     }

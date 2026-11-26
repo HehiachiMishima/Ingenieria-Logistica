@@ -147,12 +147,10 @@
   </button>
   <div class="toolbar__acciones">
     @if (puedeModificar()) {
-    <!-- Clusters del escenario: se agregan al final; al quitar el último, sus rutas vuelven a DATA. -->
-    <div class="mz-clusters" role="group" aria-label="Cantidad de clusters">
+    <!-- Clusters del escenario: «+» abre «Nuevo cluster» (se elige el número: CL2 llena un hueco).
+         Cada cluster se quita con la papelera de su panel. -->
+    <div class="mz-clusters" role="group" aria-label="Clusters del escenario">
       <span class="mz-clusters__etq">Clusters</span>
-      <button type="button" class="ui-icon-btn mz-clusters__btn" aria-label="Quitar el último cluster"
-        title="Quitar el último cluster (sus rutas vuelven a DATA)"
-        [disabled]="cantidadClusters() === 0 || ocupado()" (click)="cambiarClusters(-1)">−</button>
       <strong class="mz-clusters__n" aria-live="polite">
         @if (cambiandoClusters()) {
         <span class="ui-spinner" aria-label="Cambiando clusters"></span>
@@ -160,9 +158,9 @@
         {{ cantidadClusters() }}
         }
       </strong>
-      <button type="button" class="ui-icon-btn mz-clusters__btn" aria-label="Agregar un cluster"
-        title="Agregar un cluster al final" [disabled]="cantidadClusters() >= maxClusters || ocupado()"
-        (click)="cambiarClusters(1)">+</button>
+      <button type="button" class="ui-icon-btn mz-clusters__btn" aria-label="Agregar un cluster" aria-haspopup="dialog"
+        [attr.aria-expanded]="nuevoCluster() !== null" title="Agregar un cluster eligiendo su número"
+        (click)="abrirNuevoCluster($event)">+</button>
     </div>
     }
     <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" (click)="alternarMinimizado()"
@@ -470,6 +468,13 @@
               [title]="(abierto ? 'Ocultar' : 'Ver') + ' totales de ' + c.nombre" (click)="alternarTotales(c.id)">
               <ui-icon name="analisis" [size]="15" />
             </button>
+            @if (puedeModificar()) {
+            <button type="button" class="mz-icono mz-icono--quitar" [attr.aria-label]="'Quitar ' + c.nombre"
+              [title]="'Quitar ' + c.nombre + ' (sus rutas vuelven a DATA)'" [disabled]="ocupado()"
+              (click)="pedirQuitarCluster(c)">
+              <ui-icon name="trash" [size]="15" />
+            </button>
+            }
           </span>
         </div>
 
@@ -696,6 +701,50 @@
 </div>
 }
 
+@if (nuevoCluster(); as nuevo) {
+<!-- «Nuevo cluster»: los números libres (huecos primero), «CL __» y dónde queda en el orden. -->
+<div class="mz-nuevo" role="dialog" aria-labelledby="nuevo-cluster-titulo" [style.left.px]="nuevo.left"
+  [style.top.px]="nuevo.top" [style.bottom.px]="nuevo.bottom" [style.max-height.px]="nuevo.maxAlto">
+  <p class="mz-menu__titulo" id="nuevo-cluster-titulo">Nuevo cluster</p>
+  <p class="mz-nuevo__existen">{{ clustersExistentes() }}</p>
+  @if (cantidadClusters() >= maxClusters) {
+  <p class="mz-nuevo__error" role="alert">Ya hay {{ maxClusters }} clusters, el máximo: quita uno antes de agregar otro.</p>
+  } @else {
+  @let info = infoNuevoCluster();
+  @if (sugerenciasCluster().length > 0) {
+  <div class="mz-nuevo__chips" role="group" aria-label="Números libres">
+    @for (n of sugerenciasCluster(); track n) {
+    <button type="button" class="mz-nuevo__chip" [class.mz-nuevo__chip--activo]="info.numero === n"
+      [attr.aria-pressed]="info.numero === n" (click)="numeroNuevo.set('' + n)">CL{{ n }}</button>
+    }
+  </div>
+  }
+  <div class="mz-nuevo__fila">
+    <label class="mz-nuevo__campo" [class.mz-nuevo__campo--invalido]="info.error !== null">
+      <span class="mz-nuevo__prefijo" aria-hidden="true">CL</span>
+      <input id="nuevo-cluster-numero" class="mz-nuevo__input" type="text" inputmode="numeric" maxlength="3"
+        autocomplete="off" aria-label="Número del cluster" aria-describedby="nuevo-cluster-ayuda"
+        [attr.aria-invalid]="info.error !== null" [value]="numeroNuevo()"
+        (input)="numeroNuevo.set($any($event.target).value)" (keydown.enter)="agregarCluster()" />
+    </label>
+    <button type="button" class="ui-btn ui-btn--primary ui-btn--sm mz-nuevo__agregar"
+      [disabled]="info.error !== null || ocupado()" (click)="agregarCluster()">
+      @if (cambiandoClusters()) {
+      <span class="ui-spinner config-spinner"></span>
+      }
+      Agregar {{ info.nombre ?? 'cluster' }}
+    </button>
+  </div>
+  <p id="nuevo-cluster-ayuda" class="mz-nuevo__ayuda" [class.mz-nuevo__error]="info.error !== null" aria-live="polite">
+    {{ info.error ?? info.orden }}
+  </p>
+  @if (info.aviso) {
+  <p class="mz-nuevo__aviso"><ui-icon name="alertTriangle" [size]="14" /> {{ info.aviso }}</p>
+  }
+  }
+</div>
+}
+
 <app-simulacion-historial-cambios [registroId]="seleccionado()" [abierto]="historialAbierto()"
   (cerrar)="historialAbierto.set(false)" />
 
@@ -878,8 +927,8 @@
   (cerrar)="accionBalanceoGuardado.set(null)">
   <p class="confirm__desc">
     @if (accionBalanceoGuardado() === 'guardar') {
-      Se guardará la distribución actual de {{ config()?.archivo?.nombreRegistro }}. Puedes usar la distribución
-      con la que entraron desde DATA o la de todos los clusters ya balanceados. Al cargarla, el siguiente paso será asignar operarios.
+      Se guardará dónde está cada ruta de {{ config()?.archivo?.nombreRegistro }} (DATA o cluster y chute), esté
+      balanceada o no. Al cargarla, las rutas vuelven ahí y cada cluster queda como balanceado: el siguiente paso será asignar operarios.
       @if (config()?.balanceoGuardado) { Reemplazará el balanceo guardado de este archivo. }
     } @else {
       Se recuperarán las rutas guardadas de {{ config()?.archivo?.nombreRegistro }}.
@@ -915,6 +964,35 @@
       <span class="ui-spinner config-spinner"></span>
       }
       Eliminar {{ (eliminarPendiente()?.ids?.length ?? 0) | entero }} {{ eliminarPendiente()?.ids?.length === 1 ? 'ruta' : 'rutas' }}
+    </button>
+  </div>
+</ui-modal>
+
+<ui-modal [abierto]="quitarPendiente() !== null" ancho="sm" [compacto]="true" titulo="Quitar cluster"
+  (cerrar)="quitarPendiente.set(null)">
+  @if (quitarPendiente(); as q) {
+  <div class="confirm">
+    <span class="confirm__icon"><ui-icon name="trash" [size]="22" /></span>
+    <div class="confirm__text">
+      <p class="confirm__title">¿Quitar {{ q.nombre }}?</p>
+      <p class="confirm__desc">
+        @if (q.rutas === 1) {
+        Su ruta vuelve a DATA, al bloque de su chute.
+        } @else {
+        Sus {{ q.rutas | entero }} rutas vuelven a DATA, cada una al bloque de su chute.
+        }
+        Puedes volver a agregar {{ q.nombre }} con «+».
+      </p>
+    </div>
+  </div>
+  }
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="quitarPendiente.set(null)">Cancelar</button>
+    <button type="button" class="ui-btn ui-btn--danger" (click)="confirmarQuitarCluster()" [disabled]="ocupado()">
+      @if (cambiandoClusters()) {
+      <span class="ui-spinner config-spinner"></span>
+      }
+      Quitar {{ quitarPendiente()?.nombre }}
     </button>
   </div>
 </ui-modal>

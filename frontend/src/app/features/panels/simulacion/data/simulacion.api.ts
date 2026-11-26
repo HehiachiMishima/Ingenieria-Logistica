@@ -125,9 +125,14 @@ export class SimulacionApi {
     return this.api.put<CambioData>(`/simulacion/registros/${id}/data/locales/mover`, { origenId, destinoId, ordenes });
   }
 
-  /** Cuántos clusters hay: se agregan al final; al quitar, sus rutas vuelven a DATA. */
-  cambiarClusters(id: number, cantidad: number): Observable<CambioData> {
-    return this.api.put<CambioData>(`/simulacion/registros/${id}/clusters/cantidad`, { cantidad });
+  /** Agrega «CL{numero}» con el número elegido: puede llenar un hueco (CL2 entre CL1 y CL4). */
+  agregarCluster(id: number, numero: number): Observable<CambioData> {
+    return this.api.post<CambioData>(`/simulacion/registros/${id}/clusters`, { numero });
+  }
+
+  /** Quita ese cluster si no empezó; sus rutas vuelven a DATA. */
+  quitarCluster(id: number, clusterId: number): Observable<CambioData> {
+    return this.api.delete<CambioData>(`/simulacion/registros/${id}/clusters/${clusterId}`);
   }
 
   /** Distribución de rutas por cluster y chute (lo que imprime el PDF; el Excel lleva lo mismo). */

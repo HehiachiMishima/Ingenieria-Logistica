@@ -1372,26 +1372,34 @@ class SimulacionFrecuenciasTest {
   }
 
   @Test
-  void permiteGuardarLaDistribucionOriginalSinAvanzarElTrabajoActual() {
+  void guardarNoAvanzaElTrabajoActual() {
     var parametros = List.of(parametro(Balanceo.DIA, CL1, "PENDIENTE"),
         parametro(Balanceo.LXV, CL1, "PENDIENTE"), parametro(Balanceo.MJS, CL1, "PENDIENTE"));
     preparar(parametros, List.of(base(1L, false)), List.of());
     when(clusterRepo.findAllById(any())).thenReturn(List.of(cluster(CL1, "CL1")));
     when(rutaRepo.cargaPorArchivo(10L)).thenReturn(List.of(carga("DIARIA", CL1, 1L, "100")));
     servicio.guardarBalanceoRutas(10L);
-    verify(lotes).guardarBalanceoRutas(10L, true);
+    verify(lotes).guardarBalanceoRutas(10L);
     assertTrue(parametros.stream().allMatch(p -> p.getEstado().equals("PENDIENTE")));
   }
 
   @Test
-  void noSobrescribeElGuardadoSiFaltaBalancearUnaFrecuencia() {
+  void guardaAunqueFalteBalancearUnaFrecuencia() {
+    // Guardar es transparente: a medio balancear también guarda dónde está cada ruta.
     preparar(List.of(parametro(Balanceo.DIA, CL1, "RUTAS"), parametro(Balanceo.LXV, CL1, "RUTAS"),
         parametro(Balanceo.MJS, CL1, "PENDIENTE")), List.of(), List.of());
     when(rutaRepo.cargaPorArchivo(10L)).thenReturn(List.of(carga("MJS", CL1, 1L, "100")));
-    when(lotes.clusterSinRestablecer(10L)).thenReturn(Optional.of("CL1"));
+    servicio.guardarBalanceoRutas(10L);
+    verify(lotes).guardarBalanceoRutas(10L);
+  }
+
+  @Test
+  void noGuardaSinRutasEnLosClusters() {
+    preparar(List.of(parametro(Balanceo.DIA, CL1, "PENDIENTE")), List.of(), List.of());
+    when(rutaRepo.cargaPorArchivo(10L)).thenReturn(List.of());
     var error = assertThrows(ConflictoException.class, () -> servicio.guardarBalanceoRutas(10L));
-    assertTrue(error.getMessage().contains("CL1 (M-J-S)"));
-    verify(lotes, never()).guardarBalanceoRutas(anyLong(), org.mockito.ArgumentMatchers.anyBoolean());
+    assertTrue(error.getMessage().contains("pásalas desde DATA"), error.getMessage());
+    verify(lotes, never()).guardarBalanceoRutas(anyLong());
   }
 
   @Test
