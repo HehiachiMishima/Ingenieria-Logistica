@@ -84,8 +84,6 @@ export class FichaDetalle {
    * solo cuando se muestra «Mover a…», no en cada cambio de la matriz.
    */
   readonly destinosLocales = input<Signal<readonly DestinoLocales[]> | null>(null);
-  /** Por qué sus locales no se pueden mover (un cluster que ya empezó a balancearse), o null. */
-  readonly avisoLocales = input<string | null>(null);
   /** Locales (por su orden) que empiezan a arrastrarse; null al terminar. */
   readonly arrastreLocales = output<readonly number[] | null>();
   readonly moverLocales = output<MoverLocalesA>();

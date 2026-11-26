@@ -399,17 +399,51 @@ class SimulacionDataServiceTest {
   }
 
   @Test
-  void unClusterQueYaEmpezoNoRecibeNiDaLocales() {
-    clusters(Set.of(CL1), cluster(CL1, ParametroCluster.ESTADO_RUTAS));
+  void unClusterCerradoNoRecibeNiDaLocales() {
+    clusters(Set.of(CL1), cluster(CL1, ParametroCluster.ESTADO_CERRADO));
     dosRutas(enData(5, "2002", null, null, null), enCluster(6, "2015", CL1));
 
     ConflictoException e =
         assertThrows(ConflictoException.class, () -> servicio.moverLocales(ARCHIVO, moverLocales(5, 6, 1)));
-    assertTrue(e.getMessage().contains("CL1 ya empezó a balancearse") && e.getMessage().contains("2015"), e.getMessage());
+    assertEquals("CL1 está cerrado: reábrelo para mover los locales de la ruta 2015.", e.getMessage());
     dosRutas(enCluster(6, "2015", CL1), enData(5, "2002", null, null, null));
     e = assertThrows(ConflictoException.class, () -> servicio.moverLocales(ARCHIVO, moverLocales(6, 5, 1)));
-    assertTrue(e.getMessage().contains("sacarle locales"), e.getMessage());
+    assertTrue(e.getMessage().contains("CL1 está cerrado"), e.getMessage());
     verify(repo, never()).locales(anyLong());
+  }
+
+  @Test
+  void enUnClusterYaBalanceadoTambienSeMuevenLocales() {
+    // Control manual, como mover una ruta: balanceado (sin operarios) no cambia de paso.
+    List<ParametroCluster> parametros = cluster(CL1, ParametroCluster.ESTADO_RUTAS);
+    clusters(Set.of(CL1), parametros);
+    dosRutas(enCluster(6, "2015", CL1), enData(5, "2002", null, null, null));
+    when(repo.locales(6L)).thenReturn(List.of(loc(1, "A1", "10"), loc(2, "B2", "5")));
+    when(repo.locales(5L)).thenReturn(List.of(loc(1, "C3", "7")));
+
+    ApiResponse<oracle.simulacion.response.CambioDataResponse> r = servicio.moverLocales(ARCHIVO, moverLocales(6, 5, 2));
+
+    verify(repo).recalcularTotales(ARCHIVO, List.of(6L, 5L));
+    assertEquals("1 local de 2015 → 2002.", r.mensaje());
+    assertEquals(ParametroCluster.ESTADO_RUTAS, estado(parametros, Balanceo.MJS));
+  }
+
+  @Test
+  void unClusterConOperariosVuelveAlPasoDeOperariosAlMoverSusLocales() {
+    List<ParametroCluster> parametros = new ArrayList<>(cluster(CL1, ParametroCluster.ESTADO_LISTO));
+    parametros.addAll(cluster(CL2, PENDIENTE));
+    clusters(Set.of(CL1, CL2), parametros);
+    dosRutas(enCluster(6, "2015", CL1), enCluster(7, "2020", CL2));
+    when(repo.locales(6L)).thenReturn(List.of(loc(1, "A1", "10"), loc(2, "B2", "5")));
+    when(repo.locales(7L)).thenReturn(List.of(loc(1, "C3", "7")));
+
+    ApiResponse<oracle.simulacion.response.CambioDataResponse> r = servicio.moverLocales(ARCHIVO, moverLocales(6, 7, 1));
+
+    verify(repo).recalcularTotales(ARCHIVO, List.of(6L, 7L));
+    // La ruta es M-J-S: CL1 vuelve al paso de operarios en M-J-S; L-X-V (donde no aparece) sigue igual.
+    assertEquals(ParametroCluster.ESTADO_RUTAS, estado(parametros, Balanceo.MJS));
+    assertEquals(ParametroCluster.ESTADO_LISTO, estado(parametros, Balanceo.LXV));
+    assertTrue(r.mensaje().endsWith("CL1 vuelve al paso de operarios."), r.mensaje());
   }
 
   @Test

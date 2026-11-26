@@ -161,8 +161,10 @@ En **Simulación Titan** ya no hay registro por Excel ni módulo Registro: todo 
 bloque **DATA** (mismo diseño, con su scroll), con las rutas que no se balancean: ahí se crean (uno o
 varios locales), se editan, se eliminan y reciben tipo, frecuencia y grupo. Cada ruta queda en el
 bloque de DATA donde se suelta (BLOQUE 1…n, número fijo; una ruta nueva cae en uno cualquiera). Los locales también se
-mueven: en la ficha de la ruta se eligen y se arrastran a otra ruta (en celular, «Mover a…»), solo
-entre DATA y clusters sin empezar; el código repetido se suma y una ruta no se queda sin locales. Varias
+mueven: en la ficha de la ruta se eligen y se arrastran a otra ruta (en celular, «Mover a…»),
+como mover una ruta a mano: en DATA y en cualquier cluster que no esté cerrado, balanceado o no (un
+cluster con operarios vuelve a ese paso; restablecerlo no deshace los locales). El código repetido se
+suma y una ruta no se queda sin locales. Varias
 rutas de DATA se eliminan juntas: se eligen (Ctrl/⌘+clic o «Elegir todas» en DATA) y «Eliminar», con
 confirmación; si alguna está en un cluster, no se elimina ninguna. Solo una ruta completa
 pasa a un cluster, y la celda donde se suelta (cluster y chute) es su posición original, el «antes»

@@ -1086,7 +1086,7 @@
 @if (r || k) {
 <app-ficha-detalle [posicion]="d.pos" [ruta]="r" [cluster]="k" [locales]="r ? localesRuta() : null"
   (cerrar)="cerrarDetalle()" (reintentar)="reintentarLocales()" (editar)="editarRuta()" (eliminar)="eliminarRuta()" [bloqueado]="ocupado()"
-  [localesMovibles]="localesMovibles()" [destinosLocales]="destinosLocales" [avisoLocales]="avisoLocales()" (arrastreLocales)="localesEnArrastre.set($event)"
+  [localesMovibles]="localesMovibles()" [destinosLocales]="destinosLocales" (arrastreLocales)="localesEnArrastre.set($event)"
   (moverLocales)="moverLocalesA($event.ordenes, $event.destinoId)" />
 }
 }

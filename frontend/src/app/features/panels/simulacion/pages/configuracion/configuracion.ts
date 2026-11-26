@@ -1852,33 +1852,13 @@ export class SimulacionConfiguracion {
   });
 
   /**
-   * Por qué no se pueden mover los locales de la ruta abierta (DATA o un cluster sin empezar); null
-   * si se puede, sin permiso o si el cluster está cerrado (eso ya lo dice la ficha).
-   */
-  readonly avisoLocales = computed(() => {
-    const ruta = this.rutaDetalle()?.ruta;
-    if (!ruta || !this.puedeModificar() || this.clusterCerrado(ruta.clusterId)) {
-      return null;
-    }
-    return this.motivoLocales(ruta);
-  });
-
-  /**
-   * Por qué una ruta no puede dar ni recibir locales (null si puede): cambia su carga, así que solo
-   * en DATA o en un cluster abierto que no empezó a balancearse (las mismas reglas del servidor).
+   * Por qué una ruta no puede dar ni recibir locales (null si puede). Control manual, como mover una
+   * ruta: en DATA y en cualquier cluster que no esté cerrado, antes, durante o después de balancear
+   * (las mismas reglas del servidor). Un cluster cerrado ya lo dice la ficha con su candado.
    */
   private motivoLocales(ruta: RutaSimulacion): string | null {
-    if (ruta.clusterId === DATA_ID) {
-      return null;
-    }
-    if (this.avanceCluster(ruta.clusterId).cerrado) {
-      return `${ruta.cluster} está cerrado: reábrelo y restablécelo para cambiar los locales de ${ruta.codigoRuta}.`;
-    }
-    if (this.empezado(ruta.clusterId)) {
-      return `${ruta.cluster} ya empezó a balancearse: restablécelo para cambiar los locales de ${ruta.codigoRuta}.`;
-    }
-    if (ruta.clusterOriginalId !== ruta.clusterId && ruta.clusterOriginalId !== DATA_ID && this.empezado(ruta.clusterOriginalId)) {
-      return `${ruta.codigoRuta} llegó a mano desde ${ruta.clusterOriginal}, que ya empezó a balancearse.`;
+    if (ruta.clusterId !== DATA_ID && this.clusterCerrado(ruta.clusterId)) {
+      return `${ruta.cluster} está cerrado: reábrelo para mover los locales de la ruta ${ruta.codigoRuta}.`;
     }
     return null;
   }

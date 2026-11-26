@@ -344,8 +344,9 @@ public class SimulacionDataService {
   // ---------------- Locales ----------------
 
   /**
-   * Locales de una ruta a otra (se arrastran desde la ficha): todos o ninguno. Las dos rutas deben
-   * estar en DATA o en un cluster que no empezó a balancearse, porque cambia su carga. La origen no
+   * Locales de una ruta a otra (se arrastran desde la ficha): todos o ninguno. Como mover una ruta a
+   * mano, vale en DATA y en cualquier cluster que no esté cerrado (antes, durante o después de
+   * balancear); un cluster que ya tenía operarios vuelve a ese paso porque cambió su carga. La origen no
    * se queda sin locales; el código que la destino ya tiene se suma ahí (como en el formulario). Los
    * totales de las dos vuelven a ser la suma de sus locales.
    */
@@ -367,8 +368,8 @@ public class SimulacionDataService {
               if (origen == null || destino == null) {
                 throw new ConflictoException("Alguna ruta ya no existe: pulsa «Actualizar».");
               }
-              exigirLocalesEditables(ctx, origen, "sacarle locales");
-              exigirLocalesEditables(ctx, destino, "darle locales");
+              exigirAbierto(ctx, origen);
+              exigirAbierto(ctx, destino);
 
               Map<Integer, LocalGuardado> deOrigen = new LinkedHashMap<>();
               repo.locales(origen.id()).forEach((l) -> deOrigen.put(l.orden(), l));
@@ -439,6 +440,26 @@ public class SimulacionDataService {
                 repo.pasarLocales(origen.id(), destino.id(), pasan);
               }
               repo.recalcularTotales(archivoId, List.of(origen.id(), destino.id()));
+              // Cambió la carga de las dos: el cluster que ya tenía operarios vuelve a ese paso en los
+              // días donde aparece la ruta (como al mover una ruta a mano).
+              List<String> vuelven = new ArrayList<>();
+              for (RutaData ruta : List.of(origen, destino)) {
+                if (ruta.enData()) {
+                  continue;
+                }
+                List<Balanceo> dias =
+                    Arrays.stream(Balanceo.values()).filter((b) -> b.incluye(ruta.frecuencia())).toList();
+                String nombre = ctx.nombreCluster(ruta.clusterId());
+                boolean conOperarios =
+                    dias.stream()
+                        .filter(Balanceo::esDia)
+                        .map((b) -> ctx.parametro(b, ruta.clusterId()))
+                        .anyMatch((p) -> p != null && ParametroCluster.ESTADO_LISTO.equals(p.getEstado()));
+                configuracion.invalidarOperariosEn(ctx, dias, List.of(ruta.clusterId()));
+                if (conOperarios && !vuelven.contains(nombre)) {
+                  vuelven.add(nombre);
+                }
+              }
               alCambiarRutas(ctx, actor);
               String cuantos = elegidos.size() == 1 ? "1 local" : elegidos.size() + " locales";
               String juntos =
@@ -447,20 +468,23 @@ public class SimulacionDataService {
                       : fusionados.size() == 1
                           ? " 1 se sumó a su mismo código."
                           : " " + fusionados.size() + " se sumaron a su mismo código.";
-              return cuantos + " de " + origen.codigo() + " → " + destino.codigo() + "." + juntos;
+              String operarios =
+                  vuelven.isEmpty()
+                      ? ""
+                      : " " + String.join(" y ", vuelven) + (vuelven.size() == 1 ? " vuelve" : " vuelven")
+                          + " al paso de operarios.";
+              return cuantos + " de " + origen.codigo() + " → " + destino.codigo() + "." + juntos + operarios;
             });
     return listo(mensaje);
   }
 
-  /**
-   * Cambiar los locales de una ruta cambia su carga: solo en DATA o en un cluster que no empezó a
-   * balancearse (ni la ruta llegó a mano desde uno que ya empezó).
-   */
-  private static void exigirLocalesEditables(Contexto ctx, RutaData ruta, String accion) {
-    if (!ruta.enData()) {
-      exigirSinEmpezar(ctx, ruta.clusterId(), accion + " a la ruta " + ruta.codigo());
+  /** Los locales se mueven a mano como las rutas: en DATA o en un cluster que no esté cerrado. */
+  private static void exigirAbierto(Contexto ctx, RutaData ruta) {
+    if (!ruta.enData() && cerradoEnAlguno(ctx, ruta.clusterId())) {
+      throw new ConflictoException(
+          ctx.nombreCluster(ruta.clusterId()) + " está cerrado: reábrelo para mover los locales de la ruta "
+              + ruta.codigo() + ".");
     }
-    exigirOrigenSinEmpezar(ctx, ruta, accion);
   }
 
   private static boolean excede(BigDecimal bultos, BigDecimal unidades, BigDecimal lineas) {
