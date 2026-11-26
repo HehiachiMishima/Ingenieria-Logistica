@@ -159,7 +159,7 @@ public class RutasDataRepository {
     return id == null ? 0 : id;
   }
 
-  /** Cambia número y totales de una ruta de DATA. Devuelve si existía en DATA. */
+  /** Cambia número y totales de una ruta (DATA o cluster; el servicio valida que no esté cerrado). */
   public boolean actualizar(
       Long archivoId, long rutaId, String codigo, BigDecimal bultos, BigDecimal unidades, BigDecimal lineas, int cod) {
     // Q: PK de rutas_proyeccion.
@@ -167,7 +167,7 @@ public class RutasDataRepository {
             """
             UPDATE simulacion.rutas_proyeccion
             SET codigo_ruta = ?, total_bultos = ?, total_unidades = ?, total_lineas = ?, conteo_cod = ?
-            WHERE id = ? AND archivo_id = ? AND cluster_id IS NULL
+            WHERE id = ? AND archivo_id = ?
             """,
             codigo,
             bultos,

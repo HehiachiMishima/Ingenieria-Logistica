@@ -728,6 +728,11 @@
   color: var(--danger);
 }
 
+/* Editar va a la derecha aunque no haya «Eliminar» (rutas de un cluster). */
+.ficha-acciones__editar {
+  margin-left: auto;
+}
+
 @media (pointer: coarse) {
   .ficha-acciones .ui-btn {
     min-height: 44px;

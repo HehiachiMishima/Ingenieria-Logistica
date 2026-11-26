@@ -528,8 +528,8 @@ class SimulacionDataServiceTest {
   }
 
   @Test
-  void enUnClusterQueYaEmpezoNoSeCambiaNadaYNingunaRecibeElCambio() {
-    clusters(Set.of(CL1), cluster(CL1, ParametroCluster.ESTADO_RUTAS));
+  void enUnClusterCerradoNoSeCambiaNadaYNingunaRecibeElCambio() {
+    clusters(Set.of(CL1), cluster(CL1, ParametroCluster.ESTADO_CERRADO));
     when(repo.rutas(ARCHIVO, List.of(5L, 6L)))
         .thenReturn(List.of(enData(5, "2002", null, null, null), enCluster(6, "2015", CL1)));
 
@@ -537,20 +537,86 @@ class SimulacionDataServiceTest {
         assertThrows(
             ConflictoException.class,
             () -> servicio.asignarGrupo(ARCHIVO, new DataRequest.Grupo(List.of(5L, 6L), "3")));
-    assertTrue(e.getMessage().contains("ya empezó a balancearse"), e.getMessage());
+    assertEquals("CL1 está cerrado: reábrelo para cambiar el grupo de sus rutas.", e.getMessage());
     verify(repo, never()).asignarGrupo(anyLong(), anyList(), any());
   }
 
   @Test
-  void editarUnaRutaDeUnClusterPideDevolverlaAData() {
-    clusters(Set.of(CL1), cluster(CL1, PENDIENTE));
+  void enUnClusterYaBalanceadoElGrupoCambiaYAvisaQueSeQuedanEnSuChute() {
+    // Control manual: balanceado y sin cerrar. CL1 tenía operarios en M-J-S (la ruta es M-J-S).
+    List<ParametroCluster> parametros = new ArrayList<>(cluster(CL1, ParametroCluster.ESTADO_LISTO));
+    clusters(Set.of(CL1), parametros);
+    when(repo.rutas(ARCHIVO, List.of(6L))).thenReturn(List.of(enCluster(6, "2015", CL1)));
+    when(repo.asignarGrupo(ARCHIVO, List.of(6L), "3")).thenReturn(1);
+
+    ApiResponse<oracle.simulacion.response.CambioDataResponse> r =
+        servicio.asignarGrupo(ARCHIVO, new DataRequest.Grupo(List.of(6L), "3"));
+
+    verify(repo).asignarGrupo(ARCHIVO, List.of(6L), "3");
+    assertEquals(ParametroCluster.ESTADO_RUTAS, estado(parametros, Balanceo.MJS));
+    assertEquals(ParametroCluster.ESTADO_LISTO, estado(parametros, Balanceo.LXV));
+    assertEquals(
+        "Grupo 3 asignado a 1 ruta. CL1 vuelve al paso de operarios. Se quedan en su chute; para repartirlas de"
+            + " nuevo, restablece y vuelve a balancear CL1.",
+        r.mensaje());
+  }
+
+  @Test
+  void laFrecuenciaNuevaTambienRecalculaLosDiasDondeEntra() {
+    // La ruta era M-J-S y pasa a L-X-V: CL1 vuelve al paso de operarios en los dos días.
+    List<ParametroCluster> parametros = new ArrayList<>(cluster(CL1, ParametroCluster.ESTADO_LISTO));
+    clusters(Set.of(CL1), parametros);
+    when(repo.rutas(ARCHIVO, List.of(6L))).thenReturn(List.of(enCluster(6, "2015", CL1)));
+    when(repo.asignarFrecuencia(ARCHIVO, List.of(6L), "LXV")).thenReturn(1);
+
+    ApiResponse<oracle.simulacion.response.CambioDataResponse> r =
+        servicio.asignarFrecuencia(ARCHIVO, new DataRequest.Frecuencia(List.of(6L), "LXV"));
+
+    assertEquals(ParametroCluster.ESTADO_RUTAS, estado(parametros, Balanceo.MJS));
+    assertEquals(ParametroCluster.ESTADO_RUTAS, estado(parametros, Balanceo.LXV));
+    assertTrue(r.mensaje().startsWith("Frecuencia L-X-V asignada a 1 ruta. CL1 vuelve al paso de operarios."), r.mensaje());
+  }
+
+  @Test
+  void elTipoEnUnClusterBalanceadoNoTocaElBalanceo() {
+    List<ParametroCluster> parametros = new ArrayList<>(cluster(CL1, ParametroCluster.ESTADO_LISTO));
+    clusters(Set.of(CL1), parametros);
+    when(repo.rutas(ARCHIVO, List.of(6L))).thenReturn(List.of(enCluster(6, "2015", CL1)));
+    when(repo.repetidasConTipo(ARCHIVO, List.of(6L), "B2C")).thenReturn(List.of());
+    when(repo.asignarTipo(ARCHIVO, List.of(6L), "B2C")).thenReturn(1);
+
+    ApiResponse<oracle.simulacion.response.CambioDataResponse> r =
+        servicio.asignarTipo(ARCHIVO, new DataRequest.Tipo(List.of(6L), "B2C"));
+
+    assertEquals("Tipo B2C asignado a 1 ruta.", r.mensaje());
+    assertEquals(ParametroCluster.ESTADO_LISTO, estado(parametros, Balanceo.MJS));
+  }
+
+  @Test
+  void unaRutaDeUnClusterBalanceadoSeEditaYSuClusterVuelveAlPasoDeOperarios() {
+    List<ParametroCluster> parametros = new ArrayList<>(cluster(CL1, ParametroCluster.ESTADO_LISTO));
+    clusters(Set.of(CL1), parametros);
+    when(repo.rutas(ARCHIVO, List.of(6L))).thenReturn(List.of(enCluster(6, "2015", CL1)));
+
+    ApiResponse<oracle.simulacion.response.CambioDataResponse> r =
+        servicio.actualizar(ARCHIVO, 6L, new DataRequest.Ruta("2015", List.of(local("A1", "1"))));
+
+    verify(repo).reemplazarLocales(eq(6L), anyList());
+    assertEquals(ParametroCluster.ESTADO_RUTAS, estado(parametros, Balanceo.MJS));
+    assertTrue(r.mensaje().endsWith("CL1 vuelve al paso de operarios."), r.mensaje());
+  }
+
+  @Test
+  void unaRutaDeUnClusterCerradoNoSeEdita() {
+    clusters(Set.of(CL1), cluster(CL1, ParametroCluster.ESTADO_CERRADO));
     when(repo.rutas(ARCHIVO, List.of(6L))).thenReturn(List.of(enCluster(6, "2015", CL1)));
 
     ConflictoException e =
         assertThrows(
             ConflictoException.class,
             () -> servicio.actualizar(ARCHIVO, 6L, new DataRequest.Ruta("2015", List.of(local("A1", "1")))));
-    assertTrue(e.getMessage().contains("devuélvela a DATA"), e.getMessage());
+    assertEquals("CL1 está cerrado: reábrelo para editar la ruta 2015.", e.getMessage());
+    verify(repo, never()).reemplazarLocales(anyLong(), anyList());
   }
 
   // ---------------- Clusters ----------------

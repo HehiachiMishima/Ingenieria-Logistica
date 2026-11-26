@@ -204,17 +204,21 @@
     <ui-icon [name]="r.cerrado ? 'lock' : 'info'" [size]="13" /> {{ r.aviso }}
   </p>
   }
-  @if (r.editable) {
-  <!-- En DATA la ruta se edita o se elimina; en un cluster ya no (vuelve a DATA para cambiarla). -->
+  @if (r.editable || r.eliminable) {
+  <!-- Editar: en DATA y en clusters no cerrados. Eliminar: solo en DATA (antes vuelve a DATA). -->
   <div class="ficha-acciones">
+    @if (r.eliminable) {
     <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm ficha-acciones__eliminar" [disabled]="bloqueado()"
       (click)="eliminar.emit()">
       <ui-icon name="trash" [size]="14" /> Eliminar
     </button>
-    <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" [disabled]="bloqueado() || locales()?.estado !== 'listo'"
-      (click)="editar.emit()">
+    }
+    @if (r.editable) {
+    <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm ficha-acciones__editar"
+      [disabled]="bloqueado() || locales()?.estado !== 'listo'" (click)="editar.emit()">
       <ui-icon name="edit" [size]="14" /> Editar
     </button>
+    }
   </div>
   }
   } @else if (k) {

@@ -89,7 +89,7 @@ export class SimulacionApi {
     return this.api.delete<CambioData>(`/simulacion/registros/${id}/data/rutas/${rutaId}`);
   }
 
-  /** Tipo, frecuencia o grupo para las rutas elegidas de DATA (las de un cluster se dejan igual). */
+  /** Tipo, frecuencia o grupo para las rutas elegidas: de DATA o de clusters no cerrados. */
   asignarData(
     id: number,
     que: 'tipo' | 'frecuencia' | 'grupo',

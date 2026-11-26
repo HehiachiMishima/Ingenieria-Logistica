@@ -1775,11 +1775,14 @@ export class SimulacionConfiguracion {
     const cerrado = this.clusterCerrado(ruta.clusterId);
     return {
       ruta,
-      /** En DATA: se edita o se elimina desde su ficha (con permiso). */
+      /** En DATA: el número de su bloque y eliminar desde su ficha (con permiso). */
       enData: ruta.clusterId === DATA_ID,
       /** En DATA: el número de su bloque (null en una columna bloqueada). */
       bloque: ruta.clusterId === DATA_ID ? (this.numeroBloque().get(ruta.chuteId) ?? null) : null,
-      editable: ruta.clusterId === DATA_ID && this.puedeModificar(),
+      /** Número y locales: en DATA o en un cluster que no esté cerrado (control manual). */
+      editable: this.puedeModificar() && (ruta.clusterId === DATA_ID || !cerrado),
+      /** Eliminar: solo en DATA (una ruta de un cluster vuelve antes a DATA). */
+      eliminable: ruta.clusterId === DATA_ID && this.puedeModificar(),
       color: this.resumenClusters().find((cluster) => cluster.id === ruta.clusterId)?.color ?? null,
       /** El mismo color de la pestaña del grupo en la cuadrícula y en el PDF. */
       colorGrupo: ruta.grupo ? (this.coloresGrupo().get(ruta.clusterId)?.get(ruta.grupo) ?? null) : null,
@@ -2857,11 +2860,11 @@ export class SimulacionConfiguracion {
         bultos += Number(ruta.totalBultos ?? 0);
         enData += ruta.clusterId === DATA_ID ? 1 : 0;
         locales += Number(ruta.conteoCod ?? 0);
-        asignables += ruta.clusterId === DATA_ID || !this.empezado(ruta.clusterId) ? 1 : 0;
+        asignables += ruta.clusterId === DATA_ID || !this.clusterCerrado(ruta.clusterId) ? 1 : 0;
         diarias += ruta.clusterId !== DATA_ID && esDiaria(ruta) ? 1 : 0;
       }
     }
-    // Tipo, frecuencia y grupo: solo si todas están en DATA o en un cluster que aún no empezó.
+    // Tipo, frecuencia y grupo: si ninguna está en un cluster cerrado (control manual, como el servidor).
     // Eliminar: solo si todas están en DATA (todo o nada, como el servidor).
     return {
       rutas: ids.size,
@@ -3877,7 +3880,18 @@ export class SimulacionConfiguracion {
   editarRuta(): void {
     const ruta = this.rutaDetalle()?.ruta;
     const locales = this.localesRuta();
-    if (!ruta || ruta.clusterId !== DATA_ID || locales?.estado !== 'listo') {
+    if (!ruta || (ruta.clusterId !== DATA_ID && this.clusterCerrado(ruta.clusterId)) || locales?.estado !== 'listo') {
+      return;
+    }
+    if (locales.datos.truncado) {
+      this.notificaciones.advertencia(
+        'No se puede editar aquí',
+        `${ruta.codigoRuta} tiene más locales de los que muestra la ficha: al guardar se perderían los demás.`,
+      );
+      return;
+    }
+    // En un cluster, al guardar se recarga todo (cambia su carga): lo editado arriba se guarda antes.
+    if (ruta.clusterId !== DATA_ID && this.avisarCambiosSinGuardar('editar una ruta de un cluster')) {
       return;
     }
     this.detalle.set(null);
@@ -3915,12 +3929,20 @@ export class SimulacionConfiguracion {
   }
 
   rutaGuardada({ mensaje, creada }: { mensaje: string; creada: boolean }): void {
+    const editada = this.rutaForm()?.ruta?.id;
+    const enCluster = editada != null && (this.rutasPorId().get(editada)?.clusterId ?? DATA_ID) !== DATA_ID;
     this.rutaForm.set(null);
     this.notificaciones.exito(creada ? 'Ruta creada' : 'Ruta guardada', mensaje);
-    this.recargarRutas(true);
+    const id = this.seleccionado();
+    // En un cluster cambió su carga (y quizá su paso): configuración y matriz al día.
+    if (enCluster && id !== null) {
+      this.recargarTodo(id);
+    } else {
+      this.recargarRutas(true);
+    }
   }
 
-  /** Tipo, frecuencia o grupo para las rutas elegidas de DATA. */
+  /** Tipo, frecuencia o grupo para las rutas elegidas (DATA o clusters no cerrados). */
   asignarData(que: 'tipo' | 'frecuencia' | 'grupo', valor: string): void {
     const id = this.seleccionado();
     const ids = [...this.seleccion()];
@@ -3988,9 +4010,9 @@ export class SimulacionConfiguracion {
   private motivoNoAsignar(que: 'tipo' | 'frecuencia' | 'grupo', ids: readonly number[], valor: string): string | null {
     const porId = this.rutasPorId();
     const rutas = ids.map((rutaId) => porId.get(rutaId)).filter((r): r is RutaSimulacion => !!r);
-    const empezada = rutas.find((r) => r.clusterId !== DATA_ID && this.empezado(r.clusterId));
-    if (empezada) {
-      return `${empezada.cluster} ya empezó a balancearse: restablécelo para cambiar ${que === 'tipo' ? 'el tipo' : que === 'frecuencia' ? 'la frecuencia' : 'el grupo'} de sus rutas.`;
+    const cerrada = rutas.find((r) => r.clusterId !== DATA_ID && this.clusterCerrado(r.clusterId));
+    if (cerrada) {
+      return `${cerrada.cluster} está cerrado: reábrelo para cambiar ${que === 'tipo' ? 'el tipo' : que === 'frecuencia' ? 'la frecuencia' : 'el grupo'} de sus rutas.`;
     }
     if (que !== 'tipo') {
       return null;

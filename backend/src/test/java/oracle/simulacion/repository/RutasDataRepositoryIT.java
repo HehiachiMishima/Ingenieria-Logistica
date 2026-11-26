@@ -104,11 +104,11 @@ class RutasDataRepositoryIT {
     RutasDataRepository.Totales t = repo.totales(archivo);
     assertEquals(1, t.rutas());
     assertEquals(0, dec("15.50").compareTo(t.bultos()));
-    // En un cluster: el tipo se puede cambiar (el servicio valida que no haya empezado); número,
-    // locales y eliminar solo en DATA.
+    // En un cluster: tipo, número y locales se pueden cambiar (el servicio valida que no esté
+    // cerrado); eliminar, solo en DATA.
     assertEquals(1, repo.asignarTipo(archivo, List.of(id), "B2B"));
     repo.asignarTipo(archivo, List.of(id), "B2C");
-    assertFalse(repo.actualizar(archivo, id, "2003", dec("1"), dec("1"), dec("1"), 1));
+    assertTrue(repo.actualizar(archivo, id, "2002", dec("15.50"), dec("100"), dec("3"), 2));
     assertFalse(repo.eliminar(archivo, id));
 
     // Vuelve a DATA (como al quitar su cluster) y se borra su historial manual.

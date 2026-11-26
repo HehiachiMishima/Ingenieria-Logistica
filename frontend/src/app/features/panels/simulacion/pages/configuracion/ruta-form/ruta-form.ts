@@ -15,14 +15,14 @@ import { SimulacionApi } from '../../../data/simulacion.api';
 import { LocalRuta, RutaDataRequest } from '../../../data/simulacion.model';
 import { NumeroPipe } from '../../../numero.pipe';
 
-/** La ruta de DATA que se edita: su número y su tipo (si ya lo tiene). */
+/** La ruta que se edita (de DATA o de un cluster no cerrado): su número y su tipo (si ya lo tiene). */
 export interface RutaFormRuta {
   id: number;
   codigoRuta: string;
   tipo: string | null;
 }
 
-/** Lo que abre el formulario: una ruta de DATA para editar (con sus locales) o ninguna para crear. */
+/** Lo que abre el formulario: una ruta para editar (con sus locales) o ninguna para crear (en DATA). */
 export interface RutaFormInicial {
   ruta: RutaFormRuta | null;
   locales: LocalRuta[];
@@ -47,7 +47,7 @@ const MAXIMO = 9_999_999_999.99;
 const CAMPOS: readonly Campo[] = ['cod', 'bultos', 'unidades', 'lineas'];
 
 /**
- * Crear o editar una ruta de DATA. Al crear, primero se elige si tiene un local o varios
+ * Crear una ruta en DATA o editar una (de DATA o de un cluster no cerrado). Al crear, primero se elige si tiene un local o varios
  * (con uno, los volúmenes escritos son los de la ruta; con varios, una línea por código y los
  * totales se suman solos). Se pueden pegar filas copiadas del Excel. Un código repetido se suma
  * al guardar, como en el Excel.
@@ -143,7 +143,7 @@ export class RutaForm {
 
   readonly subtitulo = computed(() => {
     if (this.editando()) {
-      return 'El tipo, la frecuencia y el grupo de la ruta no cambian.';
+      return 'El tipo, la frecuencia, el grupo y el lugar de la ruta no cambian.';
     }
     return this.modo() === null
       ? 'Primero indica si la ruta tiene un local o varios.'

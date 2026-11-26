@@ -624,7 +624,7 @@
       }
     </p>
     @if (sel.asignable && puedeModificar()) {
-    <!-- Rutas de DATA o de clusters que aún no empezaron: tipo, frecuencia y grupo. -->
+    <!-- Rutas de DATA o de clusters no cerrados: tipo, frecuencia y grupo. -->
     <div class="sel-barra__acciones" role="group" aria-label="Asignar a las rutas elegidas">
       <span class="sel-barra__grupo" role="group" aria-label="Tipo">
         <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" [disabled]="ocupado()" (click)="asignarData('tipo', 'B2C')">B2C</button>

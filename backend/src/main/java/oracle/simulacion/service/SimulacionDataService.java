@@ -107,16 +107,25 @@ public class SimulacionDataService {
     return listo("Ruta " + datos.codigo() + " creada en DATA." + avisoSumados(datos));
   }
 
-  /** Cambia el número y los locales de una ruta de DATA (tipo, frecuencia y grupo se conservan). */
+  /**
+   * Cambia el número y los locales de una ruta (tipo, frecuencia y grupo se conservan): en DATA o en
+   * un cluster que no esté cerrado; ese cluster vuelve al paso de operarios si ya los tenía.
+   */
   public ApiResponse<CambioDataResponse> actualizar(Long archivoId, Long rutaId, DataRequest.Ruta req) {
     RutaNormalizada datos = RutaNormalizada.de(req);
     Long actor = ActorActual.id();
-    String nombre =
+    String mensaje =
         escribir(
             "actualizar id=" + archivoId + " ruta=" + rutaId,
             () -> {
               Contexto ctx = bloquear(archivoId);
-              RutaData ruta = enData(ctx, rutaId, "editarla");
+              RutaData ruta = existente(ctx, rutaId);
+              // Control manual, como mover locales: en DATA y en cualquier cluster que no esté cerrado.
+              if (!ruta.enData() && cerradoEnAlguno(ctx, ruta.clusterId())) {
+                throw new ConflictoException(
+                    ctx.nombreCluster(ruta.clusterId()) + " está cerrado: reábrelo para editar la ruta "
+                        + ruta.codigo() + ".");
+              }
               if (repo.existe(archivoId, datos.codigo(), ruta.tipo(), rutaId)) {
                 throw new ConflictoException("Ya existe la ruta " + nombre(datos.codigo(), ruta.tipo()) + ".");
               }
@@ -129,10 +138,13 @@ public class SimulacionDataService {
                   datos.lineas(),
                   datos.locales().size());
               repo.reemplazarLocales(rutaId, locales(datos));
-              configuracion.tocar(ctx.archivo(), actor);
-              return nombre(datos.codigo(), ruta.tipo());
+              // Cambió su carga: su cluster vuelve al paso de operarios en los días donde aparece.
+              List<String> vuelven = invalidarOperarios(ctx, List.of(ruta), Set.of());
+              alCambiarRutas(ctx, actor);
+              return "Ruta " + nombre(datos.codigo(), ruta.tipo()) + " guardada." + avisoSumados(datos)
+                  + pasoOperarios(vuelven);
             });
-    return listo("Ruta " + nombre + " guardada." + avisoSumados(datos));
+    return listo(mensaje);
   }
 
   /** Borra una ruta de DATA y sus locales. */
@@ -178,50 +190,59 @@ public class SimulacionDataService {
     return listo((hechas[0] == 1 ? "1 ruta eliminada" : hechas[0] + " rutas eliminadas") + " de DATA." + faltaban);
   }
 
-  // ---------------- Tipo, frecuencia y grupo (solo en DATA) ----------------
+  // ---------------- Tipo, frecuencia y grupo (DATA y clusters no cerrados) ----------------
 
-  /** Tipo para las rutas elegidas de DATA: todas o ninguna, sin dejar dos con el mismo número y tipo. */
+  /**
+   * Tipo para las rutas elegidas (DATA o clusters no cerrados): todas o ninguna, sin dejar dos con
+   * el mismo número y tipo. Es solo una etiqueta: no cambia el balanceo.
+   */
   public ApiResponse<CambioDataResponse> asignarTipo(Long archivoId, DataRequest.Tipo req) {
     List<Long> ids = distintos(req.rutaIds());
     Long actor = ActorActual.id();
-    int[] hechas =
+    int hechas =
         escribir(
             "tipo id=" + archivoId + " rutas=" + ids.size(),
             () -> {
               Contexto ctx = bloquear(archivoId);
-              List<Long> enData = asignables(ctx, ids, "el tipo");
-              List<String> repetidas = repo.repetidasConTipo(archivoId, enData, req.tipo());
+              List<Long> elegidas = idsDe(asignables(ctx, ids, "el tipo"));
+              List<String> repetidas = repo.repetidasConTipo(archivoId, elegidas, req.tipo());
               if (!repetidas.isEmpty()) {
                 throw new ConflictoException(
                     "No se cambió el tipo: quedarían repetidas como " + req.tipo() + " las rutas " + lista(repetidas) + ".");
               }
-              int n = repo.asignarTipo(archivoId, enData, req.tipo());
+              int n = repo.asignarTipo(archivoId, elegidas, req.tipo());
               configuracion.tocar(ctx.archivo(), actor);
-              return new int[] {n, ids.size() - enData.size()};
+              return n;
             });
-    return listo("Tipo " + req.tipo() + " asignado a " + cantidad(hechas[0]) + "." + omitidas(hechas[1]));
+    return listo("Tipo " + req.tipo() + " asignado a " + cantidad(hechas) + ".");
   }
 
-  /** Frecuencia para las rutas elegidas de DATA. */
+  /**
+   * Frecuencia para las rutas elegidas (DATA o clusters no cerrados). Cambia en qué días aparece cada
+   * una: en los días de antes y en los nuevos, su cluster vuelve al paso de operarios.
+   */
   public ApiResponse<CambioDataResponse> asignarFrecuencia(Long archivoId, DataRequest.Frecuencia req) {
     List<Long> ids = distintos(req.rutaIds());
     Long actor = ActorActual.id();
-    int[] hechas =
+    String mensaje =
         escribir(
             "frecuencia id=" + archivoId + " rutas=" + ids.size(),
             () -> {
               Contexto ctx = bloquear(archivoId);
-              List<Long> enData = asignables(ctx, ids, "la frecuencia");
-              int n = repo.asignarFrecuencia(archivoId, enData, req.frecuencia());
-              configuracion.tocar(ctx.archivo(), actor);
-              return new int[] {n, ids.size() - enData.size()};
+              List<RutaData> rutas = asignables(ctx, ids, "la frecuencia");
+              String balanceo = alCambiarBalanceo(ctx, rutas, diasDe(req.frecuencia()));
+              int n = repo.asignarFrecuencia(archivoId, idsDe(rutas), req.frecuencia());
+              alCambiarRutas(ctx, actor);
+              return "Frecuencia " + NombresSimulacion.textoFrecuencia(req.frecuencia()) + " asignada a "
+                  + cantidad(n) + "." + balanceo;
             });
-    return listo(
-        "Frecuencia " + NombresSimulacion.textoFrecuencia(req.frecuencia()) + " asignada a " + cantidad(hechas[0]) + "."
-            + omitidas(hechas[1]));
+    return listo(mensaje);
   }
 
-  /** Grupo para las rutas elegidas de DATA. Se guarda limpio («  a » → «A»). */
+  /**
+   * Grupo para las rutas elegidas (DATA o clusters no cerrados). Se guarda limpio («  a » → «A»). El
+   * grupo decide el tramo de chutes: su cluster vuelve al paso de operarios.
+   */
   public ApiResponse<CambioDataResponse> asignarGrupo(Long archivoId, DataRequest.Grupo req) {
     List<Long> ids = distintos(req.rutaIds());
     String grupo = RutaNormalizada.texto(req.grupo());
@@ -229,17 +250,42 @@ public class SimulacionDataService {
       throw new SolicitudInvalidaException("Escribe el grupo.");
     }
     Long actor = ActorActual.id();
-    int[] hechas =
+    String mensaje =
         escribir(
             "grupo id=" + archivoId + " rutas=" + ids.size(),
             () -> {
               Contexto ctx = bloquear(archivoId);
-              List<Long> enData = asignables(ctx, ids, "el grupo");
-              int n = repo.asignarGrupo(archivoId, enData, grupo);
-              configuracion.tocar(ctx.archivo(), actor);
-              return new int[] {n, ids.size() - enData.size()};
+              List<RutaData> rutas = asignables(ctx, ids, "el grupo");
+              String balanceo = alCambiarBalanceo(ctx, rutas, Set.of());
+              int n = repo.asignarGrupo(archivoId, idsDe(rutas), grupo);
+              alCambiarRutas(ctx, actor);
+              return "Grupo " + grupo + " asignado a " + cantidad(n) + "." + balanceo;
             });
-    return listo("Grupo " + grupo + " asignado a " + cantidad(hechas[0]) + "." + omitidas(hechas[1]));
+    return listo(mensaje);
+  }
+
+  /**
+   * Grupo o frecuencia de rutas de un cluster: en sus días (y en {@code diasNuevos}) el cluster vuelve
+   * al paso de operarios. Las rutas se quedan en su chute: si el cluster ya se balanceó, lo dice para
+   * que se restablezca y se vuelva a balancear si se quiere un reparto limpio.
+   */
+  private String alCambiarBalanceo(Contexto ctx, List<RutaData> rutas, Set<Balanceo> diasNuevos) {
+    List<String> vuelven = invalidarOperarios(ctx, rutas, diasNuevos);
+    List<String> balanceados = new ArrayList<>();
+    for (RutaData ruta : rutas) {
+      if (!ruta.enData() && SimulacionConfiguracionService.empezadoEnAlguno(ctx, ruta.clusterId())) {
+        String nombre = ctx.nombreCluster(ruta.clusterId());
+        if (!balanceados.contains(nombre)) {
+          balanceados.add(nombre);
+        }
+      }
+    }
+    String reparto =
+        balanceados.isEmpty()
+            ? ""
+            : " Se quedan en su chute; para repartirlas de nuevo, restablece y vuelve a balancear "
+                + String.join(" y ", balanceados) + ".";
+    return pasoOperarios(vuelven) + reparto;
   }
 
   // ---------------- Mover entre DATA y los clusters ----------------
@@ -449,24 +495,7 @@ public class SimulacionDataService {
               repo.recalcularTotales(archivoId, List.of(origen.id(), destino.id()));
               // Cambió la carga de las dos: el cluster que ya tenía operarios vuelve a ese paso en los
               // días donde aparece la ruta (como al mover una ruta a mano).
-              List<String> vuelven = new ArrayList<>();
-              for (RutaData ruta : List.of(origen, destino)) {
-                if (ruta.enData()) {
-                  continue;
-                }
-                List<Balanceo> dias =
-                    Arrays.stream(Balanceo.values()).filter((b) -> b.incluye(ruta.frecuencia())).toList();
-                String nombre = ctx.nombreCluster(ruta.clusterId());
-                boolean conOperarios =
-                    dias.stream()
-                        .filter(Balanceo::esDia)
-                        .map((b) -> ctx.parametro(b, ruta.clusterId()))
-                        .anyMatch((p) -> p != null && ParametroCluster.ESTADO_LISTO.equals(p.getEstado()));
-                configuracion.invalidarOperariosEn(ctx, dias, List.of(ruta.clusterId()));
-                if (conOperarios && !vuelven.contains(nombre)) {
-                  vuelven.add(nombre);
-                }
-              }
+              List<String> vuelven = invalidarOperarios(ctx, List.of(origen, destino), Set.of());
               alCambiarRutas(ctx, actor);
               String cuantos = elegidos.size() == 1 ? "1 local" : elegidos.size() + " locales";
               String juntos =
@@ -475,12 +504,7 @@ public class SimulacionDataService {
                       : fusionados.size() == 1
                           ? " 1 se sumó a su mismo código."
                           : " " + fusionados.size() + " se sumaron a su mismo código.";
-              String operarios =
-                  vuelven.isEmpty()
-                      ? ""
-                      : " " + String.join(" y ", vuelven) + (vuelven.size() == 1 ? " vuelve" : " vuelven")
-                          + " al paso de operarios.";
-              return cuantos + " de " + origen.codigo() + " → " + destino.codigo() + "." + juntos + operarios;
+              return cuantos + " de " + origen.codigo() + " → " + destino.codigo() + "." + juntos + pasoOperarios(vuelven);
             });
     return listo(mensaje);
   }
@@ -676,12 +700,16 @@ public class SimulacionDataService {
   }
 
   /** La ruta existe y está en DATA; si no, se dice dónde está. */
-  private RutaData enData(Contexto ctx, Long rutaId, String accion) {
+  private RutaData existente(Contexto ctx, Long rutaId) {
     List<RutaData> rutas = repo.rutas(ctx.archivo().getId(), List.of(rutaId));
     if (rutas.isEmpty()) {
       throw new RecursoNoEncontradoException("La ruta ya no existe: pulsa «Actualizar».");
     }
-    RutaData ruta = rutas.getFirst();
+    return rutas.getFirst();
+  }
+
+  private RutaData enData(Contexto ctx, Long rutaId, String accion) {
+    RutaData ruta = existente(ctx, rutaId);
     if (!ruta.enData()) {
       throw new ConflictoException(
           "La ruta " + ruta.codigo() + " está en " + ctx.nombreCluster(ruta.clusterId())
@@ -695,17 +723,66 @@ public class SimulacionDataService {
    * empezó a balancearse (ahí no cambia ningún balanceo). Todas o ninguna: si alguna está en un
    * cluster que ya empezó o está cerrado, no se cambia ninguna.
    */
-  private List<Long> asignables(Contexto ctx, List<Long> ids, String que) {
+  private List<RutaData> asignables(Contexto ctx, List<Long> ids, String que) {
     List<RutaData> rutas = repo.rutas(ctx.archivo().getId(), ids);
     if (rutas.size() != ids.size()) {
       throw new ConflictoException("Alguna ruta ya no existe: pulsa «Actualizar».");
     }
+    // Control manual: DATA y cualquier cluster que no esté cerrado (antes, durante o después de balancear).
     Set<Long> clusters = new LinkedHashSet<>();
     rutas.stream().filter((r) -> !r.enData()).forEach((r) -> clusters.add(r.clusterId()));
     for (Long cluster : clusters) {
-      exigirSinEmpezar(ctx, cluster, "cambiar " + que + " de sus rutas");
+      if (cerradoEnAlguno(ctx, cluster)) {
+        throw new ConflictoException(
+            ctx.nombreCluster(cluster) + " está cerrado: reábrelo para cambiar " + que + " de sus rutas.");
+      }
     }
+    return rutas;
+  }
+
+  private static List<Long> idsDe(List<RutaData> rutas) {
     return rutas.stream().map(RutaData::id).toList();
+  }
+
+  /** Días (balanceos) donde aparece una ruta de esa frecuencia. */
+  private static Set<Balanceo> diasDe(String frecuencia) {
+    Set<Balanceo> dias = EnumSet.noneOf(Balanceo.class);
+    Arrays.stream(Balanceo.values()).filter((b) -> b.incluye(frecuencia)).forEach(dias::add);
+    return dias;
+  }
+
+  /**
+   * Cambió la carga de esas rutas (sus locales, su grupo o su frecuencia): en los días donde aparecen
+   * (y en {@code otrosDias}) su cluster vuelve al paso de operarios, como al mover una ruta a mano.
+   * Devuelve los clusters que ya tenían operarios.
+   */
+  private List<String> invalidarOperarios(Contexto ctx, List<RutaData> rutas, Set<Balanceo> otrosDias) {
+    List<String> vuelven = new ArrayList<>();
+    for (RutaData ruta : rutas) {
+      if (ruta.enData()) {
+        continue;
+      }
+      Set<Balanceo> dias = diasDe(ruta.frecuencia());
+      dias.addAll(otrosDias);
+      boolean conOperarios =
+          dias.stream()
+              .filter(Balanceo::esDia)
+              .map((b) -> ctx.parametro(b, ruta.clusterId()))
+              .anyMatch((p) -> p != null && ParametroCluster.ESTADO_LISTO.equals(p.getEstado()));
+      configuracion.invalidarOperariosEn(ctx, dias, List.of(ruta.clusterId()));
+      String nombre = ctx.nombreCluster(ruta.clusterId());
+      if (conOperarios && !vuelven.contains(nombre)) {
+        vuelven.add(nombre);
+      }
+    }
+    return vuelven;
+  }
+
+  /** « CL1 vuelve al paso de operarios.» o nada. */
+  private static String pasoOperarios(List<String> vuelven) {
+    return vuelven.isEmpty()
+        ? ""
+        : " " + String.join(" y ", vuelven) + (vuelven.size() == 1 ? " vuelve" : " vuelven") + " al paso de operarios.";
   }
 
   /** Tras mover rutas: clusters con rutas, estado del escenario, totales y su versión. */
@@ -801,10 +878,6 @@ public class SimulacionDataService {
 
   private static String avisoSumados(RutaNormalizada datos) {
     return datos.sumados() > 0 ? " Se sumaron los códigos repetidos." : "";
-  }
-
-  private static String omitidas(int n) {
-    return n == 0 ? "" : " " + cantidad(n) + " en un cluster " + (n == 1 ? "se dejó" : "se dejaron") + " igual.";
   }
 
   private static String cantidad(int n) {
