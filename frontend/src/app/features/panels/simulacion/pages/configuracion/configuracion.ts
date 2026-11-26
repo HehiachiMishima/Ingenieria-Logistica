@@ -5,6 +5,7 @@ import {
   computed,
   effect,
   inject,
+  linkedSignal,
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
@@ -1830,8 +1831,29 @@ export class SimulacionConfiguracion {
 
   // ---------------- Mover locales entre rutas ----------------
 
-  /** Locales (por su orden) que se arrastran desde la ficha; null si ninguno. */
-  readonly localesEnArrastre = signal<readonly number[] | null>(null);
+  /**
+   * Locales (por su orden) que se arrastran desde la ficha; null si ninguno. Se olvidan al cerrar la
+   * ficha o abrir otra ruta: si la ficha se cierra a mitad del arrastre, su fin nunca llega.
+   */
+  readonly localesEnArrastre = linkedSignal<number | null, readonly number[] | null>({
+    source: () => {
+      const abierto = this.detalle();
+      return abierto?.tipo === 'ruta' ? abierto.id : null;
+    },
+    computation: () => null,
+  });
+
+  /**
+   * Por qué no se pueden mover los locales de la ruta abierta (DATA o un cluster sin empezar); null
+   * si se puede, sin permiso o si el cluster está cerrado (eso ya lo dice la ficha).
+   */
+  readonly avisoLocales = computed(() => {
+    const ruta = this.rutaDetalle()?.ruta;
+    if (!ruta || !this.puedeModificar() || this.clusterCerrado(ruta.clusterId)) {
+      return null;
+    }
+    return this.motivoLocales(ruta);
+  });
 
   /**
    * Por qué una ruta no puede dar ni recibir locales (null si puede): cambia su carga, así que solo
@@ -1936,7 +1958,8 @@ export class SimulacionConfiguracion {
       return;
     }
     this.rutasGuardando.set(new Set([origen.id, destinoId]));
-    this.conCambiosGuardados(id, () => this.api.moverLocales(id, origen.id, destinoId, ordenes))
+    const { cambio: pedido, enviado } = this.trasGuardar(id, () => this.api.moverLocales(id, origen.id, destinoId, ordenes));
+    pedido
       .pipe(
         finalize(() => this.rutasGuardando.set(new Set())),
         takeUntilDestroyed(this.destroyRef),
@@ -1947,10 +1970,13 @@ export class SimulacionConfiguracion {
           this.recargarTodo(id);
           this.reintentarLocales();
         },
-        // El interceptor ya muestra el motivo; la vista se pone al día por si otra persona cambió algo.
+        // El interceptor ya muestra el motivo; la vista se pone al día por si otra persona cambió algo
+        // (si falló el guardado previo, no: se perdería lo editado).
         error: () => {
-          this.recargarTodo(id);
-          this.reintentarLocales();
+          if (enviado()) {
+            this.recargarTodo(id);
+            this.reintentarLocales();
+          }
         },
       });
   }
@@ -2831,16 +2857,29 @@ export class SimulacionConfiguracion {
     let bultos = 0;
     let diarias = 0;
     let asignables = 0;
+    let enData = 0;
+    let locales = 0;
     for (const id of ids) {
       const ruta = porId.get(id);
       if (ruta) {
         bultos += Number(ruta.totalBultos ?? 0);
+        enData += ruta.clusterId === DATA_ID ? 1 : 0;
+        locales += Number(ruta.conteoCod ?? 0);
         asignables += ruta.clusterId === DATA_ID || !this.empezado(ruta.clusterId) ? 1 : 0;
         diarias += ruta.clusterId !== DATA_ID && esDiaria(ruta) ? 1 : 0;
       }
     }
     // Tipo, frecuencia y grupo: solo si todas están en DATA o en un cluster que aún no empezó.
-    return { rutas: ids.size, bultos, diarias, asignable: asignables === ids.size };
+    // Eliminar: solo si todas están en DATA (todo o nada, como el servidor).
+    return {
+      rutas: ids.size,
+      bultos,
+      diarias,
+      locales,
+      asignable: asignables === ids.size,
+      eliminable: enData === ids.size,
+      mixta: enData > 0 && enData < ids.size,
+    };
   });
 
   /**
@@ -2911,6 +2950,90 @@ export class SimulacionConfiguracion {
   limpiarSeleccion(): void {
     this.seleccionElegida.set(new Set());
     this.anclaSeleccion = null;
+  }
+
+  /** Rutas de DATA que se ven y se pueden elegir (respeta la búsqueda y el filtro de chutes). */
+  private readonly idsDataVisibles = computed(() => {
+    const data = this.bloquesMatriz().find((bloque) => bloque.data);
+    const ids: number[] = [];
+    for (const fila of data?.filas ?? []) {
+      for (const celda of fila) {
+        if (celda?.movible) {
+          ids.push(celda.ruta.id);
+        }
+      }
+    }
+    return ids;
+  });
+
+  /** Ya están elegidas todas las rutas de DATA que se ven: el botón las quita. */
+  readonly todasDataElegidas = computed(() => {
+    const ids = this.idsDataVisibles();
+    const elegidas = this.seleccion();
+    return ids.length > 0 && ids.every((id) => elegidas.has(id));
+  });
+
+  /** «Elegir todas» de DATA: la selección pasa a ser todas las que se ven (o ninguna si ya lo eran). */
+  elegirTodasData(): void {
+    const ids = this.idsDataVisibles();
+    this.seleccionElegida.set(this.todasDataElegidas() ? new Set() : new Set(ids));
+    this.anclaSeleccion = null;
+  }
+
+  /** Confirmación de eliminar las elegidas: cuántas, sus locales y algunos números. */
+  readonly eliminarPendiente = signal<{ ids: readonly number[]; locales: number; ejemplos: string } | null>(null);
+
+  pedirEliminarSeleccion(): void {
+    const sel = this.resumenSeleccion();
+    if (!sel?.eliminable || this.ocupado()) {
+      return;
+    }
+    const porId = this.rutasPorId();
+    const ids = [...this.seleccion()];
+    const codigos = ids.map((id) => porId.get(id)?.codigoRuta ?? '').filter((c) => c !== '').sort(compararNombre);
+    const ejemplos =
+      codigos.length <= 3
+        ? codigos.join(', ')
+        : `${codigos.slice(0, 3).join(', ')} y ${formatearEntero(codigos.length - 3)} más`;
+    this.eliminarPendiente.set({ ids, locales: sel.locales, ejemplos });
+  }
+
+  /** Elimina las elegidas de DATA (todas o ninguna). No toca clusters: basta recargar las rutas. */
+  eliminarSeleccion(): void {
+    const pendiente = this.eliminarPendiente();
+    const id = this.seleccionado();
+    if (!pendiente || id === null || this.ocupado()) {
+      return;
+    }
+    if (pendiente.ids.length > MAX_ASIGNAR) {
+      this.notificaciones.advertencia('Demasiadas rutas', `Elimina hasta ${MAX_ASIGNAR} rutas a la vez (elegiste ${pendiente.ids.length}).`);
+      return;
+    }
+    const ids = new Set(pendiente.ids);
+    this.eliminando.set(true);
+    this.api
+      .eliminarRutasData(id, pendiente.ids)
+      .pipe(
+        finalize(() => this.eliminando.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: (cambio) => {
+          this.eliminarPendiente.set(null);
+          this.limpiarSeleccion();
+          const abierta = this.detalle();
+          if (abierta?.tipo === 'ruta' && ids.has(abierta.id)) {
+            this.detalle.set(null);
+          }
+          this.notificaciones.exito(ids.size === 1 ? 'Ruta eliminada' : 'Rutas eliminadas', cambio.mensaje);
+          this.recargarRutas(true);
+        },
+        // El interceptor ya muestra el motivo (p. ej. alguna pasó a un cluster): no se borró ninguna.
+        error: () => {
+          this.eliminarPendiente.set(null);
+          this.recargarRutas(true);
+        },
+      });
   }
 
   /** Al tomar una ruta seleccionada viaja toda la selección; si no, solo ella. */
@@ -3141,14 +3264,16 @@ export class SimulacionConfiguracion {
     const frecuencias = new Set([...ids].map((rutaId) => porId.get(rutaId)?.frecuencia));
     const entreBloques = clusterId === DATA_ID && [...ids].every((rutaId) => porId.get(rutaId)?.clusterId === DATA_ID);
     this.rutasGuardando.set(ids);
-    this.conCambiosGuardados(id, () => this.api.moverData(id, [...ids], clusterId, chuteId))
+    const { cambio: pedido, enviado } = this.trasGuardar(id, () => this.api.moverData(id, [...ids], clusterId, chuteId));
+    pedido
       .pipe(
         finalize(() => this.rutasGuardando.set(new Set())),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
         next: (cambio) => {
-          this.notificaciones.exito(clusterId === DATA_ID ? 'Rutas a DATA' : 'Rutas a un cluster', cambio.mensaje);
+          const titulo = entreBloques ? 'Cambio de bloque en DATA' : clusterId === DATA_ID ? 'Rutas a DATA' : 'Rutas a un cluster';
+          this.notificaciones.exito(titulo, cambio.mensaje);
           this.limpiarSeleccion();
           if (entreBloques) {
             // DATA no se balancea: la carga de los clusters no cambia.
@@ -3164,8 +3289,13 @@ export class SimulacionConfiguracion {
           }
           this.recargarTodo(id);
         },
-        // El interceptor ya muestra el motivo; la vista se pone al día por si otra persona cambió algo.
-        error: () => this.recargarTodo(id),
+        // El interceptor ya muestra el motivo; la vista se pone al día por si otra persona cambió algo
+        // (si falló el guardado previo, no: se perdería lo editado).
+        error: () => {
+          if (enviado()) {
+            this.recargarTodo(id);
+          }
+        },
       });
   }
 
@@ -3351,6 +3481,19 @@ export class SimulacionConfiguracion {
       return paso();
     }
     return this.guardarTodo(id, false).pipe(switchMap(() => paso()));
+  }
+
+  /**
+   * Como {@link conCambiosGuardados}, y además dice si el cambio llegó a enviarse: si lo que falló
+   * fue el guardado previo, no se recarga (se perdería lo editado, que sigue sin guardar).
+   */
+  private trasGuardar<T>(id: number, paso: () => Observable<T>): { cambio: Observable<T>; enviado: () => boolean } {
+    let enviado = false;
+    const cambio = this.conCambiosGuardados(id, () => {
+      enviado = true;
+      return paso();
+    });
+    return { cambio, enviado: () => enviado };
   }
 
   /**
@@ -3802,8 +3945,9 @@ export class SimulacionConfiguracion {
     const porId = this.rutasPorId();
     const clusters = new Set(ids.map((rutaId) => porId.get(rutaId)?.clusterId ?? DATA_ID).filter((c) => c !== DATA_ID));
     this.asignandoData.set(true);
-    this.api
-      .asignarData(id, que, ids, texto)
+    // En un cluster se recarga todo: lo editado se guarda antes para no perderlo.
+    const { cambio: pedido, enviado } = this.trasGuardar(id, () => this.api.asignarData(id, que, ids, texto));
+    pedido
       .pipe(
         finalize(() => this.asignandoData.set(false)),
         takeUntilDestroyed(this.destroyRef),
@@ -3829,8 +3973,12 @@ export class SimulacionConfiguracion {
           }
           this.recargarTodo(id);
         },
-        // La vista se pone al día por si otra persona cambió algo.
-        error: () => this.recargarTodo(id),
+        // La vista se pone al día por si otra persona cambió algo (si falló el guardado previo, no).
+        error: () => {
+          if (enviado()) {
+            this.recargarTodo(id);
+          }
+        },
       });
   }
 
@@ -3901,7 +4049,8 @@ export class SimulacionConfiguracion {
     }
     const quitado = delta < 0 ? lista[lista.length - 1].id : null;
     this.cambiandoClusters.set(true);
-    this.conCambiosGuardados(id, () => this.api.cambiarClusters(id, cantidad))
+    const { cambio: pedido, enviado } = this.trasGuardar(id, () => this.api.cambiarClusters(id, cantidad));
+    pedido
       .pipe(
         finalize(() => this.cambiandoClusters.set(false)),
         takeUntilDestroyed(this.destroyRef),
@@ -3915,7 +4064,12 @@ export class SimulacionConfiguracion {
           }
           this.recargarTodo(id);
         },
-        error: () => this.recargarTodo(id),
+        // Si falló el guardado previo, no se recarga: se perdería lo editado.
+        error: () => {
+          if (enviado()) {
+            this.recargarTodo(id);
+          }
+        },
       });
   }
 

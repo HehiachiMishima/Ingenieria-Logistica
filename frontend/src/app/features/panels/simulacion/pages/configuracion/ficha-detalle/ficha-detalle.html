@@ -101,6 +101,9 @@
     </label>
   </div>
 
+  @if (avisoLocales(); as aviso) {
+  <p class="loc-aviso"><ui-icon name="info" [size]="14" /> <span>{{ aviso }}</span></p>
+  }
   <div class="loc-scroll" role="region" aria-label="Locales de la ruta" tabindex="0">
     <div class="loc-cab">
       <span>Locales · por bultos</span>

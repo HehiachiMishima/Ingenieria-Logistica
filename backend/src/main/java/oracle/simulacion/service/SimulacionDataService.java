@@ -151,6 +151,33 @@ public class SimulacionDataService {
     return listo("Ruta " + nombre + " eliminada.");
   }
 
+  /**
+   * Varias rutas de DATA a la vez (las elegidas en la barra): todas o ninguna. Si alguna está en un
+   * cluster no se borra ninguna (primero vuelve a DATA); las que otra persona ya borró se cuentan.
+   */
+  public ApiResponse<CambioDataResponse> eliminarVarias(Long archivoId, DataRequest.Eliminar req) {
+    List<Long> ids = distintos(req.rutaIds());
+    Long actor = ActorActual.id();
+    int[] hechas =
+        escribir(
+            "eliminar varias id=" + archivoId + " rutas=" + ids.size(),
+            () -> {
+              Contexto ctx = bloquear(archivoId);
+              List<RutaData> rutas = repo.rutas(archivoId, ids);
+              List<String> enCluster = rutas.stream().filter((r) -> !r.enData()).map((r) -> nombre(r.codigo(), r.tipo())).toList();
+              if (!enCluster.isEmpty()) {
+                throw new ConflictoException(
+                    "Solo se eliminan rutas de DATA: " + lista(enCluster) + (enCluster.size() == 1 ? " está" : " están")
+                        + " en un cluster. Devuélvelas a DATA o quítalas de la selección. No se eliminó ninguna.");
+              }
+              int n = rutas.isEmpty() ? 0 : repo.eliminarVarias(archivoId, rutas.stream().map(RutaData::id).toList());
+              configuracion.tocar(ctx.archivo(), actor);
+              return new int[] {n, ids.size() - n};
+            });
+    String faltaban = hechas[1] == 0 ? "" : " " + cantidad(hechas[1]) + (hechas[1] == 1 ? " ya no existía." : " ya no existían.");
+    return listo((hechas[0] == 1 ? "1 ruta eliminada" : hechas[0] + " rutas eliminadas") + " de DATA." + faltaban);
+  }
+
   // ---------------- Tipo, frecuencia y grupo (solo en DATA) ----------------
 
   /** Tipo para las rutas elegidas de DATA: todas o ninguna, sin dejar dos con el mismo número y tipo. */

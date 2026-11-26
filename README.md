@@ -162,7 +162,9 @@ bloque **DATA** (mismo diseño, con su scroll), con las rutas que no se balancea
 varios locales), se editan, se eliminan y reciben tipo, frecuencia y grupo. Cada ruta queda en el
 bloque de DATA donde se suelta (BLOQUE 1…n, número fijo; una ruta nueva cae en uno cualquiera). Los locales también se
 mueven: en la ficha de la ruta se eligen y se arrastran a otra ruta (en celular, «Mover a…»), solo
-entre DATA y clusters sin empezar; el código repetido se suma y una ruta no se queda sin locales. Solo una ruta completa
+entre DATA y clusters sin empezar; el código repetido se suma y una ruta no se queda sin locales. Varias
+rutas de DATA se eliminan juntas: se eligen (Ctrl/⌘+clic o «Elegir todas» en DATA) y «Eliminar», con
+confirmación; si alguna está en un cluster, no se elimina ninguna. Solo una ruta completa
 pasa a un cluster, y la celda donde se suelta (cluster y chute) es su posición original, el «antes»
 del Dashboard; el balanceo sigue igual. Un cluster que aún no empezó a balancearse puede devolver
 rutas a DATA y se puede quitar; los clusters se agregan al final y uno vacío se salta en el balanceo.

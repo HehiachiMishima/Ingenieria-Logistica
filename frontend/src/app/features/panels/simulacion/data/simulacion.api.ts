@@ -112,6 +112,11 @@ export class SimulacionApi {
     });
   }
 
+  /** Varias rutas de DATA a la vez: todas o ninguna (si alguna está en un cluster, ninguna). */
+  eliminarRutasData(id: number, rutaIds: readonly number[]): Observable<CambioData> {
+    return this.api.post<CambioData>(`/simulacion/registros/${id}/data/rutas/eliminar`, { rutaIds });
+  }
+
   /**
    * Locales (por su orden) de una ruta a otra: DATA o clusters sin empezar. Todos o ninguno; el
    * código que la destino ya tiene se suma ahí.

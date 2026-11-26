@@ -12,6 +12,7 @@ import {
   output,
   signal,
   viewChild,
+  type Signal,
 } from '@angular/core';
 import { Icon } from '../../../../../../shared/ui/icon/icon';
 import { IconoSim } from '../../../icono-sim/icono-sim';
@@ -78,8 +79,13 @@ export class FichaDetalle {
   readonly eliminar = output<void>();
   /** La ruta puede dar locales (DATA o un cluster sin empezar, con permiso): se eligen y se arrastran. */
   readonly localesMovibles = input(false);
-  /** Rutas que pueden recibirlos: las opciones de «Mover a…» (pantalla táctil o celular). */
-  readonly destinosLocales = input<readonly DestinoLocales[]>([]);
+  /**
+   * Rutas que pueden recibirlos (las opciones de «Mover a…»). Llega la señal, no la lista: se arma
+   * solo cuando se muestra «Mover a…», no en cada cambio de la matriz.
+   */
+  readonly destinosLocales = input<Signal<readonly DestinoLocales[]> | null>(null);
+  /** Por qué sus locales no se pueden mover (un cluster que ya empezó a balancearse), o null. */
+  readonly avisoLocales = input<string | null>(null);
   /** Locales (por su orden) que empiezan a arrastrarse; null al terminar. */
   readonly arrastreLocales = output<readonly number[] | null>();
   readonly moverLocales = output<MoverLocalesA>();
@@ -131,10 +137,33 @@ export class FichaDetalle {
     computation: () => false,
   });
 
-  /** Locales elegidos (por su orden): vuelven a vacío al abrir otra ruta o al recargar sus locales. */
-  readonly elegidos = linkedSignal<unknown, ReadonlySet<number>>({
-    source: () => [this.ruta()?.ruta.id, this.locales()],
-    computation: () => new Set(),
+  /**
+   * La ruta abierta y sus locales tal como llegaron: cambia al abrir otra ruta o al recargarlos, no
+   * cuando la ficha se recalcula por otra cosa (cambiar la vista del cluster, por ejemplo).
+   */
+  private readonly claveLocales = computed(
+    () => ({ ruta: this.ruta()?.ruta.id, locales: this.locales() }),
+    { equal: (a, b) => a.ruta === b.ruta && a.locales === b.locales },
+  );
+
+  /**
+   * Locales elegidos (por su orden). Vuelven a vacío con otra ruta o al recargar sus locales; al
+   * filtrar, solo siguen elegidos los que se ven, así nunca se mueve un local oculto.
+   */
+  readonly elegidos = linkedSignal<{ clave: unknown; visibles: readonly LocalRuta[] }, ReadonlySet<number>>({
+    source: () => ({ clave: this.claveLocales(), visibles: this.visibles() }),
+    computation: (actual, previo) => {
+      // Otra ruta o sus locales recargados: empieza vacía.
+      if (!previo || previo.source.clave !== actual.clave) {
+        return new Set();
+      }
+      if (previo.value.size === 0) {
+        return previo.value;
+      }
+      const visibles = new Set(actual.visibles.map((local) => local.orden));
+      const quedan = [...previo.value].filter((orden) => visibles.has(orden));
+      return quedan.length === previo.value.size ? previo.value : new Set(quedan);
+    },
   });
   /** Ruta elegida en «Mover a…». */
   readonly destino = linkedSignal<unknown, number | null>({ source: () => this.elegidos(), computation: () => null });
@@ -145,9 +174,11 @@ export class FichaDetalle {
    * elegidos se pasan con «Mover a…».
    */
   private readonly tactil = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-  readonly conBoton = computed(() => this.posicion().hoja || this.tactil);
-  /** Último local pulsado: Mayús+clic elige desde él hasta otro. */
-  private ancla: number | null = null;
+  /** Se eligió un local con el teclado: también hace falta «Mover a…» (con teclado no se arrastra). */
+  private readonly conTeclado = linkedSignal({ source: this.claveLocales, computation: () => false });
+  readonly conBoton = computed(() => this.posicion().hoja || this.tactil || this.conTeclado());
+  /** Último local pulsado (Mayús+clic elige desde él hasta otro): se olvida con otra ruta o al recargar. */
+  private readonly ancla = linkedSignal<unknown, number | null>({ source: this.claveLocales, computation: () => null });
   private enArrastre = false;
 
   private esperaBusqueda: ReturnType<typeof setTimeout> | undefined;
@@ -227,10 +258,11 @@ export class FichaDetalle {
     return { n: ids.size, bultos, todos: ids.size >= todos.length };
   });
 
-  /** Opciones de «Mover a…» por grupo (DATA, CL1…), en el orden en que llegan. */
+  /** Opciones de «Mover a…» por grupo (DATA, CL1…), en el orden en que llegan; solo si se muestra. */
   readonly gruposDestino = computed(() => {
+    const destinos = this.conBoton() && this.resumenElegidos() !== null ? (this.destinosLocales()?.() ?? []) : [];
     const grupos = new Map<string, DestinoLocales[]>();
-    for (const destino of this.destinosLocales()) {
+    for (const destino of destinos) {
       const lista = grupos.get(destino.grupo);
       if (lista) {
         lista.push(destino);
@@ -246,7 +278,10 @@ export class FichaDetalle {
     if (!this.localesMovibles() || this.bloqueado()) {
       return;
     }
-    const ancla = this.ancla;
+    if (evento instanceof KeyboardEvent) {
+      this.conTeclado.set(true);
+    }
+    const ancla = this.ancla();
     this.elegidos.update((actual) => {
       const siguiente = new Set(actual);
       if ((evento as MouseEvent).shiftKey && ancla !== null) {
@@ -263,12 +298,12 @@ export class FichaDetalle {
       }
       return siguiente;
     });
-    this.ancla = orden;
+    this.ancla.set(orden);
   }
 
   limpiarElegidos(): void {
     this.elegidos.set(new Set());
-    this.ancla = null;
+    this.ancla.set(null);
   }
 
   /** Se arrastra el local tomado y, si estaba elegido, todos los elegidos. */

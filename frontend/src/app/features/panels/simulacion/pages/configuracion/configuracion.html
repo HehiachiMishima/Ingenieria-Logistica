@@ -429,6 +429,16 @@
           @if (!plegado) { Nueva ruta }
         </button>
         }
+        @if (puedeModificar() && bloque.cluster.rutas > 0) {
+        <!-- Elige de una vez todas las rutas de DATA que se ven (búsqueda y filtro de chutes incluidos). -->
+        @let todas = todasDataElegidas();
+        <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm mz-data__todas" [disabled]="ocupado()"
+          [attr.aria-pressed]="todas" [attr.aria-label]="todas ? 'Quitar la selección de DATA' : 'Elegir todas las rutas de DATA'"
+          [title]="todas ? 'Quitar la selección de DATA' : 'Elegir todas las rutas de DATA que se ven'" (click)="elegirTodasData()">
+          <ui-icon [name]="todas ? 'close' : 'check'" [size]="14" />
+          @if (!plegado) { {{ todas ? 'Quitar todas' : 'Elegir todas' }} }
+        </button>
+        }
       </aside>
       } @else {
       <aside class="mz-panel">
@@ -628,6 +638,14 @@
           (click)="asignarData('grupo', grupoData())">Asignar grupo</button>
       </span>
     </div>
+    }
+    @if (puedeModificar() && sel.eliminable) {
+    <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm sel-barra__eliminar" [disabled]="ocupado()"
+      (click)="pedirEliminarSeleccion()">
+      <ui-icon name="trash" [size]="14" /> Eliminar {{ sel.rutas | entero }}
+    </button>
+    } @else if (puedeModificar() && sel.mixta) {
+    <p class="sel-barra__nota">Solo se eliminan rutas de DATA</p>
     }
     <p class="sel-barra__pista">
       @if (rutasGuardando().size > 0) {
@@ -876,6 +894,31 @@
   </div>
 </ui-modal>
 
+<ui-modal [abierto]="eliminarPendiente() !== null" ancho="sm" [compacto]="true" titulo="Eliminar rutas de DATA"
+  (cerrar)="eliminarPendiente.set(null)">
+  @if (eliminarPendiente(); as e) {
+  <div class="confirm">
+    <span class="confirm__icon"><ui-icon name="trash" [size]="22" /></span>
+    <div class="confirm__text">
+      <p class="confirm__title">¿Eliminar {{ e.ids.length | entero }} {{ e.ids.length === 1 ? 'ruta' : 'rutas' }} de DATA?</p>
+      <p class="confirm__desc">
+        Se borran con sus {{ e.locales | entero }} {{ e.locales === 1 ? 'local' : 'locales' }}: {{ e.ejemplos }}.
+        No se puede deshacer.
+      </p>
+    </div>
+  </div>
+  }
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="eliminarPendiente.set(null)">Cancelar</button>
+    <button type="button" class="ui-btn ui-btn--danger" (click)="eliminarSeleccion()" [disabled]="ocupado()">
+      @if (eliminando()) {
+      <span class="ui-spinner config-spinner"></span>
+      }
+      Eliminar {{ (eliminarPendiente()?.ids?.length ?? 0) | entero }} {{ eliminarPendiente()?.ids?.length === 1 ? 'ruta' : 'rutas' }}
+    </button>
+  </div>
+</ui-modal>
+
 <ui-modal [abierto]="restablecerAbierto()" ancho="sm" [compacto]="true" titulo="Restablecer todo"
   (cerrar)="restablecerAbierto.set(false)">
   <div class="confirm">
@@ -965,7 +1008,7 @@
 @if (r || k) {
 <app-ficha-detalle [posicion]="d.pos" [ruta]="r" [cluster]="k" [locales]="r ? localesRuta() : null"
   (cerrar)="cerrarDetalle()" (reintentar)="reintentarLocales()" (editar)="editarRuta()" (eliminar)="eliminarRuta()" [bloqueado]="ocupado()"
-  [localesMovibles]="localesMovibles()" [destinosLocales]="destinosLocales()" (arrastreLocales)="localesEnArrastre.set($event)"
+  [localesMovibles]="localesMovibles()" [destinosLocales]="destinosLocales" [avisoLocales]="avisoLocales()" (arrastreLocales)="localesEnArrastre.set($event)"
   (moverLocales)="moverLocalesA($event.ordenes, $event.destinoId)" />
 }
 }

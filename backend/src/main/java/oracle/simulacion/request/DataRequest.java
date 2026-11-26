@@ -74,6 +74,10 @@ public final class DataRequest {
       @Positive Long clusterId,
       @NotNull(message = "Elige la columna donde van las rutas.") @Positive Long chuteId) {}
 
+  /** Varias rutas de DATA a la vez (todas o ninguna): las elegidas en la barra de selección. */
+  public record Eliminar(
+      @NotEmpty(message = "Elige al menos una ruta.") @Size(max = MAX_SELECCION) List<@NotNull @Positive Long> rutaIds) {}
+
   /**
    * Locales de una ruta a otra (por su orden dentro de la ruta origen). Todos o ninguno; el código
    * que ya está en la ruta destino se suma ahí.

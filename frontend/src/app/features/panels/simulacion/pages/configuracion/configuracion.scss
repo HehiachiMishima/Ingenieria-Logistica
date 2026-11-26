@@ -1455,9 +1455,38 @@
   }
 }
 
+/* Eliminar las elegidas (solo si todas están en DATA). */
+.sel-barra__eliminar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  color: var(--danger);
+
+  ui-icon {
+    flex: none;
+  }
+
+  /* En el celular va junto a «Limpiar» (ya mide 44 px): la barra no crece. */
+  @include bp.down(sm) {
+    order: 2;
+  }
+}
+
+.sel-barra__nota {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+
+  @include bp.down(sm) {
+    order: 2;
+  }
+}
+
 /* En pantallas táctiles (también el celular girado) los controles miden 44 px. */
 @media (pointer: coarse) {
-  .sel-barra__boton {
+  .sel-barra__boton,
+  .sel-barra__eliminar {
     min-height: 44px;
   }
 }
@@ -1517,7 +1546,8 @@
   line-height: 1.4;
 }
 
-.mz-data__nueva {
+.mz-data__nueva,
+.mz-data__todas {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1530,7 +1560,8 @@
 }
 
 @media (pointer: coarse) {
-  .mz-data__nueva {
+  .mz-data__nueva,
+  .mz-data__todas {
     min-height: 44px;
   }
 }

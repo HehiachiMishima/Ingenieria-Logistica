@@ -322,6 +322,36 @@ class SimulacionDataServiceTest {
     assertTrue(e.getMessage().contains("CL1 va antes de CL2"), e.getMessage());
   }
 
+  // ---------------- Eliminar varias ----------------
+
+  @Test
+  void variasDeDataSeEliminanYLasQueYaNoEstabanSeCuentan() {
+    clusters(Set.of(CL1), cluster(CL1, PENDIENTE));
+    when(repo.rutas(ARCHIVO, List.of(5L, 6L, 7L)))
+        .thenReturn(List.of(enData(5, "2002", null, null, null), enData(6, "2015", "B2C", "LXV", "1")));
+    when(repo.eliminarVarias(ARCHIVO, List.of(5L, 6L))).thenReturn(2);
+
+    ApiResponse<oracle.simulacion.response.CambioDataResponse> r =
+        servicio.eliminarVarias(ARCHIVO, new DataRequest.Eliminar(List.of(5L, 6L, 7L, 5L)));
+
+    verify(repo).eliminarVarias(ARCHIVO, List.of(5L, 6L));
+    verify(archivoRepo).save(archivo);
+    assertTrue(r.mensaje().contains("2 rutas eliminadas de DATA") && r.mensaje().contains("1 ruta ya no existía"), r.mensaje());
+  }
+
+  @Test
+  void siAlgunaEstaEnUnClusterNoSeEliminaNinguna() {
+    clusters(Set.of(CL1), cluster(CL1, PENDIENTE));
+    when(repo.rutas(ARCHIVO, List.of(5L, 6L)))
+        .thenReturn(List.of(enData(5, "2002", null, null, null), enCluster(6, "2015", CL1)));
+
+    ConflictoException e =
+        assertThrows(
+            ConflictoException.class, () -> servicio.eliminarVarias(ARCHIVO, new DataRequest.Eliminar(List.of(5L, 6L))));
+    assertTrue(e.getMessage().contains("2015 B2B está en un cluster") && e.getMessage().contains("No se eliminó ninguna"), e.getMessage());
+    verify(repo, never()).eliminarVarias(anyLong(), anyList());
+  }
+
   // ---------------- Mover locales ----------------
 
   @Test

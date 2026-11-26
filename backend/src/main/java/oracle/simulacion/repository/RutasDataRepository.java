@@ -205,6 +205,15 @@ public class RutasDataRepository {
         == 1;
   }
 
+  /** Borra varias rutas de DATA (sus locales se van con ellas); nunca una de un cluster. */
+  public int eliminarVarias(Long archivoId, Collection<Long> ids) {
+    // Q: PK de rutas_proyeccion; rutas_locales y el historial por su FK (CASCADE / SET NULL).
+    return jdbc.update(
+        "DELETE FROM simulacion.rutas_proyeccion WHERE archivo_id = ? AND id = ANY (?::bigint[]) AND cluster_id IS NULL",
+        archivoId,
+        arreglo(ids));
+  }
+
   /**
    * Números que quedarían repetidos si esas rutas pasan a tener {@code tipo}: ya hay otra con ese
    * número y tipo en el escenario, o dos de ellas tienen el mismo número.

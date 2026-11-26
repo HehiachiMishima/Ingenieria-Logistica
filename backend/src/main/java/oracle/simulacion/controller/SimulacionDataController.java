@@ -48,6 +48,13 @@ public class SimulacionDataController {
     return service.eliminar(id, rutaId);
   }
 
+  /** Varias rutas de DATA a la vez: todas o ninguna (si alguna está en un cluster, ninguna). */
+  @PostMapping("/{id}/data/rutas/eliminar")
+  @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
+  public ApiResponse<CambioDataResponse> eliminarRutas(@PathVariable Long id, @Valid @RequestBody DataRequest.Eliminar req) {
+    return service.eliminarVarias(id, req);
+  }
+
   @PutMapping("/{id}/data/tipo")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
   public ApiResponse<CambioDataResponse> asignarTipo(@PathVariable Long id, @Valid @RequestBody DataRequest.Tipo req) {

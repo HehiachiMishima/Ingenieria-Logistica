@@ -198,6 +198,22 @@ class RutasDataRepositoryIT {
   }
 
   @Test
+  void eliminarVariasBorraSoloLasDeDataConSusLocales() {
+    long a = repo.insertar(archivo, "2002", chute1, dec("1"), dec("1"), dec("1"), 1);
+    repo.reemplazarLocales(a, List.of(local("A1", 1, "1")));
+    long b = repo.insertar(archivo, "2015", chute2, dec("1"), dec("1"), dec("1"), 1);
+    long c = repo.insertar(archivo, "2040", chute1, dec("1"), dec("1"), dec("1"), 1);
+    repo.asignarTipo(archivo, List.of(c), "B2C");
+    repo.asignarFrecuencia(archivo, List.of(c), "LXV");
+    repo.asignarGrupo(archivo, List.of(c), "1");
+    repo.aCluster(archivo, List.of(c), cl1, chute1);
+
+    assertEquals(2, repo.eliminarVarias(archivo, List.of(a, b, c)), "la del cluster no se borra");
+    assertEquals(List.of(c), repo.rutas(archivo, List.of(a, b, c)).stream().map(RutaData::id).toList());
+    assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM simulacion.rutas_locales WHERE ruta_id = ?", Integer.class, a));
+  }
+
+  @Test
   void losLocalesPasanDeUnaRutaAOtraYLosTotalesSeRecalculan() {
     long a = repo.insertar(archivo, "2002", chute1, dec("17"), dec("3"), dec("3"), 3);
     repo.reemplazarLocales(a, List.of(local("A1", 1, "10"), local("B2", 1, "5"), local("C3", 2, "2")));
