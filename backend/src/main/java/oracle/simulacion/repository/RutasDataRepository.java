@@ -18,7 +18,15 @@ public class RutasDataRepository {
 
   /** Lo que hace falta de una ruta para decidir si se mueve, se edita o se le asigna algo. */
   public record RutaData(
-      long id, String codigo, String tipo, Long clusterId, long chuteId, String frecuencia, String grupo) {
+      long id,
+      String codigo,
+      String tipo,
+      Long clusterId,
+      /** Cluster al pasar de DATA; distinto de clusterId si después se movió a mano. */
+      Long clusterOriginalId,
+      long chuteId,
+      String frecuencia,
+      String grupo) {
 
     public boolean enData() {
       return clusterId == null;
@@ -37,6 +45,10 @@ public class RutasDataRepository {
   /** Un local de una ruta, ya sumado. */
   public record Local(String cod, int filas, BigDecimal bultos, BigDecimal unidades, BigDecimal lineas) {}
 
+  /** Un local ya guardado en una ruta, con su orden (su clave dentro de la ruta). */
+  public record LocalGuardado(
+      int orden, String cod, int filas, BigDecimal bultos, BigDecimal unidades, BigDecimal lineas) {}
+
   /** Días de cada frecuencia (los que muestran la ficha y el Dashboard). */
   private static final String DIAS =
       "CASE ? WHEN 'LXV' THEN 'L-X-V' WHEN 'MJS' THEN 'M-J-S' ELSE 'L-M-X-J-V-S' END";
@@ -52,23 +64,55 @@ public class RutasDataRepository {
     return ids.stream().map(String::valueOf).collect(Collectors.joining(",", "{", "}"));
   }
 
+  private static final String COLUMNAS =
+      "id, codigo_ruta, tipo, cluster_id, cluster_original_id, chute_id, frecuencia, grupo";
+
+  private static RutaData ruta(java.sql.ResultSet rs, int fila) throws java.sql.SQLException {
+    return new RutaData(
+        rs.getLong(1),
+        rs.getString(2),
+        rs.getString(3),
+        rs.getObject(4, Long.class),
+        rs.getObject(5, Long.class),
+        rs.getLong(6),
+        rs.getString(7),
+        rs.getString(8));
+  }
+
   public List<RutaData> rutas(Long archivoId, Collection<Long> ids) {
     // Q: PK de rutas_proyeccion (id = ANY), filtrada por escenario.
     return jdbc.query(
-        """
-        SELECT id, codigo_ruta, tipo, cluster_id, chute_id, frecuencia, grupo
-        FROM simulacion.rutas_proyeccion
-        WHERE archivo_id = ? AND id = ANY (?::bigint[])
-        """,
-        (rs, i) ->
-            new RutaData(
-                rs.getLong(1),
-                rs.getString(2),
-                rs.getString(3),
-                rs.getObject(4, Long.class),
-                rs.getLong(5),
-                rs.getString(6),
-                rs.getString(7)),
+        "SELECT " + COLUMNAS + " FROM simulacion.rutas_proyeccion WHERE archivo_id = ? AND id = ANY (?::bigint[])",
+        RutasDataRepository::ruta,
+        archivoId,
+        arreglo(ids));
+  }
+
+  /**
+   * Rutas movidas a mano que entran o salen de esos clusters: hoy están en uno de ellos y vienen de
+   * otro, o vienen de uno de ellos y hoy están en otro.
+   */
+  public List<RutaData> rutasCruzadas(Long archivoId, Collection<Long> clusterIds) {
+    // Q: idx_rutas_cluster_cambiado (archivo_id, cluster_original_id, cluster_id) WHERE cluster_cambiado.
+    String ids = arreglo(clusterIds);
+    return jdbc.query(
+        "SELECT " + COLUMNAS + " FROM simulacion.rutas_proyeccion"
+            + " WHERE archivo_id = ? AND cluster_cambiado"
+            + " AND (cluster_id = ANY (?::bigint[]) OR cluster_original_id = ANY (?::bigint[]))",
+        RutasDataRepository::ruta,
+        archivoId,
+        ids,
+        ids);
+  }
+
+  /** Esas rutas toman el cluster donde están como su original (el de antes ya no existe). */
+  public void fijarOrigenEnSuCluster(Long archivoId, Collection<Long> ids) {
+    if (ids.isEmpty()) {
+      return;
+    }
+    jdbc.update(
+        "UPDATE simulacion.rutas_proyeccion SET cluster_original_id = cluster_id"
+            + " WHERE archivo_id = ? AND id = ANY (?::bigint[]) AND cluster_id IS NOT NULL",
         archivoId,
         arreglo(ids));
   }
@@ -190,39 +234,42 @@ public class RutasDataRepository {
         arreglo(ids));
   }
 
-  /** Tipo para las rutas de DATA de esa lista. Devuelve cuántas lo recibieron. */
+  /** Tipo para esas rutas (el servicio ya validó que estén en DATA o en un cluster sin empezar). */
   public int asignarTipo(Long archivoId, Collection<Long> ids, String tipo) {
     return jdbc.update(
         "UPDATE simulacion.rutas_proyeccion SET tipo = ?"
-            + " WHERE archivo_id = ? AND id = ANY (?::bigint[]) AND cluster_id IS NULL",
+            + " WHERE archivo_id = ? AND id = ANY (?::bigint[])",
         tipo,
         archivoId,
         arreglo(ids));
   }
 
-  /** Frecuencia (y sus días) para las rutas de DATA de esa lista. Devuelve cuántas la recibieron. */
+  /** Frecuencia (y sus días) para esas rutas (validadas por el servicio). */
   public int asignarFrecuencia(Long archivoId, Collection<Long> ids, String frecuencia) {
     return jdbc.update(
         "UPDATE simulacion.rutas_proyeccion SET frecuencia = ?, dias = "
             + DIAS
-            + " WHERE archivo_id = ? AND id = ANY (?::bigint[]) AND cluster_id IS NULL",
+            + " WHERE archivo_id = ? AND id = ANY (?::bigint[])",
         frecuencia,
         frecuencia,
         archivoId,
         arreglo(ids));
   }
 
-  /** Grupo para las rutas de DATA de esa lista. Devuelve cuántas lo recibieron. */
+  /** Grupo para esas rutas (validadas por el servicio). */
   public int asignarGrupo(Long archivoId, Collection<Long> ids, String grupo) {
     return jdbc.update(
         "UPDATE simulacion.rutas_proyeccion SET grupo = ?"
-            + " WHERE archivo_id = ? AND id = ANY (?::bigint[]) AND cluster_id IS NULL",
+            + " WHERE archivo_id = ? AND id = ANY (?::bigint[])",
         grupo,
         archivoId,
         arreglo(ids));
   }
 
-  /** Las rutas van a DATA en ese chute: sin cluster; ese chute pasa a ser su original. */
+  /**
+   * Las rutas van a un bloque de DATA (se guarda como su chute): sin cluster; conservan tipo,
+   * frecuencia y grupo.
+   */
   public int aData(Long archivoId, Collection<Long> ids, long chuteId) {
     return jdbc.update(
         """
@@ -232,6 +279,21 @@ public class RutasDataRepository {
         """,
         chuteId,
         chuteId,
+        archivoId,
+        arreglo(ids));
+  }
+
+  /**
+   * Las rutas van a DATA en la misma columna (al quitar su cluster): sin cluster y conservan tipo,
+   * frecuencia y grupo; su chute pasa a ser el bloque de DATA.
+   */
+  public int aDataEnSuChute(Long archivoId, Collection<Long> ids) {
+    return jdbc.update(
+        """
+        UPDATE simulacion.rutas_proyeccion
+        SET cluster_id = NULL, cluster_original_id = NULL, chute_original_id = chute_id
+        WHERE archivo_id = ? AND id = ANY (?::bigint[])
+        """,
         archivoId,
         arreglo(ids));
   }
@@ -302,6 +364,73 @@ public class RutasDataRepository {
         "DELETE FROM simulacion.parametros_clusters WHERE archivo_id = ? AND cluster_id = ANY (?::bigint[])",
         archivoId,
         ids);
+  }
+
+  /** Los locales de una ruta, en su orden. */
+  public List<LocalGuardado> locales(long rutaId) {
+    // Q: pk_rutas_locales (ruta_id, orden).
+    return jdbc.query(
+        """
+        SELECT orden, cod, filas, bultos, unidades, lineas
+        FROM simulacion.rutas_locales
+        WHERE ruta_id = ?
+        ORDER BY orden
+        """,
+        (rs, i) ->
+            new LocalGuardado(
+                rs.getInt(1), rs.getString(2), rs.getInt(3), rs.getBigDecimal(4), rs.getBigDecimal(5), rs.getBigDecimal(6)),
+        rutaId);
+  }
+
+  /** Nuevas filas y cantidades de locales de la ruta (los que recibieron el mismo código de otra). */
+  public void fijarLocales(long rutaId, List<LocalGuardado> locales) {
+    // Q: pk_rutas_locales (ruta_id, orden).
+    jdbc.batchUpdate(
+        """
+        UPDATE simulacion.rutas_locales SET filas = ?, bultos = ?, unidades = ?, lineas = ?
+        WHERE ruta_id = ? AND orden = ?
+        """,
+        locales.stream()
+            .map((l) -> new Object[] {l.filas(), l.bultos(), l.unidades(), l.lineas(), rutaId, l.orden()})
+            .toList());
+  }
+
+  /** Quita esos locales de la ruta. */
+  public void quitarLocales(long rutaId, Collection<Integer> ordenes) {
+    // Q: pk_rutas_locales (ruta_id, orden).
+    jdbc.update(
+        "DELETE FROM simulacion.rutas_locales WHERE ruta_id = ? AND orden = ANY (?::int[])",
+        rutaId,
+        ordenes.stream().map(String::valueOf).collect(Collectors.joining(",", "{", "}")));
+  }
+
+  /**
+   * Pasa locales de una ruta a otra sin reescribirlos: cada par es {orden en la origen, orden nuevo
+   * en la destino} (al final de la destino, así no choca con la clave).
+   */
+  public void pasarLocales(long origenId, long destinoId, List<int[]> ordenes) {
+    // Q: pk_rutas_locales (ruta_id, orden).
+    jdbc.batchUpdate(
+        "UPDATE simulacion.rutas_locales SET ruta_id = ?, orden = ? WHERE ruta_id = ? AND orden = ?",
+        ordenes.stream().map((o) -> new Object[] {destinoId, o[1], origenId, o[0]}).toList());
+  }
+
+  /** Los totales y la cantidad de locales de esas rutas vuelven a ser la suma de sus locales. */
+  public void recalcularTotales(Long archivoId, Collection<Long> ids) {
+    // Q: PK de rutas_proyeccion y pk_rutas_locales (ruta_id, orden).
+    jdbc.update(
+        """
+        UPDATE simulacion.rutas_proyeccion r
+        SET total_bultos = t.bultos, total_unidades = t.unidades, total_lineas = t.lineas, conteo_cod = t.n
+        FROM (SELECT ruta_id, sum(bultos) AS bultos, sum(unidades) AS unidades, sum(lineas) AS lineas,
+                     count(*)::int AS n
+              FROM simulacion.rutas_locales
+              WHERE ruta_id = ANY (?::bigint[])
+              GROUP BY ruta_id) t
+        WHERE r.id = t.ruta_id AND r.archivo_id = ?
+        """,
+        arreglo(ids),
+        archivoId);
   }
 
   /** Totales del escenario: solo las rutas de los clusters. */

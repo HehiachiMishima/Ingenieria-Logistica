@@ -1,5 +1,30 @@
 import { Directive, ElementRef, OnDestroy, OnInit, inject, input, output } from '@angular/core';
 
+/**
+ * Imagen del arrastre en grupo: una pastilla con lo que viaja («3 rutas», «2 locales»). Va fuera
+ * de la pantalla solo mientras el navegador la captura (estilos en línea: vive en el body, fuera
+ * del componente).
+ */
+export function pastillaArrastre(datos: DataTransfer, texto: string): void {
+  const pastilla = document.createElement('div');
+  pastilla.textContent = texto;
+  Object.assign(pastilla.style, {
+    position: 'fixed',
+    top: '-200px',
+    left: '0',
+    padding: '6px 12px',
+    borderRadius: '999px',
+    background: 'var(--accent)',
+    color: '#fff',
+    font: '600 13px/1.2 system-ui, sans-serif',
+    whiteSpace: 'nowrap',
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.25)',
+  });
+  document.body.appendChild(pastilla);
+  datos.setDragImage(pastilla, 16, 16);
+  setTimeout(() => pastilla.remove());
+}
+
 /** Celda de la matriz donde se soltaron una o varias rutas. */
 export interface DestinoRuta {
   /** La ruta que se tomó con el mouse. */
@@ -95,33 +120,9 @@ export class ArrastreRutas implements OnInit, OnDestroy {
       // Firefox no arrastra sin datos.
       evento.dataTransfer.setData('text/plain', this.rutaIds.join(','));
       if (this.rutaIds.length > 1) {
-        this.fantasma(evento.dataTransfer, this.rutaIds.length);
+        pastillaArrastre(evento.dataTransfer, `${this.rutaIds.length} rutas`);
       }
     }
-  }
-
-  /**
-   * Imagen del arrastre en grupo: una pastilla con cuántas rutas viajan. Va fuera de la pantalla
-   * solo mientras el navegador la captura (estilos en línea: vive en el body, fuera del componente).
-   */
-  private fantasma(datos: DataTransfer, cantidad: number): void {
-    const pastilla = document.createElement('div');
-    pastilla.textContent = `${cantidad} rutas`;
-    Object.assign(pastilla.style, {
-      position: 'fixed',
-      top: '-200px',
-      left: '0',
-      padding: '6px 12px',
-      borderRadius: '999px',
-      background: 'var(--accent)',
-      color: '#fff',
-      font: '600 13px/1.2 system-ui, sans-serif',
-      whiteSpace: 'nowrap',
-      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.25)',
-    });
-    document.body.appendChild(pastilla);
-    datos.setDragImage(pastilla, 16, 16);
-    setTimeout(() => pastilla.remove());
   }
 
   private alPasar(evento: DragEvent): void {

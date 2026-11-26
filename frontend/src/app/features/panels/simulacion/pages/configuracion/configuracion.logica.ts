@@ -108,7 +108,8 @@ export function resumirClusters(
       operarios += enChute;
       tiempo = Math.max(tiempo, horas(bultos, velocidad, enChute));
     }
-    const previo = indice > 0 ? cfg.clusters[indice - 1] : null;
+    // El anterior y el siguiente con rutas: los vacíos se saltan en el balanceo.
+    const previo = cfg.clusters.slice(0, indice).reverse().find((c) => !clusterVacio(c)) ?? null;
     const operariosPrevios = previo ? acumulado.get(previo.id)?.operarios : undefined;
     let siguen = 0;
     for (const [chuteId, enChute] of datos?.operarios ?? []) {
@@ -117,7 +118,7 @@ export function resumirClusters(
     const limite = limites[cluster.id] ?? 0;
     const medible = conOperarios && limite > 0 && Number.isFinite(tiempo);
     const paso = PASO_POR_ESTADO[cluster.estado] ?? 4;
-    const siguiente = cfg.clusters[indice + 1]?.nombre ?? null;
+    const siguiente = cfg.clusters.slice(indice + 1).find((c) => !clusterVacio(c))?.nombre ?? null;
     const estadoPaso = (numero: number): EstadoPaso =>
       paso > numero ? 'hecho' : paso === numero ? 'actual' : 'espera';
     return {

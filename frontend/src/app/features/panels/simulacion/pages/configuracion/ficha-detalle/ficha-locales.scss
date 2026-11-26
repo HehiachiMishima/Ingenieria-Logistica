@@ -370,6 +370,89 @@
   background: var(--surface-2);
 }
 
+/* Locales que se pueden elegir y arrastrar a otra ruta (DATA o un cluster sin empezar). */
+.loc-mini--movible {
+  cursor: grab;
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+}
+
+.loc-mini--elegido,
+.loc-mini--elegido:hover {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+
+  /* Marca de elegido en la esquina (además del borde, para no depender solo del color). */
+  &::before {
+    content: "✓";
+    position: absolute;
+    z-index: 1;
+    top: -6px;
+    left: -6px;
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    font-size: 12px;
+    line-height: 1;
+    color: #fff;
+    background: var(--accent);
+    border-radius: 50%;
+  }
+}
+
+/* Barra de los elegidos: cuántos, sus bultos y cómo moverlos. */
+.loc-mover {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: var(--radius-sm);
+
+  .caja-bulto {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    margin-right: 4px;
+    vertical-align: -2px;
+  }
+}
+
+.loc-mover__cuenta {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+
+  strong {
+    color: var(--text);
+  }
+}
+
+.loc-mover__quitar,
+.loc-mover__boton {
+  flex: none;
+}
+
+.loc-mover__nota {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+/* «Mover a…»: el selector nativo del teléfono (16 px para que iOS no acerque la pantalla). */
+.loc-mover__destino {
+  flex: 1 1 10rem;
+  min-width: 0;
+  font-size: 16px;
+}
+
 /* Pie fijo: la fila de totales de la planilla (gris, etiqueta en mayúsculas, cifras en negrita). */
 .loc-pie {
   position: sticky;

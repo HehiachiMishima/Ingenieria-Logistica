@@ -219,6 +219,8 @@ export interface RutaSimulacion {
 
 /** Un local de la ruta tal como vino en el Excel. */
 export interface LocalRuta {
+  /** Posición del local dentro de su ruta: lo identifica para moverlo a otra ruta. */
+  orden: number;
   /** Código del local; null si la fila no traía COD. */
   cod: string | null;
   /** Filas del Excel con ese COD (más de una: se sumaron). */

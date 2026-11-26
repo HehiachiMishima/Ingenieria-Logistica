@@ -159,7 +159,10 @@ Para habilitar el balanceo de rutas guardado por archivo en **Simulación Titan*
 En **Simulación Titan** ya no hay registro por Excel ni módulo Registro: todo pasa en
 **Configuración**, sobre un único escenario que el backend crea solo. Arriba de los clusters está el
 bloque **DATA** (mismo diseño, con su scroll), con las rutas que no se balancean: ahí se crean (uno o
-varios locales), se editan, se eliminan y reciben tipo, frecuencia y grupo. Solo una ruta completa
+varios locales), se editan, se eliminan y reciben tipo, frecuencia y grupo. Cada ruta queda en el
+bloque de DATA donde se suelta (BLOQUE 1…n, número fijo; una ruta nueva cae en uno cualquiera). Los locales también se
+mueven: en la ficha de la ruta se eligen y se arrastran a otra ruta (en celular, «Mover a…»), solo
+entre DATA y clusters sin empezar; el código repetido se suma y una ruta no se queda sin locales. Solo una ruta completa
 pasa a un cluster, y la celda donde se suelta (cluster y chute) es su posición original, el «antes»
 del Dashboard; el balanceo sigue igual. Un cluster que aún no empezó a balancearse puede devolver
 rutas a DATA y se puede quitar; los clusters se agregan al final y uno vacío se salta en el balanceo.

@@ -2,7 +2,7 @@
 @let r = ruta();
 @let k = cluster();
 @let pos = posicion();
-<div #pop class="detalle-pop" [class.detalle-pop--hoja]="pos.hoja" [class.detalle-pop--ruta]="!!r" [class.detalle-pop--baja]="!!r && baja()" role="dialog"
+<div #pop class="detalle-pop" [class.detalle-pop--hoja]="pos.hoja" [class.detalle-pop--arrastrando]="arrastrando()" [class.detalle-pop--ruta]="!!r" [class.detalle-pop--baja]="!!r && baja()" role="dialog"
   [attr.aria-label]="r ? 'Detalle de la ruta ' + r.ruta.codigoRuta : 'Detalle de ' + k!.c.nombre"
   [style.left.px]="pos.left" [style.top.px]="pos.top" [style.bottom.px]="pos.bottom"
   [style.max-height.px]="pos.maxAlto" [style.--pop-color]="r ? r.color : k!.c.color">
@@ -32,7 +32,7 @@
     <div class="ficha-cabeza__titulo">
       <strong>Ruta {{ r.ruta.codigoRuta }}</strong>
       <span class="loc-sub">{{ r.ruta.conteoCod | entero }} {{ r.ruta.conteoCod === 1 ? 'local' : 'locales' }} ·
-        {{ r.ruta.cluster }} · {{ r.ruta.chute }}</span>
+        @if (r.enData) { DATA · Bloque {{ r.bloque ?? '—' }} } @else { {{ r.ruta.cluster }} · {{ r.ruta.chute }} }</span>
     </div>
     <button type="button" class="ficha-cerrar" aria-label="Cerrar detalle" (click)="cerrar.emit()">
       <ui-icon name="close" [size]="16" />
@@ -86,6 +86,8 @@
   @switch (est?.estado) {
   @case ('listo') {
   @if (est?.estado === 'listo' && est.datos.conDetalle) {
+  <!-- DATA o un cluster sin empezar: los locales se eligen (clic, Mayús+clic) y se arrastran a otra ruta. -->
+  @let movibles = localesMovibles() && !bloqueado();
   <div class="loc-filtros">
     <label class="ui-search loc-buscar">
       <ui-icon name="search" [size]="16" />
@@ -105,9 +107,16 @@
       <span class="loc-cab__n" aria-live="polite">{{ filtrando() ? visibles().length + ' de ' + todos().length : todos().length }}</span>
     </div>
     @if (visibles().length > 0) {
-    <ul class="loc-grilla">
-      @for (l of mostrados(); track $index) {
-      <li class="loc-mini" [class.loc-mini--rep]="l.filas > 1"
+    <ul class="loc-grilla" [attr.role]="movibles ? 'listbox' : null" [attr.aria-multiselectable]="movibles ? 'true' : null"
+      [attr.aria-label]="movibles ? 'Locales: elígelos y arrástralos a otra ruta' : null">
+      @for (l of mostrados(); track l.orden) {
+      @let elegido = elegidos().has(l.orden);
+      <li class="loc-mini" [class.loc-mini--rep]="l.filas > 1" [class.loc-mini--movible]="movibles" [class.loc-mini--elegido]="elegido"
+        [attr.role]="movibles ? 'option' : null" [attr.aria-selected]="movibles ? elegido : null" [attr.tabindex]="movibles ? 0 : null"
+        [attr.draggable]="movibles ? 'true' : null" [attr.title]="movibles ? 'Clic: elegir · Mayús+clic: un tramo · Arrástralo a otra ruta' : null"
+        (click)="elegir($event, l.orden)" (keydown.enter)="elegir($event, l.orden)"
+        (keydown.space)="$event.preventDefault(); elegir($event, l.orden)"
+        (dragstart)="iniciarArrastre($event, l.orden)" (dragend)="terminarArrastre()"
         [attr.aria-label]="(l.cod ?? 'Sin COD') + ': ' + (l.bultos | numero: 2) + ' bultos, ' + (l.unidades | numero: 2) + ' unidades, ' + (l.lineas | numero: 2) + ' líneas' + (l.filas > 1 ? ', ingresado ' + l.filas + ' veces' : '')">
         <span class="loc-mini__arriba" aria-hidden="true">
           <span class="loc-mini__cod" [class.loc-mini__cod--sin]="!l.cod" [title]="l.cod ?? 'Sin COD'">{{ l.cod ?? 'Sin COD' }}</span>
@@ -140,6 +149,33 @@
       <span>{{ t.lineas | numero: 2 }} <small>lín.</small></span>
     </div>
   </div>
+  @let sel = resumenElegidos();
+  @if (movibles && sel) {
+  <!-- Elegidos: en computadora se arrastran; con el dedo, «Mover a…». -->
+  <div class="loc-mover" role="group" aria-label="Locales elegidos">
+    <span class="loc-mover__cuenta"><strong>{{ sel.n | entero }}</strong> {{ sel.n === 1 ? 'local' : 'locales' }} ·
+      <ng-container [ngTemplateOutlet]="caja" />{{ sel.bultos | numero: 2 }}</span>
+    <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm loc-mover__quitar" (click)="limpiarElegidos()">Quitar</button>
+    @if (sel.todos) {
+    <p class="loc-mover__nota">La ruta no puede quedarse sin locales: deja al menos uno.</p>
+    } @else if (conBoton()) {
+    <select class="ui-select loc-mover__destino" aria-label="Ruta a la que pasan los locales" (change)="elegirDestino($event)">
+      <option value="" [selected]="destino() === null">Mover a…</option>
+      @for (g of gruposDestino(); track g.grupo) {
+      <optgroup [label]="g.grupo">
+        @for (d of g.opciones; track d.id) {
+        <option [value]="d.id" [selected]="destino() === d.id">{{ d.etiqueta }}</option>
+        }
+      </optgroup>
+      }
+    </select>
+    <button type="button" class="ui-btn ui-btn--primary ui-btn--sm loc-mover__boton" [disabled]="destino() === null"
+      (click)="moverConBoton()">Mover</button>
+    } @else {
+    <p class="loc-mover__nota">Arrástralos y suéltalos sobre otra ruta.</p>
+    }
+  </div>
+  }
   @if (est.datos.truncado) {
   <p class="loc-aviso"><ui-icon name="info" [size]="14" /> Se muestran los primeros {{ est.datos.locales.length | entero }} locales.</p>
   }
@@ -171,10 +207,11 @@
   @if (r.editable) {
   <!-- En DATA la ruta se edita o se elimina; en un cluster ya no (vuelve a DATA para cambiarla). -->
   <div class="ficha-acciones">
-    <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm ficha-acciones__eliminar" (click)="eliminar.emit()">
+    <button type="button" class="ui-btn ui-btn--ghost ui-btn--sm ficha-acciones__eliminar" [disabled]="bloqueado()"
+      (click)="eliminar.emit()">
       <ui-icon name="trash" [size]="14" /> Eliminar
     </button>
-    <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" [disabled]="locales()?.estado !== 'listo'"
+    <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" [disabled]="bloqueado() || locales()?.estado !== 'listo'"
       (click)="editar.emit()">
       <ui-icon name="edit" [size]="14" /> Editar
     </button>

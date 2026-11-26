@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.math.BigDecimal;
 import java.util.List;
 import oracle.simulacion.repository.RutasDataRepository.Local;
+import oracle.simulacion.repository.RutasDataRepository.LocalGuardado;
 import oracle.simulacion.repository.RutasDataRepository.RutaData;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -103,8 +104,10 @@ class RutasDataRepositoryIT {
     RutasDataRepository.Totales t = repo.totales(archivo);
     assertEquals(1, t.rutas());
     assertEquals(0, dec("15.50").compareTo(t.bultos()));
-    // Ya en un cluster: ni se edita ni se le asigna nada desde DATA.
-    assertEquals(0, repo.asignarTipo(archivo, List.of(id), "B2B"));
+    // En un cluster: el tipo se puede cambiar (el servicio valida que no haya empezado); número,
+    // locales y eliminar solo en DATA.
+    assertEquals(1, repo.asignarTipo(archivo, List.of(id), "B2B"));
+    repo.asignarTipo(archivo, List.of(id), "B2C");
     assertFalse(repo.actualizar(archivo, id, "2003", dec("1"), dec("1"), dec("1"), 1));
     assertFalse(repo.eliminar(archivo, id));
 
@@ -126,6 +129,20 @@ class RutasDataRepositoryIT {
     assertTrue(deVuelta.completa(), "en DATA conserva tipo, frecuencia y grupo");
     assertEquals(0, repo.totales(archivo).rutas());
 
+    // Movida a mano: entra a la consulta de rutas cruzadas y puede tomar su cluster como original.
+    long otra = repo.insertar(archivo, "2077", chute1, dec("1"), dec("1"), dec("1"), 1);
+    repo.asignarTipo(archivo, List.of(otra), "B2C");
+    repo.asignarFrecuencia(archivo, List.of(otra), "MJS");
+    repo.asignarGrupo(archivo, List.of(otra), "1");
+    repo.aCluster(archivo, List.of(otra), cl1, chute1);
+    long cl2 = jdbc.queryForObject("SELECT id FROM simulacion.clusters WHERE nombre = 'CL2'", Long.class);
+    jdbc.update("UPDATE simulacion.rutas_proyeccion SET cluster_id = ? WHERE id = ?", cl2, otra);
+    RutaData cruzada = repo.rutasCruzadas(archivo, List.of(cl1)).getFirst();
+    assertEquals(cl1, cruzada.clusterOriginalId());
+    assertEquals(cl2, cruzada.clusterId());
+    repo.fijarOrigenEnSuCluster(archivo, List.of(otra));
+    assertTrue(repo.rutasCruzadas(archivo, List.of(cl1, cl2)).isEmpty());
+
     repo.quitarClusters(archivo, List.of(cl1));
     assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM simulacion.parametros_clusters WHERE archivo_id = ?", Integer.class, archivo));
     assertTrue(repo.eliminar(archivo, id));
@@ -146,7 +163,67 @@ class RutasDataRepositoryIT {
     repo.asignarTipo(archivo, List.of(a), "B2B");
     assertThrows(
         DataIntegrityViolationException.class, () -> jdbc.update("UPDATE simulacion.rutas_proyeccion SET tipo = NULL WHERE id = ?", a));
-    assertEquals(2, repo.aData(archivo, List.of(b, c), chute2));
+    assertEquals(2, repo.aDataEnSuChute(archivo, List.of(b, c)));
+  }
+
+  @Test
+  void enDataLaRutaQuedaEnElBloqueDondeSeSuelta() {
+    long id = repo.insertar(archivo, "2002", chute1, dec("1"), dec("1"), dec("1"), 1);
+    repo.asignarTipo(archivo, List.of(id), "B2C");
+    repo.asignarFrecuencia(archivo, List.of(id), "LXV");
+    repo.asignarGrupo(archivo, List.of(id), "1");
+
+    // De un bloque a otro de DATA.
+    assertEquals(1, repo.aData(archivo, List.of(id), chute2));
+    RutaData movida = repo.rutas(archivo, List.of(id)).getFirst();
+    assertTrue(movida.enData());
+    assertEquals(chute2, movida.chuteId());
+
+    // De un cluster a un bloque de DATA: conserva tipo, frecuencia y grupo; no cuenta como movida.
+    repo.aCluster(archivo, List.of(id), cl1, chute2);
+    assertEquals(1, repo.aData(archivo, List.of(id), chute1));
+    var fila =
+        jdbc.queryForMap(
+            "SELECT cluster_id, cluster_original_id, chute_id, chute_original_id, movida, tipo, frecuencia, grupo"
+                + " FROM simulacion.rutas_proyeccion WHERE id = ?",
+            id);
+    assertEquals(null, fila.get("cluster_id"));
+    assertEquals(null, fila.get("cluster_original_id"));
+    assertEquals(chute1, ((Number) fila.get("chute_id")).longValue());
+    assertEquals(chute1, ((Number) fila.get("chute_original_id")).longValue());
+    assertEquals(false, fila.get("movida"));
+    assertEquals("B2C", fila.get("tipo"));
+    assertEquals("LXV", fila.get("frecuencia"));
+    assertEquals("1", fila.get("grupo"));
+  }
+
+  @Test
+  void losLocalesPasanDeUnaRutaAOtraYLosTotalesSeRecalculan() {
+    long a = repo.insertar(archivo, "2002", chute1, dec("17"), dec("3"), dec("3"), 3);
+    repo.reemplazarLocales(a, List.of(local("A1", 1, "10"), local("B2", 1, "5"), local("C3", 2, "2")));
+    long b = repo.insertar(archivo, "2015", chute2, dec("7"), dec("1"), dec("1"), 1);
+    repo.reemplazarLocales(b, List.of(local("A1", 1, "7")));
+
+    // A1 se suma a la A1 de 2015; C3 pasa al final de 2015 sin reescribirse.
+    repo.fijarLocales(b, List.of(new LocalGuardado(1, "A1", 2, dec("17"), dec("2"), dec("2"))));
+    repo.quitarLocales(a, List.of(1));
+    repo.pasarLocales(a, b, List.<int[]>of(new int[] {3, 2}));
+    repo.recalcularTotales(archivo, List.of(a, b));
+
+    assertEquals(List.of("B2"), repo.locales(a).stream().map(LocalGuardado::cod).toList());
+    List<LocalGuardado> enB = repo.locales(b);
+    assertEquals(List.of("A1", "C3"), enB.stream().map(LocalGuardado::cod).toList());
+    assertEquals(List.of(1, 2), enB.stream().map(LocalGuardado::orden).toList());
+    assertEquals(2, enB.get(0).filas());
+    assertEquals(2, enB.get(1).filas(), "C3 conserva sus filas");
+    var ta = jdbc.queryForMap("SELECT total_bultos, total_unidades, conteo_cod FROM simulacion.rutas_proyeccion WHERE id = ?", a);
+    assertEquals(0, dec("5").compareTo((BigDecimal) ta.get("total_bultos")));
+    assertEquals(0, dec("1").compareTo((BigDecimal) ta.get("total_unidades")));
+    assertEquals(1, ((Number) ta.get("conteo_cod")).intValue());
+    var tb = jdbc.queryForMap("SELECT total_bultos, total_unidades, conteo_cod FROM simulacion.rutas_proyeccion WHERE id = ?", b);
+    assertEquals(0, dec("19").compareTo((BigDecimal) tb.get("total_bultos")));
+    assertEquals(0, dec("3").compareTo((BigDecimal) tb.get("total_unidades")));
+    assertEquals(2, ((Number) tb.get("conteo_cod")).intValue());
   }
 
   private static BigDecimal dec(String valor) {

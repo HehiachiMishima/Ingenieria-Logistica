@@ -10,6 +10,7 @@ import {
   input,
   linkedSignal,
   output,
+  signal,
   viewChild,
 } from '@angular/core';
 import { Icon } from '../../../../../../shared/ui/icon/icon';
@@ -17,6 +18,7 @@ import { IconoSim } from '../../../icono-sim/icono-sim';
 import { LocalRuta, LocalesRuta } from '../../../data/simulacion.model';
 import { EnteroPipe, HorasPipe, NumeroPipe } from '../../../numero.pipe';
 import { formatearEntero } from '../../../simulacion-formato';
+import { pastillaArrastre } from '../arrastre-rutas.directive';
 import type { PosicionDetalle, SimulacionConfiguracion } from '../configuracion';
 
 /** Mini fichas que se dibujan de una vez (y cuántas más con cada «Mostrar más»). */
@@ -30,6 +32,19 @@ const ALTO_MINIMO_CUADRICULA_REM = 35;
 export type RutaDetalle = NonNullable<ReturnType<SimulacionConfiguracion['rutaDetalle']>>;
 /** Lo que muestra la ficha de un cluster (lo arma Configuración). */
 export type ClusterDetalle = NonNullable<ReturnType<SimulacionConfiguracion['clusterDetalle']>>;
+
+/** Ruta que puede recibir locales (las opciones de «Mover a…»), agrupada por DATA o su cluster. */
+export interface DestinoLocales {
+  id: number;
+  etiqueta: string;
+  grupo: string;
+}
+
+/** Locales (por su orden) que pasan a otra ruta con «Mover a…». */
+export interface MoverLocalesA {
+  ordenes: readonly number[];
+  destinoId: number;
+}
 
 /** Los locales de la ruta abierta, tal como llegan del servidor. */
 export type EstadoLocales =
@@ -54,11 +69,20 @@ export class FichaDetalle {
   readonly ruta = input<RutaDetalle | null>(null);
   readonly cluster = input<ClusterDetalle | null>(null);
   readonly locales = input<EstadoLocales | null>(null);
+  /** Hay otra operación en curso: Editar y Eliminar esperan. */
+  readonly bloqueado = input(false);
   readonly cerrar = output<void>();
   readonly reintentar = output<void>();
   /** Solo rutas de DATA: abrir el formulario o eliminarla. */
   readonly editar = output<void>();
   readonly eliminar = output<void>();
+  /** La ruta puede dar locales (DATA o un cluster sin empezar, con permiso): se eligen y se arrastran. */
+  readonly localesMovibles = input(false);
+  /** Rutas que pueden recibirlos: las opciones de «Mover a…» (pantalla táctil o celular). */
+  readonly destinosLocales = input<readonly DestinoLocales[]>([]);
+  /** Locales (por su orden) que empiezan a arrastrarse; null al terminar. */
+  readonly arrastreLocales = output<readonly number[] | null>();
+  readonly moverLocales = output<MoverLocalesA>();
 
   /** Búsqueda por COD (ya aplicada) y bultos mínimos: vuelven a vacío al abrir otra ruta. */
   readonly busqueda = linkedSignal({ source: () => this.ruta()?.ruta.id, computation: () => '' });
@@ -106,6 +130,25 @@ export class FichaDetalle {
     },
     computation: () => false,
   });
+
+  /** Locales elegidos (por su orden): vuelven a vacío al abrir otra ruta o al recargar sus locales. */
+  readonly elegidos = linkedSignal<unknown, ReadonlySet<number>>({
+    source: () => [this.ruta()?.ruta.id, this.locales()],
+    computation: () => new Set(),
+  });
+  /** Ruta elegida en «Mover a…». */
+  readonly destino = linkedSignal<unknown, number | null>({ source: () => this.elegidos(), computation: () => null });
+  /** Arrastrando locales: la ficha se vuelve translúcida y deja alcanzar las rutas que tapa. */
+  readonly arrastrando = signal(false);
+  /**
+   * Con el dedo el arrastre nativo falla: en pantalla táctil o con la ficha como hoja inferior, los
+   * elegidos se pasan con «Mover a…».
+   */
+  private readonly tactil = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  readonly conBoton = computed(() => this.posicion().hoja || this.tactil);
+  /** Último local pulsado: Mayús+clic elige desde él hasta otro. */
+  private ancla: number | null = null;
+  private enArrastre = false;
 
   private esperaBusqueda: ReturnType<typeof setTimeout> | undefined;
 
@@ -171,6 +214,102 @@ export class FichaDetalle {
         this.busqueda.set(valor);
       }
     }, ESPERA_BUSQUEDA_MS);
+  }
+
+  /** Lo que muestra la barra de elegidos: cuántos, sus bultos y si son todos los de la ruta. */
+  readonly resumenElegidos = computed(() => {
+    const ids = this.elegidos();
+    if (ids.size === 0) {
+      return null;
+    }
+    const todos = this.todos();
+    const bultos = todos.reduce((t, local) => (ids.has(local.orden) ? t + Number(local.bultos) : t), 0);
+    return { n: ids.size, bultos, todos: ids.size >= todos.length };
+  });
+
+  /** Opciones de «Mover a…» por grupo (DATA, CL1…), en el orden en que llegan. */
+  readonly gruposDestino = computed(() => {
+    const grupos = new Map<string, DestinoLocales[]>();
+    for (const destino of this.destinosLocales()) {
+      const lista = grupos.get(destino.grupo);
+      if (lista) {
+        lista.push(destino);
+      } else {
+        grupos.set(destino.grupo, [destino]);
+      }
+    }
+    return [...grupos].map(([grupo, opciones]) => ({ grupo, opciones }));
+  });
+
+  /** Clic (o Enter/Espacio) elige o suelta un local; con Mayús, el tramo desde el último pulsado. */
+  elegir(evento: Event, orden: number): void {
+    if (!this.localesMovibles() || this.bloqueado()) {
+      return;
+    }
+    const ancla = this.ancla;
+    this.elegidos.update((actual) => {
+      const siguiente = new Set(actual);
+      if ((evento as MouseEvent).shiftKey && ancla !== null) {
+        const lista = this.mostrados().map((local) => local.orden);
+        const desde = lista.indexOf(ancla);
+        const hasta = lista.indexOf(orden);
+        if (desde >= 0 && hasta >= 0) {
+          lista.slice(Math.min(desde, hasta), Math.max(desde, hasta) + 1).forEach((o) => siguiente.add(o));
+          return siguiente;
+        }
+      }
+      if (!siguiente.delete(orden)) {
+        siguiente.add(orden);
+      }
+      return siguiente;
+    });
+    this.ancla = orden;
+  }
+
+  limpiarElegidos(): void {
+    this.elegidos.set(new Set());
+    this.ancla = null;
+  }
+
+  /** Se arrastra el local tomado y, si estaba elegido, todos los elegidos. */
+  iniciarArrastre(evento: DragEvent, orden: number): void {
+    if (!this.localesMovibles() || this.bloqueado()) {
+      evento.preventDefault();
+      return;
+    }
+    const elegidos = this.elegidos();
+    const ordenes = elegidos.has(orden) ? [...elegidos] : [orden];
+    if (evento.dataTransfer) {
+      evento.dataTransfer.effectAllowed = 'move';
+      // Firefox no arrastra sin datos.
+      evento.dataTransfer.setData('text/plain', ordenes.join(','));
+      if (ordenes.length > 1) {
+        pastillaArrastre(evento.dataTransfer, `${ordenes.length} locales`);
+      }
+    }
+    this.enArrastre = true;
+    this.arrastreLocales.emit(ordenes);
+    // Chrome cancela el arrastre si el origen cambia de estilo dentro de `dragstart`.
+    requestAnimationFrame(() => this.arrastrando.set(this.enArrastre));
+  }
+
+  terminarArrastre(): void {
+    this.enArrastre = false;
+    this.arrastrando.set(false);
+    this.arrastreLocales.emit(null);
+  }
+
+  elegirDestino(evento: Event): void {
+    const valor = (evento.target as HTMLSelectElement).value;
+    this.destino.set(valor === '' ? null : Number(valor));
+  }
+
+  moverConBoton(): void {
+    const destinoId = this.destino();
+    const ordenes = [...this.elegidos()];
+    if (destinoId !== null && ordenes.length > 0 && !this.bloqueado()) {
+      this.moverLocales.emit({ ordenes, destinoId });
+    }
   }
 
   mostrarMas(): void {

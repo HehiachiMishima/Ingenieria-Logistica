@@ -681,6 +681,18 @@
   box-shadow: inset 0 0 0 2px var(--danger);
 }
 
+/* Locales arrastrados desde la ficha: la ruta bajo el puntero los recibe o dice que no. */
+.matriz-ruta.matriz-ruta--recibe {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.matriz-ruta.matriz-ruta--no-recibe {
+  outline: 3px solid var(--danger);
+  outline-offset: -3px;
+  opacity: 0.75;
+}
+
 /* ---------- Totales (pie de tabla del dashboard) ---------- */
 .mz-totales {
   display: grid;
@@ -1560,3 +1572,4 @@
     font-size: 16px;
   }
 }
+

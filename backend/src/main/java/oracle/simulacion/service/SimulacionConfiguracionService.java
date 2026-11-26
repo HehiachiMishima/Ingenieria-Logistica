@@ -246,6 +246,7 @@ public class SimulacionConfiguracionService {
             condiciones.add(root.get("clusterId").in(clusterIds));
           }
           if (chuteIds != null && !chuteIds.isEmpty()) {
+            // También DATA: sus bloques son las mismas columnas que los chutes.
             condiciones.add(root.get("chuteId").in(chuteIds));
           }
           if (termino != null) {
@@ -773,6 +774,7 @@ public class SimulacionConfiguracionService {
           }
           exigirAbiertoEn(ctx, afectados, origen, "cambiar rutas de cluster");
           exigirAbiertoEn(ctx, afectados, destino, "cambiar rutas de cluster");
+          exigirOrdenAlLlenar(ctx, destino);
           if (!rutaRepo.existsByArchivoIdAndClusterIdAndIdNot(archivoId, origen, rutaId)) {
             throw new ConflictoException(
                 "La ruta "
@@ -860,6 +862,7 @@ public class SimulacionConfiguracionService {
             throw new SolicitudInvalidaException(
                 "El chute " + chuteDestino + " no pertenece al registro.");
           }
+          exigirOrdenAlLlenar(ctx, clusterDestino);
           Map<Long, RutaProyeccion> porId = new HashMap<>();
           for (RutaProyeccion ruta : rutaRepo.findByArchivoIdAndIdIn(archivoId, ids)) {
             porId.put(ruta.getId(), ruta);
@@ -2397,6 +2400,39 @@ public class SimulacionConfiguracionService {
         .filter(ctx.conRutas()::contains)
         .sorted(Comparator.comparing(ctx::nombreCluster, ORDEN_NATURAL))
         .toList();
+  }
+
+  /** Todos los clusters del escenario (también los vacíos), en orden natural (CL1, CL2…, CL10). */
+  static List<Long> todosLosClusters(Contexto ctx) {
+    Set<Long> ids = new LinkedHashSet<>();
+    ctx.parametros().values().forEach((porCluster) -> ids.addAll(porCluster.keySet()));
+    return ids.stream().sorted(Comparator.comparing(ctx::nombreCluster, ORDEN_NATURAL)).toList();
+  }
+
+  /** Ya se balanceó algo del cluster (en cualquier balanceo) o está cerrado. */
+  static boolean empezadoEnAlguno(Contexto ctx, Long clusterId) {
+    return Arrays.stream(Balanceo.values()).anyMatch((b) -> !pendiente(ctx.parametro(b, clusterId)));
+  }
+
+  /**
+   * Un cluster vacío entra a la secuencia del balanceo al recibir rutas (desde DATA o desde otro
+   * cluster): no puede quedar antes de uno que ya empezó, porque cada cluster trabaja con la
+   * dotación del anterior (CL1 → CL2 → …).
+   */
+  void exigirOrdenAlLlenar(Contexto ctx, Long destino) {
+    if (ctx.conRutas().contains(destino)) {
+      return;
+    }
+    List<Long> todos = todosLosClusters(ctx);
+    int indice = todos.indexOf(destino);
+    for (Long siguiente : todos.subList(indice + 1, todos.size())) {
+      if (ctx.conRutas().contains(siguiente) && empezadoEnAlguno(ctx, siguiente)) {
+        throw new ConflictoException(
+            ctx.nombreCluster(destino) + " va antes de " + ctx.nombreCluster(siguiente)
+                + ", que ya empezó a balancearse: usa un cluster posterior o restablece "
+                + ctx.nombreCluster(siguiente) + ".");
+      }
+    }
   }
 
   /** Primer cluster sin cerrar: el único que se puede trabajar. Null si todos están cerrados. */

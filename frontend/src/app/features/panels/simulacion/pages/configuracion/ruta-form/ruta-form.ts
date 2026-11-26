@@ -65,6 +65,8 @@ export class RutaForm {
   /** Escenario donde se crea o edita la ruta. */
   readonly registroId = input<number | null>(null);
   readonly inicial = input<RutaFormInicial | null>(null);
+  /** Rutas ya registradas (número y tipo): avisa antes de repetir una, como el servidor. */
+  readonly existentes = input<readonly { id: number; codigo: string; tipo: string | null }[]>([]);
   readonly cerrar = output<void>();
   readonly guardado = output<{ mensaje: string; creada: boolean }>();
 
@@ -101,10 +103,11 @@ export class RutaForm {
         lineas: errorNumero(l.lineas, false),
       }),
     );
+    const errorCodigo = codigo === '' ? 'Escribe el número de ruta.' : this.repetida(codigo);
     return {
-      codigo: codigo === '' ? 'Escribe el número de ruta.' : null,
+      codigo: errorCodigo,
       lineas,
-      hay: codigo === '' || lineas.some((e) => CAMPOS.some((c) => e[c] !== null)),
+      hay: errorCodigo !== null || lineas.some((e) => CAMPOS.some((c) => e[c] !== null)),
     };
   });
 
@@ -147,6 +150,25 @@ export class RutaForm {
       : 'Se crea en DATA, sin tipo, frecuencia ni grupo: se los asignas ahí antes de pasarla a un cluster.';
   });
 
+  /**
+   * La ruta quedaría repetida: mismo número y mismo tipo que otra (sin tipo: otra ruta de DATA sin
+   * tipo con ese número).
+   */
+  private repetida(codigo: string): string | null {
+    const editando = this.editando();
+    const tipo = editando?.tipo ?? null;
+    const clave = normalizar(codigo);
+    const otra = this.existentes().find(
+      (r) => r.id !== editando?.id && normalizar(r.codigo) === clave && (r.tipo ?? null) === tipo,
+    );
+    if (!otra) {
+      return null;
+    }
+    return tipo === null
+      ? `Ya hay una ruta ${clave} sin tipo en DATA: asígnale un tipo antes de registrar otra.`
+      : `Ya existe la ruta ${clave} ${tipo}.`;
+  }
+
   private linea(cod = '', bultos = '', unidades = '', lineas = '', filas = 1): LineaForm {
     return { clave: ++this.claves, filas, cod, bultos, unidades, lineas };
   }
@@ -164,7 +186,10 @@ export class RutaForm {
 
   cambiar(clave: number, campo: Campo, evento: Event): void {
     const valor = (evento.target as HTMLInputElement).value;
-    this.lineas.update((lista) => lista.map((l) => (l.clave === clave ? { ...l, [campo]: valor } : l)));
+    // Otro código ya no es el local que se había ingresado varias veces: cuenta como uno.
+    this.lineas.update((lista) =>
+      lista.map((l) => (l.clave === clave ? { ...l, [campo]: valor, ...(campo === 'cod' ? { filas: 1 } : {}) } : l)),
+    );
   }
 
   agregarLinea(): void {
@@ -205,7 +230,8 @@ export class RutaForm {
       const copia = [...lista];
       filas.forEach((celdas, n) => {
         const actual = copia[indice + n] ?? this.linea();
-        const nueva: LineaForm = { ...actual };
+        // Lo pegado reemplaza la línea: ya no es la suma de varias.
+        const nueva: LineaForm = { ...actual, filas: 1 };
         celdas.forEach((valor, c) => {
           const destino = CAMPOS[desde + c];
           if (destino) {
@@ -257,7 +283,11 @@ export class RutaForm {
       : this.api.crearRutaData(registro, peticion)
     )
       .pipe(finalize(() => this.guardando.set(false)))
-      .subscribe((cambio) => this.guardado.emit({ mensaje: cambio.mensaje, creada: !editando }));
+      .subscribe({
+        next: (cambio) => this.guardado.emit({ mensaje: cambio.mensaje, creada: !editando }),
+        // El interceptor ya muestra el motivo; el formulario queda abierto para corregir.
+        error: () => undefined,
+      });
   }
 }
 

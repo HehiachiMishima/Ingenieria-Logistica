@@ -14,8 +14,9 @@ import java.util.List;
 public record LocalesRutaResponse(Long rutaId, boolean conDetalle, boolean truncado, List<Local> locales) {
 
   /**
+   * @param orden su posición dentro de la ruta (identifica al local para moverlo a otra ruta).
    * @param cod código del local; null si la fila del Excel no traía COD.
    * @param filas filas del Excel con ese COD (más de una: se suman).
    */
-  public record Local(String cod, int filas, BigDecimal bultos, BigDecimal unidades, BigDecimal lineas) {}
+  public record Local(int orden, String cod, int filas, BigDecimal bultos, BigDecimal unidades, BigDecimal lineas) {}
 }

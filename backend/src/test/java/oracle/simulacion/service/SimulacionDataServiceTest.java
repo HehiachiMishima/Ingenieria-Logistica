@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -44,6 +45,7 @@ import oracle.simulacion.repository.ParametroChuteRepository;
 import oracle.simulacion.repository.ParametroClusterRepository;
 import oracle.simulacion.repository.RutaProyeccionRepository;
 import oracle.simulacion.repository.RutasDataRepository;
+import oracle.simulacion.repository.RutasDataRepository.LocalGuardado;
 import oracle.simulacion.repository.RutasDataRepository.RutaData;
 import oracle.simulacion.repository.SimulacionConfigRepository;
 import oracle.simulacion.repository.SimulacionLotesRepository;
@@ -247,29 +249,176 @@ class SimulacionDataServiceTest {
   }
 
   @Test
-  void enDataNadaVaAUnChuteBloqueado() {
-    clusters(Set.of());
+  void enDataLaRutaQuedaEnElBloqueDondeSeSuelta() {
+    clusters(Set.of(CL1), cluster(CL1, PENDIENTE));
+    // De un bloque a otro de DATA: solo cambia su columna; no tenía historial que borrar.
     when(repo.rutas(ARCHIVO, List.of(5L))).thenReturn(List.of(enData(5, "2002", null, null, null)));
+    ApiResponse<oracle.simulacion.response.CambioDataResponse> r = servicio.mover(ARCHIVO, mover(null, 2L, 5L));
+    verify(repo).aData(ARCHIVO, List.of(5L), 2L);
+    verify(repo, never()).borrarHistorialDeRutas(anyLong(), anyList());
+    assertTrue(r.mensaje().contains("bloque 2"), r.mensaje());
+
+    // Soltarla en el mismo bloque no hace nada.
+    ConflictoException e =
+        assertThrows(ConflictoException.class, () -> servicio.mover(ARCHIVO, mover(null, 1L, 5L)));
+    assertTrue(e.getMessage().contains("ya están en ese bloque"), e.getMessage());
+  }
+
+  @Test
+  void enDataCualquierColumnaRecibeRutasInclusoUnaBloqueada() {
+    clusters(Set.of(CL1), cluster(CL1, PENDIENTE));
+    when(repo.rutas(ARCHIVO, List.of(6L))).thenReturn(List.of(enCluster(6, "2015", CL1)));
+
+    servicio.mover(ARCHIVO, mover(null, 3L, 6L));
+
+    verify(repo).aData(ARCHIVO, List.of(6L), 3L);
+  }
+
+  @Test
+  void moverSiempreNecesitaLaColumna() {
+    clusters(Set.of(CL1), cluster(CL1, PENDIENTE));
+    assertThrows(SolicitudInvalidaException.class, () -> servicio.mover(ARCHIVO, mover(CL1, null, 5L)));
+    assertThrows(SolicitudInvalidaException.class, () -> servicio.mover(ARCHIVO, mover(null, null, 5L)));
+    assertThrows(SolicitudInvalidaException.class, () -> servicio.mover(ARCHIVO, mover(null, 99L, 5L)));
+    verify(repo, never()).rutas(anyLong(), anyList());
+  }
+
+  @Test
+  void unaRutaQueLlegoAManoDesdeUnClusterEmpezadoNoPasaAData() {
+    List<ParametroCluster> parametros = new ArrayList<>(cluster(CL1, ParametroCluster.ESTADO_RUTAS));
+    parametros.addAll(cluster(CL2, PENDIENTE));
+    clusters(Set.of(CL1, CL2), parametros);
+    when(repo.rutas(ARCHIVO, List.of(6L))).thenReturn(List.of(movida(6, "2015", CL2, CL1)));
 
     ConflictoException e =
-        assertThrows(ConflictoException.class, () -> servicio.mover(ARCHIVO, mover(null, 3L, 5L)));
-    assertTrue(e.getMessage().contains("bloqueado"), e.getMessage());
+        assertThrows(ConflictoException.class, () -> servicio.mover(ARCHIVO, mover(null, 2L, 6L)));
+    assertTrue(e.getMessage().contains("llegó a mano desde CL1"), e.getMessage());
+  }
+
+  @Test
+  void quedarseEnUnChuteBloqueadoSePermite() {
+    clusters(Set.of(CL1), cluster(CL1, PENDIENTE));
+    when(repo.rutas(ARCHIVO, List.of(5L)))
+        .thenReturn(List.of(new RutaData(5, "2002", "B2C", null, null, 3L, "LXV", "1")));
+    when(repo.aCluster(ARCHIVO, List.of(5L), CL1, 3L)).thenReturn(1);
+
+    servicio.mover(ARCHIVO, mover(CL1, 3L, 5L));
+
+    verify(repo).aCluster(ARCHIVO, List.of(5L), CL1, 3L);
+  }
+
+  @Test
+  void entreClustersUnoVacioTampocoQuedaAntesDeUnoQueYaEmpezo() {
+    List<ParametroCluster> parametros = new ArrayList<>(cluster(CL1, PENDIENTE));
+    parametros.addAll(cluster(CL2, ParametroCluster.ESTADO_RUTAS));
+    clusters(Set.of(CL2), parametros);
+
+    ConflictoException e =
+        assertThrows(
+            ConflictoException.class,
+            () ->
+                configuracion.moverVarias(
+                    ARCHIVO, Balanceo.LXV, new oracle.simulacion.request.MoverRutasRequest(List.of(6L), CL1, 1L)));
+    assertTrue(e.getMessage().contains("CL1 va antes de CL2"), e.getMessage());
+  }
+
+  // ---------------- Mover locales ----------------
+
+  @Test
+  void unLocalPasaAlFinalDeLaOtraRutaYSeRecalculanLasDos() {
+    clusters(Set.of(CL1), cluster(CL1, PENDIENTE));
+    dosRutas(enData(5, "2002", null, null, null), enData(6, "2015", "B2C", "LXV", "1"));
+    when(repo.locales(5L)).thenReturn(List.of(loc(1, "A1", "10"), loc(2, "B2", "5")));
+    when(repo.locales(6L)).thenReturn(List.of(loc(4, "C3", "7")));
+
+    ApiResponse<oracle.simulacion.response.CambioDataResponse> r = servicio.moverLocales(ARCHIVO, moverLocales(5, 6, 1));
+
+    verify(repo).pasarLocales(eq(5L), eq(6L), argThat((List<int[]> p) -> p.size() == 1 && p.get(0)[0] == 1 && p.get(0)[1] == 5));
+    verify(repo, never()).fijarLocales(anyLong(), anyList());
+    verify(repo).recalcularTotales(ARCHIVO, List.of(5L, 6L));
+    verify(archivoRepo).save(archivo);
+    assertTrue(r.mensaje().contains("1 local de 2002 → 2015"), r.mensaje());
+  }
+
+  @Test
+  void elMismoCodigoSeSumaEnLaRutaDestino() {
+    clusters(Set.of(CL1), cluster(CL1, PENDIENTE));
+    dosRutas(enData(5, "2002", null, null, null), enData(6, "2015", "B2C", "LXV", "1"));
+    when(repo.locales(5L)).thenReturn(List.of(loc(1, " a1 ", "10"), loc(2, "B2", "5"), loc(3, "D4", "1")));
+    when(repo.locales(6L)).thenReturn(List.of(loc(1, "A1", "7")));
+
+    ApiResponse<oracle.simulacion.response.CambioDataResponse> r = servicio.moverLocales(ARCHIVO, moverLocales(5, 6, 1, 3));
+
+    verify(repo).fijarLocales(6L, List.of(new LocalGuardado(1, "A1", 2, new BigDecimal("17"), new BigDecimal("2"), new BigDecimal("2"))));
+    verify(repo).quitarLocales(5L, List.of(1));
+    verify(repo).pasarLocales(eq(5L), eq(6L), argThat((List<int[]> p) -> p.size() == 1 && p.get(0)[0] == 3 && p.get(0)[1] == 2));
+    assertTrue(r.mensaje().contains("2 locales") && r.mensaje().contains("1 se sumó"), r.mensaje());
+  }
+
+  @Test
+  void unaRutaNoSeQuedaSinLocales() {
+    clusters(Set.of(CL1), cluster(CL1, PENDIENTE));
+    dosRutas(enData(5, "2002", null, null, null), enData(6, "2015", "B2C", "LXV", "1"));
+    when(repo.locales(5L)).thenReturn(List.of(loc(1, "A1", "10"), loc(2, "B2", "5")));
+
+    ConflictoException e =
+        assertThrows(ConflictoException.class, () -> servicio.moverLocales(ARCHIVO, moverLocales(5, 6, 1, 2)));
+    assertTrue(e.getMessage().contains("2002 se quedaría sin locales"), e.getMessage());
+    verify(repo, never()).recalcularTotales(anyLong(), anyList());
+  }
+
+  @Test
+  void unClusterQueYaEmpezoNoRecibeNiDaLocales() {
+    clusters(Set.of(CL1), cluster(CL1, ParametroCluster.ESTADO_RUTAS));
+    dosRutas(enData(5, "2002", null, null, null), enCluster(6, "2015", CL1));
+
+    ConflictoException e =
+        assertThrows(ConflictoException.class, () -> servicio.moverLocales(ARCHIVO, moverLocales(5, 6, 1)));
+    assertTrue(e.getMessage().contains("CL1 ya empezó a balancearse") && e.getMessage().contains("2015"), e.getMessage());
+    dosRutas(enCluster(6, "2015", CL1), enData(5, "2002", null, null, null));
+    e = assertThrows(ConflictoException.class, () -> servicio.moverLocales(ARCHIVO, moverLocales(6, 5, 1)));
+    assertTrue(e.getMessage().contains("sacarle locales"), e.getMessage());
+    verify(repo, never()).locales(anyLong());
+  }
+
+  @Test
+  void enUnClusterSinEmpezarSeMuevenLocales() {
+    clusters(Set.of(CL1), cluster(CL1, PENDIENTE));
+    dosRutas(enCluster(6, "2015", CL1), enData(5, "2002", null, null, null));
+    when(repo.locales(6L)).thenReturn(List.of(loc(1, "A1", "10"), loc(2, "B2", "5")));
+    when(repo.locales(5L)).thenReturn(List.of(loc(1, "C3", "7")));
+
+    servicio.moverLocales(ARCHIVO, moverLocales(6, 5, 2));
+
+    verify(repo).recalcularTotales(ARCHIVO, List.of(6L, 5L));
+  }
+
+  @Test
+  void unLocalQueYaNoEstaOLaMismaRutaNoMuevenNada() {
+    clusters(Set.of(CL1), cluster(CL1, PENDIENTE));
+    assertThrows(SolicitudInvalidaException.class, () -> servicio.moverLocales(ARCHIVO, moverLocales(5, 5, 1)));
+    dosRutas(enData(5, "2002", null, null, null), enData(6, "2015", "B2C", "LXV", "1"));
+    when(repo.locales(5L)).thenReturn(List.of(loc(1, "A1", "10"), loc(2, "B2", "5")));
+    ConflictoException e =
+        assertThrows(ConflictoException.class, () -> servicio.moverLocales(ARCHIVO, moverLocales(5, 6, 9)));
+    assertTrue(e.getMessage().contains("ya no está"), e.getMessage());
+    verify(repo, never()).recalcularTotales(anyLong(), anyList());
   }
 
   // ---------------- Tipo, frecuencia y grupo ----------------
 
   @Test
-  void elTipoSeAsignaSoloALasRutasDeData() {
+  void elTipoSeAsignaEnDataYEnUnClusterSinEmpezar() {
     clusters(Set.of(CL1), cluster(CL1, PENDIENTE));
     when(repo.rutas(ARCHIVO, List.of(5L, 6L)))
         .thenReturn(List.of(enData(5, "2002", null, null, null), enCluster(6, "2015", CL1)));
-    when(repo.repetidasConTipo(ARCHIVO, List.of(5L), "B2C")).thenReturn(List.of());
-    when(repo.asignarTipo(ARCHIVO, List.of(5L), "B2C")).thenReturn(1);
+    when(repo.repetidasConTipo(ARCHIVO, List.of(5L, 6L), "B2C")).thenReturn(List.of());
+    when(repo.asignarTipo(ARCHIVO, List.of(5L, 6L), "B2C")).thenReturn(2);
 
     ApiResponse<oracle.simulacion.response.CambioDataResponse> r = servicio.asignarTipo(ARCHIVO, new DataRequest.Tipo(List.of(5L, 6L), "B2C"));
 
-    verify(repo).asignarTipo(ARCHIVO, List.of(5L), "B2C");
-    assertTrue(r.mensaje().contains("1 ruta en un cluster se dejó igual"), r.mensaje());
+    verify(repo).asignarTipo(ARCHIVO, List.of(5L, 6L), "B2C");
+    assertTrue(r.mensaje().contains("2 rutas"), r.mensaje());
   }
 
   @Test
@@ -284,13 +433,17 @@ class SimulacionDataServiceTest {
   }
 
   @Test
-  void enUnClusterNoSeAsignaNada() {
-    clusters(Set.of(CL1), cluster(CL1, PENDIENTE));
-    when(repo.rutas(ARCHIVO, List.of(6L))).thenReturn(List.of(enCluster(6, "2015", CL1)));
+  void enUnClusterQueYaEmpezoNoSeCambiaNadaYNingunaRecibeElCambio() {
+    clusters(Set.of(CL1), cluster(CL1, ParametroCluster.ESTADO_RUTAS));
+    when(repo.rutas(ARCHIVO, List.of(5L, 6L)))
+        .thenReturn(List.of(enData(5, "2002", null, null, null), enCluster(6, "2015", CL1)));
 
-    assertThrows(
-        SolicitudInvalidaException.class,
-        () -> servicio.asignarGrupo(ARCHIVO, new DataRequest.Grupo(List.of(6L), "3")));
+    ConflictoException e =
+        assertThrows(
+            ConflictoException.class,
+            () -> servicio.asignarGrupo(ARCHIVO, new DataRequest.Grupo(List.of(5L, 6L), "3")));
+    assertTrue(e.getMessage().contains("ya empezó a balancearse"), e.getMessage());
+    verify(repo, never()).asignarGrupo(anyLong(), anyList(), any());
   }
 
   @Test
@@ -332,6 +485,34 @@ class SimulacionDataServiceTest {
     verify(repo).borrarHistorialDeRutas(ARCHIVO, List.of(6L));
     verify(repo).quitarClusters(ARCHIVO, List.of(CL2));
     assertTrue(r.mensaje().contains("1 ruta volvieron a DATA"), r.mensaje());
+  }
+
+  @Test
+  void alQuitarUnClusterLasRutasQueSalieronDeElTomanSuClusterComoOriginal() {
+    List<ParametroCluster> parametros = new ArrayList<>(cluster(CL1, PENDIENTE));
+    parametros.addAll(cluster(CL2, PENDIENTE));
+    clusters(Set.of(CL1, CL2), parametros);
+    when(repo.rutasCruzadas(ARCHIVO, List.of(CL2))).thenReturn(List.of(movida(7, "2020", CL1, CL2)));
+    when(repo.devolverADataEnSuChute(ARCHIVO, List.of(CL2))).thenReturn(List.of());
+
+    servicio.cambiarClusters(ARCHIVO, new DataRequest.Clusters(1));
+
+    verify(repo).fijarOrigenEnSuCluster(ARCHIVO, List.of(7L));
+    verify(repo).borrarHistorialDeRutas(ARCHIVO, List.of(7L));
+    verify(repo).quitarClusters(ARCHIVO, List.of(CL2));
+  }
+
+  @Test
+  void noSeQuitaUnClusterSiUnaRutaSalioDeElAUnoQueYaEmpezo() {
+    List<ParametroCluster> parametros = new ArrayList<>(cluster(CL1, ParametroCluster.ESTADO_RUTAS));
+    parametros.addAll(cluster(CL2, PENDIENTE));
+    clusters(Set.of(CL1, CL2), parametros);
+    when(repo.rutasCruzadas(ARCHIVO, List.of(CL2))).thenReturn(List.of(movida(7, "2020", CL1, CL2)));
+
+    ConflictoException e =
+        assertThrows(ConflictoException.class, () -> servicio.cambiarClusters(ARCHIVO, new DataRequest.Clusters(1)));
+    assertTrue(e.getMessage().contains("salió de CL2 a CL1"), e.getMessage());
+    verify(repo, never()).quitarClusters(anyLong(), anyList());
   }
 
   @Test
@@ -399,11 +580,28 @@ class SimulacionDataServiceTest {
   }
 
   private static RutaData enData(long id, String codigo, String tipo, String frecuencia, String grupo) {
-    return new RutaData(id, codigo, tipo, null, 1L, frecuencia, grupo);
+    return new RutaData(id, codigo, tipo, null, null, 1L, frecuencia, grupo);
   }
 
   private static RutaData enCluster(long id, String codigo, Long clusterId) {
-    return new RutaData(id, codigo, "B2B", clusterId, 1L, "MJS", "1");
+    return new RutaData(id, codigo, "B2B", clusterId, clusterId, 1L, "MJS", "1");
+  }
+
+  /** En {@code clusterId}, movida a mano desde {@code origen}. */
+  private static RutaData movida(long id, String codigo, Long clusterId, Long origen) {
+    return new RutaData(id, codigo, "B2B", clusterId, origen, 1L, "MJS", "1");
+  }
+
+  private void dosRutas(RutaData origen, RutaData destino) {
+    when(repo.rutas(ARCHIVO, List.of(origen.id(), destino.id()))).thenReturn(List.of(origen, destino));
+  }
+
+  private static LocalGuardado loc(int orden, String cod, String bultos) {
+    return new LocalGuardado(orden, cod, 1, new BigDecimal(bultos), BigDecimal.ONE, BigDecimal.ONE);
+  }
+
+  private static DataRequest.MoverLocales moverLocales(long origen, long destino, Integer... ordenes) {
+    return new DataRequest.MoverLocales(origen, destino, List.of(ordenes));
   }
 
   private static DataRequest.Mover mover(Long clusterId, Long chuteId, Long... ids) {

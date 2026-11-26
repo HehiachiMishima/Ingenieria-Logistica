@@ -1,15 +1,20 @@
 package oracle.simulacion.service;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -26,6 +31,7 @@ import oracle.simulacion.model.Balanceo;
 import oracle.simulacion.model.ParametroCluster;
 import oracle.simulacion.repository.RutaProyeccionRepository;
 import oracle.simulacion.repository.RutasDataRepository;
+import oracle.simulacion.repository.RutasDataRepository.LocalGuardado;
 import oracle.simulacion.repository.RutasDataRepository.RutaData;
 import oracle.simulacion.repository.SimulacionLotesRepository;
 import oracle.simulacion.request.DataRequest;
@@ -156,7 +162,7 @@ public class SimulacionDataService {
             "tipo id=" + archivoId + " rutas=" + ids.size(),
             () -> {
               Contexto ctx = bloquear(archivoId);
-              List<Long> enData = deData(archivoId, ids, "el tipo");
+              List<Long> enData = asignables(ctx, ids, "el tipo");
               List<String> repetidas = repo.repetidasConTipo(archivoId, enData, req.tipo());
               if (!repetidas.isEmpty()) {
                 throw new ConflictoException(
@@ -178,7 +184,7 @@ public class SimulacionDataService {
             "frecuencia id=" + archivoId + " rutas=" + ids.size(),
             () -> {
               Contexto ctx = bloquear(archivoId);
-              List<Long> enData = deData(archivoId, ids, "la frecuencia");
+              List<Long> enData = asignables(ctx, ids, "la frecuencia");
               int n = repo.asignarFrecuencia(archivoId, enData, req.frecuencia());
               configuracion.tocar(ctx.archivo(), actor);
               return new int[] {n, ids.size() - enData.size()};
@@ -201,7 +207,7 @@ public class SimulacionDataService {
             "grupo id=" + archivoId + " rutas=" + ids.size(),
             () -> {
               Contexto ctx = bloquear(archivoId);
-              List<Long> enData = deData(archivoId, ids, "el grupo");
+              List<Long> enData = asignables(ctx, ids, "el grupo");
               int n = repo.asignarGrupo(archivoId, enData, grupo);
               configuracion.tocar(ctx.archivo(), actor);
               return new int[] {n, ids.size() - enData.size()};
@@ -224,7 +230,11 @@ public class SimulacionDataService {
             () -> {
               Contexto ctx = bloquear(archivoId);
               Long destino = req.clusterId();
-              long chute = req.chuteId();
+              // La columna: un chute en un cluster o un bloque en DATA (se guarda igual, como su chute).
+              Long chute = req.chuteId();
+              if (chute == null) {
+                throw new SolicitudInvalidaException("Elige la columna donde van las rutas.");
+              }
               if (!ctx.parametrosChute().containsKey(chute)) {
                 throw new SolicitudInvalidaException("El chute " + chute + " no pertenece al registro.");
               }
@@ -242,26 +252,37 @@ public class SimulacionDataService {
     return listo(mensaje);
   }
 
+  /**
+   * A un bloque de DATA (control manual absoluto: la ruta queda donde se suelta). Desde un cluster
+   * pierde el cluster y conserva tipo, frecuencia y grupo; dentro de DATA solo cambia de bloque. DATA
+   * no se balancea: cualquier bloque recibe rutas.
+   */
   private String aData(Contexto ctx, List<RutaData> rutas, long chute) {
     Long archivoId = ctx.archivo().getId();
     List<RutaData> cambian = rutas.stream().filter((r) -> !r.enData() || r.chuteId() != chute).toList();
     if (cambian.isEmpty()) {
-      throw new ConflictoException("Las rutas ya están en DATA · " + SimulacionConfiguracionService.etiquetaChute(ctx, chute) + ".");
+      throw new ConflictoException("Las rutas ya están en ese bloque de DATA.");
     }
-    exigirNoBloqueado(ctx, chute);
     // Un cluster que ya empezó a balancearse (o está cerrado) no devuelve rutas a DATA.
     Set<Long> origenes = new LinkedHashSet<>();
     cambian.stream().filter((r) -> !r.enData()).forEach((r) -> origenes.add(r.clusterId()));
     for (Long origen : origenes) {
       exigirSinEmpezar(ctx, origen, "devolver sus rutas a DATA");
     }
+    // Tampoco una que llegó a mano desde un cluster que ya empezó: su «antes» está en ese cluster.
+    for (RutaData ruta : cambian) {
+      exigirOrigenSinEmpezar(ctx, ruta, "pasarla a DATA");
+    }
     repo.aData(archivoId, cambian.stream().map(RutaData::id).toList(), chute);
-    repo.borrarHistorialDeRutas(
-        archivoId, cambian.stream().filter((r) -> !r.enData()).map(RutaData::id).toList());
-    return cantidad(cambian.size()) + " → DATA · " + SimulacionConfiguracionService.etiquetaChute(ctx, chute) + ".";
+    // Solo las que salieron de un cluster tenían historial manual.
+    List<Long> deClusters = cambian.stream().filter((r) -> !r.enData()).map(RutaData::id).toList();
+    if (!deClusters.isEmpty()) {
+      repo.borrarHistorialDeRutas(archivoId, deClusters);
+    }
+    return cantidad(cambian.size()) + " → DATA · bloque " + bloque(chute) + ".";
   }
 
-  private String aCluster(Contexto ctx, List<RutaData> rutas, long destino, long chute) {
+  private String aCluster(Contexto ctx, List<RutaData> rutas, long destino, Long chute) {
     Long archivoId = ctx.archivo().getId();
     String nombre = ctx.nombreCluster(destino);
     List<String> enCluster = rutas.stream().filter((r) -> !r.enData()).map(RutaData::codigo).toList();
@@ -277,19 +298,9 @@ public class SimulacionDataService {
     if (cerradoEnAlguno(ctx, destino)) {
       throw new ConflictoException(nombre + " está cerrado: reábrelo para recibir rutas.");
     }
-    exigirNoBloqueado(ctx, chute);
+    exigirNoBloqueadoSiCambia(ctx, rutas, chute);
     // Un cluster vacío entra a la secuencia del balanceo: no puede quedar antes de uno que ya empezó.
-    if (!ctx.conRutas().contains(destino)) {
-      List<Long> todos = todosLosClusters(ctx);
-      for (Long siguiente : todos.subList(todos.indexOf(destino) + 1, todos.size())) {
-        if (ctx.conRutas().contains(siguiente) && empezado(ctx, siguiente)) {
-          throw new ConflictoException(
-              nombre + " va antes de " + ctx.nombreCluster(siguiente)
-                  + ", que ya empezó a balancearse: usa un cluster posterior o restablece "
-                  + ctx.nombreCluster(siguiente) + ".");
-        }
-      }
-    }
+    configuracion.exigirOrdenAlLlenar(ctx, destino);
     List<Long> ids = rutas.stream().map(RutaData::id).toList();
     if (repo.aCluster(archivoId, ids, destino, chute) != ids.size()) {
       throw new ConflictoException("Alguna ruta ya no está en DATA: pulsa «Actualizar».");
@@ -303,6 +314,138 @@ public class SimulacionDataService {
     return cantidad(ids.size()) + " → " + nombre + " · " + SimulacionConfiguracionService.etiquetaChute(ctx, chute) + ".";
   }
 
+  // ---------------- Locales ----------------
+
+  /**
+   * Locales de una ruta a otra (se arrastran desde la ficha): todos o ninguno. Las dos rutas deben
+   * estar en DATA o en un cluster que no empezó a balancearse, porque cambia su carga. La origen no
+   * se queda sin locales; el código que la destino ya tiene se suma ahí (como en el formulario). Los
+   * totales de las dos vuelven a ser la suma de sus locales.
+   */
+  public ApiResponse<CambioDataResponse> moverLocales(Long archivoId, DataRequest.MoverLocales req) {
+    List<Integer> ordenes = List.copyOf(new LinkedHashSet<>(req.ordenes()));
+    Long actor = ActorActual.id();
+    String mensaje =
+        escribir(
+            "locales id=" + archivoId + " origen=" + req.origenId() + " destino=" + req.destinoId()
+                + " locales=" + ordenes.size(),
+            () -> {
+              if (req.origenId().equals(req.destinoId())) {
+                throw new SolicitudInvalidaException("Suelta los locales sobre otra ruta.");
+              }
+              Contexto ctx = bloquear(archivoId);
+              List<RutaData> rutas = repo.rutas(archivoId, List.of(req.origenId(), req.destinoId()));
+              RutaData origen = rutas.stream().filter((r) -> r.id() == req.origenId()).findFirst().orElse(null);
+              RutaData destino = rutas.stream().filter((r) -> r.id() == req.destinoId()).findFirst().orElse(null);
+              if (origen == null || destino == null) {
+                throw new ConflictoException("Alguna ruta ya no existe: pulsa «Actualizar».");
+              }
+              exigirLocalesEditables(ctx, origen, "sacarle locales");
+              exigirLocalesEditables(ctx, destino, "darle locales");
+
+              Map<Integer, LocalGuardado> deOrigen = new LinkedHashMap<>();
+              repo.locales(origen.id()).forEach((l) -> deOrigen.put(l.orden(), l));
+              List<LocalGuardado> elegidos = new ArrayList<>(ordenes.size());
+              for (Integer orden : ordenes) {
+                LocalGuardado local = deOrigen.get(orden);
+                if (local == null) {
+                  throw new ConflictoException(
+                      "Algún local ya no está en la ruta " + origen.codigo() + ": pulsa «Actualizar».");
+                }
+                elegidos.add(local);
+              }
+              if (elegidos.size() == deOrigen.size()) {
+                throw new ConflictoException(
+                    "La ruta " + origen.codigo() + " se quedaría sin locales: deja al menos uno o elimínala.");
+              }
+              List<LocalGuardado> enDestino = repo.locales(destino.id());
+              if (enDestino.isEmpty()) {
+                throw new ConflictoException(
+                    "La ruta " + destino.codigo() + " no tiene el detalle de sus locales: no puede recibir otros.");
+              }
+
+              // El mismo código (como lo escribe el formulario) se suma; los demás pasan al final.
+              Map<String, LocalGuardado> porCodigo = new HashMap<>();
+              for (LocalGuardado l : enDestino) {
+                if (l.cod() != null) {
+                  porCodigo.putIfAbsent(RutaNormalizada.texto(l.cod()), l);
+                }
+              }
+              Map<Integer, LocalGuardado> sumados = new LinkedHashMap<>();
+              List<Integer> fusionados = new ArrayList<>();
+              List<int[]> pasan = new ArrayList<>();
+              int siguiente = enDestino.getLast().orden() + 1;
+              for (LocalGuardado local : elegidos) {
+                LocalGuardado igual = local.cod() == null ? null : porCodigo.get(RutaNormalizada.texto(local.cod()));
+                if (igual == null) {
+                  pasan.add(new int[] {local.orden(), siguiente++});
+                  continue;
+                }
+                LocalGuardado base = sumados.getOrDefault(igual.orden(), igual);
+                LocalGuardado suma =
+                    new LocalGuardado(
+                        base.orden(), base.cod(), base.filas() + local.filas(), base.bultos().add(local.bultos()),
+                        base.unidades().add(local.unidades()), base.lineas().add(local.lineas()));
+                if (excede(suma.bultos(), suma.unidades(), suma.lineas())) {
+                  throw new ConflictoException(
+                      "El código " + base.cod() + " sumaría más de 9,999,999,999.99 en la ruta " + destino.codigo() + ".");
+                }
+                sumados.put(base.orden(), suma);
+                fusionados.add(local.orden());
+              }
+              if (enDestino.size() + pasan.size() > DataRequest.MAX_LOCALES) {
+                throw new ConflictoException(
+                    "La ruta " + destino.codigo() + " pasaría de " + DataRequest.MAX_LOCALES + " locales.");
+              }
+              List<LocalGuardado> todos = new ArrayList<>(enDestino);
+              todos.addAll(elegidos);
+              if (excede(
+                  suma(todos, LocalGuardado::bultos), suma(todos, LocalGuardado::unidades), suma(todos, LocalGuardado::lineas))) {
+                throw new ConflictoException("La ruta " + destino.codigo() + " sumaría más de 9,999,999,999.99.");
+              }
+
+              if (!sumados.isEmpty()) {
+                repo.fijarLocales(destino.id(), List.copyOf(sumados.values()));
+                repo.quitarLocales(origen.id(), fusionados);
+              }
+              if (!pasan.isEmpty()) {
+                repo.pasarLocales(origen.id(), destino.id(), pasan);
+              }
+              repo.recalcularTotales(archivoId, List.of(origen.id(), destino.id()));
+              alCambiarRutas(ctx, actor);
+              String cuantos = elegidos.size() == 1 ? "1 local" : elegidos.size() + " locales";
+              String juntos =
+                  fusionados.isEmpty()
+                      ? ""
+                      : fusionados.size() == 1
+                          ? " 1 se sumó a su mismo código."
+                          : " " + fusionados.size() + " se sumaron a su mismo código.";
+              return cuantos + " de " + origen.codigo() + " → " + destino.codigo() + "." + juntos;
+            });
+    return listo(mensaje);
+  }
+
+  /**
+   * Cambiar los locales de una ruta cambia su carga: solo en DATA o en un cluster que no empezó a
+   * balancearse (ni la ruta llegó a mano desde uno que ya empezó).
+   */
+  private static void exigirLocalesEditables(Contexto ctx, RutaData ruta, String accion) {
+    if (!ruta.enData()) {
+      exigirSinEmpezar(ctx, ruta.clusterId(), accion + " a la ruta " + ruta.codigo());
+    }
+    exigirOrigenSinEmpezar(ctx, ruta, accion);
+  }
+
+  private static boolean excede(BigDecimal bultos, BigDecimal unidades, BigDecimal lineas) {
+    return bultos.compareTo(RutaNormalizada.MAXIMO) > 0
+        || unidades.compareTo(RutaNormalizada.MAXIMO) > 0
+        || lineas.compareTo(RutaNormalizada.MAXIMO) > 0;
+  }
+
+  private static BigDecimal suma(List<LocalGuardado> locales, Function<LocalGuardado, BigDecimal> campo) {
+    return locales.stream().map(campo).reduce(BigDecimal.ZERO, BigDecimal::add);
+  }
+
   // ---------------- Clusters ----------------
 
   /** Cuántos clusters hay. Se agregan al final (CL4, CL5…); al quitar, sus rutas vuelven a DATA. */
@@ -314,7 +457,7 @@ public class SimulacionDataService {
             "clusters id=" + archivoId + " cantidad=" + cantidad,
             () -> {
               Contexto ctx = bloquear(archivoId);
-              List<Long> todos = todosLosClusters(ctx);
+              List<Long> todos = SimulacionConfiguracionService.todosLosClusters(ctx);
               int actual = todos.size();
               String hecho;
               if (cantidad > actual) {
@@ -331,6 +474,28 @@ public class SimulacionDataService {
                 for (Long id : quitar) {
                   exigirSinEmpezar(ctx, id, "quitarlo");
                 }
+                // Rutas movidas a mano entre un cluster que se quita y otro: las que llegaron desde uno
+                // que ya empezó no se pierden; las que salieron hacia otro toman ese como su original
+                // (si no, al restablecer volverían a un cluster que ya no existe).
+                List<Long> fijar = new ArrayList<>();
+                for (RutaData ruta : repo.rutasCruzadas(archivoId, quitar)) {
+                  boolean sale = quitar.contains(ruta.clusterId());
+                  boolean venia = quitar.contains(ruta.clusterOriginalId());
+                  if (sale && !venia) {
+                    exigirOrigenSinEmpezar(ctx, ruta, "quitar " + ctx.nombreCluster(ruta.clusterId()));
+                  } else if (venia && !sale) {
+                    if (SimulacionConfiguracionService.empezadoEnAlguno(ctx, ruta.clusterId())) {
+                      throw new ConflictoException(
+                          "La ruta " + ruta.codigo() + " salió de " + ctx.nombreCluster(ruta.clusterOriginalId())
+                              + " a " + ctx.nombreCluster(ruta.clusterId()) + ", que ya empezó a balancearse: devuélvela a "
+                              + ctx.nombreCluster(ruta.clusterOriginalId()) + " o restablece "
+                              + ctx.nombreCluster(ruta.clusterId()) + " antes de quitar el cluster.");
+                    }
+                    fijar.add(ruta.id());
+                  }
+                }
+                repo.fijarOrigenEnSuCluster(archivoId, fijar);
+                repo.borrarHistorialDeRutas(archivoId, fijar);
                 List<Long> vuelven = repo.devolverADataEnSuChute(archivoId, quitar);
                 repo.borrarHistorialDeRutas(archivoId, vuelven);
                 repo.quitarClusters(archivoId, quitar);
@@ -368,17 +533,22 @@ public class SimulacionDataService {
     return ruta;
   }
 
-  /** De las elegidas, las que están en DATA (las únicas que reciben tipo, frecuencia o grupo). */
-  private List<Long> deData(Long archivoId, List<Long> ids, String que) {
-    List<RutaData> rutas = repo.rutas(archivoId, ids);
+  /**
+   * Las elegidas reciben tipo, frecuencia o grupo si están en DATA o en un cluster que todavía no
+   * empezó a balancearse (ahí no cambia ningún balanceo). Todas o ninguna: si alguna está en un
+   * cluster que ya empezó o está cerrado, no se cambia ninguna.
+   */
+  private List<Long> asignables(Contexto ctx, List<Long> ids, String que) {
+    List<RutaData> rutas = repo.rutas(ctx.archivo().getId(), ids);
     if (rutas.size() != ids.size()) {
       throw new ConflictoException("Alguna ruta ya no existe: pulsa «Actualizar».");
     }
-    List<Long> enData = rutas.stream().filter(RutaData::enData).map(RutaData::id).toList();
-    if (enData.isEmpty()) {
-      throw new SolicitudInvalidaException("Esas rutas están en un cluster: " + que + " se asigna en DATA.");
+    Set<Long> clusters = new LinkedHashSet<>();
+    rutas.stream().filter((r) -> !r.enData()).forEach((r) -> clusters.add(r.clusterId()));
+    for (Long cluster : clusters) {
+      exigirSinEmpezar(ctx, cluster, "cambiar " + que + " de sus rutas");
     }
-    return enData;
+    return rutas.stream().map(RutaData::id).toList();
   }
 
   /** Tras mover rutas: clusters con rutas, estado del escenario, totales y su versión. */
@@ -397,25 +567,10 @@ public class SimulacionDataService {
     configuracion.tocar(archivo, actor);
   }
 
-  /** Todos los clusters del escenario (también los vacíos), en orden natural (CL1, CL2…, CL10). */
-  private static List<Long> todosLosClusters(Contexto ctx) {
-    Set<Long> ids = new LinkedHashSet<>();
-    ctx.parametros().values().forEach((porCluster) -> ids.addAll(porCluster.keySet()));
-    return ids.stream()
-        .sorted(Comparator.comparing(ctx::nombreCluster, SimulacionConfiguracionService.ORDEN_NATURAL))
-        .toList();
-  }
-
   private static boolean cerradoEnAlguno(Contexto ctx, Long clusterId) {
     return Arrays.stream(Balanceo.values())
         .map((b) -> ctx.parametro(b, clusterId))
         .anyMatch((p) -> p != null && ParametroCluster.ESTADO_CERRADO.equals(p.getEstado()));
-  }
-
-  /** Ya se balanceó algo del cluster (en cualquier balanceo). */
-  private static boolean empezado(Contexto ctx, Long clusterId) {
-    return Arrays.stream(Balanceo.values())
-        .anyMatch((b) -> !SimulacionConfiguracionService.pendiente(ctx.parametro(b, clusterId)));
   }
 
   private static void exigirSinEmpezar(Contexto ctx, Long clusterId, String accion) {
@@ -423,16 +578,37 @@ public class SimulacionDataService {
     if (cerradoEnAlguno(ctx, clusterId)) {
       throw new ConflictoException(nombre + " está cerrado: reábrelo y restablécelo para " + accion + ".");
     }
-    if (empezado(ctx, clusterId)) {
+    if (SimulacionConfiguracionService.empezadoEnAlguno(ctx, clusterId)) {
       throw new ConflictoException(nombre + " ya empezó a balancearse: restablécelo para " + accion + ".");
     }
   }
 
-  private void exigirNoBloqueado(Contexto ctx, long chute) {
-    if (configuracion.bloqueado(ctx, chute)) {
+  /**
+   * La ruta llegó a mano desde otro cluster que ya empezó a balancearse: su «antes» está ahí y no
+   * se puede perder (pasarla a DATA o quitar su cluster).
+   */
+  private static void exigirOrigenSinEmpezar(Contexto ctx, RutaData ruta, String accion) {
+    Long origen = ruta.clusterOriginalId();
+    if (origen != null && !origen.equals(ruta.clusterId()) && SimulacionConfiguracionService.empezadoEnAlguno(ctx, origen)) {
+      throw new ConflictoException(
+          "La ruta " + ruta.codigo() + " llegó a mano desde " + ctx.nombreCluster(origen)
+              + ", que ya empezó a balancearse: devuélvela a " + ctx.nombreCluster(origen)
+              + " o restablece " + ctx.nombreCluster(origen) + " antes de " + accion + ".");
+    }
+  }
+
+  /** Un chute bloqueado no recibe rutas; quedarse en el suyo sí se permite (como al mover a mano). */
+  private void exigirNoBloqueadoSiCambia(Contexto ctx, List<RutaData> rutas, long chute) {
+    if (rutas.stream().anyMatch((r) -> r.chuteId() != chute) && configuracion.bloqueado(ctx, chute)) {
       throw new ConflictoException(
           "El " + SimulacionConfiguracionService.etiquetaChute(ctx, chute) + " está bloqueado: no se pueden mover rutas ahí.");
     }
+  }
+
+  /** Número del bloque de DATA: la posición del chute entre los visibles del plano (como en la pantalla). */
+  private String bloque(long chute) {
+    int indice = plano.idsVisibles().indexOf(chute);
+    return indice < 0 ? "—" : String.valueOf(indice + 1);
   }
 
   /** Un chute visible del plano (sin los bloqueados), al azar: la columna donde aparece en DATA. */

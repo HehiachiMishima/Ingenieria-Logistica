@@ -238,6 +238,19 @@
     </colgroup>
   </ng-template>
 
+  <!-- Cabecera de DATA: «BLOQUE n» con número fijo (la columna donde quedó cada ruta), alineada con los chutes. -->
+  <ng-template #tplCabeceraData>
+    <thead>
+      <tr>
+        @for (chute of chutes; track chute.id) {
+        @let numero = numeroBloque().get(chute.id);
+        <th scope="col" [class.mz-der]="$last"
+          [attr.title]="numero ? null : 'Columna de un chute bloqueado: en DATA también recibe rutas'">BLOQUE {{ numero ?? '—' }}</th>
+        }
+      </tr>
+    </thead>
+  </ng-template>
+
   <ng-template #tplCabecera>
     <thead>
       <tr>
@@ -259,6 +272,53 @@
     </thead>
   </ng-template>
 
+
+  <!-- Tarjeta de una ruta: la misma en las celdas de los clusters y en la cuadrícula de DATA. -->
+  <ng-template #tplRuta let-celda>
+  @let ruta = celda.ruta;
+  @let guardando = rutaGuardando() === ruta.id || rutasGuardando().has(ruta.id);
+  @let elegida = seleccion().has(ruta.id);
+  @let movible = celda.movible && !guardando;
+  <div class="matriz-ruta" [attr.data-ruta-id]="ruta.id" [class.matriz-ruta--movible]="movible"
+    [attr.draggable]="movible ? 'true' : null" [attr.data-arrastre-ruta]="movible ? ruta.id : null"
+    [class.matriz-ruta--guardando]="guardando" [class.matriz-ruta--movida]="celda.movida"
+    [class.matriz-ruta--activa]="detalle()?.tipo === 'ruta' && detalle()?.id === ruta.id"
+    [class.matriz-ruta--elegida]="elegida"
+    [title]="movible ? celda.titulo + '\nCtrl/⌘+clic: elegir varias · Mayús+clic: un tramo' : celda.titulo"
+    role="button" tabindex="0" aria-haspopup="dialog"
+    [attr.aria-label]="(elegida ? 'Seleccionada. ' : '') + 'Detalle de la ruta ' + ruta.codigoRuta + ' ' + (ruta.tipo ?? 'sin tipo') + ', ' + celda.bultos + ' bultos' + (celda.grupo !== null ? ', grupo ' + celda.grupo : '') + ', ' + celda.frecuencia.titulo"
+    [class.matriz-ruta--grupo]="celda.grupoColor !== null" [style.--grupo-color]="celda.grupoColor"
+    (mousedown)="presionarRuta($event)" (contextmenu)="menuRuta($event, ruta.id)"
+    (click)="clicRuta($event, ruta.id)" (keydown.enter)="clicRuta($event, ruta.id)"
+    (keydown.space)="clicRuta($event, ruta.id)">
+    <!-- Ficha en dos filas. Arriba: tipo (B2C/B2B: la misma ruta puede venir como las
+         dos), días y bultos. Abajo: grupo y número de ruta centrado. El aria-label de
+         la ruta ya lo dice todo, por eso las piezas de color van aria-hidden. -->
+    <span class="matriz-ruta__datos">
+      <span class="matriz-ruta__pestana-tipo" [attr.data-tipo]="ruta.tipo" aria-hidden="true">{{ ruta.tipo ?? '—' }}</span>
+      <span class="matriz-ruta__frecuencia" [attr.data-frecuencia]="celda.frecuencia.tipo"
+        [class.matriz-ruta__frecuencia--fija]="celda.frecuencia.fija" aria-hidden="true">{{ celda.frecuencia.dias }}</span>
+      <span class="matriz-ruta__bultos" [title]="celda.bultos + ' bultos'">
+        <ng-container [ngTemplateOutlet]="cajaBulto" />{{ celda.bultos }}
+      </span>
+    </span>
+    <span class="matriz-ruta__fila-ruta">
+      <!-- Pestaña del grupo: su número sobre su color; sin grupo queda gris y vacía,
+           así el número de ruta sigue centrado. -->
+      <span class="matriz-ruta__pestana" [class.matriz-ruta__pestana--vacia]="celda.grupo === null"
+        [class.matriz-ruta__pestana--corta]="celda.grupo !== null && celda.grupo.length <= 2"
+        aria-hidden="true" [attr.title]="celda.grupo !== null ? 'Grupo ' + celda.grupo : null">{{ celda.grupo }}</span>
+      <span class="matriz-ruta__caja-codigo" [class.matriz-ruta__caja-codigo--lado]="guardando || celda.cambioCluster">
+        <span class="matriz-ruta__codigo" [attr.data-frecuencia]="celda.frecuencia.tipo">{{ ruta.codigoRuta }}</span>
+        @if (guardando) {
+        <span class="ui-spinner matriz-ruta__spinner" aria-label="Guardando"></span>
+        } @else if (celda.cambioCluster) {
+        <small class="cluster-original" [title]="'Cluster original: ' + ruta.clusterOriginal">{{ ruta.clusterOriginal }}</small>
+        }
+      </span>
+    </span>
+  </div>
+  </ng-template>
 
   <!-- Tarjeta de totales por chute: etiquetas a la izquierda y valores por columna. -->
   <ng-template #tplTotales let-t let-global="global" let-id="id">
@@ -332,7 +392,7 @@
     </button>
   </p>
   }
-  @if (rutasMatriz().length === 0 && !cargandoRutas()) {
+  @if (rutasMatriz().length === 0 && !cargandoRutas() && filtrosActivos() > 0) {
   <p class="mz-aviso mz-aviso--vacio">Ninguna ruta coincide con los filtros.</p>
   }
 
@@ -341,7 +401,8 @@
   }
 
   <div class="mz-tablero" appScrollMatriz appArrastreRutas [validar]="motivoNoMoverRutas" [grupo]="grupoArrastre"
-    (soltar)="soltarRuta($event)" (keydown.escape)="limpiarSeleccion()"
+    (soltar)="soltarRuta($event)" appArrastreLocales [localesEnCamino]="localesEnArrastre() !== null"
+    [validarLocales]="motivoNoRecibirLocales" (soltarLocales)="soltarLocales($event)" (keydown.escape)="limpiarSeleccion()"
     [class.mz-tablero--min]="minimizado()">
     @for (bloque of bloquesMatriz(); track bloque.cluster.id) {
     @let m = metricas.get(bloque.cluster.id);
@@ -432,7 +493,7 @@
             <ui-icon [name]="paso?.clave === 'REABRIR' ? 'refresh' : paso ? 'play' : bloque.cerrado ? 'lock' : 'reloj'" [size]="13" />
             }
             @if (!plegado) {
-            <span class="mz-paso__texto">{{ paso ? paso.titulo : bloque.cerrado ? 'Cerrado' : (bloque.estado.startsWith('En espera') ? bloque.estado : 'Sin pasos ahora') }}</span>
+            <span class="mz-paso__texto">{{ paso ? paso.titulo : bloque.cerrado ? 'Cerrado' : (bloque.estado.startsWith('En espera') || bloque.estado === 'Sin rutas' ? bloque.estado : 'Sin pasos ahora') }}</span>
             }
           </button>
           <button type="button" class="mz-paso__menu" aria-haspopup="menu" [attr.aria-expanded]="menuAbierto"
@@ -495,7 +556,8 @@
       <div class="mz-scroll" data-scroll-matriz>
         <table class="ui-table mz-tabla">
           <ng-container [ngTemplateOutlet]="tplColumnas" />
-          <ng-container [ngTemplateOutlet]="tplCabecera" />
+          <!-- DATA: misma tabla que un cluster; su cabecera solo numera los bloques (no son chutes). -->
+          <ng-container [ngTemplateOutlet]="bloque.data ? tplCabeceraData : tplCabecera" />
           <tbody>
             @for (fila of bloque.filas; track $index) {
             <tr>
@@ -504,49 +566,7 @@
                 [attr.data-chute]="chute.id" [class.matriz__celda--fuera]="bloque.fuera[c]"
                 [attr.title]="bloque.fuera[c] ? 'Fuera de este día: sin rutas ni operarios' : null">
                 @if (fila[c]; as celda) {
-                @let ruta = celda.ruta;
-                @let guardando = rutaGuardando() === ruta.id || rutasGuardando().has(ruta.id);
-                @let elegida = seleccion().has(ruta.id);
-                @let movible = celda.movible && !guardando;
-                <div class="matriz-ruta" [class.matriz-ruta--movible]="movible"
-                  [attr.draggable]="movible ? 'true' : null" [attr.data-arrastre-ruta]="movible ? ruta.id : null"
-                  [class.matriz-ruta--guardando]="guardando" [class.matriz-ruta--movida]="celda.movida"
-                  [class.matriz-ruta--activa]="detalle()?.tipo === 'ruta' && detalle()?.id === ruta.id"
-                  [class.matriz-ruta--elegida]="elegida"
-                  [title]="movible ? celda.titulo + '\nCtrl/⌘+clic: elegir varias · Mayús+clic: un tramo' : celda.titulo"
-                  role="button" tabindex="0" aria-haspopup="dialog"
-                  [attr.aria-label]="(elegida ? 'Seleccionada. ' : '') + 'Detalle de la ruta ' + ruta.codigoRuta + ' ' + (ruta.tipo ?? 'sin tipo') + ', ' + celda.bultos + ' bultos' + (celda.grupo !== null ? ', grupo ' + celda.grupo : '') + ', ' + celda.frecuencia.titulo"
-                  [class.matriz-ruta--grupo]="celda.grupoColor !== null" [style.--grupo-color]="celda.grupoColor"
-                  (mousedown)="presionarRuta($event)" (contextmenu)="menuRuta($event, ruta.id)"
-                  (click)="clicRuta($event, ruta.id)" (keydown.enter)="clicRuta($event, ruta.id)"
-                  (keydown.space)="clicRuta($event, ruta.id)">
-                  <!-- Ficha en dos filas. Arriba: tipo (B2C/B2B: la misma ruta puede venir como las
-                       dos), días y bultos. Abajo: grupo y número de ruta centrado. El aria-label de
-                       la ruta ya lo dice todo, por eso las piezas de color van aria-hidden. -->
-                  <span class="matriz-ruta__datos">
-                    <span class="matriz-ruta__pestana-tipo" [attr.data-tipo]="ruta.tipo" aria-hidden="true">{{ ruta.tipo ?? '—' }}</span>
-                    <span class="matriz-ruta__frecuencia" [attr.data-frecuencia]="celda.frecuencia.tipo"
-                      [class.matriz-ruta__frecuencia--fija]="celda.frecuencia.fija" aria-hidden="true">{{ celda.frecuencia.dias }}</span>
-                    <span class="matriz-ruta__bultos" [title]="celda.bultos + ' bultos'">
-                      <ng-container [ngTemplateOutlet]="cajaBulto" />{{ celda.bultos }}
-                    </span>
-                  </span>
-                  <span class="matriz-ruta__fila-ruta">
-                    <!-- Pestaña del grupo: su número sobre su color; sin grupo queda gris y vacía,
-                         así el número de ruta sigue centrado. -->
-                    <span class="matriz-ruta__pestana" [class.matriz-ruta__pestana--vacia]="celda.grupo === null"
-                      [class.matriz-ruta__pestana--corta]="celda.grupo !== null && celda.grupo.length <= 2"
-                      aria-hidden="true" [attr.title]="celda.grupo !== null ? 'Grupo ' + celda.grupo : null">{{ celda.grupo }}</span>
-                    <span class="matriz-ruta__caja-codigo" [class.matriz-ruta__caja-codigo--lado]="guardando || celda.cambioCluster">
-                      <span class="matriz-ruta__codigo" [attr.data-frecuencia]="celda.frecuencia.tipo">{{ ruta.codigoRuta }}</span>
-                      @if (guardando) {
-                      <span class="ui-spinner matriz-ruta__spinner" aria-label="Guardando"></span>
-                      } @else if (celda.cambioCluster) {
-                      <small class="cluster-original" [title]="'Cluster original: ' + ruta.clusterOriginal">{{ ruta.clusterOriginal }}</small>
-                      }
-                    </span>
-                  </span>
-                </div>
+                <ng-container [ngTemplateOutlet]="tplRuta" [ngTemplateOutletContext]="{ $implicit: celda }" />
                 }
               </td>
               }
@@ -588,8 +608,8 @@
       </span>
       }
     </p>
-    @if (sel.soloData && puedeModificar()) {
-    <!-- Solo rutas de DATA: tipo, frecuencia y grupo (en un cluster ya no cambian). -->
+    @if (sel.asignable && puedeModificar()) {
+    <!-- Rutas de DATA o de clusters que aún no empezaron: tipo, frecuencia y grupo. -->
     <div class="sel-barra__acciones" role="group" aria-label="Asignar a las rutas elegidas">
       <span class="sel-barra__grupo" role="group" aria-label="Tipo">
         <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" [disabled]="ocupado()" (click)="asignarData('tipo', 'B2C')">B2C</button>
@@ -944,11 +964,13 @@
 @let k = clusterDetalle();
 @if (r || k) {
 <app-ficha-detalle [posicion]="d.pos" [ruta]="r" [cluster]="k" [locales]="r ? localesRuta() : null"
-  (cerrar)="cerrarDetalle()" (reintentar)="reintentarLocales()" (editar)="editarRuta()" (eliminar)="eliminarRuta()" />
+  (cerrar)="cerrarDetalle()" (reintentar)="reintentarLocales()" (editar)="editarRuta()" (eliminar)="eliminarRuta()" [bloqueado]="ocupado()"
+  [localesMovibles]="localesMovibles()" [destinosLocales]="destinosLocales()" (arrastreLocales)="localesEnArrastre.set($event)"
+  (moverLocales)="moverLocalesA($event.ordenes, $event.destinoId)" />
 }
 }
 
-<app-ruta-form [registroId]="seleccionado()" [inicial]="rutaForm()" (cerrar)="rutaForm.set(null)"
+<app-ruta-form [registroId]="seleccionado()" [inicial]="rutaForm()" [existentes]="rutasExistentes()" (cerrar)="rutaForm.set(null)"
   (guardado)="rutaGuardada($event)" />
 
 <app-simulacion-guia-balanceo [abierto]="explicacionAbierta()" (cerrar)="explicacionAbierta.set(false)" />

@@ -74,6 +74,14 @@ public class SimulacionDataController {
     return service.mover(id, req);
   }
 
+  /** Locales de una ruta a otra (DATA o clusters sin empezar). Todos o ninguno. */
+  @PutMapping("/{id}/data/locales/mover")
+  @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")
+  public ApiResponse<CambioDataResponse> moverLocales(
+      @PathVariable Long id, @Valid @RequestBody DataRequest.MoverLocales req) {
+    return service.moverLocales(id, req);
+  }
+
   /** Cuántos clusters hay: se agregan o se quitan desde el último. */
   @PutMapping("/{id}/clusters/cantidad")
   @PreAuthorize("hasAuthority('MODIFICAR_CONFIGURACION_SIMULACION')")

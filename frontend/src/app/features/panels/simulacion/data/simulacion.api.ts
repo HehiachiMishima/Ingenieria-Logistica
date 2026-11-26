@@ -104,11 +104,20 @@ export class SimulacionApi {
    * ninguna.
    */
   moverData(id: number, rutaIds: readonly number[], clusterId: number, chuteId: number): Observable<CambioData> {
+    // La columna siempre: el chute en un cluster o el bloque en DATA (se guarda como su chute).
     return this.api.put<CambioData>(`/simulacion/registros/${id}/data/mover`, {
       rutaIds,
       clusterId: clusterId === DATA_ID ? null : clusterId,
       chuteId,
     });
+  }
+
+  /**
+   * Locales (por su orden) de una ruta a otra: DATA o clusters sin empezar. Todos o ninguno; el
+   * código que la destino ya tiene se suma ahí.
+   */
+  moverLocales(id: number, origenId: number, destinoId: number, ordenes: readonly number[]): Observable<CambioData> {
+    return this.api.put<CambioData>(`/simulacion/registros/${id}/data/locales/mover`, { origenId, destinoId, ordenes });
   }
 
   /** Cuántos clusters hay: se agregan al final; al quitar, sus rutas vuelven a DATA. */

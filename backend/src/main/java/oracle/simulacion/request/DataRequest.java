@@ -66,13 +66,22 @@ public final class DataRequest {
       @NotBlank(message = "Escribe el grupo.") @Size(max = 50) String grupo) {}
 
   /**
-   * Rutas a una celda: un cluster y un chute, o DATA ({@code clusterId} null) en ese chute. Todas
-   * se mueven o ninguna.
+   * Rutas a una celda: de un cluster (cluster y chute) o de DATA ({@code clusterId} null y el chute
+   * del bloque). Todas se mueven o ninguna.
    */
   public record Mover(
       @NotEmpty @Size(max = MoverRutasRequest.MAXIMO) List<@NotNull @Positive Long> rutaIds,
       @Positive Long clusterId,
-      @NotNull @Positive Long chuteId) {}
+      @NotNull(message = "Elige la columna donde van las rutas.") @Positive Long chuteId) {}
+
+  /**
+   * Locales de una ruta a otra (por su orden dentro de la ruta origen). Todos o ninguno; el código
+   * que ya está en la ruta destino se suma ahí.
+   */
+  public record MoverLocales(
+      @NotNull(message = "Falta la ruta de donde salen los locales.") @Positive Long origenId,
+      @NotNull(message = "Suelta los locales sobre otra ruta.") @Positive Long destinoId,
+      @NotEmpty(message = "Elige al menos un local.") @Size(max = MAX_LOCALES) List<@NotNull @Positive Integer> ordenes) {}
 
   /** Cuántos clusters hay: se agregan o se quitan desde el último. */
   public record Clusters(@NotNull @Min(0) @Max(MAX_CLUSTERS) Integer cantidad) {}

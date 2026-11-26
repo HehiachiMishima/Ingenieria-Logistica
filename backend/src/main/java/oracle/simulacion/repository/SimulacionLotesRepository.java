@@ -107,6 +107,9 @@ public class SimulacionLotesRepository {
         FROM simulacion.archivos_excel a,
              jsonb_populate_recordset(NULL::simulacion.parametros_clusters, a.balanceo_guardado -> 'clusters') s
         WHERE a.id = ? AND p.archivo_id = a.id AND p.cluster_id = s.cluster_id AND p.balanceo = s.balanceo
+          -- Un cluster que hoy no tiene rutas queda pendiente: vacío se salta y no podría restablecerse.
+          AND EXISTS (SELECT 1 FROM simulacion.rutas_proyeccion r
+                      WHERE r.archivo_id = p.archivo_id AND r.cluster_id = p.cluster_id)
         """, id);
     jdbc.update("""
         INSERT INTO simulacion.parametros_grupos (
@@ -115,9 +118,11 @@ public class SimulacionLotesRepository {
         FROM simulacion.archivos_excel a,
              jsonb_populate_recordset(NULL::simulacion.parametros_grupos, a.balanceo_guardado -> 'grupos') s
         WHERE a.id = ?
-          -- Solo los clusters que siguen en el escenario.
+          -- Solo los clusters que siguen en el escenario y tienen rutas.
           AND EXISTS (SELECT 1 FROM simulacion.parametros_clusters p
                       WHERE p.archivo_id = s.archivo_id AND p.cluster_id = s.cluster_id)
+          AND EXISTS (SELECT 1 FROM simulacion.rutas_proyeccion r
+                      WHERE r.archivo_id = s.archivo_id AND r.cluster_id = s.cluster_id)
         """, id);
     jdbc.update("""
         INSERT INTO simulacion.lanzamientos_balanceo (
@@ -131,6 +136,8 @@ public class SimulacionLotesRepository {
         WHERE a.id = ?
           AND EXISTS (SELECT 1 FROM simulacion.parametros_clusters p
                       WHERE p.archivo_id = s.archivo_id AND p.cluster_id = s.cluster_id)
+          AND EXISTS (SELECT 1 FROM simulacion.rutas_proyeccion r
+                      WHERE r.archivo_id = s.archivo_id AND r.cluster_id = s.cluster_id)
         """, id);
     jdbc.update("""
         INSERT INTO simulacion.historial_balanceo (
@@ -506,7 +513,7 @@ public class SimulacionLotesRepository {
     // Q: PK rutas_locales (ruta_id, orden) y PK de rutas_proyeccion (id).
     return jdbc.query(
         """
-        SELECT l.cod, l.filas, l.bultos, l.unidades, l.lineas
+        SELECT l.orden, l.cod, l.filas, l.bultos, l.unidades, l.lineas
         FROM simulacion.rutas_locales l
         JOIN simulacion.rutas_proyeccion r ON r.id = l.ruta_id
         WHERE l.ruta_id = ? AND r.archivo_id = ?
@@ -515,7 +522,7 @@ public class SimulacionLotesRepository {
         """,
         (rs, i) ->
             new LocalesRutaResponse.Local(
-                rs.getString(1), rs.getInt(2), rs.getBigDecimal(3), rs.getBigDecimal(4), rs.getBigDecimal(5)),
+                rs.getInt(1), rs.getString(2), rs.getInt(3), rs.getBigDecimal(4), rs.getBigDecimal(5), rs.getBigDecimal(6)),
         rutaId,
         archivoId,
         MAX_LOCALES_DETALLE + 1);
