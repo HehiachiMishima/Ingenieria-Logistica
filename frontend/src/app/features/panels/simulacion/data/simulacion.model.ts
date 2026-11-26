@@ -310,6 +310,15 @@ export interface ConfiguracionSimulacionRequest {
   clusters: { clusterId: number; limiteHoras: number }[];
   /** Buff de los chutes (solo antes de balancear): base de operarios y si tiene buff. */
   chutes?: { chuteId: number; operarios: number; buff: boolean }[];
+  /**
+   * Lo que la pantalla tenía cargado al empezar a editar: el servidor aplica solo lo que cambió y,
+   * si otra persona cambió eso mismo mientras tanto, avisa en vez de pisarlo.
+   */
+  anterior?: {
+    velocidadBase: number;
+    operariosPorChute: number | null;
+    clusters: { clusterId: number; limiteHoras: number }[];
+  };
 }
 
 export interface HistorialSimulacion {

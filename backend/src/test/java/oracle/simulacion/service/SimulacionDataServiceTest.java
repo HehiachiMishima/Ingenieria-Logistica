@@ -459,6 +459,36 @@ class SimulacionDataServiceTest {
   }
 
   @Test
+  void conLosCodigosQueVioSeMueveYSiCambiaronNo() {
+    clusters(Set.of(CL1), cluster(CL1, PENDIENTE));
+    dosRutas(enCluster(6, "2015", CL1), enData(5, "2002", null, null, null));
+    when(repo.locales(6L)).thenReturn(List.of(loc(1, "A1", "10"), loc(2, "B2", "5")));
+    when(repo.locales(5L)).thenReturn(List.of(loc(1, "C3", "7")));
+
+    // Otra persona cambió los locales: el número 2 ya no es «F112».
+    ConflictoException e =
+        assertThrows(
+            ConflictoException.class,
+            () -> servicio.moverLocales(ARCHIVO, new DataRequest.MoverLocales(6L, 5L, List.of(2), List.of("F112"))));
+    assertTrue(e.getMessage().contains("Los locales de la ruta 2015 cambiaron"), e.getMessage());
+    verify(repo, never()).recalcularTotales(anyLong(), anyList());
+
+    servicio.moverLocales(ARCHIVO, new DataRequest.MoverLocales(6L, 5L, List.of(2), List.of("B2")));
+    verify(repo).recalcularTotales(ARCHIVO, List.of(6L, 5L));
+  }
+
+  @Test
+  void codigosQueNoCuadranConLosNumerosSeRechazan() {
+    assertThrows(
+        SolicitudInvalidaException.class,
+        () -> servicio.moverLocales(ARCHIVO, new DataRequest.MoverLocales(6L, 5L, List.of(1, 2), List.of("A1"))));
+    assertThrows(
+        SolicitudInvalidaException.class,
+        () -> servicio.moverLocales(ARCHIVO, new DataRequest.MoverLocales(6L, 5L, List.of(1, 1), List.of("A1", "B2"))));
+    verify(repo, never()).recalcularTotales(anyLong(), anyList());
+  }
+
+  @Test
   void unLocalQueYaNoEstaOLaMismaRutaNoMuevenNada() {
     clusters(Set.of(CL1), cluster(CL1, PENDIENTE));
     assertThrows(SolicitudInvalidaException.class, () -> servicio.moverLocales(ARCHIVO, moverLocales(5, 5, 1)));
@@ -760,7 +790,7 @@ class SimulacionDataServiceTest {
   }
 
   private static DataRequest.MoverLocales moverLocales(long origen, long destino, Integer... ordenes) {
-    return new DataRequest.MoverLocales(origen, destino, List.of(ordenes));
+    return DataRequest.MoverLocales.sinCodigos(origen, destino, List.of(ordenes));
   }
 
   private static DataRequest.Mover mover(Long clusterId, Long chuteId, Long... ids) {

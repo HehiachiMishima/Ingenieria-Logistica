@@ -176,7 +176,10 @@ pero no recibe rutas hasta restablecer ese. Un cluster vacío se salta en el bal
 «Guardar balanceo de rutas» es una foto: guarda dónde está cada ruta (DATA o cluster y chute), esté
 balanceada, a medias o movida a mano, sin cambiar el trabajo. «Cargar balanceo guardado» devuelve cada
 ruta ahí (las de un cluster quitado se quedan donde están) y deja cada cluster con rutas como ya
-balanceado: solo pide operarios.
+balanceado: solo pide operarios. Si dos personas trabajan a la vez, el servidor
+aplica los cambios de uno en uno (quien espera más de 5 s recibe un aviso para reintentar). «Guardar
+cambios» solo aplica lo que tú cambiaste y, si otra persona cambió eso mismo mientras editabas, avisa
+en vez de pisarlo; al mover locales se comprueba que sean los que viste en la ficha.
 Antes de actualizar el backend aplica `backend/migracion_registro_titan.sql`: crea los locales de las
 rutas, quita las tablas del Registro, prepara DATA y **borra los registros subidos por Excel** con
 todo lo que cuelga de ellos. Es una sola transacción y es re-ejecutable.

@@ -623,7 +623,7 @@ class SimulacionBalanceoTest {
 
     servicio.guardar(
         10L,
-        new ConfiguracionActualizarRequest(
+        ConfiguracionActualizarRequest.sinAnterior(
             new BigDecimal("100"),
             2,
             null,
@@ -884,7 +884,7 @@ class SimulacionBalanceoTest {
     lenient().when(rutaRepo.cargaPorArchivo(10L)).thenReturn(List.of());
 
     servicio.guardar(
-        10L, new ConfiguracionActualizarRequest(new BigDecimal("100"), 14, null, List.of(), List.of()));
+        10L, ConfiguracionActualizarRequest.sinAnterior(new BigDecimal("100"), 14, null, List.of(), List.of()));
 
     assertEquals(10, config.getOperariosMaximos());
     assertEquals(ParametroCluster.ESTADO_CERRADO, cl1.getEstado());
@@ -1221,7 +1221,7 @@ class SimulacionBalanceoTest {
                 servicio
                     .guardar(
                         10L,
-                        new ConfiguracionActualizarRequest(
+                        ConfiguracionActualizarRequest.sinAnterior(
                             new BigDecimal("120"), null, null, List.of(), List.of()))
                     );
     assertTrue(error.getMessage().contains("reabre el primero"), error.getMessage());
@@ -1259,7 +1259,7 @@ class SimulacionBalanceoTest {
     servicio
         .guardar(
             10L,
-            new ConfiguracionActualizarRequest(
+            ConfiguracionActualizarRequest.sinAnterior(
                 new BigDecimal("100"),
                 10,
                 null,
@@ -1283,7 +1283,7 @@ class SimulacionBalanceoTest {
                 servicio
                     .guardar(
                         10L,
-                        new ConfiguracionActualizarRequest(
+                        ConfiguracionActualizarRequest.sinAnterior(
                             new BigDecimal("100"), 10, 2, List.of(), List.of()))
                     );
     assertTrue(error.getMessage().contains("CHUTE 2 tiene 4"), error.getMessage());
@@ -1308,7 +1308,7 @@ class SimulacionBalanceoTest {
     servicio
         .guardar(
             10L,
-            new ConfiguracionActualizarRequest(
+            ConfiguracionActualizarRequest.sinAnterior(
                 new BigDecimal("120"), 10, null, List.of(), List.of()))
         ;
 

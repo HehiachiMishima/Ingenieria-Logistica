@@ -87,7 +87,19 @@ public final class DataRequest {
   public record MoverLocales(
       @NotNull(message = "Falta la ruta de donde salen los locales.") @Positive Long origenId,
       @NotNull(message = "Suelta los locales sobre otra ruta.") @Positive Long destinoId,
-      @NotEmpty(message = "Elige al menos un local.") @Size(max = MAX_LOCALES) List<@NotNull @Positive Integer> ordenes) {}
+      @NotEmpty(message = "Elige al menos un local.") @Size(max = MAX_LOCALES) List<@NotNull @Positive Integer> ordenes,
+      /**
+       * Código de cada local, en el mismo orden que {@code ordenes} (opcional): lo que el usuario vio
+       * en la ficha. Si otra persona cambió los locales de la ruta, el número ya puede ser de otro
+       * local; con los códigos el servidor lo nota y no mueve nada.
+       */
+      @Size(max = MAX_LOCALES) List<@Size(max = 100) String> cods) {
+
+    /** Sin códigos: solo se comprueba que cada número exista (clientes viejos). */
+    public static MoverLocales sinCodigos(Long origenId, Long destinoId, List<Integer> ordenes) {
+      return new MoverLocales(origenId, destinoId, ordenes, null);
+    }
+  }
 
   /** Cuántos clusters hay: se agregan o se quitan desde el último. */
   public record Clusters(@NotNull @Min(0) @Max(MAX_CLUSTERS) Integer cantidad) {}

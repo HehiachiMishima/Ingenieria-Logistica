@@ -1946,7 +1946,11 @@ export class SimulacionConfiguracion {
       return;
     }
     this.rutasGuardando.set(new Set([origen.id, destinoId]));
-    const { cambio: pedido, enviado } = this.trasGuardar(id, () => this.api.moverLocales(id, origen.id, destinoId, ordenes));
+    // Los códigos que se ven en la ficha: si otra persona cambió los locales, el servidor no mueve otro.
+    const estado = this.localesRuta();
+    const codPorOrden = new Map(estado?.estado === 'listo' ? estado.datos.locales.map((l) => [l.orden, l.cod] as const) : []);
+    const cods = ordenes.every((orden) => codPorOrden.has(orden)) ? ordenes.map((orden) => codPorOrden.get(orden) ?? null) : undefined;
+    const { cambio: pedido, enviado } = this.trasGuardar(id, () => this.api.moverLocales(id, origen.id, destinoId, ordenes, cods));
     pedido
       .pipe(
         finalize(() => this.rutasGuardando.set(new Set())),
@@ -3397,6 +3401,7 @@ export class SimulacionConfiguracion {
     const buff = new Set(this.buffElegidos());
     const buffGuardado = new Set(this.buffGuardado());
     const cambiaBuff = buff.size !== buffGuardado.size || [...buff].some((id) => !buffGuardado.has(id));
+    const guardado = equipoNormalizado(config);
     return {
       velocidadBase: this.velocidad(),
       operariosPorChute: this.porChute(),
@@ -3413,6 +3418,12 @@ export class SimulacionConfiguracion {
               .map((chute) => ({ chuteId: chute.id, operarios: chute.operarios, buff: buff.has(chute.id) })),
           }
         : {}),
+      // Lo cargado al editar: el servidor aplica solo lo cambiado y avisa si otra persona cambió lo mismo.
+      anterior: {
+        velocidadBase: guardado.velocidad,
+        operariosPorChute: guardado.porChute,
+        clusters: config.clusters.map((cluster) => ({ clusterId: cluster.id, limiteHoras: Number(cluster.limiteHoras) })),
+      },
     };
   }
 

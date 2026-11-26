@@ -121,8 +121,20 @@ export class SimulacionApi {
    * Locales (por su orden) de una ruta a otra: DATA o clusters sin empezar. Todos o ninguno; el
    * código que la destino ya tiene se suma ahí.
    */
-  moverLocales(id: number, origenId: number, destinoId: number, ordenes: readonly number[]): Observable<CambioData> {
-    return this.api.put<CambioData>(`/simulacion/registros/${id}/data/locales/mover`, { origenId, destinoId, ordenes });
+  moverLocales(
+    id: number,
+    origenId: number,
+    destinoId: number,
+    ordenes: readonly number[],
+    cods?: readonly (string | null)[],
+  ): Observable<CambioData> {
+    // Con los códigos que se vieron, el servidor nota si otra persona cambió los locales de la ruta.
+    return this.api.put<CambioData>(`/simulacion/registros/${id}/data/locales/mover`, {
+      origenId,
+      destinoId,
+      ordenes,
+      ...(cods ? { cods } : {}),
+    });
   }
 
   /** Agrega «CL{numero}» con el número elegido: puede llenar un hueco (CL2 entre CL1 y CL4). */

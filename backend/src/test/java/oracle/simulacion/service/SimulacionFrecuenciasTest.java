@@ -58,6 +58,7 @@ import oracle.simulacion.repository.SimulacionConfigRepository;
 import oracle.simulacion.repository.SimulacionLotesRepository;
 import oracle.simulacion.request.BalanceoRequest;
 import oracle.simulacion.request.ChuteOperariosRequest;
+import oracle.simulacion.request.ClusterLimiteRequest;
 import oracle.simulacion.request.ConfiguracionActualizarRequest;
 import oracle.simulacion.request.FaseBalanceo;
 import oracle.simulacion.request.MoverRutaRequest;
@@ -936,7 +937,7 @@ class SimulacionFrecuenciasTest {
                 servicio.guardar(
                     10L,
                     Balanceo.LXV,
-                    new ConfiguracionActualizarRequest(
+                    ConfiguracionActualizarRequest.sinAnterior(
                         new BigDecimal("100"),
                         null,
                         null,
@@ -966,7 +967,7 @@ class SimulacionFrecuenciasTest {
                 servicio.guardar(
                     10L,
                     Balanceo.LXV,
-                    new ConfiguracionActualizarRequest(new BigDecimal("120"), null, null, null, List.of())));
+                    ConfiguracionActualizarRequest.sinAnterior(new BigDecimal("120"), null, null, null, List.of())));
     ConflictoException buff =
         assertThrows(
             ConflictoException.class,
@@ -974,7 +975,7 @@ class SimulacionFrecuenciasTest {
                 servicio.guardar(
                     10L,
                     Balanceo.LXV,
-                    new ConfiguracionActualizarRequest(
+                    ConfiguracionActualizarRequest.sinAnterior(
                         new BigDecimal("100"), null, null, null, List.of(new ChuteOperariosRequest(1L, 0, true)))));
 
     assertTrue(velocidad.getMessage().contains("bloqueados"), velocidad.getMessage());
@@ -1000,7 +1001,7 @@ class SimulacionFrecuenciasTest {
             .guardar(
                 10L,
                 Balanceo.LXV,
-                new ConfiguracionActualizarRequest(
+                ConfiguracionActualizarRequest.sinAnterior(
                     new BigDecimal("100.00"), null, 5, null, List.of(new ChuteOperariosRequest(1L, 0, false))))
             .datos();
 
@@ -1022,7 +1023,7 @@ class SimulacionFrecuenciasTest {
             .guardar(
                 10L,
                 Balanceo.LXV,
-                new ConfiguracionActualizarRequest(
+                ConfiguracionActualizarRequest.sinAnterior(
                     new BigDecimal("100"),
                     null,
                     null,
@@ -1032,6 +1033,74 @@ class SimulacionFrecuenciasTest {
 
     assertTrue(cfg.chutes().get(0).buff());
     verify(parametroChuteRepo).save(any(ParametroChute.class));
+  }
+
+  // ---------------- Guardar sin pisar a otra persona ----------------
+
+  /** CL1 con límite 2 en los tres balanceos y velocidad del servidor {@code velocidad}. */
+  private List<ParametroCluster> prepararParaGuardar(String velocidad, String limite) {
+    List<ParametroCluster> parametros =
+        List.of(
+            parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE));
+    parametros.forEach((p) -> p.setLimiteHoras(new BigDecimal(limite)));
+    preparar(parametros, List.of(base(1L, false)), List.of());
+    SimulacionConfig config = configuracion();
+    config.setVelocidadBase(new BigDecimal(velocidad));
+    when(configRepo.findById(10L)).thenReturn(Optional.of(config));
+    return parametros;
+  }
+
+  private static ConfiguracionActualizarRequest conAnterior(String velocidad, String limite, String velocidadAntes, String limiteAntes) {
+    return new ConfiguracionActualizarRequest(
+        new BigDecimal(velocidad),
+        null,
+        null,
+        List.of(new ClusterLimiteRequest(CL1, new BigDecimal(limite))),
+        null,
+        new ConfiguracionActualizarRequest.Anterior(
+            new BigDecimal(velocidadAntes), null, List.of(new ClusterLimiteRequest(CL1, new BigDecimal(limiteAntes)))));
+  }
+
+  @Test
+  void guardarSoloAplicaLoQueCambioElUsuario() {
+    // Otra persona subió la velocidad a 120; tu pantalla aún muestra 100 y solo cambiaste el límite.
+    List<ParametroCluster> parametros = prepararParaGuardar("120", "2");
+
+    ConfiguracionSimulacionResponse cfg =
+        servicio.guardar(10L, Balanceo.LXV, conAnterior("100", "5", "100", "2")).datos();
+
+    assertEquals(0, new BigDecimal("120").compareTo(cfg.velocidadBase()), "la velocidad de la otra persona queda");
+    parametros.forEach((p) -> assertEquals(0, new BigDecimal("5").compareTo(p.getLimiteHoras())));
+  }
+
+  @Test
+  void siOtraPersonaCambioLaMismaVelocidadNoSePisa() {
+    prepararParaGuardar("120", "2");
+
+    ConflictoException e =
+        assertThrows(
+            ConflictoException.class,
+            () -> servicio.guardar(10L, Balanceo.LXV, conAnterior("110", "2", "100", "2")));
+
+    assertEquals(
+        "Otra persona cambió la velocidad (ahora 120) mientras editabas: pulsa «Actualizar» y vuelve a hacer tu cambio.",
+        e.getMessage());
+    verify(configRepo, never()).save(any());
+  }
+
+  @Test
+  void siOtraPersonaCambioElMismoLimiteNoSePisa() {
+    List<ParametroCluster> parametros = prepararParaGuardar("100", "8");
+
+    ConflictoException e =
+        assertThrows(
+            ConflictoException.class,
+            () -> servicio.guardar(10L, Balanceo.LXV, conAnterior("100", "5", "100", "2")));
+
+    assertTrue(e.getMessage().contains("el límite de CL1 (ahora 8 h)"), e.getMessage());
+    parametros.forEach((p) -> assertEquals(0, new BigDecimal("8").compareTo(p.getLimiteHoras())));
   }
 
   // ---------------- Pasos compartidos ----------------
@@ -1215,7 +1284,7 @@ class SimulacionFrecuenciasTest {
     servicio.guardar(
         10L,
         Balanceo.MJS,
-        new ConfiguracionActualizarRequest(
+        ConfiguracionActualizarRequest.sinAnterior(
             new BigDecimal("100"),
             null,
             null,

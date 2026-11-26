@@ -352,6 +352,7 @@ public class SimulacionDataService {
    */
   public ApiResponse<CambioDataResponse> moverLocales(Long archivoId, DataRequest.MoverLocales req) {
     List<Integer> ordenes = List.copyOf(new LinkedHashSet<>(req.ordenes()));
+    Map<Integer, String> vistos = codigosVistos(req);
     Long actor = ActorActual.id();
     String mensaje =
         escribir(
@@ -379,6 +380,12 @@ public class SimulacionDataService {
                 if (local == null) {
                   throw new ConflictoException(
                       "Algún local ya no está en la ruta " + origen.codigo() + ": pulsa «Actualizar».");
+                }
+                // El número puede ser ya de otro local (otra persona cambió los de esta ruta).
+                if (vistos != null && !Objects.equals(local.cod(), vistos.get(orden))) {
+                  throw new ConflictoException(
+                      "Los locales de la ruta " + origen.codigo()
+                          + " cambiaron mientras tenías abierta su ficha: vuelve a abrirla y elígelos otra vez.");
                 }
                 elegidos.add(local);
               }
@@ -476,6 +483,29 @@ public class SimulacionDataService {
               return cuantos + " de " + origen.codigo() + " → " + destino.codigo() + "." + juntos + operarios;
             });
     return listo(mensaje);
+  }
+
+  /**
+   * Código que el usuario vio en cada local elegido (por su número), o null si no se enviaron.
+   * Deben venir uno por número y un mismo número no puede traer dos códigos.
+   */
+  private static Map<Integer, String> codigosVistos(DataRequest.MoverLocales req) {
+    if (req.cods() == null) {
+      return null;
+    }
+    if (req.cods().size() != req.ordenes().size()) {
+      throw new SolicitudInvalidaException("Falta el código de algún local: vuelve a abrir la ficha.");
+    }
+    Map<Integer, String> vistos = new HashMap<>();
+    for (int i = 0; i < req.ordenes().size(); i++) {
+      Integer orden = req.ordenes().get(i);
+      String cod = req.cods().get(i);
+      if (vistos.containsKey(orden) && !Objects.equals(vistos.get(orden), cod)) {
+        throw new SolicitudInvalidaException("Un mismo local llegó con dos códigos: vuelve a abrir la ficha.");
+      }
+      vistos.put(orden, cod);
+    }
+    return vistos;
   }
 
   /** Los locales se mueven a mano como las rutas: en DATA o en un cluster que no esté cerrado. */

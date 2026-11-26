@@ -496,12 +496,14 @@ public class SimulacionConfiguracionService {
    * (un solo límite por cluster).
    */
   public ApiResponse<ConfiguracionSimulacionResponse> guardar(
-      Long archivoId, Balanceo balanceo, ConfiguracionActualizarRequest req) {
+      Long archivoId, Balanceo balanceo, ConfiguracionActualizarRequest pedido) {
     Long actor = ActorActual.id();
     return escribir(
         "guardar id=" + archivoId + " balanceo=" + balanceo,
         () -> {
           Contexto ctx = contexto(archivoId, balanceo, true);
+          // Solo lo que el usuario cambió (lo demás pudo cambiarlo otra persona mientras tanto).
+          ConfiguracionActualizarRequest req = soloLoCambiado(ctx, pedido);
           SimulacionConfig config = ctx.config();
           exigirPredeterminadosAbiertos(ctx, req);
           if (config.getCreadoEn() == null) {
@@ -609,6 +611,91 @@ public class SimulacionConfiguracionService {
           return aConfiguracion(ctx);
         },
         "Parámetros guardados.");
+  }
+
+  /**
+   * Con {@code anterior} (lo que la pantalla tenía al empezar a editar) solo vale lo que el usuario
+   * cambió: velocidad, máximo por chute o el límite de un cluster que no tocó se quedan como están
+   * ahora en el servidor. Si otra persona cambió eso mismo mientras tanto, no se pisa: se avisa y
+   * no se guarda nada. Sin {@code anterior}, todo lo enviado se aplica (clientes viejos).
+   */
+  static ConfiguracionActualizarRequest soloLoCambiado(Contexto ctx, ConfiguracionActualizarRequest req) {
+    ConfiguracionActualizarRequest.Anterior antes = req.anterior();
+    if (antes == null) {
+      return req;
+    }
+    SimulacionConfig config = ctx.config();
+    List<String> pisados = new ArrayList<>();
+
+    BigDecimal velocidad = config.getVelocidadBase() == null ? req.velocidadBase() : config.getVelocidadBase();
+    if (distinto(req.velocidadBase(), antes.velocidadBase())) {
+      if (antes.velocidadBase() != null && distinto(config.getVelocidadBase(), antes.velocidadBase())) {
+        pisados.add("la velocidad (ahora " + texto(config.getVelocidadBase()) + ")");
+      }
+      velocidad = req.velocidadBase();
+    }
+
+    Integer porChute = config.getOperariosPorChute();
+    if (!Objects.equals(sinTope(req.operariosPorChute()), sinTope(antes.operariosPorChute()))) {
+      if (!Objects.equals(sinTope(config.getOperariosPorChute()), sinTope(antes.operariosPorChute()))) {
+        Integer ahora = sinTope(config.getOperariosPorChute());
+        pisados.add("el máximo por chute (ahora " + (ahora == null ? "sin tope" : ahora) + ")");
+      }
+      porChute = req.operariosPorChute();
+    }
+
+    Map<Long, BigDecimal> limitesAntes = new HashMap<>();
+    if (antes.clusters() != null) {
+      antes.clusters().forEach((l) -> limitesAntes.putIfAbsent(l.clusterId(), l.limiteHoras()));
+    }
+    List<ClusterLimiteRequest> limites = new ArrayList<>();
+    if (req.clusters() != null) {
+      for (ClusterLimiteRequest limite : req.clusters()) {
+        BigDecimal previo = limitesAntes.get(limite.clusterId());
+        if (previo != null && !distinto(previo, limite.limiteHoras())) {
+          continue;
+        }
+        BigDecimal ahora = limiteActual(ctx, limite.clusterId());
+        if (previo != null && ahora != null && distinto(ahora, previo)) {
+          pisados.add("el límite de " + ctx.nombreCluster(limite.clusterId()) + " (ahora " + texto(ahora) + " h)");
+        }
+        limites.add(limite);
+      }
+    }
+
+    if (!pisados.isEmpty()) {
+      throw new ConflictoException(
+          "Otra persona cambió " + enumerar(pisados)
+              + " mientras editabas: pulsa «Actualizar» y vuelve a hacer tu cambio.");
+    }
+    return new ConfiguracionActualizarRequest(
+        velocidad, req.operariosMaximos(), porChute, limites, req.chutes(), null);
+  }
+
+  /** Límite del cluster (uno solo para los tres balanceos); null si no tiene fila. */
+  private static BigDecimal limiteActual(Contexto ctx, Long clusterId) {
+    for (Balanceo b : Balanceo.values()) {
+      ParametroCluster p = ctx.parametro(b, clusterId);
+      if (p != null && p.getLimiteHoras() != null) {
+        return p.getLimiteHoras();
+      }
+    }
+    return null;
+  }
+
+  private static boolean distinto(BigDecimal a, BigDecimal b) {
+    return a == null ? b != null : b == null || a.compareTo(b) != 0;
+  }
+
+  private static String texto(BigDecimal valor) {
+    return valor == null ? "—" : valor.stripTrailingZeros().toPlainString();
+  }
+
+  /** «a», «a y b», «a, b y c». */
+  private static String enumerar(List<String> partes) {
+    return partes.size() == 1
+        ? partes.getFirst()
+        : String.join(", ", partes.subList(0, partes.size() - 1)) + " y " + partes.getLast();
   }
 
   /**
