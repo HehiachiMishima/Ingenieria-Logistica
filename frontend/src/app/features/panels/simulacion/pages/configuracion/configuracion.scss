@@ -653,6 +653,15 @@
   background: repeating-linear-gradient(45deg, var(--surface-2) 0 4px, var(--surface) 4px 8px);
 }
 
+/* Columna de un chute de uso manual: un tinte ámbar leve, para seguirla bajo su cinta. */
+.matriz__celda.matriz__celda--manual {
+  background: color-mix(in srgb, #facc15 7%, var(--surface));
+
+  &:hover {
+    background: color-mix(in srgb, #facc15 12%, var(--surface));
+  }
+}
+
 /* La ficha de cada ruta (dos filas) está en configuracion-ficha.scss. */
 
 /* La caja de cartón de los bultos está en configuracion-ficha.scss (también la usa la ficha flotante). */
@@ -944,6 +953,33 @@
 
   ui-icon {
     vertical-align: -1px;
+  }
+}
+
+/* Chute de uso manual (19, 20, 21): cinta de peligro amarilla y negra con una placa oscura que
+   lleva el nombre. Recibe rutas solo a mano; el balanceo, las cargas y el reparto al azar no lo
+   usan. Los colores son fijos (una señal de peligro), iguales en los dos temas: la placa queda en
+   ámbar claro sobre casi negro (12,9:1). */
+.mz-tabla thead th.mz-manual {
+  background: repeating-linear-gradient(-45deg, #facc15 0 9px, #111827 9px 18px);
+}
+
+.mz-manual__placa {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  max-width: 100%;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-weight: 800;
+  line-height: 1.2;
+  color: #fde68a;
+  white-space: nowrap; /* responsive:ok la columna mide 156 px y «CHUTE 21» con su icono, ~90 */
+  background: #111827;
+
+  ui-icon {
+    flex: none;
+    color: #facc15;
   }
 }
 

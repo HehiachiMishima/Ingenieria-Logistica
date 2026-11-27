@@ -1,6 +1,7 @@
 package oracle.simulacion.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -11,6 +12,7 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -126,6 +128,28 @@ class SimulacionDataServiceTest {
   }
 
   // ---------------- Crear ----------------
+
+  @Test
+  void unaRutaNuevaNuncaNaceEnUnChuteDeUsoManual() {
+    // Chutes 1, 2 y 3; el 3 de uso manual: se ve, pero el reparto al azar no lo usa.
+    PlanoChutes manual = PlanoChutes.fijo(1, 3, Set.of(), Set.of(3), Map.of(1, 1L, 2, 2L, 3, 3L));
+    SimulacionConfiguracionService conf =
+        new SimulacionConfiguracionService(
+            archivoRepo, configRepo, clusterRepo, chuteRepo, parametroClusterRepo, parametroChuteRepo,
+            rutaRepo, historialRepo, operarioOlaRepo, lanzamientoRepo, lotes, transacciones,
+            new CacheRespuestas(false, 1, 1), manual);
+    SimulacionDataService conManual = new SimulacionDataService(conf, repo, rutaRepo, lotes, manual, transacciones);
+    clusters(Set.of());
+    when(repo.insertar(eq(ARCHIVO), any(), anyLong(), any(), any(), any(), anyInt())).thenReturn(50L);
+
+    for (int i = 0; i < 30; i++) {
+      conManual.crear(ARCHIVO, new DataRequest.Ruta("20" + i, List.of(local("A" + i, "1.00"))));
+    }
+
+    ArgumentCaptor<Long> chute = ArgumentCaptor.forClass(Long.class);
+    verify(repo, times(30)).insertar(eq(ARCHIVO), any(), chute.capture(), any(), any(), any(), anyInt());
+    assertFalse(chute.getAllValues().contains(3L), "nunca el chute de uso manual: " + chute.getAllValues());
+  }
 
   @Test
   void unaRutaNuevaNaceEnDataEnUnChuteVisibleConSusCodigosSumados() {

@@ -195,7 +195,7 @@
     <h3 class="filtro-seccion__titulo"><ui-icon name="layers" [size]="15" /> Chutes</h3>
     <div class="ui-field">
       <label class="ui-label" for="config-filtro-chutes">Chutes</label>
-      <ui-select-multiple campoId="config-filtro-chutes" [opciones]="opcionesChute()" [valores]="filtroChute()"
+      <ui-select-multiple campoId="config-filtro-chutes" [opciones]="opcionesFiltroChute()" [valores]="filtroChute()"
         placeholder="Todos los chutes" (valoresCambia)="setFiltroChute($event)" />
     </div>
   </section>
@@ -242,8 +242,16 @@
       <tr>
         @for (chute of chutes; track chute.id) {
         @let numero = numeroBloque().get(chute.id);
+        @if (chute.manual) {
+        <!-- Chute de uso manual: su cinta de peligro también en DATA (no lleva número de bloque). -->
+        <th scope="col" class="mz-manual" [class.mz-der]="$last"
+          [attr.title]="chute.etiqueta + ' · uso manual: en DATA también recibe rutas'">
+          <span class="mz-manual__placa"><ui-icon name="alertTriangle" [size]="12" />{{ chute.etiqueta }}</span>
+        </th>
+        } @else {
         <th scope="col" [class.mz-der]="$last"
           [attr.title]="numero ? null : 'Columna de un chute bloqueado: en DATA también recibe rutas'">BLOQUE {{ numero ?? '—' }}</th>
+        }
         }
       </tr>
     </thead>
@@ -253,13 +261,20 @@
     <thead>
       <tr>
         @for (chute of chutes; track chute.id) {
-        <!-- Un bloqueado solo aparece si un registro antiguo aún tiene rutas ahí: candado y sin recibir rutas. -->
-        <th scope="col" [class.mz-der]="$last" [class.mz-bloqueado]="chute.bloqueado"
-          [attr.title]="chute.bloqueado ? chute.etiqueta + ' está bloqueado: sus rutas pueden salir, ninguna puede entrar' : null">
+        <!-- Un bloqueado solo aparece si un registro antiguo aún tiene rutas ahí: candado y sin recibir rutas.
+             Uno de uso manual (19, 20, 21): la cinta de peligro; recibe rutas solo a mano y ahí quedan fijas. -->
+        <th scope="col" [class.mz-der]="$last" [class.mz-bloqueado]="chute.bloqueado" [class.mz-manual]="chute.manual"
+          [attr.title]="chute.bloqueado ? chute.etiqueta + ' está bloqueado: sus rutas pueden salir, ninguna puede entrar'
+            : chute.manual ? chute.etiqueta + ' · uso manual: el balanceo automático no lo usa. Arrastra rutas aquí a mano: quedan fijas al balancear'
+            : null">
           @if (chute.bloqueado) {
           <ui-icon name="lock" [size]="12" />
           }
+          @if (chute.manual) {
+          <span class="mz-manual__placa"><ui-icon name="alertTriangle" [size]="12" />{{ chute.etiqueta }}</span>
+          } @else {
           {{ chute.etiqueta }}
+          }
           @if (chutesBuff().has(chute.id)) {
           <!-- Chute con buff: se llena primero con las rutas más pesadas de su grupo, hasta el promedio. -->
           <span class="mz-buff" title="Chute con buff: se llena primero con las rutas más pesadas de su grupo, hasta la carga promedio">BUFF</span>
@@ -277,6 +292,7 @@
   @let guardando = rutaGuardando() === ruta.id || rutasGuardando().has(ruta.id);
   @let elegida = seleccion().has(ruta.id);
   @let movible = celda.movible && !guardando;
+  @let enManual = chutesManuales().has(ruta.chuteId);
   <div class="matriz-ruta" [attr.data-ruta-id]="ruta.id" [class.matriz-ruta--movible]="movible"
     [attr.draggable]="movible ? 'true' : null" [attr.data-arrastre-ruta]="movible ? ruta.id : null"
     [class.matriz-ruta--guardando]="guardando" [class.matriz-ruta--movida]="celda.movida"
@@ -284,7 +300,7 @@
     [class.matriz-ruta--elegida]="elegida"
     [title]="movible ? celda.titulo + '\nCtrl/⌘+clic: elegir varias · Mayús+clic: un tramo' : celda.titulo"
     role="button" tabindex="0" aria-haspopup="dialog"
-    [attr.aria-label]="(elegida ? 'Seleccionada. ' : '') + 'Detalle de la ruta ' + ruta.codigoRuta + ' ' + (ruta.tipo ?? 'sin tipo') + ', ' + celda.bultos + ' bultos' + (celda.grupo !== null ? ', grupo ' + celda.grupo : '') + ', ' + celda.frecuencia.titulo"
+    [attr.aria-label]="(elegida ? 'Seleccionada. ' : '') + 'Detalle de la ruta ' + ruta.codigoRuta + ' ' + (ruta.tipo ?? 'sin tipo') + ', ' + celda.bultos + ' bultos' + (celda.grupo !== null ? ', grupo ' + celda.grupo : '') + ', ' + celda.frecuencia.titulo + (enManual ? ', puesta a mano en un chute de uso manual' : '')"
     [class.matriz-ruta--grupo]="celda.grupoColor !== null" [style.--grupo-color]="celda.grupoColor"
     (mousedown)="presionarRuta($event)" (contextmenu)="menuRuta($event, ruta.id)"
     (click)="clicRuta($event, ruta.id)" (keydown.enter)="clicRuta($event, ruta.id)"
@@ -306,7 +322,7 @@
       <span class="matriz-ruta__pestana" [class.matriz-ruta__pestana--vacia]="celda.grupo === null"
         [class.matriz-ruta__pestana--corta]="celda.grupo !== null && celda.grupo.length <= 2"
         aria-hidden="true" [attr.title]="celda.grupo !== null ? 'Grupo ' + celda.grupo : null">{{ celda.grupo }}</span>
-      <span class="matriz-ruta__caja-codigo" [class.matriz-ruta__caja-codigo--lado]="guardando || celda.cambioCluster">
+      <span class="matriz-ruta__caja-codigo" [class.matriz-ruta__caja-codigo--lado]="guardando || celda.cambioCluster || enManual">
         <span class="matriz-ruta__codigo" [attr.data-frecuencia]="celda.frecuencia.tipo">{{ ruta.codigoRuta }}</span>
         @if (guardando) {
         <span class="ui-spinner matriz-ruta__spinner" aria-label="Guardando"></span>
@@ -314,6 +330,12 @@
         <small class="cluster-original" [title]="'Cluster original: ' + ruta.clusterOriginal">{{ ruta.clusterOriginal }}</small>
         }
       </span>
+      @if (enManual) {
+      <!-- En un chute de uso manual: llegó a mano y el balanceo no la mueve. Ocupa el lado
+           derecho, simétrico a la pestaña del grupo, para que el número siga centrado. -->
+      <span class="matriz-ruta__mano" aria-hidden="true"
+        title="Puesta a mano en un chute de uso manual: el balanceo no la mueve"><ui-icon name="mano" [size]="13" /></span>
+      }
     </span>
   </div>
   </ng-template>
@@ -579,6 +601,7 @@
               @for (chute of chutes; track chute.id; let c = $index) {
               <td class="matriz__celda" [class.mz-der]="$last" [attr.data-cluster]="bloque.cluster.id"
                 [attr.data-chute]="chute.id" [class.matriz__celda--fuera]="bloque.fuera[c]"
+                [class.matriz__celda--manual]="chute.manual"
                 [attr.title]="bloque.fuera[c] ? 'Fuera de este día: sin rutas ni operarios' : null">
                 @if (fila[c]; as celda) {
                 <ng-container [ngTemplateOutlet]="tplRuta" [ngTemplateOutletContext]="{ $implicit: celda }" />

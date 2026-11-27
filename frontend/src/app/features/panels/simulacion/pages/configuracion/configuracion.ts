@@ -1432,13 +1432,13 @@ export class SimulacionConfiguracion {
 
   /**
    * Número fijo de cada bloque de DATA (1…n): la columna donde quedó la ruta (se guarda como su
-   * chute), en orden natural y sin los bloqueados, igual que en el servidor. Filtrar columnas no lo
-   * cambia.
+   * chute), en orden natural y sin los bloqueados ni los de uso manual, igual que en el servidor.
+   * Filtrar columnas no lo cambia.
    */
   readonly numeroBloque = computed(() => {
     const numeros = new Map<number, number>();
     (this.config()?.chutes ?? [])
-      .filter((chute) => !chute.bloqueado)
+      .filter((chute) => !chute.bloqueado && !chute.manual)
       .sort((a, b) => compararChute(a.nombre, b.nombre))
       .forEach((chute, i) => numeros.set(chute.id, i + 1));
     return numeros;
@@ -2210,12 +2210,28 @@ export class SimulacionConfiguracion {
     };
   }
 
-  /** Chutes que se pueden elegir (filtro y rango): sin los bloqueados. */
+  /**
+   * Chutes que usa lo automático (rango del balanceo y buff): sin los bloqueados ni los de uso
+   * manual (19, 20, 21), igual que en el servidor.
+   */
   readonly opcionesChute = computed(() =>
+    [...(this.config()?.chutes ?? [])]
+      .filter((chute) => !chute.bloqueado && !chute.manual)
+      .sort((a, b) => compararChute(a.nombre, b.nombre))
+      .map((chute) => ({ id: chute.id, etiqueta: chute.nombre })),
+  );
+
+  /** Chutes para filtrar las columnas: sin los bloqueados; los de uso manual sí. */
+  readonly opcionesFiltroChute = computed(() =>
     [...(this.config()?.chutes ?? [])]
       .filter((chute) => !chute.bloqueado)
       .sort((a, b) => compararChute(a.nombre, b.nombre))
       .map((chute) => ({ id: chute.id, etiqueta: chute.nombre })),
+  );
+
+  /** Chutes de uso manual (19, 20, 21): su cinta de peligro y la marca «a mano» en sus rutas. */
+  readonly chutesManuales = computed(
+    () => new Set((this.config()?.chutes ?? []).filter((chute) => chute.manual).map((chute) => chute.id)),
   );
 
   readonly opcionesCluster = computed(() =>
@@ -2231,7 +2247,7 @@ export class SimulacionConfiguracion {
 
   readonly chips = computed<ChipFiltro[]>(() => {
     const chips: ChipFiltro[] = [];
-    for (const chute of this.opcionesChute()) {
+    for (const chute of this.opcionesFiltroChute()) {
       if (this.filtroChute().includes(Number(chute.id))) {
         chips.push({
           clave: `chute:${chute.id}`,

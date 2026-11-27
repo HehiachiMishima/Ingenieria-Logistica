@@ -22,8 +22,15 @@ public record DistribucionResponse(
     List<Cluster> clusters,
     Totales totales) {
 
-  /** Chute del plano; los bloqueados no tienen id (no reciben rutas). */
-  public record Chute(Long id, String nombre, boolean buff, boolean bloqueado) {}
+  /**
+   * Chute del plano; los bloqueados no tienen id (no reciben rutas). {@code manual}: de uso manual
+   * (19, 20, 21), con su franja de peligro; sus rutas se muestran como en cualquier chute.
+   */
+  public record Chute(Long id, String nombre, boolean buff, boolean bloqueado, boolean manual) {
+    public Chute(Long id, String nombre, boolean buff, boolean bloqueado) {
+      this(id, nombre, buff, bloqueado, false);
+    }
+  }
 
   /**
    * Una ruta en su celda, como la ficha de la pantalla: código, frecuencia (DIARIA, LXV o MJS), su

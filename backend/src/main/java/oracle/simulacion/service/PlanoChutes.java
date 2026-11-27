@@ -24,8 +24,11 @@ import org.springframework.stereotype.Component;
 
 /**
  * Plano físico de chutes de Simulación: los chutes numerados de {@code primero}
- * a {@code ultimo} (1 a 33) existen siempre, aunque el Excel no los traiga, y
- * los {@code bloqueados} (19, 20 y 21) no se usan: no se muestran, el Excel no
+ * a {@code ultimo} (1 a 33) existen siempre, aunque el Excel no los traiga. Los
+ * {@code manuales} (19, 20 y 21) se ven con su franja de peligro y reciben rutas
+ * solo a mano: el balanceo automático, el reparto al azar y las cargas no los
+ * usan, y lo que se deja ahí a mano el balanceo no lo mueve. Los
+ * {@code bloqueados} (ninguno por ahora) no se usan: no se muestran, el Excel no
  * puede traer rutas en ellos y nada se mueve ni se balancea hacia ellos.
  *
  * <p>Se configura en {@code application.properties} ({@code simulacion.chutes.*})
@@ -51,6 +54,8 @@ public class PlanoChutes {
   private final int primero;
   private final int ultimo;
   private final Set<Integer> bloqueados;
+  /** Chutes de uso manual: se ven y reciben rutas a mano; nada automático los usa. */
+  private final Set<Integer> manuales;
   private final ChuteRepository chuteRepo;
   private final SimulacionLotesRepository lotes;
   /** Se reemplaza entero: nunca se lee un id de una versión y el nombre de otra. */
@@ -59,7 +64,8 @@ public class PlanoChutes {
   public PlanoChutes(
       @Value("${simulacion.chutes.primero:1}") int primero,
       @Value("${simulacion.chutes.ultimo:33}") int ultimo,
-      @Value("${simulacion.chutes.bloqueados:19,20,21}") List<Integer> bloqueados,
+      @Value("${simulacion.chutes.bloqueados:}") List<Integer> bloqueados,
+      @Value("${simulacion.chutes.manuales:19,20,21}") List<Integer> manuales,
       ChuteRepository chuteRepo,
       SimulacionLotesRepository lotes) {
     if (primero < 1 || ultimo < primero) {
@@ -69,13 +75,24 @@ public class PlanoChutes {
     this.primero = primero;
     this.ultimo = ultimo;
     this.bloqueados = Collections.unmodifiableSet(new LinkedHashSet<>(bloqueados));
+    // Un número en las dos listas queda bloqueado (lo más restrictivo).
+    Set<Integer> soloManuales = new LinkedHashSet<>(manuales);
+    soloManuales.removeAll(this.bloqueados);
+    this.manuales = Collections.unmodifiableSet(soloManuales);
     this.chuteRepo = chuteRepo;
     this.lotes = lotes;
   }
 
-  /** Plano sin base de datos (pruebas): ids por número; el nombre es el número. */
+  /** Plano sin base de datos (pruebas): ids por número; el nombre es el número. Sin chutes manuales. */
   static PlanoChutes fijo(int primero, int ultimo, Set<Integer> bloqueados, Map<Integer, Long> ids) {
-    PlanoChutes plano = new PlanoChutes(primero, ultimo, List.copyOf(bloqueados), null, null);
+    return fijo(primero, ultimo, bloqueados, Set.of(), ids);
+  }
+
+  /** Plano sin base de datos (pruebas), con sus chutes de uso manual. */
+  static PlanoChutes fijo(
+      int primero, int ultimo, Set<Integer> bloqueados, Set<Integer> manuales, Map<Integer, Long> ids) {
+    PlanoChutes plano =
+        new PlanoChutes(primero, ultimo, List.copyOf(bloqueados), List.copyOf(manuales), null, null);
     Map<Integer, String> nombres = new TreeMap<>();
     ids.keySet().forEach((n) -> nombres.put(n, String.valueOf(n)));
     plano.catalogo = new Catalogo(Collections.unmodifiableMap(new TreeMap<>(ids)), nombres);
@@ -156,8 +173,27 @@ public class PlanoChutes {
   }
 
   /**
-   * Motivo por el que un chute del Excel no se puede usar, o null si sirve:
-   * fuera del plano o bloqueado.
+   * Chute de uso manual (19, 20 y 21): se ve y recibe rutas solo a mano; el balanceo automático,
+   * el reparto al azar y las cargas no lo usan, y lo que se deja ahí a mano no lo mueve el balanceo.
+   */
+  public boolean manual(Integer numero) {
+    return numero != null && manuales.contains(numero);
+  }
+
+  /** El chute de ese nombre es de uso manual. */
+  public boolean manual(String nombre) {
+    return manual(numero(nombre));
+  }
+
+  /** Nada automático lo usa (balanceo, rango, buff, reparto al azar, cargas): bloqueado o manual. */
+  public boolean fueraDelAutomatico(String nombre) {
+    Integer numero = numero(nombre);
+    return bloqueado(numero) || manual(numero);
+  }
+
+  /**
+   * Motivo por el que un chute de una carga (Excel) no se puede usar, o null si sirve: fuera del
+   * plano, bloqueado o de uso manual (ahí las rutas entran solo a mano).
    */
   public String problema(String nombre) {
     Integer numero = numero(nombre);
@@ -166,6 +202,9 @@ public class PlanoChutes {
     }
     if (bloqueado(numero)) {
       return "el CHUTE " + numero + " está bloqueado";
+    }
+    if (manual(numero)) {
+      return "el CHUTE " + numero + " es de uso manual: sus rutas se mueven ahí a mano";
     }
     return null;
   }
@@ -183,9 +222,23 @@ public class PlanoChutes {
     return catalogo.nombres().getOrDefault(numero, String.valueOf(numero));
   }
 
-  /** Ids de los chutes del plano que se usan (sin bloqueados), en orden. */
+  /** Ids de los chutes del plano que se ven (sin bloqueados; los manuales sí), en orden. */
   public List<Long> idsVisibles() {
     return new ArrayList<>(idsVisiblesPorNumero().values());
+  }
+
+  /**
+   * Ids de los chutes que usa lo automático (sin bloqueados ni manuales), en orden: el reparto al
+   * azar de una ruta nueva y el número de los bloques de DATA (que así no cambia).
+   */
+  public List<Long> idsAutomaticos() {
+    List<Long> ids = new ArrayList<>();
+    idsVisiblesPorNumero().forEach((numero, id) -> {
+      if (!manual(numero)) {
+        ids.add(id);
+      }
+    });
+    return ids;
   }
 
   /** Id del catálogo de cada número visible (sin bloqueados), en orden. */

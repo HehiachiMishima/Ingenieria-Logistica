@@ -185,6 +185,20 @@
   background: var(--surface-2);
 }
 
+/* Ruta puesta a mano en un chute de uso manual: bloque amarillo con la mano en tinta oscura, al
+   lado derecho y del mismo ancho que la pestaña del grupo, así el número sigue centrado.
+   Tinta #111827 sobre #facc15: 11,6:1 en los dos temas. */
+.matriz-ruta__mano {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  color: #111827;
+  background: #facc15;
+  user-select: none;
+}
+
 .matriz-ruta__spinner {
   flex: none;
   width: 13px;

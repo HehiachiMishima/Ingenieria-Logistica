@@ -839,16 +839,19 @@ public class SimulacionDataService {
     }
   }
 
-  /** Número del bloque de DATA: la posición del chute entre los visibles del plano (como en la pantalla). */
+  /**
+   * Número del bloque de DATA: la posición del chute entre los automáticos del plano (como en la
+   * pantalla). Los de uso manual no se numeran, así los bloques conservan su número.
+   */
   private String bloque(long chute) {
-    int indice = plano.idsVisibles().indexOf(chute);
+    int indice = plano.idsAutomaticos().indexOf(chute);
     return indice < 0 ? "—" : String.valueOf(indice + 1);
   }
 
-  /** Un chute visible del plano (sin los bloqueados), al azar: la columna donde aparece en DATA. */
+  /** Un chute del plano que usa lo automático (sin bloqueados ni manuales), al azar: su columna en DATA. */
   private long chuteAlAzar(Contexto ctx) {
     List<Long> chutes =
-        plano.idsVisibles().stream().filter(ctx.parametrosChute()::containsKey).toList();
+        plano.idsAutomaticos().stream().filter(ctx.parametrosChute()::containsKey).toList();
     if (chutes.isEmpty()) {
       throw new ConflictoException("El escenario no tiene chutes visibles: revisa el plano.");
     }

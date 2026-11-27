@@ -158,7 +158,7 @@ public class SimulacionConfiguracionService {
   private final HistorialBalanceoRepository historialRepo;
   private final OperarioOlaRepository operarioOlaRepo;
   private final LanzamientoBalanceoRepository lanzamientoRepo;
-  /** Chutes 1–33 que existen siempre y los bloqueados (19, 20, 21). */
+  /** Chutes 1–33 que existen siempre, los bloqueados y los de uso manual (19, 20, 21). */
   private final PlanoChutes plano;
   private final SimulacionLotesRepository lotes;
   private final Transacciones transacciones;
@@ -588,6 +588,11 @@ public class SimulacionConfiguracionService {
                 if (bloqueado(ctx, operarios.chuteId())) {
                   throw new SolicitudInvalidaException(
                       "El " + etiquetaChute(ctx, operarios.chuteId()) + " está bloqueado: no puede tener buff.");
+                }
+                if (manual(ctx, operarios.chuteId()) && Boolean.TRUE.equals(operarios.buff())) {
+                  throw new SolicitudInvalidaException(
+                      "El " + etiquetaChute(ctx, operarios.chuteId())
+                          + " es de uso manual: no puede tener buff (el balanceo no lo usa).");
                 }
                 parametro.setBuff(operarios.buff());
                 parametroChuteRepo.save(parametro);
@@ -1470,8 +1475,18 @@ public class SimulacionConfiguracionService {
       throw new ConflictoException(
           nombre + " no tiene rutas " + balanceo.etiqueta() + ": no hay nada que balancear.");
     }
-    List<RutaProyeccion> todasCluster =
+    // Las rutas que se dejaron a mano en un chute de uso manual (19, 20, 21) quedan donde están: el
+    // balanceo no las mueve ni cuenta su carga para nivelar los demás chutes.
+    List<RutaProyeccion> todasClusterConManuales =
         rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(archivoId, clusterId);
+    List<RutaProyeccion> todasCluster =
+        todasClusterConManuales.stream()
+            .filter((r) -> r.getChuteId() == null || !manual(ctx, r.getChuteId()))
+            .toList();
+    long fijasAMano =
+        todasClusterConManuales.stream()
+            .filter((r) -> balanceo.mueve(r.getFrecuencia()) && r.getChuteId() != null && manual(ctx, r.getChuteId()))
+            .count();
     // Cada frecuencia es independiente: solo sus rutas. En un día, las diarias quedan donde están.
     List<RutaProyeccion> propias =
         todasCluster.stream().filter((r) -> balanceo.mueve(r.getFrecuencia())).toList();
@@ -1565,6 +1580,12 @@ public class SimulacionConfiguracionService {
     mensaje.append(".");
     if (diariasFijas > 0) {
       mensaje.append(" ").append(diariasFijas).append(" ruta(s) diaria(s) ya fijas: no se movieron.");
+    }
+    if (fijasAMano > 0) {
+      mensaje
+          .append(" ")
+          .append(fijasAMano)
+          .append(" ruta(s) en chutes de uso manual: quedan donde las pusiste.");
     }
     boolean mayorDicho = false;
     for (Map.Entry<Long, String> buff : plan.buffs().entrySet()) {
@@ -1841,11 +1862,11 @@ public class SimulacionConfiguracionService {
         : rutasPor.values().stream().mapToInt(Integer::intValue).max().orElse(0);
   }
 
-  /** Chutes que ya usan esas rutas (sin bloqueados), en el orden de las columnas. */
+  /** Chutes que ya usan esas rutas (sin bloqueados ni manuales), en el orden de las columnas. */
   private List<Long> chutesQueUsan(Contexto ctx, List<RutaProyeccion> rutas) {
     return rutas.stream()
         .map(RutaProyeccion::getChuteId)
-        .filter((chute) -> chute != null && ctx.parametrosChute().containsKey(chute) && !bloqueado(ctx, chute))
+        .filter((chute) -> chute != null && ctx.parametrosChute().containsKey(chute) && !fueraDelAutomatico(ctx, chute))
         .distinct()
         .sorted(Comparator.comparing(ctx::nombreChute, PlanoChutes.ORDEN))
         .toList();
@@ -1878,10 +1899,10 @@ public class SimulacionConfiguracionService {
     return grupos.stream().sorted(ORDEN_NATURAL).toList();
   }
 
-  /** Chutes con buff del registro que se pueden usar (no bloqueados en el plano). */
+  /** Chutes con buff del registro que se pueden usar (ni bloqueados ni manuales en el plano). */
   private Set<Long> chutesConBuff(Contexto ctx) {
     return ctx.parametrosChute().entrySet().stream()
-        .filter((e) -> e.getValue().isBuff() && !bloqueado(ctx, e.getKey()))
+        .filter((e) -> e.getValue().isBuff() && !fueraDelAutomatico(ctx, e.getKey()))
         .map(Map.Entry::getKey)
         .collect(Collectors.toSet());
   }
@@ -1917,23 +1938,27 @@ public class SimulacionConfiguracionService {
       return null;
     }
     for (Long chute : List.of(desde, hasta)) {
-      if (!ctx.parametrosChute().containsKey(chute) || bloqueado(ctx, chute)) {
+      if (!ctx.parametrosChute().containsKey(chute) || fueraDelAutomatico(ctx, chute)) {
         if (pedido == null) {
-          // El rango guardado ya no sirve (el chute salió del registro o se
-          // bloqueó): se ignora.
+          // El rango guardado ya no sirve (el chute salió del registro, se
+          // bloqueó o pasó a uso manual): se ignora.
           return null;
         }
         if (bloqueado(ctx, chute)) {
           throw new SolicitudInvalidaException(
               "El " + etiquetaChute(ctx, chute) + " está bloqueado: elige otro chute para el rango.");
         }
+        if (manual(ctx, chute)) {
+          throw new SolicitudInvalidaException(
+              "El " + etiquetaChute(ctx, chute) + " es de uso manual: elige otro chute para el rango.");
+        }
         throw new SolicitudInvalidaException("El chute " + chute + " no pertenece al registro.");
       }
     }
-    // Los bloqueados no cuentan: «desde 18 hasta 22» reparte en 18 y 22.
+    // Los bloqueados y los manuales no cuentan: «desde 18 hasta 22» reparte en 18 y 22.
     List<Long> ordenados =
         ctx.parametrosChute().keySet().stream()
-            .filter((chute) -> !bloqueado(ctx, chute))
+            .filter((chute) -> !fueraDelAutomatico(ctx, chute))
             .sorted(Comparator.comparing(ctx::nombreChute, PlanoChutes.ORDEN))
             .toList();
     int a = ordenados.indexOf(desde);
@@ -1951,7 +1976,7 @@ public class SimulacionConfiguracionService {
     }
     List<Long> ordenados =
         ctx.parametrosChute().keySet().stream()
-            .filter((chute) -> !bloqueado(ctx, chute))
+            .filter((chute) -> !fueraDelAutomatico(ctx, chute))
             .sorted(Comparator.comparing(ctx::nombreChute, PlanoChutes.ORDEN))
             .toList();
     int a = ordenados.indexOf(desde);
@@ -2559,9 +2584,19 @@ public class SimulacionConfiguracionService {
     return parametro;
   }
 
-  /** El chute está bloqueado en el plano (19, 20, 21): no recibe rutas. */
+  /** El chute está bloqueado en el plano: no recibe rutas (ni a mano). */
   boolean bloqueado(Contexto ctx, Long chuteId) {
     return plano.bloqueado(ctx.nombreChute(chuteId));
+  }
+
+  /** Chute de uso manual (19, 20, 21): recibe rutas solo a mano; lo automático no lo usa. */
+  boolean manual(Contexto ctx, Long chuteId) {
+    return plano.manual(ctx.nombreChute(chuteId));
+  }
+
+  /** Lo automático (rango, nivelar, buff) no usa el chute: bloqueado o de uso manual. */
+  boolean fueraDelAutomatico(Contexto ctx, Long chuteId) {
+    return plano.fueraDelAutomatico(ctx.nombreChute(chuteId));
   }
 
   /** «CHUTE 20» para los mensajes, aunque el catálogo lo guarde como «20». */
@@ -3771,6 +3806,7 @@ public class SimulacionConfiguracionService {
         });
     // Los bloqueados no se muestran. Solo si un registro anterior al bloqueo aún
     // tiene rutas en uno, va marcado (no recibe rutas; las suyas se pueden sacar).
+    // Los manuales (19, 20, 21) se ven siempre, marcados: reciben rutas solo a mano.
     List<ChuteParametroResponse> chutes =
         ctx.parametrosChute().entrySet().stream()
             .filter((entrada) -> !bloqueado(ctx, entrada.getKey()) || clustersEnChute.containsKey(entrada.getKey()))
@@ -3782,7 +3818,8 @@ public class SimulacionConfiguracionService {
                         operarios.get(entrada.getKey()),
                         clustersEnChute.getOrDefault(entrada.getKey(), List.of()),
                         bloqueado(ctx, entrada.getKey()),
-                        entrada.getValue().isBuff()))
+                        entrada.getValue().isBuff(),
+                        manual(ctx, entrada.getKey())))
             .sorted(Comparator.comparing(ChuteParametroResponse::nombre, PlanoChutes.ORDEN))
             .toList();
     List<CargaSimulacionResponse> cargaResponse =

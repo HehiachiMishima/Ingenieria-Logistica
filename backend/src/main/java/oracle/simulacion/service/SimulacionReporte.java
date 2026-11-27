@@ -110,11 +110,12 @@ public class SimulacionReporte {
       List<RutaSimulacionResponse> rutas, Instant generado) {
     var operariosLxv = operarios(cfg);
     var operariosMjs = operarios(cfgMjs);
-    // Chutes del plano en orden natural, con los bloqueados (sin id) en su lugar.
+    // Chutes del plano en orden natural, con los bloqueados (sin id) en su lugar; los de uso manual
+    // van con su marca y sus rutas, como cualquier chute.
     List<DistribucionResponse.Chute> chutes = new ArrayList<>();
     Set<Long> conocidos = new HashSet<>();
     for (ChuteParametroResponse c : cfg.chutes()) {
-      chutes.add(new DistribucionResponse.Chute(c.id(), c.nombre(), c.buff(), c.bloqueado()));
+      chutes.add(new DistribucionResponse.Chute(c.id(), c.nombre(), c.buff(), c.bloqueado(), c.manual()));
       conocidos.add(c.id());
     }
     for (String nombre : cfg.chutesBloqueados() == null ? List.<String>of() : cfg.chutesBloqueados()) {

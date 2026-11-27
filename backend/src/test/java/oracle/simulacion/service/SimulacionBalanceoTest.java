@@ -1442,6 +1442,145 @@ class SimulacionBalanceoTest {
     assertEquals(ParametroCluster.ESTADO_PENDIENTE, cl3.getEstado());
   }
 
+  // ---------------- Chutes de uso manual (19, 20, 21) ----------------
+
+  /** El plano real: 19, 20 y 21 de uso manual (se ven y reciben rutas solo a mano). */
+  private void conChutesManuales(Map<Integer, Long> ids) {
+    servicio =
+        new SimulacionConfiguracionService(
+            archivoRepo, configRepo, clusterRepo, chuteRepo, parametroClusterRepo,
+            parametroChuteRepo, rutaRepo, historialRepo, operarioOlaRepo, lanzamientoRepo,
+            lotes, transacciones, new CacheRespuestas(false, 1, 1),
+            PlanoChutes.fijo(1, 33, Set.of(), Set.of(19, 20, 21), ids));
+  }
+
+  @Test
+  void aUnChuteManualSeMuevenRutasAMano() {
+    conChutesManuales(Map.of());
+    prepararRegistro(
+        archivo(),
+        configuracion("100", null),
+        List.of(limite(CL1, "2", ParametroCluster.ESTADO_RUTAS)),
+        List.of(operarios(18L, 0), operarios(19L, 0)),
+        List.of(),
+        List.of(cluster(CL1, "CL1")),
+        List.of(chute(18L, "18"), chute(19L, "19")));
+    RutaProyeccion ruta = ruta(1L, CL1, 18L, "3030", "10");
+    when(rutaRepo.findByIdAndArchivoId(1L, 10L)).thenReturn(Optional.of(ruta));
+    when(rutaRepo.cargaPorArchivo(10L)).thenReturn(List.of());
+
+    servicio.mover(10L, 1L, new MoverRutaRequest(19L));
+
+    assertEquals(19L, ruta.getChuteId());
+  }
+
+  @Test
+  void elRangoSeSaltaLosChutesManuales() {
+    conChutesManuales(Map.of());
+    ParametroCluster cl3 = limite(CL3, "100");
+    prepararRegistro(
+        archivo(),
+        configuracion("100", null),
+        List.of(cl3),
+        List.of(operarios(18L, 0), operarios(19L, 0), operarios(22L, 0)),
+        List.of(),
+        List.of(cluster(CL3, "CL3")),
+        List.of(chute(18L, "18"), chute(19L, "19"), chute(22L, "22")));
+    List<RutaProyeccion> rutas =
+        List.of(
+            ruta(1L, CL3, 18L, "3030", "100"),
+            ruta(2L, CL3, 18L, "3031", "100"),
+            ruta(3L, CL3, 18L, "3032", "100"),
+            ruta(4L, CL3, 18L, "3033", "100"));
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL3)).thenReturn(rutas);
+
+    lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(18L, 22L));
+
+    Map<Long, Long> porChute = new HashMap<>();
+    rutas.forEach((r) -> porChute.merge(r.getChuteId(), 1L, Long::sum));
+    assertEquals(Map.of(18L, 2L, 22L, 2L), porChute);
+  }
+
+  @Test
+  void lasRutasPuestasAManoEnUnChuteManualQuedanFijasAlBalancear() {
+    // La 3033 se dejó a mano en el 19: el balanceo de 18 → 22 reparte las otras tres y a ella
+    // no la mueve ni cuenta su carga.
+    conChutesManuales(Map.of());
+    ParametroCluster cl3 = limite(CL3, "100");
+    prepararRegistro(
+        archivo(),
+        configuracion("100", null),
+        List.of(cl3),
+        List.of(operarios(18L, 0), operarios(19L, 0), operarios(22L, 0)),
+        List.of(),
+        List.of(cluster(CL3, "CL3")),
+        List.of(chute(18L, "18"), chute(19L, "19"), chute(22L, "22")));
+    RutaProyeccion enEl19 = ruta(4L, CL3, 19L, "3033", "500");
+    List<RutaProyeccion> rutas =
+        List.of(
+            ruta(1L, CL3, 18L, "3030", "100"),
+            ruta(2L, CL3, 18L, "3031", "100"),
+            ruta(3L, CL3, 18L, "3032", "100"),
+            enEl19);
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL3)).thenReturn(rutas);
+
+    BalanceoResponse respuesta = lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(18L, 22L));
+
+    assertEquals(19L, enEl19.getChuteId());
+    Map<Long, Long> porChute = new HashMap<>();
+    rutas.stream().filter((r) -> r != enEl19).forEach((r) -> porChute.merge(r.getChuteId(), 1L, Long::sum));
+    assertEquals(Set.of(18L, 22L), porChute.keySet(), "las demás se reparten solo en 18 y 22");
+    assertEquals(3L, porChute.values().stream().mapToLong(Long::longValue).sum());
+    assertTrue(respuesta.mensaje().contains("1 ruta(s) en chutes de uso manual: quedan donde las pusiste"), respuesta.mensaje());
+  }
+
+  @Test
+  void unRangoQueEmpiezaEnUnChuteManualSeRechaza() {
+    conChutesManuales(Map.of());
+    ParametroCluster cl3 = limite(CL3, "100");
+    prepararRegistro(
+        archivo(),
+        configuracion("100", null),
+        List.of(cl3),
+        List.of(operarios(18L, 0), operarios(19L, 0), operarios(22L, 0)),
+        List.of(),
+        List.of(cluster(CL3, "CL3")),
+        List.of(chute(18L, "18"), chute(19L, "19"), chute(22L, "22")));
+
+    SolicitudInvalidaException error =
+        assertThrows(
+            SolicitudInvalidaException.class,
+            () -> lanzarDiarias(CL3, new BalanceoRequest(19L, 22L)));
+
+    assertTrue(error.getMessage().contains("CHUTE 19 es de uso manual"), error.getMessage());
+    assertEquals(ParametroCluster.ESTADO_PENDIENTE, cl3.getEstado());
+  }
+
+  @Test
+  void elPlanoMuestraLosChutesManualesMarcados() {
+    // El registro tiene el 18; el plano agrega el 19 (manual) y el 22, sin guardarlos.
+    conChutesManuales(Map.of(18, 918L, 19, 919L, 22, 922L));
+    prepararLectura(
+        archivo(),
+        List.of(limite(CL1, "2")),
+        List.of(operarios(18L, 0)),
+        List.of(),
+        List.of(cluster(CL1, "CL1")),
+        List.of(chute(18L, "CHUTE 18")));
+    when(rutaRepo.cargaPorArchivo(10L)).thenReturn(List.of(carga(CL1, 18L, 1, "10")));
+
+    ConfiguracionSimulacionResponse cfg = servicio.obtener(10L).datos();
+
+    assertEquals(
+        List.of("CHUTE 18", "19", "22"),
+        cfg.chutes().stream().map(ChuteParametroResponse::nombre).toList());
+    assertEquals(
+        List.of(false, true, false),
+        cfg.chutes().stream().map(ChuteParametroResponse::manual).toList());
+    assertFalse(cfg.chutes().stream().anyMatch(ChuteParametroResponse::bloqueado));
+    assertEquals(List.of(), cfg.chutesBloqueados());
+  }
+
   @Test
   void noSeMuevenRutasDeUnClusterCerrado() {
     prepararRegistro(

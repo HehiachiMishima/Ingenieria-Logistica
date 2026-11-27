@@ -188,5 +188,10 @@
     "name": "simulacion.chutes.bloqueados",
     "type": "java.lang.String",
     "description": "A description for 'simulacion.chutes.bloqueados'"
+  },
+  {
+    "name": "simulacion.chutes.manuales",
+    "type": "java.lang.String",
+    "description": "Chutes de uso manual (19,20,21): se ven con franja de peligro y reciben rutas solo a mano."
   }
 ]}

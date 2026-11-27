@@ -79,6 +79,8 @@ final class DistribucionExcel {
   static final float ALTO_FICHA = 30;
   static final float ALTO_RESPIRO = 4;
   private static final String BLOQ = "E2E8F0";
+  /** Ámbar de la cinta de peligro: cabecera de un chute de uso manual (19, 20, 21). */
+  private static final String MANUAL = "FACC15";
   private static final String NAVY_SUAVE = "E8EDF4";
   private static final String GUION = "CBD5E1";
 
@@ -375,7 +377,10 @@ final class DistribucionExcel {
     t.append("   abajo  ", fuente(9, true, GRIS));
     t.append("1", fuente(9, true, SimulacionReporte.PALETA_GRUPOS.getFirst().substring(1).toUpperCase(Locale.ROOT)));
     t.append(" grupo (número de su color)  ·  número de ruta con el color de su frecuencia", fuente(9, false, GRIS));
-    t.append("      Cabecera roja = chute con buff   ·   Columna gris = bloqueado", fuente(9, false, GRIS));
+    t.append(
+        "      Cabecera roja = chute con buff   ·   Cabecera ámbar = chute de uso manual (rutas puestas a mano)"
+            + "   ·   Columna gris = bloqueado",
+        fuente(9, false, GRIS));
     celda(fila(r, 18), 0, t, estilo("leyenda", null, fuente(9, false, GRIS), HorizontalAlignment.LEFT, null, false));
     unir(r, r, 0, ultima);
     return r + 2;
@@ -387,6 +392,8 @@ final class DistribucionExcel {
     XSSFCellStyle cabNavy = estilo("cabN", NAVY, fuente(8, true, "FFFFFF"), HorizontalAlignment.CENTER, NAVY_2, false);
     XSSFCellStyle cabBuff = estilo("cabB", ROJO, fuente(8, true, "FFFFFF"), HorizontalAlignment.CENTER, "B4121F", false);
     XSSFCellStyle cabBloq = estilo("cabQ", GUION, fuente(7, true, GRIS), HorizontalAlignment.CENTER, BORDE, false);
+    // Chute de uso manual: la cabecera ámbar de la cinta de peligro de la pantalla, letra oscura.
+    XSSFCellStyle cabManual = estilo("cabM", MANUAL, fuente(8, true, "111827"), HorizontalAlignment.CENTER, "111827", false);
     XSSFCellStyle nombre = estilo("nom", NAVY, fuente(14, true, "FFFFFF"), HorizontalAlignment.CENTER, NAVY_2, false);
 
     Map<Long, DistribucionResponse.Celda> celdas = new HashMap<>();
@@ -397,7 +404,11 @@ final class DistribucionExcel {
     celda(cab, 0, c.nombre(), nombre);
     for (int i = 0; i < d.chutes().size(); i++) {
       DistribucionResponse.Chute ch = d.chutes().get(i);
-      celda(cab, i + 1, ch.bloqueado() ? "BLOQ." : etiquetaChute(ch.nombre()), ch.bloqueado() ? cabBloq : ch.buff() ? cabBuff : cabNavy);
+      celda(
+          cab,
+          i + 1,
+          ch.bloqueado() ? "BLOQ." : etiquetaChute(ch.nombre()) + (ch.manual() ? " · MANUAL" : ""),
+          ch.bloqueado() ? cabBloq : ch.manual() ? cabManual : ch.buff() ? cabBuff : cabNavy);
     }
 
     // Una fila por ficha (tantas como rutas tenga el chute más cargado del cluster) y, entre ficha

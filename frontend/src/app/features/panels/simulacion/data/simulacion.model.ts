@@ -171,12 +171,17 @@ export interface ChuteParametroSimulacion {
   /** Clusters con rutas hoy en el chute. */
   clusterIds: number[];
   /**
-   * Chute bloqueado del plano (19, 20, 21): no recibe rutas. Solo llega si un
-   * registro anterior al bloqueo aún tiene rutas en él (se pueden sacar).
+   * Chute bloqueado del plano (`simulacion.chutes.bloqueados`): no recibe rutas. Solo llega si
+   * un registro anterior al bloqueo aún tiene rutas en él (se pueden sacar).
    */
   bloqueado: boolean;
   /** Chute con más capacidad: al balancear recibe primero las rutas más pesadas. */
   buff?: boolean;
+  /**
+   * Chute de uso manual (19, 20, 21): se ve con su franja de peligro y recibe rutas solo a mano;
+   * el balanceo automático no lo usa y lo que se deja ahí no lo mueve.
+   */
+  manual?: boolean;
 }
 
 /**
@@ -587,6 +592,8 @@ export interface ChuteDistribucion {
   nombre: string;
   buff: boolean;
   bloqueado: boolean;
+  /** De uso manual (19, 20, 21): con su franja de peligro; sus rutas se ven como en cualquier chute. */
+  manual?: boolean;
 }
 
 /**

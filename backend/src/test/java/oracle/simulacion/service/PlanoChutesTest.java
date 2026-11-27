@@ -59,4 +59,28 @@ class PlanoChutesTest {
     assertEquals(List.of(101L, 112L, 133L), plano.idsVisibles());
   }
 
+  @Test
+  void losManualesSeVenPeroLoAutomaticoNoLosUsa() {
+    PlanoChutes manuales =
+        PlanoChutes.fijo(1, 33, Set.of(), Set.of(19, 20, 21), Map.of(1, 101L, 12, 112L, 19, 119L, 33, 133L));
+
+    assertTrue(manuales.manual("CHUTE 19"));
+    assertFalse(manuales.bloqueado("19"));
+    assertTrue(manuales.fueraDelAutomatico("20"));
+    assertFalse(manuales.fueraDelAutomatico("12"));
+    assertEquals(List.of(101L, 112L, 119L, 133L), manuales.idsVisibles(), "el 19 se ve");
+    assertEquals(List.of(101L, 112L, 133L), manuales.idsAutomaticos(), "ni el azar ni los bloques de DATA lo usan");
+    assertEquals("el CHUTE 21 es de uso manual: sus rutas se mueven ahí a mano", manuales.problema("21"));
+  }
+
+  @Test
+  void unChuteBloqueadoYManualQuedaBloqueado() {
+    PlanoChutes ambos = PlanoChutes.fijo(1, 33, Set.of(20), Set.of(19, 20), Map.of(19, 119L, 20, 120L));
+
+    assertTrue(ambos.bloqueado("20"));
+    assertFalse(ambos.manual("20"));
+    assertTrue(ambos.manual("19"));
+    assertEquals(List.of(119L), ambos.idsVisibles());
+  }
+
 }

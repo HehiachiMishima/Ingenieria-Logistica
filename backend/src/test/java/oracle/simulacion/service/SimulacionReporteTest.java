@@ -1,6 +1,7 @@
 package oracle.simulacion.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -83,6 +84,31 @@ class SimulacionReporteTest {
     assertNull(chutes.get(2).id(), "un bloqueado no tiene id");
     assertTrue(chutes.get(2).bloqueado());
     assertTrue(chutes.get(1).buff());
+  }
+
+  @Test
+  void unChuteManualVaConSuMarcaYSusRutasTambienEnElExcel() throws Exception {
+    List<RutaSimulacionResponse> rutas =
+        List.of(ruta(1L, "3001", 1L, "20", "LXV"), ruta(2L, "3022", 19L, "40", "LXV"));
+    DistribucionResponse d =
+        SimulacionReporte.armar(
+            configuracionConManual(2), configuracionConManual(3), rutas, Instant.parse("2026-11-14T15:00:00Z"));
+
+    DistribucionResponse.Chute ch19 =
+        d.chutes().stream().filter((c) -> "19".equals(c.nombre())).findFirst().orElseThrow();
+    assertTrue(ch19.manual());
+    assertFalse(ch19.bloqueado());
+    assertEquals(19L, ch19.id());
+    assertTrue(
+        d.clusters().getFirst().celdas().stream()
+            .anyMatch((x) -> Long.valueOf(19L).equals(x.chuteId()) && x.rutas().size() == 1),
+        "la ruta que se puso a mano en el 19 se ve en su chute");
+    try (XSSFWorkbook libro =
+        new XSSFWorkbook(new ByteArrayInputStream(DistribucionExcel.escribir(d, DistribucionExcel.Marcas.NINGUNA)))) {
+      List<String> textos = textos(libro.getSheet("Distribución"));
+      assertTrue(textos.contains("CHUTE 19 · MANUAL"), textos.toString());
+      assertTrue(textos.stream().anyMatch((t) -> t.contains("3022")), textos.toString());
+    }
   }
 
   @Test
@@ -247,6 +273,24 @@ class SimulacionReporteTest {
             new ChuteParametroResponse(1L, "1", 1, List.of(1L), false, false)),
         List.of(new oracle.simulacion.response.CargaSimulacionResponse(1L, 1L, 1, CIEN, CIEN, CIEN, 1, operarios)),
         List.of("20", "19"));
+  }
+
+  /** Como {@link #configuracion}, con el 19 de uso manual (visible, con rutas) y sin bloqueados. */
+  private static ConfiguracionSimulacionResponse configuracionConManual(int operarios) {
+    ConfiguracionSimulacionResponse base = configuracion(operarios);
+    return new ConfiguracionSimulacionResponse(
+        base.archivo(),
+        CIEN,
+        4,
+        null,
+        4,
+        base.clusters(),
+        List.of(
+            new ChuteParametroResponse(2L, "2", 1, List.of(1L), false, true),
+            new ChuteParametroResponse(1L, "1", 1, List.of(1L), false, false),
+            new ChuteParametroResponse(19L, "19", 1, List.of(1L), false, false, true)),
+        base.carga(),
+        List.of());
   }
 
   private static ClusterParametroResponse cluster(Long id, String nombre) {
