@@ -412,6 +412,22 @@
   .k-dia__dia {
     min-height: 34px;
   }
+
+  /* Texto agrandado o cifras enormes: un texto («Sin operarios») baja de línea entre palabras y
+     el ícono sube sobre su cifra (bultos y operarios, en las columnas más angostas). */
+  .k-dia__c dd {
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 100%;
+    text-align: center;
+    white-space: normal;
+  }
+
+  .k-dia__bultos dd,
+  .k-dia__ope dd {
+    flex-direction: column;
+    gap: 1px;
+  }
 }
 
 /* ---------- Notas, recorrido y pie ---------- */
