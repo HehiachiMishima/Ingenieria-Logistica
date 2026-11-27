@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { RUTAS_VERIFICACION } from './__verificacion/verificacion';
 import { PERMISOS } from './core/config/permisos';
 import { authGuard } from './core/guards/auth.guard';
 import { guestGuard } from './core/guards/guest.guard';
@@ -11,6 +12,7 @@ import { permisoGuard } from './core/guards/permiso.guard';
  * un enlace directo sin sesión vuelve a esa misma URL tras el login.
  */
 export const routes: Routes = [
+  ...RUTAS_VERIFICACION,
   {
     path: 'intro',
     canActivate: [guestGuard],

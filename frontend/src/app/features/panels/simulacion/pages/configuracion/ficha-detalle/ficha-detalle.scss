@@ -2,8 +2,26 @@
  * Fichas flotantes de la matriz: la de una ruta y la de un cluster. Iconos a color iguales a
  * los de la tabla de totales; todo con los tokens del tema (claro y oscuro).
  */
+@use 'ficha-titan';
+
+/* La ficha del cluster es la ficha Titan de los modales de detalle (styles/_ficha-titan.scss). */
+@include ficha-titan.estilos;
+
+/* Fuera de la vista, pero el lector de pantalla lo lee. */
+@mixin solo-lector {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 
 .detalle-pop {
+  /* Variables de la planilla (en Configuración las define `.mz`): marco de las fichas y kraft de los bultos. */
+  --mz-marco: light-dark(#5b6f8f, #5a76a6);
+  --kraft: #c8894a;
+
   position: fixed;
   z-index: var(--z-modal);
   display: flex;
@@ -51,7 +69,7 @@
   }
 }
 
-/* ---------- Cabecera: avatar · título · estado · cerrar ---------- */
+/* ---------- Cabecera: la ficha de la ruta o del cluster · título · cerrar ---------- */
 
 .ficha-cabeza {
   display: flex;
@@ -75,61 +93,6 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-  }
-}
-
-.ficha-avatar {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  font-size: 0.8rem;
-  font-weight: 900;
-  letter-spacing: -0.02em;
-  color: #fff;
-  background:
-    linear-gradient(
-      135deg,
-      var(--pop-color, var(--accent)),
-      color-mix(in srgb, var(--pop-color, var(--accent)) 70%, #000)
-    );
-  border-radius: 12px;
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--pop-color, var(--accent)) 35%, transparent);
-}
-
-.ficha-kicker {
-  font-size: 0.64rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--pop-color, var(--accent));
-}
-
-.ficha-estado {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  font-size: var(--fs-xs);
-  font-weight: 800;
-  color: var(--text-2);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-
-  &--curso {
-    color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 10%, var(--surface));
-    border-color: color-mix(in srgb, var(--accent) 30%, transparent);
-  }
-
-  &--cerrado {
-    color: var(--success);
-    background: color-mix(in srgb, var(--success) 10%, var(--surface));
-    border-color: color-mix(in srgb, var(--success) 30%, transparent);
   }
 }
 
@@ -162,149 +125,292 @@
   }
 }
 
-/* ---------- Datos con su icono a color ---------- */
+/* ---------- Cluster: como la ficha de una ruta ---------- */
 
-.ficha-datos {
-  display: grid;
+/* Cabecera: su ficha de dos filas (rutas · chutes · bultos / estado · nombre) · título · cerrar. */
+.k-cabeza {
+  align-items: flex-start;
+
+  .ficha-cabeza__titulo {
+    padding-top: 2px;
+
+    /*
+     * «Cluster CL1» y «Viendo L-X-V» bajan de línea solo entre palabras (nunca a media palabra): si
+     * una palabra no cabe al lado de la ficha, el título baja bajo ella (--apilada, lo mide la ficha).
+     */
+    strong,
+    .loc-sub {
+      overflow-wrap: normal;
+      word-break: normal;
+      white-space: normal;
+    }
+  }
+}
+
+.k-cabeza--apilada {
+  flex-wrap: wrap;
+
+  .ficha-cabeza__titulo {
+    flex-basis: 100%;
+    order: 3;
+  }
+
+  .ficha-cerrar {
+    margin-left: auto;
+  }
+}
+
+.k-ficha {
+  --ft-color: var(--text-3);
+
+  flex: none;
+  max-width: calc(100% - 44px);
+
+  &--curso {
+    --ft-color: var(--accent);
+  }
+
+  &--cerrado {
+    --ft-color: var(--success);
+  }
+
+  .ft__pestana {
+    gap: 4px;
+  }
+
+  .ft__codigo {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+  }
+}
+
+.k-ficha__dato {
+  &--chutes {
+    background: #475569;
+  }
+
+  &--bultos {
+    background: color-mix(in srgb, var(--kraft) 16%, var(--surface));
+  }
+
+  .caja-bulto {
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    margin-right: 4px;
+    vertical-align: -2px;
+  }
+}
+
+.k-oculta {
+  @include solo-lector;
+}
+
+/*
+ * Totales: los bloques de la ruta (.loc-tot) en dos filas de tres; el cierre en verde o rojo. Una
+ * cifra nunca se parte: si alguna no cabe en su bloque, pasan a dos columnas (--dos, lo mide la ficha).
+ */
+.k-totales {
+  .loc-tot__k {
+    padding: 6px 7px;
+  }
+
+  dt,
+  dd {
+    overflow-wrap: normal;
+    white-space: nowrap; /* responsive:ok si no cabe, los totales pasan a dos columnas */
+  }
+
+  ui-icon {
+    margin-right: 4px;
+    vertical-align: -2px;
+  }
+}
+
+.k-totales--dos {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
+}
+
+.loc-tot__k dd.k-ok,
+.k-dia__c dd.k-ok {
+  color: var(--success);
+}
+
+.loc-tot__k dd.k-mal,
+.k-dia__c dd.k-mal {
+  color: var(--danger);
+}
+
+/*
+ * Por día: la cabecera y el pie de la cuadrícula de locales, pero quietos (allá son fijos al
+ * desplazar). Doble clase: ficha-locales.scss se carga después y con una sola ganaría la suya.
+ */
+.loc-cab.k-tot__cab {
+  position: static;
   margin: 0;
 }
 
-.ficha-dato {
+.loc-pie.k-pie {
+  position: static;
+  margin: 3px 0 0;
+}
+
+/*
+ * Una mini ficha por día como las de los locales (marco de 2 px, separaciones de 1 px, el día en la
+ * celda navy, bultos en kraft y «ETIQ. cifra» en una línea), en la grilla de cuatro columnas del
+ * diseño: locales · bultos · unidades / día · operarios · rutas / líneas · diferencia · cierre.
+ */
+.k-dias__lista {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  grid-template-areas:
-    'icono etiqueta'
-    'icono valor';
+  gap: 3px;
+  padding-top: 3px;
+}
+
+.k-dia {
+  display: grid;
+  grid-template-columns: minmax(0, 6.2fr) minmax(0, 7.4fr) minmax(0, 4fr) minmax(0, 6fr);
+  grid-template-rows: 26px 28px 26px;
+  gap: 1px;
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--border) 55%, var(--surface));
+  border: 2px solid var(--mz-marco);
+
+  /* El día que se mira: borde de acento, como un local elegido. */
+  &--hoy {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+}
+
+.k-dia__c {
+  display: flex;
   align-items: center;
-  column-gap: var(--space-2);
+  justify-content: center;
+  gap: 4px;
   min-width: 0;
-  padding: var(--space-2);
+  padding: 0 4px;
+  overflow: hidden;
+  white-space: nowrap; /* responsive:ok si una cifra no cabe, todas pasan a dos líneas (lo mide la ficha) */
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
 
   dt {
-    grid-area: etiqueta;
-    overflow: hidden;
-    font-size: 0.62rem;
-    font-weight: 800;
-    letter-spacing: 0.08em;
+    font-size: 0.56rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--text-3);
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   dd {
-    grid-area: valor;
-    margin: 0;
-    overflow: hidden;
-    font-size: var(--fs-base);
-    font-weight: 800;
-    color: var(--text);
-    font-variant-numeric: tabular-nums;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  &--destacado {
-    background: color-mix(in srgb, var(--pop-color, var(--accent)) 8%, var(--surface));
-    border-color: color-mix(in srgb, var(--pop-color, var(--accent)) 28%, var(--border));
-
-    dd {
-      font-size: var(--fs-lg, 1.125rem);
-    }
-  }
-
-  &__icono {
     display: inline-flex;
-    grid-area: icono;
     align-items: center;
-    justify-content: center;
-    width: 30px;
-    height: 30px;
-    background: var(--surface-2);
-    border-radius: 9px;
+    gap: 3px;
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--text);
+  }
 
-    &--mono {
-      color: var(--pop-color, var(--accent));
-      background: color-mix(in srgb, var(--pop-color, var(--accent)) 14%, var(--surface));
-    }
+  app-icono-sim {
+    display: inline-block;
+  }
+
+  ui-icon {
+    flex: none;
   }
 }
 
-/* Cluster: fila compacta de métricas secundarias con su icono. */
-.ficha-mini {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
-  gap: 2px;
-  margin: 0;
-  padding: var(--space-1);
-  background: var(--surface-2);
-  border-radius: var(--radius-sm);
+.k-dia__loc {
+  grid-area: 1 / 1;
+}
 
-  > div {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1px;
-    min-width: 0;
-    padding: 4px 2px;
-    text-align: center;
-  }
-
-  dt {
-    max-width: 100%;
-    overflow: hidden;
-    font-size: 0.58rem;
-    font-weight: 700;
-    color: var(--text-3);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+.k-dia__bultos {
+  grid-area: 1 / 2;
+  background: color-mix(in srgb, var(--kraft) 16%, var(--surface));
 
   dd {
-    max-width: 100%;
-    margin: 0;
-    overflow: hidden;
-    font-size: var(--fs-xs);
-    font-weight: 800;
-    color: var(--text);
-    font-variant-numeric: tabular-nums;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-size: 0.86rem;
   }
 
-  &__mono {
-    color: #0d9488;
+  .caja-bulto {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    margin-right: 2px;
   }
 }
 
-/* ---------- Barras ---------- */
+.k-dia__unid {
+  grid-area: 1 / 3 / 2 / 5;
+}
 
-/* Pista de las barras de cierre del cluster. */
-.ficha-barra {
-  &__pista {
-    display: block;
-    height: 7px;
-    overflow: hidden;
-    border-radius: 999px;
-    background: var(--surface-3, var(--surface-2));
+.k-dia__dia {
+  grid-area: 2 / 1 / 3 / 3;
+  background: var(--table-head-bg);
 
-    > span {
-      display: block;
-      max-width: 100%;
-      height: 100%;
-      border-radius: inherit;
-      background: linear-gradient(
-        90deg,
-        color-mix(in srgb, var(--pop-color, var(--accent)) 55%, var(--surface)),
-        var(--pop-color, var(--accent))
-      );
-      transition: width var(--transition-slow);
-    }
+  dd {
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: #fff;
+  }
+}
+
+.k-dia--hoy .k-dia__dia {
+  background: color-mix(in srgb, var(--accent) 82%, #000);
+}
+
+.k-dia__viendo {
+  padding: 1px 7px;
+  font-family: var(--font-sans);
+  font-size: 0.5rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 99px;
+}
+
+.k-dia__ope {
+  grid-area: 2 / 3;
+  gap: 2px;
+  padding: 0 2px;
+}
+
+.k-dia__rutas {
+  grid-area: 2 / 4;
+}
+
+.k-dia__lin {
+  grid-area: 3 / 1;
+}
+
+.k-dia__dif {
+  grid-area: 3 / 2;
+}
+
+.k-dia__cierre {
+  grid-area: 3 / 3 / 4 / 5;
+}
+
+/* Alguna cifra no cabía en su línea: todas las celdas pasan a nombre arriba y cifra abajo. */
+.k-dias__lista--apilada {
+  .k-dia {
+    grid-template-rows: auto;
+  }
+
+  .k-dia__c {
+    flex-direction: column;
+    gap: 1px;
+    min-height: 30px;
+    padding: 4px;
+  }
+
+  .k-dia__dia {
+    min-height: 34px;
   }
 }
 
@@ -490,213 +596,6 @@
   70%,
   100% {
     box-shadow: 0 0 0 7px transparent;
-  }
-}
-
-.ficha-vista {
-  display: inline-flex;
-  align-items: center;
-  align-self: flex-start;
-  gap: 4px;
-  padding: 2px 8px;
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  color: var(--text-2);
-  background: var(--surface-2);
-  border-radius: 999px;
-}
-
-.ficha-indicador {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
-  padding: var(--space-2);
-  font-size: var(--fs-xs);
-  color: var(--success);
-  background: color-mix(in srgb, var(--success) 9%, var(--surface));
-  border-radius: var(--radius-sm);
-
-  span {
-    flex: 1 1 auto;
-    min-width: 0;
-    color: var(--text-2);
-  }
-
-  strong {
-    flex: none;
-    font-weight: 900;
-  }
-
-  &--mal {
-    color: var(--danger);
-    background: color-mix(in srgb, var(--danger) 9%, var(--surface));
-  }
-}
-
-/* ---------- Secciones con título e icono ---------- */
-
-.ficha-seccion {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
-
-  &__titulo {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin: 0;
-    font-size: 0.66rem;
-    font-weight: 800;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--text-2);
-
-    ui-icon {
-      color: var(--pop-color, var(--accent));
-    }
-  }
-}
-
-.ficha-cierre {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: var(--space-2);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-
-  &__fila {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 4px var(--space-2);
-  }
-
-  &__dia {
-    font-size: var(--fs-xs);
-    font-weight: 900;
-    color: var(--text);
-  }
-
-  &__horas {
-    font-size: var(--fs-sm);
-    font-weight: 800;
-    color: var(--text);
-    font-variant-numeric: tabular-nums;
-
-    small {
-      font-weight: 600;
-      color: var(--text-3);
-    }
-  }
-
-  &__veredicto {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    margin-left: auto;
-    font-size: var(--fs-xs);
-    font-weight: 800;
-  }
-
-  &--ok {
-    .ficha-cierre__veredicto {
-      color: var(--success);
-    }
-
-    .ficha-barra__pista > span {
-      background: var(--success);
-    }
-  }
-
-  &--fuera {
-    border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
-
-    .ficha-cierre__veredicto {
-      color: var(--danger);
-    }
-
-    .ficha-barra__pista > span {
-      background: var(--danger);
-    }
-  }
-}
-
-/* Grupos: chip de color, tramo, rutas y una mini franja del rango que ocupa. */
-.ficha-grupos {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.ficha-grupo {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 4px var(--space-2);
-  padding: 6px var(--space-2);
-  font-size: var(--fs-xs);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--g, var(--accent));
-  border-radius: var(--radius-sm);
-
-  &__nombre {
-    max-width: 9ch;
-    overflow: hidden;
-    padding: 1px 7px;
-    font-weight: 900;
-    color: #fff;
-    background: color-mix(in srgb, var(--g, var(--accent)) 85%, #000);
-    border-radius: 999px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  &__tramo {
-    min-width: 0;
-    overflow: hidden;
-    font-weight: 700;
-    color: var(--text-2);
-    font-variant-numeric: tabular-nums;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  &__alerta {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    color: var(--warning, #d97706);
-  }
-
-  &__rutas {
-    color: var(--text-3);
-    white-space: nowrap;
-  }
-
-  &__franja {
-    position: relative;
-    grid-column: 1 / -1;
-    height: 4px;
-    border-radius: 999px;
-    background: var(--surface-2);
-
-    > span {
-      position: absolute;
-      top: 0;
-      bottom: 0;
-      min-width: 4px;
-      border-radius: inherit;
-      background: var(--g, var(--accent));
-    }
   }
 }
 

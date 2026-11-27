@@ -224,19 +224,74 @@
   } @else if (k) {
   <!-- ============ Cluster ============ -->
   @let c = k.c;
-  <header class="ficha-cabeza">
-    <span class="ficha-avatar" aria-hidden="true">{{ k.iniciales }}</span>
-    <div class="ficha-cabeza__titulo">
-      <span class="ficha-kicker">Cluster</span>
-      <strong>{{ c.nombre }}</strong>
+  @let rutas = (k.m?.rutas ?? 0) | entero;
+  @let chutes = c.chutes | entero;
+  @let bultos = (k.m?.bultos ?? 0) | entero;
+  <!-- Como la ficha de una ruta: su ficha de dos filas (rutas · chutes · bultos / estado · nombre) y el
+       título. Si el título no cabe al lado (cifras grandes, texto agrandado), baja bajo la ficha. -->
+  <header class="ficha-cabeza loc-cabeza k-cabeza" [class.k-cabeza--apilada]="cabeceraApilada()">
+    <div class="ft k-ficha" [class.k-ficha--curso]="c.enCurso" [class.k-ficha--cerrado]="c.cerrado" aria-hidden="true">
+      <div class="ft__datos">
+        <span class="ft__dato k-ficha__dato" [title]="rutas + (k.m?.rutas === 1 ? ' ruta' : ' rutas')"><ui-icon name="truck" [size]="13" />{{ rutas }}</span>
+        <span class="ft__dato ft__dato--flex k-ficha__dato k-ficha__dato--chutes" [title]="chutes + (c.chutes === 1 ? ' chute' : ' chutes')"><ui-icon name="almacen" [size]="13" />{{ chutes }}</span>
+        <span class="ft__dato ft__dato--claro k-ficha__dato k-ficha__dato--bultos" [title]="bultos + ' bultos'"><ng-container [ngTemplateOutlet]="caja" />{{ bultos }}</span>
+      </div>
+      <div class="ft__fila">
+        <span class="ft__pestana"><ui-icon [name]="k.iconoEstado" [size]="12" />{{ k.estado }}</span>
+        <strong class="ft__codigo">{{ c.nombre }}</strong>
+      </div>
     </div>
-    <span class="ficha-estado" [class.ficha-estado--cerrado]="c.cerrado" [class.ficha-estado--curso]="c.enCurso">
-      <ui-icon [name]="k.iconoEstado" [size]="12" />{{ k.estado }}
-    </span>
+    <!-- Guiones que no parten (L‑X‑V): el título solo baja de línea entre palabras. -->
+    <div #tituloCluster class="ficha-cabeza__titulo">
+      <strong>Cluster {{ c.nombre }}</strong>
+      <span class="loc-sub">Viendo {{ k.etiquetaVista.replaceAll('-', '‑') }}</span>
+      <span class="k-oculta">{{ k.estado }}: {{ rutas }} {{ k.m?.rutas === 1 ? 'ruta' : 'rutas' }}, {{ chutes }} {{ c.chutes === 1 ? 'chute' : 'chutes' }} y {{ bultos }} bultos.</span>
+    </div>
     <button type="button" class="ficha-cerrar" aria-label="Cerrar detalle" (click)="cerrar.emit()">
       <ui-icon name="close" [size]="16" />
     </button>
   </header>
+
+  <!-- Totales en bloques con el marco de la ficha, como los de la ruta. El cierre es el del día que se
+       mira (en «Ambos» o «Diarias», el del día que más tarda). -->
+  @let cierre = k.cierre;
+  <dl #totalesCluster class="loc-tot k-totales" [class.k-totales--dos]="totalesDos()">
+    <div class="loc-tot__k loc-kraft">
+      <dt>Bultos</dt>
+      <dd><ng-container [ngTemplateOutlet]="caja" />{{ bultos }}</dd>
+    </div>
+    <div class="loc-tot__k">
+      <dt>Unidades</dt>
+      <dd>{{ (k.m?.unidades ?? 0) | entero }}</dd>
+    </div>
+    <div class="loc-tot__k">
+      <dt>Líneas</dt>
+      <dd>{{ (k.m?.lineas ?? 0) | entero }}</dd>
+    </div>
+    <div class="loc-tot__k" [title]="cierre?.tituloCierre ?? 'Sin operarios todavía'">
+      <dt>Cierre</dt>
+      <dd [class.k-ok]="cierre?.medible && cierre?.cumple" [class.k-mal]="cierre?.medible && !cierre?.cumple">
+        @if (cierre === null || cierre.tiempo === null) {
+        —
+        } @else {
+        @if (cierre.medible) {
+        <ui-icon [name]="cierre.cumple ? 'checkCircleFilled' : 'xCircle'" [size]="13" />
+        }{{ cierre.tiempo | horas }}
+        @if (cierre.medible) {
+        <span class="k-oculta">{{ cierre.cumple ? ', cumple' : ', fuera por ' + (cierre.exceso | horas) }}</span>
+        }
+        }
+      </dd>
+    </div>
+    <div class="loc-tot__k" title="Locales (códigos)">
+      <dt>Códigos</dt>
+      <dd>{{ (k.m?.cod ?? 0) | entero }}</dd>
+    </div>
+    <div class="loc-tot__k" [title]="k.operarios === null ? 'Sin operarios todavía' : 'Operarios'">
+      <dt>Operarios</dt>
+      <dd>{{ k.operarios === null ? '—' : (k.operarios | entero) }}</dd>
+    </div>
+  </dl>
 
   <!-- Recorrido de 5 pasos: hecho, el que toca u omitido (día sin rutas propias). -->
   <ol class="ficha-pasos" aria-label="Avance">
@@ -260,75 +315,72 @@
     }
   </ol>
 
-  <span class="ficha-vista"><ui-icon name="ver" [size]="12" /> Mostrando {{ k.etiquetaVista }}</span>
-
-  <dl class="ficha-datos">
-    <div class="ficha-dato ficha-dato--destacado">
-      <span class="ficha-dato__icono ficha-dato__icono--mono"><ui-icon name="truck" [size]="15" /></span>
-      <dt>Rutas</dt>
-      <dd>{{ (k.m?.rutas ?? 0) | entero }}</dd>
-    </div>
-    <div class="ficha-dato ficha-dato--destacado">
-      <span class="ficha-dato__icono"><app-icono-sim nombre="bultos" [tamano]="18" /></span>
-      <dt>Bultos</dt>
-      <dd>{{ (k.m?.bultos ?? 0) | entero }}</dd>
-    </div>
-  </dl>
-  <dl class="ficha-mini">
-    <div [title]="'Líneas: ' + ((k.m?.lineas ?? 0) | entero)">
-      <app-icono-sim nombre="lineas" [tamano]="16" />
-      <dt>Líneas</dt><dd>{{ (k.m?.lineas ?? 0) | entero }}</dd>
-    </div>
-    <div [title]="'Unidades: ' + ((k.m?.unidades ?? 0) | entero)">
-      <app-icono-sim nombre="unidades" [tamano]="16" />
-      <dt>Unidades</dt><dd>{{ (k.m?.unidades ?? 0) | entero }}</dd>
-    </div>
-    <div [title]="'Locales (COD): ' + ((k.m?.cod ?? 0) | entero)">
-      <app-icono-sim nombre="cod" [tamano]="16" />
-      <dt>COD</dt><dd>{{ (k.m?.cod ?? 0) | entero }}</dd>
-    </div>
-    <div [title]="'Chutes: ' + (c.chutes | entero)">
-      <ui-icon class="ficha-mini__mono" name="almacen" [size]="14" />
-      <dt>Chutes</dt><dd>{{ c.chutes | entero }}</dd>
-    </div>
-    @if (k.operarios !== null) {
-    <div [title]="'Operarios: ' + (k.operarios | entero)">
-      <app-icono-sim nombre="operarios" [tamano]="16" />
-      <dt>Operarios</dt><dd>{{ k.operarios | entero }}</dd>
-    </div>
-    }
-  </dl>
-
-  @if (!k.ambos && c.balanceado && c.dispersion !== null) {
-  <p class="ficha-indicador" [class.ficha-indicador--mal]="c.dispersion > 10">
-    <ui-icon name="tendencia" [size]="13" />
-    <span>Diferencia de bultos entre sus chutes</span>
-    <strong>{{ c.dispersion }} %</strong>
-  </p>
-  }
-
-  <!-- Un cierre por día con operarios (las diarias no tienen cierre propio). -->
-  @if (k.cierres.length > 0) {
-  <section class="ficha-seccion">
-    <h3 class="ficha-seccion__titulo"><ui-icon name="reloj" [size]="13" /> Cierre por día</h3>
-    @for (dia of k.cierres; track dia.etiqueta) {
-    @let medible = dia.limite > 0 && dia.uso !== null;
-    <div class="ficha-cierre" [class.ficha-cierre--fuera]="medible && !dia.cumple" [class.ficha-cierre--ok]="medible && dia.cumple">
-      <div class="ficha-cierre__fila">
-        <strong class="ficha-cierre__dia">{{ dia.etiqueta }}</strong>
-        <span class="ficha-cierre__horas">{{ dia.tiempo | horas }}@if (dia.limite > 0) { <small> de {{ dia.limite | horas }}</small> }</span>
-        @if (medible) {
-        <span class="ficha-cierre__veredicto">
-          <ui-icon [name]="dia.cumple ? 'checkCircleFilled' : 'xCircle'" [size]="13" />
-          {{ dia.cumple ? 'Cumple' : 'Fuera por ' + (dia.exceso | horas) }}
-        </span>
-        }
-      </div>
-      @if (medible) {
-      <span class="ficha-barra__pista"><span [style.width.%]="dia.uso"></span></span>
+  <!-- Por día: una mini ficha por día, como las de los locales (cada día con sus diarias). Operarios y
+       cierre aparecen cuando ya se repartieron; el cierre, en verde o rojo frente al límite. Si alguna
+       cifra no cabe en su línea, todas pasan a nombre arriba y cifra abajo. -->
+  @if (k.dias.length > 0) {
+  <section class="k-dias" aria-labelledby="ficha-cluster-dias">
+    <h3 id="ficha-cluster-dias" class="loc-cab k-tot__cab">Por día&ngsp;<span class="loc-cab__n">{{ k.dias.length }}</span></h3>
+    <div #diasCluster class="k-dias__lista" [class.k-dias__lista--apilada]="diasApilados()">
+      @for (d of k.dias; track d.balanceo) {
+      <dl class="k-dia" [class.k-dia--hoy]="d.actual">
+        <div class="k-dia__c k-dia__loc" title="Locales (códigos)">
+          <dt><span aria-hidden="true">Loc.</span><span class="k-oculta">Locales</span></dt>
+          <dd>{{ d.cod | entero }}</dd>
+        </div>
+        <div class="k-dia__c k-dia__bultos">
+          <dt class="k-oculta">Bultos</dt>
+          <dd><ng-container [ngTemplateOutlet]="caja" />{{ d.bultos | entero }}</dd>
+        </div>
+        <div class="k-dia__c k-dia__unid">
+          <dt><span aria-hidden="true">Unid.</span><span class="k-oculta">Unidades</span></dt>
+          <dd>{{ d.unidades | entero }}</dd>
+        </div>
+        <div class="k-dia__c k-dia__dia">
+          <dt class="k-oculta">Día</dt>
+          <dd>{{ d.etiqueta }}@if (d.actual) {<span class="k-dia__viendo">Viendo</span>}</dd>
+        </div>
+        <div class="k-dia__c k-dia__ope" [title]="d.operarios === null ? 'Sin operarios todavía' : 'Operarios'">
+          <dt class="k-oculta">Operarios</dt>
+          <dd><app-icono-sim nombre="operarios" [tamano]="14" />{{ d.operarios === null ? '—' : (d.operarios | entero) }}</dd>
+        </div>
+        <div class="k-dia__c k-dia__rutas">
+          <dt>Rutas</dt>
+          <dd>{{ d.rutas | entero }}</dd>
+        </div>
+        <div class="k-dia__c k-dia__lin">
+          <dt><span aria-hidden="true">Lín.</span><span class="k-oculta">Líneas</span></dt>
+          <dd>{{ d.lineas | entero }}</dd>
+        </div>
+        <div class="k-dia__c k-dia__dif" [title]="d.dispersion === null ? 'Un solo chute con carga' : 'Diferencia de bultos entre sus chutes'">
+          <dt><span aria-hidden="true">Dif.</span><span class="k-oculta">Diferencia entre chutes</span></dt>
+          <dd [class.k-ok]="d.dispersion !== null && d.dispersion <= 10" [class.k-mal]="d.dispersion !== null && d.dispersion > 10">
+            {{ d.dispersion === null ? '—' : d.dispersion + ' %' }}
+          </dd>
+        </div>
+        <div class="k-dia__c k-dia__cierre" [title]="d.tituloCierre">
+          <dt>Cierre</dt>
+          <dd [class.k-ok]="d.medible && d.cumple" [class.k-mal]="d.medible && !d.cumple">
+            @if (d.tiempo === null) {
+            —
+            } @else {
+            @if (d.medible) {
+            <ui-icon [name]="d.cumple ? 'checkCircleFilled' : 'xCircle'" [size]="12" />
+            }{{ d.tiempo | horas }}
+            @if (d.medible) {
+            <span class="k-oculta">{{ d.cumple ? ', cumple' : ', fuera por ' + (d.exceso | horas) }}</span>
+            }
+            }
+          </dd>
+        </div>
+      </dl>
       }
     </div>
-    }
+    <p class="loc-pie k-pie">
+      <span class="loc-pie__etq">Límite de cierre</span>&ngsp;
+      <span>{{ k.limite > 0 ? (k.limite | horas) : 'Sin límite' }}</span>&ngsp;
+      <small>Las diarias cuentan en los dos días</small>
+    </p>
   </section>
   }
 
@@ -337,33 +389,6 @@
     <span class="ficha-nota__icono"><app-icono-sim nombre="operarios" [tamano]="20" /></span>
     <span><strong>{{ c.siguen }}</strong> operario(s) siguen en su chute desde {{ c.previo }}</span>
   </p>
-  }
-
-  @if (k.grupos.length > 0) {
-  <section class="ficha-seccion">
-    <h3 class="ficha-seccion__titulo"><ui-icon name="layers" [size]="13" /> {{ k.grupos.length > 1 ? 'Grupos y sus tramos' : 'Grupo' }}</h3>
-    <ol class="ficha-grupos">
-      @for (g of k.grupos; track g.nombre) {
-      <li class="ficha-grupo" [style.--g]="g.color">
-        <span class="ficha-grupo__nombre" [title]="g.nombre">{{ g.nombre }}</span>
-        <span class="ficha-grupo__tramo">
-          @if (g.chuteDesde) {
-          {{ g.chuteDesde }}@if (g.chuteHastaId !== g.chuteDesdeId) { → {{ g.chuteHasta }} }
-          } @else if (k.grupos.length === 1) {
-          <!-- Un solo grupo balanceado sin rango usa todos los chutes del cluster: no tiene tramo propio. -->
-          Todos sus chutes
-          } @else {
-          <span class="ficha-grupo__alerta"><ui-icon name="alertTriangle" [size]="12" /> Sin tramo</span>
-          }
-        </span>
-        <span class="ficha-grupo__rutas">{{ g.rutas | entero }} ruta(s)</span>
-        @if (g.franja; as f) {
-        <span class="ficha-grupo__franja" aria-hidden="true"><span [style.left.%]="f.inicio" [style.width.%]="f.ancho"></span></span>
-        }
-      </li>
-      }
-    </ol>
-  </section>
   }
   }
 </div>

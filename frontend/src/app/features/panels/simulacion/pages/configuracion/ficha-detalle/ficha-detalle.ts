@@ -120,6 +120,38 @@ export class FichaDetalle {
   });
 
   private readonly pop = viewChild.required<ElementRef<HTMLElement>>('pop');
+  /** Título, totales y mini fichas por día del cluster: se miden para que nada se corte. */
+  private readonly tituloCluster = viewChild<ElementRef<HTMLElement>>('tituloCluster');
+  private readonly totalesCluster = viewChild<ElementRef<HTMLElement>>('totalesCluster');
+  private readonly diasCluster = viewChild<ElementRef<HTMLElement>>('diasCluster');
+
+  /** Cifras del cluster abierto y el tipo de ficha: si cambian, su ficha se mide de nuevo. */
+  private readonly cifrasCluster = computed(() => {
+    const k = this.cluster();
+    if (!k) return '';
+    const m = k.m;
+    const dias = k.dias.map((d) => [d.cod, d.bultos, d.unidades, d.operarios, d.rutas, d.lineas, d.dispersion, d.tiempo].join(','));
+    return [k.c.id, m?.rutas, k.c.chutes, m?.bultos, m?.unidades, m?.lineas, m?.cod, k.operarios, k.cierre?.tiempo, k.estado, k.etiquetaVista, ...dias, this.posicion().hoja].join('|');
+  });
+
+  /**
+   * Alguna cifra (o nombre) de los totales no cabe en su bloque: pasan de tres columnas a dos, con
+   * más ancho cada uno. Igual que la cabecera, solo de no a sí.
+   */
+  readonly totalesDos = linkedSignal({ source: this.cifrasCluster, computation: () => false });
+
+  /**
+   * «Cluster CL1» no cabe al lado de su ficha (cifras grandes o texto agrandado): el título baja bajo
+   * la ficha, como en la ficha de una ruta angosta. Solo pasa de no a sí, así no oscila; se mide de
+   * nuevo con otro cluster o con otras cifras.
+   */
+  readonly cabeceraApilada = linkedSignal({ source: this.cifrasCluster, computation: () => false });
+
+  /**
+   * Alguna cifra de las mini fichas por día no cabe en su línea: todas pasan a nombre arriba y cifra
+   * abajo, así quedan parejas. Igual que la cabecera, solo de no a sí.
+   */
+  readonly diasApilados = linkedSignal({ source: this.cifrasCluster, computation: () => false });
 
   /**
    * La ficha desbordó con la cuadrícula ya en su alto mínimo (cabecera y filtros en dos líneas en
@@ -189,6 +221,21 @@ export class FichaDetalle {
         if (!this.ruta() || this.baja()) return;
         const el = this.pop().nativeElement;
         if (el.scrollHeight > el.clientHeight + 1) this.desborda.set(true);
+      },
+    });
+    afterRenderEffect({
+      read: () => {
+        const desborda = (e: Element) => e.scrollWidth > e.clientWidth + 1;
+        const titulo = this.tituloCluster()?.nativeElement;
+        // Sin el texto solo para el lector de pantalla (1 px, siempre «desborda»).
+        const visibles = titulo ? [...titulo.children].filter((e) => !e.classList.contains('k-oculta')) : [];
+        if (titulo && !this.cabeceraApilada() && visibles.some(desborda)) this.cabeceraApilada.set(true);
+        const totales = this.totalesCluster()?.nativeElement;
+        if (totales && !this.totalesDos() && [...totales.querySelectorAll('dt, dd')].some(desborda)) this.totalesDos.set(true);
+        const dias = this.diasCluster()?.nativeElement;
+        if (dias && !this.diasApilados() && [...dias.querySelectorAll('.k-dia__c')].some((c) => c.scrollWidth > c.clientWidth + 1)) {
+          this.diasApilados.set(true);
+        }
       },
     });
   }

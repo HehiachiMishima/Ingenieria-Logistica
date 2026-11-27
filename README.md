@@ -184,6 +184,13 @@ balanceado: solo pide operarios. Si dos personas trabajan a la vez, el servidor
 aplica los cambios de uno en uno (quien espera más de 5 s recibe un aviso para reintentar). «Guardar
 cambios» solo aplica lo que tú cambiaste y, si otra persona cambió eso mismo mientras editabas, avisa
 en vez de pisarlo; al mover locales se comprueba que sean los que viste en la ficha.
+El «Detalle» de un cluster usa el diseño de las fichas Titan: arriba su ficha de dos filas (rutas,
+chutes y bultos con su ícono; abajo el estado en color y el nombre) y debajo «Totales», con unidades,
+líneas, COD y, cuando ya se repartieron, operarios. Con cifras grandes quedan el ícono y la cifra (la
+palabra va en el texto al pasar el mouse) y las mini fichas pasan a dos filas: nada se corta.
+Al final, «Por día» pone L-X-V y M-J-S lado a lado (cada uno con sus diarias): rutas, bultos,
+operarios, diferencia de bultos entre sus chutes (en rojo si pasa 10 %) y hora de cierre, en verde o
+rojo frente al límite si lo tiene. El día que se mira va resaltado en azul.
 Antes de actualizar el backend aplica `backend/migracion_registro_titan.sql`: crea los locales de las
 rutas, quita las tablas del Registro, prepara DATA y **borra los registros subidos por Excel** con
 todo lo que cuelga de ellos. Es una sola transacción y es re-ejecutable.

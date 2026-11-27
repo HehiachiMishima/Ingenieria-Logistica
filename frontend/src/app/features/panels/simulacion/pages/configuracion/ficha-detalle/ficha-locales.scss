@@ -6,10 +6,8 @@
  */
 
 .detalle-pop--ruta {
-  /* Variables de la planilla (en Configuración las define `.mz`). */
-  --mz-marco: light-dark(#5b6f8f, #5a76a6);
+  /* Alto de la ficha de la planilla (el marco y el kraft los define `.detalle-pop`). */
   --mz-fila-ruta: 54px;
-  --kraft: #c8894a;
 
   width: min(420px, calc(100vw - 24px)); /* responsive:ok mismo patrón que .detalle-pop (fija, nunca más ancha que la ventana) */
   container: ficha-ruta / inline-size;

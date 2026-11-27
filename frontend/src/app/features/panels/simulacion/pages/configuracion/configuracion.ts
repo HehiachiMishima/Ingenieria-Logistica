@@ -1986,50 +1986,74 @@ export class SimulacionConfiguracion {
     if (!cluster) {
       return null;
     }
-    const grupos = this.config()?.clusters.find((c) => c.id === cluster.id)?.grupos ?? [];
     const a = this.avanceCluster(cluster.id);
-    // Cierre de cada día con sus operarios (las diarias no son una ola: no tienen cierre propio).
-    const cierres = this.resumenPorDia().flatMap(({ etiqueta, porCluster }) => {
+    const vista = this.vistaDe(cluster.id);
+    const configs = this.configs();
+    // «Por día»: cada día (L-X-V y M-J-S, con sus diarias) con su carga, la diferencia entre sus
+    // chutes y, ya con operarios, su cierre (las diarias no son una ola: no tienen cierre propio).
+    const dias = this.resumenPorDia().flatMap(({ etiqueta, balanceo, porCluster }) => {
       const dia = porCluster.get(cluster.id);
-      return dia?.conOperarios
-        ? [{ etiqueta, ...dia, exceso: dia.limite > 0 && Number.isFinite(dia.tiempo) ? Math.max(0, dia.tiempo - dia.limite) : 0 }]
-        : [];
+      if (!dia) {
+        return [];
+      }
+      // Locales, unidades y líneas del día: su carga (la que ya trajo el servidor para ese día).
+      let cod = 0;
+      let unidades = 0;
+      let lineas = 0;
+      for (const fila of configs[balanceo]?.carga ?? []) {
+        if (fila.clusterId === cluster.id) {
+          cod += Number(fila.cod ?? 0);
+          unidades += Number(fila.unidades ?? 0);
+          lineas += Number(fila.lineas ?? 0);
+        }
+      }
+      const medible = dia.conOperarios && dia.limite > 0 && Number.isFinite(dia.tiempo);
+      const exceso = medible ? Math.max(0, dia.tiempo - dia.limite) : 0;
+      return [
+        {
+          etiqueta,
+          balanceo,
+          /** El día que se mira en la matriz (en «Ambos» o «Diarias», ninguno). */
+          actual: vista === balanceo,
+          rutas: dia.rutas,
+          bultos: dia.bultos,
+          cod,
+          unidades,
+          lineas,
+          operarios: dia.conOperarios ? dia.operarios : null,
+          dispersion: dia.dispersion,
+          tiempo: dia.conOperarios ? dia.tiempo : null,
+          limite: dia.limite,
+          medible,
+          cumple: dia.cumple,
+          exceso,
+          tituloCierre: !dia.conOperarios
+            ? `${etiqueta}: sin operarios todavía`
+            : `${etiqueta}: cierra en ${formatearHoras(dia.tiempo)}` +
+              (dia.limite > 0 ? ` de ${formatearHoras(dia.limite)}` : '') +
+              (medible ? (dia.cumple ? ' · cumple' : ` · fuera por ${formatearHoras(exceso)}`) : ''),
+        },
+      ];
     });
-    // Franja de cada tramo dentro del rango que ocupan todos los grupos (orden de los chutes).
-    const indice = new Map(this.opcionesChute().map((chute, i) => [chute.id, i]));
-    const tramos = grupos.map((g) => ({
-      desde: g.chuteDesdeId == null ? undefined : indice.get(g.chuteDesdeId),
-      hasta: g.chuteHastaId == null ? undefined : indice.get(g.chuteHastaId),
-    }));
-    const conTramo = tramos.filter((t) => t.desde !== undefined && t.hasta !== undefined) as { desde: number; hasta: number }[];
-    const inicio = conTramo.length > 0 ? Math.min(...conTramo.map((t) => Math.min(t.desde, t.hasta))) : 0;
-    const fin = conTramo.length > 0 ? Math.max(...conTramo.map((t) => Math.max(t.desde, t.hasta))) : 0;
-    const total = fin - inicio + 1;
+    const conOperarios = dias.flatMap((dia) => (dia.operarios === null ? [] : [dia.operarios]));
+    // Cierre de los totales: el del día que se mira; en «Ambos» o «Diarias», el del día que más tarda.
+    const mirados = dias.some((dia) => dia.actual) ? dias.filter((dia) => dia.actual) : dias;
+    const conCierre = mirados.filter((dia) => dia.tiempo !== null);
     return {
       c: cluster,
       m: this.metricasCluster().get(cluster.id) ?? null,
       /** En «Ambos» la carga es de los dos días: la dispersión de un día no aplica. */
-      ambos: this.vistaDe(cluster.id) === 'AMBOS',
+      ambos: vista === 'AMBOS',
       /** La misma cantidad trabaja los dos días: la mayor que se repartió. */
-      operarios: cierres.length > 0 ? Math.max(...cierres.map((dia) => dia.operarios)) : null,
-      cierres,
+      operarios: conOperarios.length > 0 ? Math.max(...conOperarios) : null,
+      dias,
+      cierre: conCierre.length > 0 ? conCierre.reduce((a, b) => ((b.tiempo ?? 0) > (a.tiempo ?? 0) ? b : a)) : null,
+      /** El límite de horas es del cluster (el mismo para los dos días); 0 = sin límite. */
+      limite: dias[0]?.limite ?? 0,
       etiquetaVista: this.etiquetaVista(cluster.id),
       estado: a.cerrado ? 'Cerrado' : a.enCurso ? 'En curso' : 'En espera',
       iconoEstado: a.cerrado ? 'lock' : a.enCurso ? 'activity' : 'reloj',
-      iniciales: inicialesCluster(cluster.nombre),
       pasos: this.pasosDe(cluster.id),
-      // Todos sus grupos (aunque sea uno), con el color de su pestaña, su tramo y su franja.
-      grupos: grupos.map((g, i) => {
-        const t = tramos[i];
-        const franja =
-          conTramo.length > 1 && t.desde !== undefined && t.hasta !== undefined
-            ? {
-                inicio: ((Math.min(t.desde, t.hasta) - inicio) / total) * 100,
-                ancho: ((Math.abs(t.hasta - t.desde) + 1) / total) * 100,
-              }
-            : null;
-        return { ...g, color: this.coloresGrupo().get(cluster.id)?.get(g.nombre) ?? null, franja };
-      }),
     };
   });
 
@@ -4443,15 +4467,6 @@ export function vistaValida(vista: VistaCluster, rutas: { dia: number; lxv: numb
  */
 export function vistaInicial(rutas: { dia: number; lxv: number; mjs: number }): VistaCluster {
   return rutas.lxv > 0 ? 'LXV' : rutas.mjs > 0 ? 'MJS' : 'DIA';
-}
-
-/** Iniciales del cluster para su avatar: «CLUSTER 12» → «C12», «Norte» → «NO». */
-function inicialesCluster(nombre: string): string {
-  const palabras = nombre.trim().split(/\s+/).filter(Boolean);
-  if (palabras.length > 1) {
-    return (palabras[0][0] + palabras[palabras.length - 1].slice(0, 2)).toUpperCase();
-  }
-  return (palabras[0] ?? '?').slice(0, 2).toUpperCase();
 }
 
 /** Lo que le falta a una ruta de DATA para pasar a un cluster («tipo y grupo»), o null si nada. */
