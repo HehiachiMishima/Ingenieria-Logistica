@@ -63,8 +63,14 @@ public class EscenarioUnico {
     Predeterminados predeterminados = SimulacionPredeterminadosService.actuales(lotes);
     List<Long> chutes = plano.idsVisibles();
     lotes.insertarConfig(archivoId, predeterminados.velocidad(), chutes.size(), actor);
+    // Nace con el buff y los chutes bloqueados (solo a mano) de los predeterminados; sin ellos,
+    // los del plano (19, 20 y 21).
     lotes.insertarParametrosChute(
-        archivoId, chutes, ParametroChute.OPERARIOS_INICIALES, predeterminados.chutesBuff());
+        archivoId,
+        chutes,
+        ParametroChute.OPERARIOS_INICIALES,
+        predeterminados.chutesBuff(),
+        predeterminados.bloqueadosO(plano.idsManualesPorDefecto()));
     return archivoId;
   }
 }

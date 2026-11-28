@@ -253,21 +253,35 @@ public class SimulacionLotesRepository {
   }
 
   public void insertarParametrosChute(Long archivoId, Collection<Long> chuteIds, int operarios) {
-    insertarParametrosChute(archivoId, chuteIds, operarios, java.util.Set.of());
+    insertarParametrosChute(archivoId, chuteIds, operarios, java.util.Set.of(), java.util.Set.of());
   }
 
-  /** Los chutes del registro; los de {@code buff} nacen con buff (los predeterminados). */
   public void insertarParametrosChute(
       Long archivoId, Collection<Long> chuteIds, int operarios, Collection<Long> buff) {
+    insertarParametrosChute(archivoId, chuteIds, operarios, buff, java.util.Set.of());
+  }
+
+  /**
+   * Los chutes del registro; los de {@code buff} nacen con buff y los de {@code bloqueados}, fuera
+   * del balanceo automático (los predeterminados). Un chute en las dos listas queda bloqueado.
+   */
+  public void insertarParametrosChute(
+      Long archivoId,
+      Collection<Long> chuteIds,
+      int operarios,
+      Collection<Long> buff,
+      Collection<Long> bloqueados) {
     jdbc.batchUpdate(
-        "INSERT INTO parametros_chutes (archivo_id, chute_id, operarios, buff) VALUES (?, ?, ?, ?)",
+        "INSERT INTO parametros_chutes (archivo_id, chute_id, operarios, buff, manual) VALUES (?, ?, ?, ?, ?)",
         new ArrayList<>(chuteIds),
         LOTE,
         (ps, chuteId) -> {
+          boolean bloqueado = bloqueados.contains(chuteId);
           ps.setLong(1, archivoId);
           ps.setLong(2, chuteId);
           ps.setInt(3, operarios);
-          ps.setBoolean(4, buff.contains(chuteId));
+          ps.setBoolean(4, buff.contains(chuteId) && !bloqueado);
+          ps.setBoolean(5, bloqueado);
         });
   }
 
@@ -295,31 +309,48 @@ public class SimulacionLotesRepository {
 
   private oracle.simulacion.model.Predeterminados consultarPredeterminados() {
     return jdbc.query(
-        "SELECT velocidad_base, chutes_buff, bloqueado FROM predeterminados WHERE id = 1",
+        "SELECT velocidad_base, chutes_buff, chutes_bloqueados, bloqueado FROM predeterminados WHERE id = 1",
         rs -> {
           if (!rs.next()) {
             return null;
           }
           Long[] buff = (Long[]) rs.getArray(2).getArray();
+          java.sql.Array bloqueados = rs.getArray(3);
           return new oracle.simulacion.model.Predeterminados(
-              rs.getBigDecimal(1), List.of(buff), rs.getBoolean(3));
+              rs.getBigDecimal(1),
+              List.of(buff),
+              bloqueados == null ? null : List.of((Long[]) bloqueados.getArray()),
+              rs.getBoolean(4));
         });
   }
 
-  /** Guarda velocidad, buff y bloqueo (crea la fila si falta). */
+  /** Guarda velocidad, buff y candado (crea la fila si falta); los chutes bloqueados no cambian. */
   public void guardarPredeterminados(BigDecimal velocidad, Collection<Long> buff, boolean bloqueado) {
+    guardarPredeterminados(velocidad, buff, null, bloqueado);
+  }
+
+  /**
+   * Guarda velocidad, buff, chutes bloqueados y candado (crea la fila si falta). {@code bloqueados}
+   * nulo deja los que había.
+   */
+  public void guardarPredeterminados(
+      BigDecimal velocidad, Collection<Long> buff, Collection<Long> bloqueados, boolean bloqueado) {
     Long[] ids = buff.toArray(Long[]::new);
+    Long[] idsBloqueados = bloqueados == null ? null : bloqueados.toArray(Long[]::new);
     jdbc.update(
         conexion -> {
           var ps =
               conexion.prepareStatement(
-                  "INSERT INTO predeterminados (id, velocidad_base, chutes_buff, bloqueado)"
-                      + " VALUES (1, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET"
+                  "INSERT INTO predeterminados (id, velocidad_base, chutes_buff, chutes_bloqueados, bloqueado)"
+                      + " VALUES (1, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET"
                       + " velocidad_base = EXCLUDED.velocidad_base,"
-                      + " chutes_buff = EXCLUDED.chutes_buff, bloqueado = EXCLUDED.bloqueado");
+                      + " chutes_buff = EXCLUDED.chutes_buff,"
+                      + " chutes_bloqueados = COALESCE(EXCLUDED.chutes_bloqueados, predeterminados.chutes_bloqueados),"
+                      + " bloqueado = EXCLUDED.bloqueado");
           ps.setBigDecimal(1, velocidad);
           ps.setArray(2, conexion.createArrayOf("bigint", ids));
-          ps.setBoolean(3, bloqueado);
+          ps.setArray(3, idsBloqueados == null ? null : conexion.createArrayOf("bigint", idsBloqueados));
+          ps.setBoolean(4, bloqueado);
           return ps;
         });
   }
@@ -337,6 +368,54 @@ public class SimulacionLotesRepository {
    * en lote, sin recorrer registros. Devuelve cuántos registros recibieron los valores.
    */
   public int aplicarPredeterminados(BigDecimal velocidad, Collection<Long> buff) {
+    return aplicarPredeterminados(velocidad, buff, null, List.of());
+  }
+
+  /**
+   * Como {@link #aplicarPredeterminados(BigDecimal, Collection)} y, si vienen, los chutes
+   * bloqueados: en todos los registros (balanceados o no; el bloqueo vale para los balanceos
+   * siguientes), con su fila aunque el registro no la tuviera. {@code porDefecto} son los que el
+   * plano bloquea cuando el registro no tiene fila: los que ya no van bloqueados reciben la suya
+   * (sin bloqueo), si no seguirían bloqueados por defecto.
+   */
+  public int aplicarPredeterminados(
+      BigDecimal velocidad, Collection<Long> buff, Collection<Long> bloqueados, Collection<Long> porDefecto) {
+    if (bloqueados != null) {
+      Long[] liberados = porDefecto.stream().filter((id) -> !bloqueados.contains(id)).toArray(Long[]::new);
+      jdbc.update(
+          conexion -> {
+            var ps =
+                conexion.prepareStatement(
+                    "INSERT INTO parametros_chutes (archivo_id, chute_id, operarios, buff, manual)"
+                        + " SELECT c.archivo_id, d.chute_id, 0, FALSE, FALSE"
+                        + " FROM simulacion_config c CROSS JOIN unnest(?::bigint[]) AS d(chute_id)"
+                        + " ON CONFLICT (archivo_id, chute_id) DO NOTHING");
+            ps.setArray(1, conexion.createArrayOf("bigint", liberados));
+            return ps;
+          });
+      Long[] idsBloqueados = bloqueados.toArray(Long[]::new);
+      jdbc.update(
+          conexion -> {
+            var ps =
+                conexion.prepareStatement(
+                    "INSERT INTO parametros_chutes (archivo_id, chute_id, operarios, buff, manual)"
+                        + " SELECT c.archivo_id, b.chute_id, 0, FALSE, TRUE"
+                        + " FROM simulacion_config c CROSS JOIN unnest(?::bigint[]) AS b(chute_id)"
+                        + " ON CONFLICT (archivo_id, chute_id) DO UPDATE SET manual = TRUE, buff = FALSE"
+                        + " WHERE parametros_chutes.manual = FALSE");
+            ps.setArray(1, conexion.createArrayOf("bigint", idsBloqueados));
+            return ps;
+          });
+      jdbc.update(
+          conexion -> {
+            var ps =
+                conexion.prepareStatement(
+                    "UPDATE parametros_chutes pc SET manual = FALSE"
+                        + " WHERE pc.manual AND NOT (pc.chute_id = ANY (?))");
+            ps.setArray(1, conexion.createArrayOf("bigint", idsBloqueados));
+            return ps;
+          });
+    }
     Long[] ids = buff.toArray(Long[]::new);
     // Se bloquean los registros sin balancear (en orden, sin abrazos mortales): un balanceo que
     // empieza a la vez espera; si termina antes, su registro ya no cuenta como sin balancear.
@@ -361,7 +440,8 @@ public class SimulacionLotesRepository {
                       + " WHERE "
                       + SIN_BALANCEAR.formatted("c.archivo_id")
                       + " ON CONFLICT (archivo_id, chute_id) DO UPDATE SET buff = TRUE"
-                      + " WHERE parametros_chutes.buff = FALSE");
+                      // Un chute bloqueado nunca tiene buff (ck_param_chute_buff_manual).
+                      + " WHERE parametros_chutes.buff = FALSE AND NOT parametros_chutes.manual");
           ps.setArray(1, conexion.createArrayOf("bigint", ids));
           return ps;
         });

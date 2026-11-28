@@ -1342,7 +1342,7 @@ class SimulacionBalanceoTest {
     assertEquals(ParametroCluster.ESTADO_LISTO, cl3.getEstado());
   }
 
-  // ---------------- Chutes bloqueados (19, 20, 21) ----------------
+  // ---------------- Chutes fuera de servicio (simulacion.chutes.bloqueados) ----------------
 
   @Test
   void noSeMuevenRutasAUnChuteBloqueado() {
@@ -1360,7 +1360,7 @@ class SimulacionBalanceoTest {
     ConflictoException error =
         assertThrows(ConflictoException.class, () -> servicio.mover(10L, 1L, new MoverRutaRequest(19L)));
 
-    assertTrue(error.getMessage().contains("CHUTE 19 está bloqueado"), error.getMessage());
+    assertTrue(error.getMessage().contains("CHUTE 19 está fuera de servicio"), error.getMessage());
     assertEquals(18L, ruta.getChuteId());
   }
 
@@ -1438,13 +1438,19 @@ class SimulacionBalanceoTest {
             SolicitudInvalidaException.class,
             () -> lanzarDiarias(CL3, new BalanceoRequest(19L, 22L)));
 
-    assertTrue(error.getMessage().contains("CHUTE 19 está bloqueado"), error.getMessage());
+    assertTrue(error.getMessage().contains("CHUTE 19 está fuera de servicio"), error.getMessage());
     assertEquals(ParametroCluster.ESTADO_PENDIENTE, cl3.getEstado());
   }
 
-  // ---------------- Chutes de uso manual (19, 20, 21) ----------------
+  // ---------------- Chutes bloqueados (la franja: solo a mano) ----------------
 
-  /** El plano real: 19, 20 y 21 de uso manual (se ven y reciben rutas solo a mano). */
+  /** Fila de un chute que el escenario bloqueó: el balanceo automático no lo usa. */
+  private static ParametroChute bloqueado(ParametroChute parametro) {
+    parametro.setManual(true);
+    return parametro;
+  }
+
+  /** El plano real: 19, 20 y 21 nacen bloqueados (se ven y reciben rutas solo a mano). */
   private void conChutesManuales(Map<Integer, Long> ids) {
     servicio =
         new SimulacionConfiguracionService(
@@ -1461,7 +1467,7 @@ class SimulacionBalanceoTest {
         archivo(),
         configuracion("100", null),
         List.of(limite(CL1, "2", ParametroCluster.ESTADO_RUTAS)),
-        List.of(operarios(18L, 0), operarios(19L, 0)),
+        List.of(operarios(18L, 0), bloqueado(operarios(19L, 0))),
         List.of(),
         List.of(cluster(CL1, "CL1")),
         List.of(chute(18L, "18"), chute(19L, "19")));
@@ -1482,7 +1488,7 @@ class SimulacionBalanceoTest {
         archivo(),
         configuracion("100", null),
         List.of(cl3),
-        List.of(operarios(18L, 0), operarios(19L, 0), operarios(22L, 0)),
+        List.of(operarios(18L, 0), bloqueado(operarios(19L, 0)), operarios(22L, 0)),
         List.of(),
         List.of(cluster(CL3, "CL3")),
         List.of(chute(18L, "18"), chute(19L, "19"), chute(22L, "22")));
@@ -1511,7 +1517,7 @@ class SimulacionBalanceoTest {
         archivo(),
         configuracion("100", null),
         List.of(cl3),
-        List.of(operarios(18L, 0), operarios(19L, 0), operarios(22L, 0)),
+        List.of(operarios(18L, 0), bloqueado(operarios(19L, 0)), operarios(22L, 0)),
         List.of(),
         List.of(cluster(CL3, "CL3")),
         List.of(chute(18L, "18"), chute(19L, "19"), chute(22L, "22")));
@@ -1531,7 +1537,7 @@ class SimulacionBalanceoTest {
     rutas.stream().filter((r) -> r != enEl19).forEach((r) -> porChute.merge(r.getChuteId(), 1L, Long::sum));
     assertEquals(Set.of(18L, 22L), porChute.keySet(), "las demás se reparten solo en 18 y 22");
     assertEquals(3L, porChute.values().stream().mapToLong(Long::longValue).sum());
-    assertTrue(respuesta.mensaje().contains("1 ruta(s) en chutes de uso manual: quedan donde las pusiste"), respuesta.mensaje());
+    assertTrue(respuesta.mensaje().contains("1 ruta(s) en chutes bloqueados: quedan donde las pusiste"), respuesta.mensaje());
   }
 
   @Test
@@ -1542,7 +1548,7 @@ class SimulacionBalanceoTest {
         archivo(),
         configuracion("100", null),
         List.of(cl3),
-        List.of(operarios(18L, 0), operarios(19L, 0), operarios(22L, 0)),
+        List.of(operarios(18L, 0), bloqueado(operarios(19L, 0)), operarios(22L, 0)),
         List.of(),
         List.of(cluster(CL3, "CL3")),
         List.of(chute(18L, "18"), chute(19L, "19"), chute(22L, "22")));
@@ -1552,13 +1558,67 @@ class SimulacionBalanceoTest {
             SolicitudInvalidaException.class,
             () -> lanzarDiarias(CL3, new BalanceoRequest(19L, 22L)));
 
-    assertTrue(error.getMessage().contains("CHUTE 19 es de uso manual"), error.getMessage());
+    assertTrue(error.getMessage().contains("CHUTE 19 está bloqueado (solo a mano)"), error.getMessage());
     assertEquals(ParametroCluster.ESTADO_PENDIENTE, cl3.getEstado());
   }
 
   @Test
+  void un19DesbloqueadoEnElEscenarioEntraAlRango() {
+    // El plano dice que el 19 nace bloqueado, pero el escenario lo desbloqueó (su fila): el rango
+    // 18 → 22 reparte también en él.
+    conChutesManuales(Map.of());
+    ParametroCluster cl3 = limite(CL3, "100");
+    prepararRegistro(
+        archivo(),
+        configuracion("100", null),
+        List.of(cl3),
+        List.of(operarios(18L, 0), operarios(19L, 0), operarios(22L, 0)),
+        List.of(),
+        List.of(cluster(CL3, "CL3")),
+        List.of(chute(18L, "18"), chute(19L, "19"), chute(22L, "22")));
+    List<RutaProyeccion> rutas =
+        List.of(
+            ruta(1L, CL3, 18L, "3030", "100"),
+            ruta(2L, CL3, 18L, "3031", "100"),
+            ruta(3L, CL3, 18L, "3032", "100"));
+    when(rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(10L, CL3)).thenReturn(rutas);
+
+    lanzar(CL3, FaseBalanceo.RUTAS, new BalanceoRequest(18L, 22L));
+
+    assertEquals(
+        Set.of(18L, 19L, 22L), rutas.stream().map(RutaProyeccion::getChuteId).collect(java.util.stream.Collectors.toSet()));
+  }
+
+  @Test
+  void desbloquearUnChuteDelPlanoSinFilaLeGuardaSuFila() {
+    // El 19 no tiene fila (lo agrega el plano, bloqueado): al desbloquearlo se guarda su fila.
+    conChutesManuales(Map.of(18, 918L, 19, 919L, 22, 922L));
+    prepararRegistro(
+        archivo(),
+        configuracion("100", null),
+        List.of(limite(CL1, "2")),
+        List.of(operarios(18L, 0)),
+        List.of(),
+        List.of(cluster(CL1, "CL1")),
+        List.of(chute(18L, "CHUTE 18")));
+
+    ConfiguracionSimulacionResponse cfg =
+        servicio
+            .guardar(
+                10L,
+                ConfiguracionActualizarRequest.sinAnterior(
+                    new BigDecimal("100"), null, null, List.of(), List.of(new ChuteOperariosRequest(919L, 0, null, false))))
+            .datos();
+
+    assertFalse(cfg.chutes().stream().filter((c) -> c.id().equals(919L)).findFirst().orElseThrow().manual());
+    verify(parametroChuteRepo, org.mockito.Mockito.atLeastOnce())
+        .save(org.mockito.ArgumentMatchers.argThat((ParametroChute p) -> p.getId().getChuteId().equals(919L) && !p.isManual()));
+  }
+
+  @Test
   void elPlanoMuestraLosChutesManualesMarcados() {
-    // El registro tiene el 18; el plano agrega el 19 (manual) y el 22, sin guardarlos.
+    // El registro tiene el 18; el plano agrega el 19 (nace bloqueado: sin fila guardada vale el
+    // plano) y el 22, sin guardarlos.
     conChutesManuales(Map.of(18, 918L, 19, 919L, 22, 922L));
     prepararLectura(
         archivo(),

@@ -73,7 +73,7 @@
           <span><b class="dist__ruta--lxv">L-X-V</b></span>
           <span><b class="dist__ruta--mjs">M-J-S</b></span>
           <span>· bultos · abajo: grupo (con su color) y número de ruta con el color de su frecuencia</span>
-          <span class="dist__leyenda-sep">Cabecera roja = chute con buff · Columna gris = bloqueado · Cinta amarilla y negra = chute de uso manual (rutas puestas a mano)</span>
+          <span class="dist__leyenda-sep">Cabecera roja = chute con buff · Cinta amarilla y negra = chute bloqueado: el balanceo automático no lo usa (rutas puestas a mano) · Columna gris = fuera de servicio</span>
         </div>
 
         @if (d.clusters.length === 0) {
@@ -94,11 +94,11 @@
                 @for (ch of d.chutes; track $index) {
                   <th scope="col" class="dist__chute" [class.dist__chute--buff]="ch.buff" [class.dist__chute--bloq]="ch.bloqueado"
                     [class.dist__chute--manual]="ch.manual && !ch.bloqueado"
-                    [attr.title]="ch.manual && !ch.bloqueado ? etiquetaChute(ch.nombre) + ' · uso manual: sus rutas se pusieron a mano' : null">
+                    [attr.title]="ch.manual && !ch.bloqueado ? etiquetaChute(ch.nombre) + ' · bloqueado: el balanceo automático no lo usa; sus rutas se pusieron a mano' : null">
                     @if (ch.manual && !ch.bloqueado) {
-                      <span class="dist__placa">{{ etiquetaChute(ch.nombre) }} · MANUAL</span>
+                      <span class="dist__placa">{{ etiquetaChute(ch.nombre) }} · BLOQUEADO</span>
                     } @else {
-                      {{ ch.bloqueado ? 'BLOQ.' : etiquetaChute(ch.nombre) }}
+                      {{ ch.bloqueado ? 'FUERA' : etiquetaChute(ch.nombre) }}
                     }
                   </th>
                 }

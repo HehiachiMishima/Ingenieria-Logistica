@@ -18,6 +18,7 @@ Thumbs.db
 !/backend/migracion_balanceo_rutas.sql
 !/backend/migracion_observabilidad_admin.sql
 !/backend/migracion_registro_titan.sql
+!/backend/migracion_chutes_bloqueados.sql
 # --- Datos desechables del panel Picking (los trae el SFTP) ---
 /data/
 /backend/data/

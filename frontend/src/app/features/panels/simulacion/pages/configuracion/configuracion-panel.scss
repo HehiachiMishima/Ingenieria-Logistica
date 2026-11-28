@@ -676,3 +676,58 @@
     font-size: 16px;
   }
 }
+
+/* ---------- Chutes bloqueados (tarjeta de parámetros) ----------
+   Aquí y no en configuracion.scss: aquel pasaba el presupuesto de estilos por archivo. */
+
+/* Los elegidos, bajo su campo: placas oscuras con el filo de la cinta de peligro (ámbar claro
+   sobre casi negro, 12,9:1, en los dos temas). La nueva (sin guardar), punteada. */
+.config-panel__placas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.config-panel__placa {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px 2px 8px;
+  border-radius: 4px;
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  color: #fde68a;
+  background: #111827;
+  box-shadow: inset 3px 0 0 #facc15;
+
+  ui-icon {
+    flex: none;
+    color: #facc15;
+  }
+
+  &--nueva {
+    outline: 1.5px dashed var(--accent);
+    outline-offset: 1px;
+  }
+}
+
+/* Confirmación de los chutes bloqueados: el icono en ámbar (aviso, no peligro de borrar) y la lista. */
+.confirm__icon--peligro {
+  color: #111827;
+  background: #facc15;
+}
+
+.confirm__lista {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0;
+  padding-left: 1.1em;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+

@@ -24,12 +24,17 @@ import org.springframework.stereotype.Component;
 
 /**
  * Plano físico de chutes de Simulación: los chutes numerados de {@code primero}
- * a {@code ultimo} (1 a 33) existen siempre, aunque el Excel no los traiga. Los
- * {@code manuales} (19, 20 y 21) se ven con su franja de peligro y reciben rutas
- * solo a mano: el balanceo automático, el reparto al azar y las cargas no los
- * usan, y lo que se deja ahí a mano el balanceo no lo mueve. Los
- * {@code bloqueados} (ninguno por ahora) no se usan: no se muestran, el Excel no
- * puede traer rutas en ellos y nada se mueve ni se balancea hacia ellos.
+ * a {@code ultimo} (1 a 33) existen siempre, aunque el Excel no los traiga.
+ *
+ * <p>Los chutes <b>bloqueados</b> (la franja de peligro) los elige cada escenario en
+ * Configuración y se guardan por chute ({@code parametros_chutes.manual}): el balanceo
+ * automático, el rango y el reparto al azar no los usan y reciben rutas solo a mano. Aquí
+ * solo están los que nacen bloqueados ({@code manuales}: 19, 20 y 21), que valen para un
+ * chute sin fila guardada y para un escenario nuevo.
+ *
+ * <p>Los {@code bloqueados} de la propiedad (ninguno por ahora) son chutes <b>fuera de
+ * servicio</b>: no se muestran, el Excel no puede traer rutas en ellos y nada se mueve ni
+ * se balancea hacia ellos.
  *
  * <p>Se configura en {@code application.properties} ({@code simulacion.chutes.*})
  * sin tocar código. El número de un chute se lee de su nombre: «19», «CHUTE 19»,
@@ -54,7 +59,7 @@ public class PlanoChutes {
   private final int primero;
   private final int ultimo;
   private final Set<Integer> bloqueados;
-  /** Chutes de uso manual: se ven y reciben rutas a mano; nada automático los usa. */
+  /** Chutes que nacen bloqueados (solo a mano) si el escenario no eligió otros. */
   private final Set<Integer> manuales;
   private final ChuteRepository chuteRepo;
   private final SimulacionLotesRepository lotes;
@@ -83,12 +88,12 @@ public class PlanoChutes {
     this.lotes = lotes;
   }
 
-  /** Plano sin base de datos (pruebas): ids por número; el nombre es el número. Sin chutes manuales. */
+  /** Plano sin base de datos (pruebas): ids por número; el nombre es el número. Ninguno nace bloqueado. */
   static PlanoChutes fijo(int primero, int ultimo, Set<Integer> bloqueados, Map<Integer, Long> ids) {
     return fijo(primero, ultimo, bloqueados, Set.of(), ids);
   }
 
-  /** Plano sin base de datos (pruebas), con sus chutes de uso manual. */
+  /** Plano sin base de datos (pruebas), con los chutes que nacen bloqueados ({@code manuales}). */
   static PlanoChutes fijo(
       int primero, int ultimo, Set<Integer> bloqueados, Set<Integer> manuales, Map<Integer, Long> ids) {
     PlanoChutes plano =
@@ -173,19 +178,19 @@ public class PlanoChutes {
   }
 
   /**
-   * Chute de uso manual (19, 20 y 21): se ve y recibe rutas solo a mano; el balanceo automático,
-   * el reparto al azar y las cargas no lo usan, y lo que se deja ahí a mano no lo mueve el balanceo.
+   * El chute nace bloqueado para el balanceo automático (19, 20 y 21): vale mientras el escenario
+   * no tenga guardado otro valor para él.
    */
   public boolean manual(Integer numero) {
     return numero != null && manuales.contains(numero);
   }
 
-  /** El chute de ese nombre es de uso manual. */
+  /** El chute de ese nombre nace bloqueado para el balanceo automático. */
   public boolean manual(String nombre) {
     return manual(numero(nombre));
   }
 
-  /** Nada automático lo usa (balanceo, rango, buff, reparto al azar, cargas): bloqueado o manual. */
+  /** Por defecto nada automático lo usa: fuera de servicio o bloqueado. */
   public boolean fueraDelAutomatico(String nombre) {
     Integer numero = numero(nombre);
     return bloqueado(numero) || manual(numero);
@@ -193,7 +198,7 @@ public class PlanoChutes {
 
   /**
    * Motivo por el que un chute de una carga (Excel) no se puede usar, o null si sirve: fuera del
-   * plano, bloqueado o de uso manual (ahí las rutas entran solo a mano).
+   * plano, fuera de servicio o bloqueado por defecto (ahí las rutas entran solo a mano).
    */
   public String problema(String nombre) {
     Integer numero = numero(nombre);
@@ -201,10 +206,10 @@ public class PlanoChutes {
       return "no está entre el CHUTE " + primero + " y el CHUTE " + ultimo;
     }
     if (bloqueado(numero)) {
-      return "el CHUTE " + numero + " está bloqueado";
+      return "el CHUTE " + numero + " está fuera de servicio";
     }
     if (manual(numero)) {
-      return "el CHUTE " + numero + " es de uso manual: sus rutas se mueven ahí a mano";
+      return "el CHUTE " + numero + " está bloqueado: sus rutas se ponen ahí a mano";
     }
     return null;
   }
@@ -222,19 +227,19 @@ public class PlanoChutes {
     return catalogo.nombres().getOrDefault(numero, String.valueOf(numero));
   }
 
-  /** Ids de los chutes del plano que se ven (sin bloqueados; los manuales sí), en orden. */
+  /** Ids de los chutes del plano que se ven (sin los fuera de servicio), en orden. */
   public List<Long> idsVisibles() {
     return new ArrayList<>(idsVisiblesPorNumero().values());
   }
 
   /**
-   * Ids de los chutes que usa lo automático (sin bloqueados ni manuales), en orden: el reparto al
-   * azar de una ruta nueva y el número de los bloques de DATA (que así no cambia).
+   * Ids de los chutes visibles que nacen bloqueados (19, 20 y 21), en orden: los de un escenario
+   * nuevo y los de los predeterminados mientras no se fijen otros.
    */
-  public List<Long> idsAutomaticos() {
+  public List<Long> idsManualesPorDefecto() {
     List<Long> ids = new ArrayList<>();
     idsVisiblesPorNumero().forEach((numero, id) -> {
-      if (!manual(numero)) {
+      if (manual(numero)) {
         ids.add(id);
       }
     });
@@ -266,7 +271,7 @@ public class PlanoChutes {
               PlanoChutes::numero, Comparator.nullsLast(Comparator.<Integer>naturalOrder()))
           .thenComparing(SimulacionConfiguracionService::compararNatural);
 
-  /** Nombres de los chutes bloqueados («19», «20», «21»), para avisos. */
+  /** Nombres de los chutes fuera de servicio, para avisos. */
   public List<String> nombresBloqueados() {
     return bloqueados.stream().sorted().map(String::valueOf).toList();
   }

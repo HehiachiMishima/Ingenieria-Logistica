@@ -130,9 +130,12 @@ class SimulacionDataServiceTest {
   // ---------------- Crear ----------------
 
   @Test
-  void unaRutaNuevaNuncaNaceEnUnChuteDeUsoManual() {
-    // Chutes 1, 2 y 3; el 3 de uso manual: se ve, pero el reparto al azar no lo usa.
-    PlanoChutes manual = PlanoChutes.fijo(1, 3, Set.of(), Set.of(3), Map.of(1, 1L, 2, 2L, 3, 3L));
+  void unaRutaNuevaNuncaNaceEnUnChuteBloqueado() {
+    // Chutes 1, 2 y 3; el escenario bloqueó el 3 (su fila): se ve, pero el reparto al azar no lo usa.
+    PlanoChutes manual = PlanoChutes.fijo(1, 3, Set.of(), Set.of(), Map.of(1, 1L, 2, 2L, 3, 3L));
+    ParametroChute tres = chute(3L);
+    tres.setManual(true);
+    when(parametroChuteRepo.findByIdArchivoId(ARCHIVO)).thenReturn(List.of(chute(1L), chute(2L), tres));
     SimulacionConfiguracionService conf =
         new SimulacionConfiguracionService(
             archivoRepo, configRepo, clusterRepo, chuteRepo, parametroClusterRepo, parametroChuteRepo,
@@ -148,7 +151,7 @@ class SimulacionDataServiceTest {
 
     ArgumentCaptor<Long> chute = ArgumentCaptor.forClass(Long.class);
     verify(repo, times(30)).insertar(eq(ARCHIVO), any(), chute.capture(), any(), any(), any(), anyInt());
-    assertFalse(chute.getAllValues().contains(3L), "nunca el chute de uso manual: " + chute.getAllValues());
+    assertFalse(chute.getAllValues().contains(3L), "nunca el chute bloqueado: " + chute.getAllValues());
   }
 
   @Test

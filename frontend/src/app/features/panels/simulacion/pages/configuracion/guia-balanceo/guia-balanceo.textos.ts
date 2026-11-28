@@ -82,7 +82,7 @@ export const DETALLES: readonly GrupoDetalle[] = [
         icono: 'lock',
         termino: 'Chutes del 1 al 33',
         texto:
-          'Siempre se ven del CHUTE 1 al 33, aunque el Excel no los traiga. El 19, 20 y 21 son de uso manual: se ven con una cinta amarilla y negra y solo reciben rutas que arrastras a mano. El balanceo y el reparto al azar no los usan, el Excel no puede traer rutas en ellos, un rango que los cruza (p. ej. 18 → 22) reparte solo en los demás y lo que dejas ahí queda fijo al balancear.',
+          'Siempre se ven del CHUTE 1 al 33, aunque el Excel no los traiga. Los «Chutes bloqueados» (junto a «Chutes con buff»; el 19, 20 y 21 al empezar) se ven con una cinta amarilla y negra y solo reciben rutas que arrastras a mano. El balanceo y el reparto al azar no los usan, un rango que los cruza (p. ej. 18 → 22) reparte solo en los demás y lo que dejas ahí queda fijo al balancear. Se cambian en cualquier momento: vale para los balanceos siguientes.',
       },
       {
         icono: 'reloj',

@@ -352,7 +352,7 @@ public class SimulacionDataService {
     if (!deClusters.isEmpty()) {
       repo.borrarHistorialDeRutas(archivoId, deClusters);
     }
-    return cantidad(cambian.size()) + " → DATA · bloque " + bloque(chute) + ".";
+    return cantidad(cambian.size()) + " → DATA · bloque " + bloque(ctx, chute) + ".";
   }
 
   private String aCluster(Contexto ctx, List<RutaData> rutas, long destino, Long chute) {
@@ -835,23 +835,29 @@ public class SimulacionDataService {
   private void exigirNoBloqueadoSiCambia(Contexto ctx, List<RutaData> rutas, long chute) {
     if (rutas.stream().anyMatch((r) -> r.chuteId() != chute) && configuracion.bloqueado(ctx, chute)) {
       throw new ConflictoException(
-          "El " + SimulacionConfiguracionService.etiquetaChute(ctx, chute) + " está bloqueado: no se pueden mover rutas ahí.");
+          "El " + SimulacionConfiguracionService.etiquetaChute(ctx, chute) + " está fuera de servicio: no se pueden mover rutas ahí.");
     }
   }
 
   /**
-   * Número del bloque de DATA: la posición del chute entre los automáticos del plano (como en la
-   * pantalla). Los de uso manual no se numeran, así los bloques conservan su número.
+   * Número del bloque de DATA: la posición del chute entre los que usa lo automático (como en la
+   * pantalla). Los bloqueados (la franja) no se numeran.
    */
-  private String bloque(long chute) {
-    int indice = plano.idsAutomaticos().indexOf(chute);
+  private String bloque(Contexto ctx, long chute) {
+    int indice = chutesAutomaticos(ctx).indexOf(chute);
     return indice < 0 ? "—" : String.valueOf(indice + 1);
   }
 
-  /** Un chute del plano que usa lo automático (sin bloqueados ni manuales), al azar: su columna en DATA. */
+  /** Chutes del plano que usa lo automático en este escenario (sin fuera de servicio ni bloqueados), en orden. */
+  private List<Long> chutesAutomaticos(Contexto ctx) {
+    return plano.idsVisibles().stream()
+        .filter((chute) -> ctx.parametrosChute().containsKey(chute) && !configuracion.fueraDelAutomatico(ctx, chute))
+        .toList();
+  }
+
+  /** Un chute del plano que usa lo automático (sin fuera de servicio ni bloqueados), al azar: su columna en DATA. */
   private long chuteAlAzar(Contexto ctx) {
-    List<Long> chutes =
-        plano.idsAutomaticos().stream().filter(ctx.parametrosChute()::containsKey).toList();
+    List<Long> chutes = chutesAutomaticos(ctx);
     if (chutes.isEmpty()) {
       throw new ConflictoException("El escenario no tiene chutes visibles: revisa el plano.");
     }

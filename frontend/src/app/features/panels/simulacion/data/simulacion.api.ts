@@ -205,11 +205,19 @@ export class SimulacionApi {
     return this.api.get<PredeterminadosSimulacion>('/simulacion/predeterminados');
   }
 
-  /** Fija velocidad y buff para todos los registros (también los sin balancear) y los bloquea. */
-  bloquearPredeterminados(velocidad: number, chutesBuff: readonly number[]): Observable<PredeterminadosSimulacion> {
+  /**
+   * Fija velocidad, buff y chutes bloqueados para todos los registros (velocidad y buff también en
+   * los sin balancear; los bloqueados, en todos) y pone el candado.
+   */
+  bloquearPredeterminados(
+    velocidad: number,
+    chutesBuff: readonly number[],
+    chutesBloqueados: readonly number[],
+  ): Observable<PredeterminadosSimulacion> {
     return this.api.put<PredeterminadosSimulacion>('/simulacion/predeterminados/bloquear', {
       velocidad,
       chutesBuff,
+      chutesBloqueados,
     });
   }
 

@@ -1006,7 +1006,8 @@ export class SimulacionConfiguracion {
       guardado.porChute !== this.porChute() ||
       cfg.clusters.some((cluster) => Number(cluster.limiteHoras) !== (limites[cluster.id] ?? 0)) ||
       elegidos.length !== buff.size ||
-      elegidos.some((id) => !buff.has(id))
+      elegidos.some((id) => !buff.has(id)) ||
+      this.bloqueadosCambiados().size > 0
     );
   });
 
@@ -1118,7 +1119,8 @@ export class SimulacionConfiguracion {
     const id = this.seleccionado();
     const velocidad = this.velocidad();
     const buff = [...this.buffElegidos()];
-    const bloquear = () => this.api.bloquearPredeterminados(velocidad, buff);
+    const bloqueados = [...this.bloqueadosElegidos()];
+    const bloquear = () => this.api.bloquearPredeterminados(velocidad, buff, bloqueados);
     this.fijando.set(true);
     // Lo editado del registro (p. ej. un límite) se guarda antes: la recarga no lo pisa.
     (id === null ? bloquear() : this.conCambiosGuardados(id, bloquear))
@@ -1131,7 +1133,7 @@ export class SimulacionConfiguracion {
           this.predeterminados.set(p);
           this.notificaciones.exito(
             'Velocidad y buff bloqueados',
-            `${formatearNumero(velocidad, Number.isInteger(velocidad) ? 0 : 2)} bultos/h y ${buff.length} chute(s) con buff para todos los registros. Los ya balanceados conservan los suyos.`,
+            `${formatearNumero(velocidad, Number.isInteger(velocidad) ? 0 : 2)} bultos/h, ${buff.length} chute(s) con buff y ${bloqueados.length} chute(s) bloqueado(s) para todos los registros. Velocidad y buff: los ya balanceados conservan los suyos.`,
           );
           // Si este registro estaba sin balancear, el servidor ya le aplicó los valores.
           if (id !== null && this.seleccionado() === id) {
@@ -1172,6 +1174,130 @@ export class SimulacionConfiguracion {
 
   setBuff(ids: (number | string)[]): void {
     this.buffElegidos.set(ids.map(Number));
+  }
+
+  /** Opciones del buff: los chutes que usa lo automático según lo elegido ahora (sin los bloqueados elegidos). */
+  readonly opcionesBuff = computed(() => {
+    const bloqueados = new Set(this.bloqueadosElegidos());
+    return [...(this.config()?.chutes ?? [])]
+      .filter((chute) => !chute.bloqueado && !bloqueados.has(chute.id))
+      .sort((a, b) => compararChute(a.nombre, b.nombre))
+      .map((chute) => ({ id: chute.id, etiqueta: chute.nombre }));
+  });
+
+  // ---------------- Chutes bloqueados (la franja: solo a mano) ----------------
+
+  /**
+   * Chutes bloqueados elegidos (aún sin guardar): el balanceo automático, el rango y el reparto al
+   * azar no los usan; reciben rutas solo a mano. Se cambian en cualquier momento.
+   */
+  readonly bloqueadosElegidos = signal<number[]>([]);
+
+  /** Chutes bloqueados guardados. */
+  private readonly bloqueadosGuardado = computed(() =>
+    (this.configs().LXV?.chutes ?? []).filter((chute) => chute.manual).map((chute) => chute.id),
+  );
+
+  /** Chutes cuyo bloqueo cambia al guardar, con su valor nuevo. */
+  private readonly bloqueadosCambiados = computed(() => {
+    const elegidos = new Set(this.bloqueadosElegidos());
+    const guardados = new Set(this.bloqueadosGuardado());
+    const cambian = new Map<number, boolean>();
+    elegidos.forEach((id) => !guardados.has(id) && cambian.set(id, true));
+    guardados.forEach((id) => !elegidos.has(id) && cambian.set(id, false));
+    return cambian;
+  });
+
+  setBloqueados(ids: (number | string)[]): void {
+    this.bloqueadosElegidos.set(ids.map(Number));
+  }
+
+  /** Rutas de los clusters en cada chute (las de DATA no se balancean) y en qué clusters están. */
+  private readonly rutasPorChute = computed(() => {
+    const porChute = new Map<number, { rutas: number; clusters: Set<string> }>();
+    for (const ruta of this.rutasMatriz()) {
+      if (ruta.clusterId === DATA_ID) {
+        continue;
+      }
+      const item = porChute.get(ruta.chuteId) ?? { rutas: 0, clusters: new Set<string>() };
+      item.rutas++;
+      item.clusters.add(ruta.cluster);
+      porChute.set(ruta.chuteId, item);
+    }
+    return porChute;
+  });
+
+  /** Opciones de «Chutes bloqueados»: los que se ven menos los que tienen buff elegido, con sus rutas. */
+  readonly opcionesBloqueados = computed(() => {
+    const buff = new Set(this.buffElegidos());
+    const rutas = this.rutasPorChute();
+    return [...(this.config()?.chutes ?? [])]
+      .filter((chute) => !chute.bloqueado && !buff.has(chute.id))
+      .sort((a, b) => compararChute(a.nombre, b.nombre))
+      .map((chute) => {
+        const n = rutas.get(chute.id)?.rutas ?? 0;
+        return { id: chute.id, etiqueta: n > 0 ? `${chute.nombre} · ${n} ${n === 1 ? 'ruta' : 'rutas'}` : chute.nombre };
+      });
+  });
+
+  /** Placas bajo el campo: los chutes bloqueados elegidos, en orden; «nuevo» = aún sin guardar. */
+  readonly placasBloqueados = computed(() => {
+    const guardados = new Set(this.bloqueadosGuardado());
+    const porId = new Map((this.config()?.chutes ?? []).map((chute) => [chute.id, chute]));
+    return this.bloqueadosElegidos()
+      .map((id) => porId.get(id))
+      .filter((chute) => chute !== undefined)
+      .sort((a, b) => compararChute(a.nombre, b.nombre))
+      .map((chute) => ({
+        id: chute.id,
+        numero: chute.nombre.replace(/^\s*chute\s*/i, ''),
+        etiqueta: etiquetaChute(chute.nombre),
+        nuevo: !guardados.has(chute.id),
+      }));
+  });
+
+  /**
+   * Antes de guardar: los chutes que se bloquean y ya tienen rutas (quedan fijas ahí) y los rangos
+   * guardados que empiezan o terminan en uno (el próximo balanceo de ese cluster elige otro).
+   */
+  readonly bloqueoPendiente = signal<{
+    conRutas: { etiqueta: string; rutas: number; clusters: string }[];
+    rangos: string[];
+  } | null>(null);
+
+  private avisoBloqueo(): { conRutas: { etiqueta: string; rutas: number; clusters: string }[]; rangos: string[] } | null {
+    const nuevos = [...this.bloqueadosCambiados()].filter(([, bloquea]) => bloquea).map(([id]) => id);
+    if (nuevos.length === 0) {
+      return null;
+    }
+    const cfg = this.configs().DIA ?? this.config();
+    const porId = new Map((this.config()?.chutes ?? []).map((chute) => [chute.id, chute]));
+    const nombre = (id: number | null) => (id === null ? '—' : etiquetaChute(porId.get(id)?.nombre ?? String(id)));
+    const rutas = this.rutasPorChute();
+    const conRutas = nuevos
+      .filter((id) => (rutas.get(id)?.rutas ?? 0) > 0)
+      .sort((a, b) => compararChute(porId.get(a)?.nombre ?? '', porId.get(b)?.nombre ?? ''))
+      .map((id) => ({
+        etiqueta: nombre(id),
+        rutas: rutas.get(id)!.rutas,
+        clusters: [...rutas.get(id)!.clusters].sort(compararNombre).join(', '),
+      }));
+    const nuevosSet = new Set(nuevos);
+    const rangos = (cfg?.clusters ?? [])
+      .filter(
+        (cluster) =>
+          (cluster.chuteDesdeId !== null && nuevosSet.has(cluster.chuteDesdeId)) ||
+          (cluster.chuteHastaId !== null && nuevosSet.has(cluster.chuteHastaId)),
+      )
+      .sort((a, b) => compararNombre(a.nombre, b.nombre))
+      .map((cluster) => `${cluster.nombre} (${nombre(cluster.chuteDesdeId)} → ${nombre(cluster.chuteHastaId)})`);
+    return conRutas.length > 0 || rangos.length > 0 ? { conRutas, rangos } : null;
+  }
+
+  /** Confirma el aviso de los chutes bloqueados y guarda. */
+  confirmarBloqueo(): void {
+    this.bloqueoPendiente.set(null);
+    this.guardarAhora();
   }
 
   // ---------------- Modal de operarios ----------------
@@ -2211,8 +2337,8 @@ export class SimulacionConfiguracion {
   }
 
   /**
-   * Chutes que usa lo automático (rango del balanceo y buff): sin los bloqueados ni los de uso
-   * manual (19, 20, 21), igual que en el servidor.
+   * Chutes que usa lo automático (rango del balanceo): sin los fuera de servicio ni los bloqueados
+   * guardados (la franja), igual que en el servidor.
    */
   readonly opcionesChute = computed(() =>
     [...(this.config()?.chutes ?? [])]
@@ -2221,7 +2347,7 @@ export class SimulacionConfiguracion {
       .map((chute) => ({ id: chute.id, etiqueta: chute.nombre })),
   );
 
-  /** Chutes para filtrar las columnas: sin los bloqueados; los de uso manual sí. */
+  /** Chutes para filtrar las columnas: sin los fuera de servicio; los bloqueados (la franja) sí. */
   readonly opcionesFiltroChute = computed(() =>
     [...(this.config()?.chutes ?? [])]
       .filter((chute) => !chute.bloqueado)
@@ -2229,7 +2355,7 @@ export class SimulacionConfiguracion {
       .map((chute) => ({ id: chute.id, etiqueta: chute.nombre })),
   );
 
-  /** Chutes de uso manual (19, 20, 21): su cinta de peligro y la marca «a mano» en sus rutas. */
+  /** Chutes bloqueados guardados: su cinta de peligro y la marca «a mano» en sus rutas. */
   readonly chutesManuales = computed(
     () => new Set((this.config()?.chutes ?? []).filter((chute) => chute.manual).map((chute) => chute.id)),
   );
@@ -2568,6 +2694,7 @@ export class SimulacionConfiguracion {
     this.velocidad.set(equipo.velocidad);
     this.porChute.set(equipo.porChute);
     this.buffElegidos.set(config.chutes.filter((chute) => chute.buff).map((chute) => chute.id));
+    this.bloqueadosElegidos.set(config.chutes.filter((chute) => chute.manual).map((chute) => chute.id));
     this.limites.set(
       Object.fromEntries(config.clusters.map((cluster) => [cluster.id, Number(cluster.limiteHoras)])),
     );
@@ -2739,11 +2866,11 @@ export class SimulacionConfiguracion {
       return this.motivoData(ruta, clusterId, chuteId);
     }
     const destino = cfg.clusters.find((cluster) => cluster.id === clusterId);
-    // Chute bloqueado (solo visible si un registro antiguo aún tiene rutas ahí):
-    // sus rutas pueden salir, pero ninguna puede entrar.
+    // Chute fuera de servicio (solo visible si un registro antiguo aún tiene rutas ahí):
+    // sus rutas pueden salir, pero ninguna puede entrar. Uno bloqueado (la franja) sí recibe a mano.
     const chuteDestino = cfg.chutes.find((chute) => chute.id === chuteId);
     if (chuteDestino?.bloqueado && chuteId !== ruta.chuteId) {
-      return `${etiquetaChute(chuteDestino.nombre)} está bloqueado: no se pueden mover rutas ahí.`;
+      return `${etiquetaChute(chuteDestino.nombre)} está fuera de servicio: no se pueden mover rutas ahí.`;
     }
     if (this.clusterCerrado(ruta.clusterId)) {
       return `${ruta.cluster} está cerrado: reábrelo para mover sus rutas.`;
@@ -2782,7 +2909,7 @@ export class SimulacionConfiguracion {
     const cfg = this.config();
     const chute = cfg?.chutes.find((c) => c.id === chuteId);
     if (clusterId !== DATA_ID && chute?.bloqueado && chuteId !== ruta.chuteId) {
-      return `${etiquetaChute(chute.nombre)} está bloqueado: no se pueden mover rutas ahí.`;
+      return `${etiquetaChute(chute.nombre)} está fuera de servicio: no se pueden mover rutas ahí.`;
     }
     if (clusterId === DATA_ID) {
       if (ruta.clusterId === DATA_ID) {
@@ -3444,6 +3571,7 @@ export class SimulacionConfiguracion {
     const buff = new Set(this.buffElegidos());
     const buffGuardado = new Set(this.buffGuardado());
     const cambiaBuff = buff.size !== buffGuardado.size || [...buff].some((id) => !buffGuardado.has(id));
+    const bloqueos = this.bloqueadosCambiados();
     const guardado = equipoNormalizado(config);
     return {
       velocidadBase: this.velocidad(),
@@ -3454,11 +3582,17 @@ export class SimulacionConfiguracion {
           clusterId: cluster.id,
           limiteHoras: this.limites()[cluster.id] ?? 0,
         })),
-      ...(cambiaBuff
+      // Solo los chutes que cambian: su buff y/o su bloqueo (lo que no viene no cambia).
+      ...(cambiaBuff || bloqueos.size > 0
         ? {
             chutes: config.chutes
-              .filter((chute) => buff.has(chute.id) !== buffGuardado.has(chute.id))
-              .map((chute) => ({ chuteId: chute.id, operarios: chute.operarios, buff: buff.has(chute.id) })),
+              .filter((chute) => buff.has(chute.id) !== buffGuardado.has(chute.id) || bloqueos.has(chute.id))
+              .map((chute) => ({
+                chuteId: chute.id,
+                operarios: chute.operarios,
+                ...(buff.has(chute.id) !== buffGuardado.has(chute.id) ? { buff: buff.has(chute.id) } : {}),
+                ...(bloqueos.has(chute.id) ? { manual: bloqueos.get(chute.id) } : {}),
+              })),
           }
         : {}),
       // Lo cargado al editar: el servidor aplica solo lo cambiado y avisa si otra persona cambió lo mismo.
@@ -3493,8 +3627,25 @@ export class SimulacionConfiguracion {
     );
   }
 
-  /** Guarda la velocidad, el máximo por chute, el buff y los límites en edición. */
+  /**
+   * Guarda la velocidad, el máximo por chute, el buff, los chutes bloqueados y los límites en
+   * edición. Si se bloquea un chute que ya tiene rutas (o donde empieza o termina un rango), antes
+   * lo confirma.
+   */
   guardar(): void {
+    const id = this.seleccionado();
+    if (!id || this.ocupado()) {
+      return;
+    }
+    const aviso = this.avisoBloqueo();
+    if (aviso) {
+      this.bloqueoPendiente.set(aviso);
+      return;
+    }
+    this.guardarAhora();
+  }
+
+  private guardarAhora(): void {
     const id = this.seleccionado();
     if (!id || this.ocupado()) {
       return;

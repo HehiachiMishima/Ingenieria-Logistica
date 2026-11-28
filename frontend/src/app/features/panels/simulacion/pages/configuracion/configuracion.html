@@ -42,7 +42,7 @@
     </div>
     <div class="config-panel__campo">
       <label class="ui-label" for="config-buff">Chutes con buff</label>
-      <ui-select-multiple campoId="config-buff" [opciones]="opcionesChute()" [valores]="buffElegidos()"
+      <ui-select-multiple campoId="config-buff" [opciones]="opcionesBuff()" [valores]="buffElegidos()"
         placeholder="Ninguno" [deshabilitado]="!config() || !puedeModificar() || buffBloqueado() || fijados() || ocupado()"
         (valoresCambia)="setBuff($event)" />
       @if (fijados()) {
@@ -53,6 +53,29 @@
       <span class="config-panel__ayuda">
         <ui-icon name="lock" [size]="12" /> Se define antes de balancear
       </span>
+      }
+    </div>
+    <!-- Chutes bloqueados (la franja de peligro): el balanceo automático no los usa; reciben rutas
+         solo a mano. Se cambian en cualquier momento (valen para los balanceos siguientes). -->
+    <div class="config-panel__campo">
+      <label class="ui-label" for="config-bloqueados">Chutes bloqueados</label>
+      <ui-select-multiple campoId="config-bloqueados" [opciones]="opcionesBloqueados()" [valores]="bloqueadosElegidos()"
+        placeholder="Ninguno" [deshabilitado]="!config() || !puedeModificar() || fijados() || ocupado()"
+        (valoresCambia)="setBloqueados($event)" />
+      @if (fijados()) {
+      <span class="config-panel__ayuda">
+        <ui-icon name="lock" [size]="12" /> Predeterminados para todos los registros
+      </span>
+      }
+      @if (placasBloqueados().length > 0) {
+      <ul class="config-panel__placas" aria-label="Chutes bloqueados: solo a mano">
+        @for (placa of placasBloqueados(); track placa.id) {
+        <li class="config-panel__placa" [class.config-panel__placa--nueva]="placa.nuevo"
+          [attr.title]="placa.etiqueta + (placa.nuevo ? ' · se bloquea al guardar' : ' · el balanceo automático no lo usa')">
+          <ui-icon name="alertTriangle" [size]="11" />{{ placa.numero }}
+        </li>
+        }
+      </ul>
       }
     </div>
     <!-- Candado: la velocidad y el buff que se ven quedan para todos los registros. -->
@@ -243,14 +266,14 @@
         @for (chute of chutes; track chute.id) {
         @let numero = numeroBloque().get(chute.id);
         @if (chute.manual) {
-        <!-- Chute de uso manual: su cinta de peligro también en DATA (no lleva número de bloque). -->
+        <!-- Chute bloqueado: su cinta de peligro también en DATA (no lleva número de bloque). -->
         <th scope="col" class="mz-manual" [class.mz-der]="$last"
-          [attr.title]="chute.etiqueta + ' · uso manual: en DATA también recibe rutas'">
+          [attr.title]="chute.etiqueta + ' · bloqueado (solo a mano): en DATA también recibe rutas'">
           <span class="mz-manual__placa"><ui-icon name="alertTriangle" [size]="12" />{{ chute.etiqueta }}</span>
         </th>
         } @else {
         <th scope="col" [class.mz-der]="$last"
-          [attr.title]="numero ? null : 'Columna de un chute bloqueado: en DATA también recibe rutas'">BLOQUE {{ numero ?? '—' }}</th>
+          [attr.title]="numero ? null : 'Columna de un chute fuera de servicio: en DATA también recibe rutas'">BLOQUE {{ numero ?? '—' }}</th>
         }
         }
       </tr>
@@ -261,11 +284,11 @@
     <thead>
       <tr>
         @for (chute of chutes; track chute.id) {
-        <!-- Un bloqueado solo aparece si un registro antiguo aún tiene rutas ahí: candado y sin recibir rutas.
-             Uno de uso manual (19, 20, 21): la cinta de peligro; recibe rutas solo a mano y ahí quedan fijas. -->
+        <!-- Un fuera de servicio solo aparece si un registro antiguo aún tiene rutas ahí: candado y sin recibir rutas.
+             Uno bloqueado («Chutes bloqueados»): la cinta de peligro; recibe rutas solo a mano y ahí quedan fijas. -->
         <th scope="col" [class.mz-der]="$last" [class.mz-bloqueado]="chute.bloqueado" [class.mz-manual]="chute.manual"
-          [attr.title]="chute.bloqueado ? chute.etiqueta + ' está bloqueado: sus rutas pueden salir, ninguna puede entrar'
-            : chute.manual ? chute.etiqueta + ' · uso manual: el balanceo automático no lo usa. Arrastra rutas aquí a mano: quedan fijas al balancear'
+          [attr.title]="chute.bloqueado ? chute.etiqueta + ' está fuera de servicio: sus rutas pueden salir, ninguna puede entrar'
+            : chute.manual ? chute.etiqueta + ' · bloqueado: el balanceo automático no lo usa. Arrastra rutas aquí a mano: quedan fijas al balancear'
             : null">
           @if (chute.bloqueado) {
           <ui-icon name="lock" [size]="12" />
@@ -300,7 +323,7 @@
     [class.matriz-ruta--elegida]="elegida"
     [title]="movible ? celda.titulo + '\nCtrl/⌘+clic: elegir varias · Mayús+clic: un tramo' : celda.titulo"
     role="button" tabindex="0" aria-haspopup="dialog"
-    [attr.aria-label]="(elegida ? 'Seleccionada. ' : '') + 'Detalle de la ruta ' + ruta.codigoRuta + ' ' + (ruta.tipo ?? 'sin tipo') + ', ' + celda.bultos + ' bultos' + (celda.grupo !== null ? ', grupo ' + celda.grupo : '') + ', ' + celda.frecuencia.titulo + (enManual ? ', puesta a mano en un chute de uso manual' : '')"
+    [attr.aria-label]="(elegida ? 'Seleccionada. ' : '') + 'Detalle de la ruta ' + ruta.codigoRuta + ' ' + (ruta.tipo ?? 'sin tipo') + ', ' + celda.bultos + ' bultos' + (celda.grupo !== null ? ', grupo ' + celda.grupo : '') + ', ' + celda.frecuencia.titulo + (enManual ? ', en un chute bloqueado: el balanceo no la mueve' : '')"
     [class.matriz-ruta--grupo]="celda.grupoColor !== null" [style.--grupo-color]="celda.grupoColor"
     (mousedown)="presionarRuta($event)" (contextmenu)="menuRuta($event, ruta.id)"
     (click)="clicRuta($event, ruta.id)" (keydown.enter)="clicRuta($event, ruta.id)"
@@ -331,10 +354,11 @@
         }
       </span>
       @if (enManual) {
-      <!-- En un chute de uso manual: llegó a mano y el balanceo no la mueve. Ocupa el lado
+      <!-- En un chute bloqueado: el balanceo automático no la mueve (llegó a mano o ya estaba ahí al
+           bloquearlo). Ocupa el lado
            derecho, simétrico a la pestaña del grupo, para que el número siga centrado. -->
       <span class="matriz-ruta__mano" aria-hidden="true"
-        title="Puesta a mano en un chute de uso manual: el balanceo no la mueve"><ui-icon name="mano" [size]="13" /></span>
+        title="En un chute bloqueado: el balanceo automático no la mueve; solo tú la mueves a mano"><ui-icon name="mano" [size]="13" /></span>
       }
     </span>
   </div>
@@ -962,6 +986,36 @@
     <button type="button" class="ui-btn ui-btn--ghost" (click)="accionBalanceoGuardado.set(null)">Cancelar</button>
     <button type="button" class="ui-btn ui-btn--primary" [disabled]="ocupado()" (click)="aplicarBalanceoGuardado()">
       {{ accionBalanceoGuardado() === 'guardar' ? 'Guardar' : 'Cargar' }}
+    </button>
+  </div>
+</ui-modal>
+
+<ui-modal [abierto]="bloqueoPendiente() !== null" ancho="sm" [compacto]="true" titulo="Guardar chutes bloqueados"
+  (cerrar)="bloqueoPendiente.set(null)">
+  @if (bloqueoPendiente(); as b) {
+  <div class="confirm">
+    <span class="confirm__icon confirm__icon--peligro"><ui-icon name="alertTriangle" [size]="22" /></span>
+    <div class="confirm__text">
+      <p class="confirm__title">El balanceo automático deja de usar estos chutes</p>
+      <p class="confirm__desc">Lo que ya tienen se queda ahí: no se mueve solo.</p>
+      <ul class="confirm__lista">
+        @for (c of b.conRutas; track c.etiqueta) {
+        <li><b>{{ c.etiqueta }}</b>: {{ c.rutas | entero }} {{ c.rutas === 1 ? 'ruta queda fija' : 'rutas quedan fijas' }} ({{ c.clusters }}). Puedes sacarlas a mano.</li>
+        }
+        @for (r of b.rangos; track r) {
+        <li>El rango de <b>{{ r }}</b> toca un chute bloqueado: al volver a balancearlo eliges otro.</li>
+        }
+      </ul>
+    </div>
+  </div>
+  }
+  <div modal-footer class="modal-foot">
+    <button type="button" class="ui-btn ui-btn--ghost" (click)="bloqueoPendiente.set(null)">Cancelar</button>
+    <button type="button" class="ui-btn ui-btn--primary" (click)="confirmarBloqueo()" [disabled]="ocupado()">
+      @if (guardando()) {
+      <span class="ui-spinner config-spinner"></span>
+      }
+      Guardar
     </button>
   </div>
 </ui-modal>

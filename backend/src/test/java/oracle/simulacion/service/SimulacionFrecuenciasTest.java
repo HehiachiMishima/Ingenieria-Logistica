@@ -24,6 +24,8 @@ import java.util.function.Supplier;
 import oracle.common.config.CacheRespuestas;
 import oracle.common.config.Transacciones;
 import oracle.common.exception.ConflictoException;
+import oracle.simulacion.response.ChuteParametroResponse;
+import oracle.common.exception.SolicitudInvalidaException;
 import oracle.common.exception.RecursoNoEncontradoException;
 import oracle.simulacion.model.ArchivoExcel;
 import oracle.simulacion.model.Balanceo;
@@ -1033,6 +1035,111 @@ class SimulacionFrecuenciasTest {
 
     assertTrue(cfg.chutes().get(0).buff());
     verify(parametroChuteRepo).save(any(ParametroChute.class));
+  }
+
+  // ---------------- Chutes bloqueados (la franja: solo a mano) ----------------
+
+  /** Guarda solo los chutes enviados, con la velocidad de siempre. */
+  private ConfiguracionSimulacionResponse guardarChutes(ChuteOperariosRequest... chutes) {
+    return servicio
+        .guardar(
+            10L,
+            Balanceo.LXV,
+            ConfiguracionActualizarRequest.sinAnterior(new BigDecimal("100"), null, null, null, List.of(chutes)))
+        .datos();
+  }
+
+  @Test
+  void unChuteSeBloqueaAunqueYaSeHayaEmpezadoABalancear() {
+    preparar(
+        List.of(
+            parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_RUTAS),
+            parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE)),
+        List.of(base(1L, false), base(2L, false)),
+        List.of());
+
+    ConfiguracionSimulacionResponse cfg = guardarChutes(new ChuteOperariosRequest(2L, 0, null, true));
+
+    assertTrue(cfg.chutes().stream().filter((c) -> c.id().equals(2L)).findFirst().orElseThrow().manual());
+    assertFalse(cfg.chutes().stream().filter((c) -> c.id().equals(1L)).findFirst().orElseThrow().manual());
+    verify(parametroChuteRepo).save(any(ParametroChute.class));
+  }
+
+  @Test
+  void unChuteConBuffSeBloqueaSoloSiSeLeQuitaElBuff() {
+    preparar(
+        List.of(
+            parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE)),
+        List.of(base(1L, true), base(2L, false)),
+        List.of());
+
+    SolicitudInvalidaException conBuff =
+        assertThrows(SolicitudInvalidaException.class, () -> guardarChutes(new ChuteOperariosRequest(1L, 0, null, true)));
+    ConfiguracionSimulacionResponse cfg = guardarChutes(new ChuteOperariosRequest(1L, 0, false, true));
+
+    assertTrue(conBuff.getMessage().contains("tiene buff"), conBuff.getMessage());
+    ChuteParametroResponse uno = cfg.chutes().stream().filter((c) -> c.id().equals(1L)).findFirst().orElseThrow();
+    assertTrue(uno.manual());
+    assertFalse(uno.buff());
+  }
+
+  @Test
+  void unChuteBloqueadoNoRecibeBuff() {
+    ParametroChute bloqueado = base(1L, false);
+    bloqueado.setManual(true);
+    preparar(
+        List.of(
+            parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE)),
+        List.of(bloqueado, base(2L, false)),
+        List.of());
+
+    SolicitudInvalidaException error =
+        assertThrows(SolicitudInvalidaException.class, () -> guardarChutes(new ChuteOperariosRequest(1L, 0, true)));
+
+    assertTrue(error.getMessage().contains("CHUTE 1 está bloqueado (solo a mano)"), error.getMessage());
+    assertFalse(bloqueado.isBuff());
+  }
+
+  @Test
+  void siempreQuedaUnChuteParaElBalanceoAutomatico() {
+    ParametroChute dos = base(2L, false);
+    dos.setManual(true);
+    preparar(
+        List.of(
+            parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE)),
+        List.of(base(1L, false), dos),
+        List.of());
+
+    SolicitudInvalidaException error =
+        assertThrows(SolicitudInvalidaException.class, () -> guardarChutes(new ChuteOperariosRequest(1L, 0, null, true)));
+
+    assertTrue(error.getMessage().contains("al menos un chute sin bloquear"), error.getMessage());
+  }
+
+  @Test
+  void conElCandadoNoSeCambianLosChutesBloqueados() {
+    preparar(
+        List.of(
+            parametro(Balanceo.DIA, CL1, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.LXV, CL1, ParametroCluster.ESTADO_PENDIENTE),
+            parametro(Balanceo.MJS, CL1, ParametroCluster.ESTADO_PENDIENTE)),
+        List.of(base(1L, false), base(2L, false)),
+        List.of());
+    when(lotes.leerPredeterminados())
+        .thenReturn(new Predeterminados(new BigDecimal("100"), List.of(), true));
+
+    ConflictoException error =
+        assertThrows(ConflictoException.class, () -> guardarChutes(new ChuteOperariosRequest(2L, 0, null, true)));
+
+    assertTrue(error.getMessage().contains("candado"), error.getMessage());
+    verify(parametroChuteRepo, never()).save(any(ParametroChute.class));
   }
 
   // ---------------- Guardar sin pisar a otra persona ----------------

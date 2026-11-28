@@ -192,6 +192,6 @@
   {
     "name": "simulacion.chutes.manuales",
     "type": "java.lang.String",
-    "description": "Chutes de uso manual (19,20,21): se ven con franja de peligro y reciben rutas solo a mano."
+    "description": "Chutes que nacen bloqueados para el balanceo automático (19,20,21): cada escenario elige después los suyos en Configuración."
   }
 ]}

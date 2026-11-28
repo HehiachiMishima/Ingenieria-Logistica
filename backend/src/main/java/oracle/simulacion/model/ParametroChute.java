@@ -39,4 +39,13 @@ public class ParametroChute {
    */
   @Column(name = "buff", nullable = false)
   private boolean buff;
+
+  /**
+   * Chute bloqueado (la franja de peligro): el balanceo automático, el rango y el reparto al azar
+   * de DATA no lo usan; recibe rutas solo a mano y lo que se deja ahí el balanceo no lo mueve. Se
+   * elige en Configuración («Chutes bloqueados») y se puede cambiar en cualquier momento: vale
+   * para los balanceos siguientes.
+   */
+  @Column(name = "manual", nullable = false)
+  private boolean manual;
 }

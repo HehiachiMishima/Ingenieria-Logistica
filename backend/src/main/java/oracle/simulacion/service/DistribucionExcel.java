@@ -41,7 +41,8 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 /**
  * Hoja «Distribución» con estilo ejecutivo: encabezado de Farmacias Peruanas, banda de la marca
  * ATLAS (línea roja, isotipo y wordmark como en el login, línea dorada), indicadores, leyenda y un
- * bloque por cluster con todos los chutes en columnas (buff en rojo, bloqueados angostos en gris).
+ * bloque por cluster con todos los chutes en columnas (buff en rojo, bloqueados en ámbar, fuera de
+ * servicio angostos en gris).
  * Cada ruta es una ficha como la de la pantalla, una por celda, enmarcada y en dos líneas: arriba
  * tipo, días y bultos; abajo grupo y número de ruta. Entre ruta y ruta, una fila angosta de
  * respiro. Debajo, los bultos de cada día con una escala de color. Lista para imprimir: A3
@@ -79,7 +80,7 @@ final class DistribucionExcel {
   static final float ALTO_FICHA = 30;
   static final float ALTO_RESPIRO = 4;
   private static final String BLOQ = "E2E8F0";
-  /** Ámbar de la cinta de peligro: cabecera de un chute de uso manual (19, 20, 21). */
+  /** Ámbar de la cinta de peligro: cabecera de un chute bloqueado (solo a mano). */
   private static final String MANUAL = "FACC15";
   private static final String NAVY_SUAVE = "E8EDF4";
   private static final String GUION = "CBD5E1";
@@ -378,8 +379,8 @@ final class DistribucionExcel {
     t.append("1", fuente(9, true, SimulacionReporte.PALETA_GRUPOS.getFirst().substring(1).toUpperCase(Locale.ROOT)));
     t.append(" grupo (número de su color)  ·  número de ruta con el color de su frecuencia", fuente(9, false, GRIS));
     t.append(
-        "      Cabecera roja = chute con buff   ·   Cabecera ámbar = chute de uso manual (rutas puestas a mano)"
-            + "   ·   Columna gris = bloqueado",
+        "      Cabecera roja = chute con buff   ·   Cabecera ámbar = chute bloqueado: el balanceo automático no lo usa"
+            + " (rutas puestas a mano)   ·   Columna gris = fuera de servicio",
         fuente(9, false, GRIS));
     celda(fila(r, 18), 0, t, estilo("leyenda", null, fuente(9, false, GRIS), HorizontalAlignment.LEFT, null, false));
     unir(r, r, 0, ultima);
@@ -392,7 +393,7 @@ final class DistribucionExcel {
     XSSFCellStyle cabNavy = estilo("cabN", NAVY, fuente(8, true, "FFFFFF"), HorizontalAlignment.CENTER, NAVY_2, false);
     XSSFCellStyle cabBuff = estilo("cabB", ROJO, fuente(8, true, "FFFFFF"), HorizontalAlignment.CENTER, "B4121F", false);
     XSSFCellStyle cabBloq = estilo("cabQ", GUION, fuente(7, true, GRIS), HorizontalAlignment.CENTER, BORDE, false);
-    // Chute de uso manual: la cabecera ámbar de la cinta de peligro de la pantalla, letra oscura.
+    // Chute bloqueado: la cabecera ámbar de la cinta de peligro de la pantalla, letra oscura.
     XSSFCellStyle cabManual = estilo("cabM", MANUAL, fuente(8, true, "111827"), HorizontalAlignment.CENTER, "111827", false);
     XSSFCellStyle nombre = estilo("nom", NAVY, fuente(14, true, "FFFFFF"), HorizontalAlignment.CENTER, NAVY_2, false);
 
@@ -407,7 +408,7 @@ final class DistribucionExcel {
       celda(
           cab,
           i + 1,
-          ch.bloqueado() ? "BLOQ." : etiquetaChute(ch.nombre()) + (ch.manual() ? " · MANUAL" : ""),
+          ch.bloqueado() ? "FUERA" : etiquetaChute(ch.nombre()) + (ch.manual() ? " · BLOQUEADO" : ""),
           ch.bloqueado() ? cabBloq : ch.manual() ? cabManual : ch.buff() ? cabBuff : cabNavy);
     }
 

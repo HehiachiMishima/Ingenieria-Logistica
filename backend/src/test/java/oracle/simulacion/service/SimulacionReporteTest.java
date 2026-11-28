@@ -87,7 +87,7 @@ class SimulacionReporteTest {
   }
 
   @Test
-  void unChuteManualVaConSuMarcaYSusRutasTambienEnElExcel() throws Exception {
+  void unChuteBloqueadoVaConSuMarcaYSusRutasTambienEnElExcel() throws Exception {
     List<RutaSimulacionResponse> rutas =
         List.of(ruta(1L, "3001", 1L, "20", "LXV"), ruta(2L, "3022", 19L, "40", "LXV"));
     DistribucionResponse d =
@@ -106,7 +106,7 @@ class SimulacionReporteTest {
     try (XSSFWorkbook libro =
         new XSSFWorkbook(new ByteArrayInputStream(DistribucionExcel.escribir(d, DistribucionExcel.Marcas.NINGUNA)))) {
       List<String> textos = textos(libro.getSheet("Distribución"));
-      assertTrue(textos.contains("CHUTE 19 · MANUAL"), textos.toString());
+      assertTrue(textos.contains("CHUTE 19 · BLOQUEADO"), textos.toString());
       assertTrue(textos.stream().anyMatch((t) -> t.contains("3022")), textos.toString());
     }
   }
@@ -121,7 +121,7 @@ class SimulacionReporteTest {
       assertTrue(textos.contains("DISTRIBUCIÓN DE RUTAS POR CLUSTER Y CHUTE"), textos.toString());
       assertEquals(1, textos.stream().filter("CL1"::equals).count(), "un solo bloque para CL1");
       assertTrue(textos.contains("CHUTE 2"));
-      assertTrue(textos.contains("BLOQ."));
+      assertTrue(textos.contains("FUERA"), "el fuera de servicio: " + textos);
     }
   }
 
@@ -275,7 +275,7 @@ class SimulacionReporteTest {
         List.of("20", "19"));
   }
 
-  /** Como {@link #configuracion}, con el 19 de uso manual (visible, con rutas) y sin bloqueados. */
+  /** Como {@link #configuracion}, con el 19 bloqueado (visible, con rutas) y sin fuera de servicio. */
   private static ConfiguracionSimulacionResponse configuracionConManual(int operarios) {
     ConfiguracionSimulacionResponse base = configuracion(operarios);
     return new ConfiguracionSimulacionResponse(

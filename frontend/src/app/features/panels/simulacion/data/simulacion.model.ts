@@ -171,15 +171,15 @@ export interface ChuteParametroSimulacion {
   /** Clusters con rutas hoy en el chute. */
   clusterIds: number[];
   /**
-   * Chute bloqueado del plano (`simulacion.chutes.bloqueados`): no recibe rutas. Solo llega si
-   * un registro anterior al bloqueo aún tiene rutas en él (se pueden sacar).
+   * Chute fuera de servicio (`simulacion.chutes.bloqueados`, en el servidor): no recibe rutas.
+   * Solo llega si un registro anterior aún tiene rutas en él (se pueden sacar).
    */
   bloqueado: boolean;
   /** Chute con más capacidad: al balancear recibe primero las rutas más pesadas. */
   buff?: boolean;
   /**
-   * Chute de uso manual (19, 20, 21): se ve con su franja de peligro y recibe rutas solo a mano;
-   * el balanceo automático no lo usa y lo que se deja ahí no lo mueve.
+   * Chute bloqueado («Chutes bloqueados», la franja de peligro): recibe rutas solo a mano; el
+   * balanceo automático no lo usa y lo que se deja ahí no lo mueve. Lo elige cada escenario.
    */
   manual?: boolean;
 }
@@ -313,8 +313,11 @@ export interface ConfiguracionSimulacionRequest {
   /** Máximo por chute; null = sin tope propio (toda la ola). */
   operariosPorChute: number | null;
   clusters: { clusterId: number; limiteHoras: number }[];
-  /** Buff de los chutes (solo antes de balancear): base de operarios y si tiene buff. */
-  chutes?: { chuteId: number; operarios: number; buff: boolean }[];
+  /**
+   * Chutes que cambian: base de operarios, si tiene buff (solo antes de balancear) y si está
+   * bloqueado (el balanceo automático no lo usa; en cualquier momento). Lo que no viene no cambia.
+   */
+  chutes?: { chuteId: number; operarios: number; buff?: boolean; manual?: boolean }[];
   /**
    * Lo que la pantalla tenía cargado al empezar a editar: el servidor aplica solo lo que cambió y,
    * si otra persona cambió eso mismo mientras tanto, avisa en vez de pisarlo.
@@ -576,13 +579,15 @@ export interface RutasDashboardSimulacion {
 }
 
 /**
- * Velocidad y chutes con buff con que nace todo registro. Bloqueados, ningún registro los cambia:
- * se desbloquean (para todos), se cambian y se vuelven a bloquear.
+ * Velocidad, chutes con buff y chutes bloqueados con que nace todo registro. Con el candado puesto
+ * ningún registro los cambia: se desbloquean (para todos), se cambian y se vuelven a bloquear.
  */
 export interface PredeterminadosSimulacion {
   velocidad: number | string;
   /** Ids del catálogo de chutes (el mismo en todos los registros). */
   chutesBuff: number[];
+  /** Chutes bloqueados (solo a mano) que fija el candado. */
+  chutesBloqueados?: number[];
   bloqueado: boolean;
 }
 
@@ -592,7 +597,7 @@ export interface ChuteDistribucion {
   nombre: string;
   buff: boolean;
   bloqueado: boolean;
-  /** De uso manual (19, 20, 21): con su franja de peligro; sus rutas se ven como en cualquier chute. */
+  /** Bloqueado (solo a mano): con su franja de peligro; sus rutas se ven como en cualquier chute. */
   manual?: boolean;
 }
 

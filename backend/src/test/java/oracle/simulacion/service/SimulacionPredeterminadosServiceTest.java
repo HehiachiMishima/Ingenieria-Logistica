@@ -58,14 +58,14 @@ class SimulacionPredeterminadosServiceTest {
   @Test
   void bloquearGuardaLosValoresYLosLlevaALosRegistrosSinBalancear() {
     when(chuteRepo.findAllById(any())).thenReturn(List.of(chute(2L, "CHUTE 2"), chute(5L, "5")));
-    when(lotes.aplicarPredeterminados(any(), anyCollection())).thenReturn(3);
+    when(lotes.aplicarPredeterminados(any(), anyCollection(), any(), anyCollection())).thenReturn(3);
 
     ApiResponse<PredeterminadosResponse> respuesta =
         servicio.bloquear(new PredeterminadosRequest(new BigDecimal("120.00"), List.of(5L, 2L, 5L)));
 
     // Sin repetidos y en orden.
-    verify(lotes).guardarPredeterminados(new BigDecimal("120.00"), List.of(2L, 5L), true);
-    verify(lotes).aplicarPredeterminados(new BigDecimal("120.00"), List.of(2L, 5L));
+    verify(lotes).guardarPredeterminados(new BigDecimal("120.00"), List.of(2L, 5L), null, true);
+    verify(lotes).aplicarPredeterminados(new BigDecimal("120.00"), List.of(2L, 5L), null, List.of());
     assertTrue(respuesta.datos().bloqueado());
     assertEquals(List.of(2L, 5L), respuesta.datos().chutesBuff());
     assertTrue(respuesta.mensaje().contains("3 registro(s) sin balancear"), respuesta.mensaje());
@@ -85,10 +85,36 @@ class SimulacionPredeterminadosServiceTest {
             SolicitudInvalidaException.class,
             () -> servicio.bloquear(new PredeterminadosRequest(new BigDecimal("100"), List.of(99L))));
 
-    assertTrue(bloqueado.getMessage().contains("bloqueado"), bloqueado.getMessage());
+    assertTrue(bloqueado.getMessage().contains("fuera de servicio"), bloqueado.getMessage());
     assertTrue(inexistente.getMessage().contains("no existe"), inexistente.getMessage());
-    verify(lotes, never()).guardarPredeterminados(any(), anyCollection(), anyBoolean());
-    verify(lotes, never()).aplicarPredeterminados(any(), anyCollection());
+    verify(lotes, never()).guardarPredeterminados(any(), anyCollection(), any(), anyBoolean());
+    verify(lotes, never()).aplicarPredeterminados(any(), anyCollection(), any(), anyCollection());
+  }
+
+  @Test
+  void elCandadoFijaTambienLosChutesBloqueados() {
+    when(chuteRepo.findAllById(any())).thenReturn(List.of(chute(7L, "7"), chute(8L, "CHUTE 8")));
+    when(lotes.aplicarPredeterminados(any(), anyCollection(), any(), anyCollection())).thenReturn(0);
+
+    PredeterminadosResponse datos =
+        servicio.bloquear(new PredeterminadosRequest(new BigDecimal("100"), List.of(), List.of(8L, 7L, 8L))).datos();
+
+    verify(lotes).guardarPredeterminados(new BigDecimal("100"), List.of(), List.of(7L, 8L), true);
+    verify(lotes).aplicarPredeterminados(new BigDecimal("100"), List.of(), List.of(7L, 8L), List.of());
+    assertEquals(List.of(7L, 8L), datos.chutesBloqueados());
+  }
+
+  @Test
+  void unChuteNoPuedeTenerBuffYEstarBloqueado() {
+    when(chuteRepo.findAllById(any())).thenReturn(List.of(chute(5L, "5")));
+
+    SolicitudInvalidaException error =
+        assertThrows(
+            SolicitudInvalidaException.class,
+            () -> servicio.bloquear(new PredeterminadosRequest(new BigDecimal("100"), List.of(5L), List.of(5L))));
+
+    assertTrue(error.getMessage().contains("buff y estar bloqueado"), error.getMessage());
+    verify(lotes, never()).guardarPredeterminados(any(), anyCollection(), any(), anyBoolean());
   }
 
   @Test

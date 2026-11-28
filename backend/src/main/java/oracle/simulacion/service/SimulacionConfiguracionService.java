@@ -158,7 +158,7 @@ public class SimulacionConfiguracionService {
   private final HistorialBalanceoRepository historialRepo;
   private final OperarioOlaRepository operarioOlaRepo;
   private final LanzamientoBalanceoRepository lanzamientoRepo;
-  /** Chutes 1–33 que existen siempre, los bloqueados y los de uso manual (19, 20, 21). */
+  /** Chutes 1–33 que existen siempre, los fuera de servicio y los que nacen bloqueados (19, 20, 21). */
   private final PlanoChutes plano;
   private final SimulacionLotesRepository lotes;
   private final Transacciones transacciones;
@@ -569,15 +569,41 @@ public class SimulacionConfiguracionService {
             }
           }
           if (req.chutes() != null) {
+            boolean cambiaBloqueo = false;
             for (ChuteOperariosRequest operarios : req.chutes()) {
-              ParametroChute parametro = ctx.parametrosChute().get(operarios.chuteId());
+              Long chuteId = operarios.chuteId();
+              ParametroChute parametro = ctx.parametrosChute().get(chuteId);
               if (parametro == null) {
                 throw new SolicitudInvalidaException(
-                    "El chute " + operarios.chuteId() + " no pertenece al registro.");
+                    "El chute " + chuteId + " no pertenece al registro.");
               }
               // La base solo es el «antes» y lo que usa una ola sin asignar:
               // cambiarla no invalida las olas que ya tienen operarios.
               parametro.setOperarios(operarios.operarios());
+              // Bloqueado (solo a mano) y con buff a la vez, nunca: el buff es para el balanceo
+              // automático, que no usa el chute. Se mira el resultado de este mismo envío.
+              boolean bloqueadoAhora = manual(ctx, chuteId);
+              boolean quedaBloqueado = operarios.manual() != null ? operarios.manual() : bloqueadoAhora;
+              boolean quedaConBuff = operarios.buff() != null ? operarios.buff() : parametro.isBuff();
+              if (quedaBloqueado && quedaConBuff) {
+                throw new SolicitudInvalidaException(
+                    Boolean.TRUE.equals(operarios.manual()) && !bloqueadoAhora
+                        ? "El " + etiquetaChute(ctx, chuteId)
+                            + " tiene buff: quítaselo para bloquearlo (el balanceo automático no lo usa)."
+                        : "El " + etiquetaChute(ctx, chuteId)
+                            + " está bloqueado (solo a mano): no puede tener buff.");
+              }
+              if (operarios.manual() != null && operarios.manual() != bloqueadoAhora) {
+                // Se puede cambiar en cualquier momento: vale para los balanceos siguientes. Lo
+                // que ya está en el chute se queda donde está.
+                if (bloqueado(ctx, chuteId)) {
+                  throw new SolicitudInvalidaException(
+                      "El " + etiquetaChute(ctx, chuteId) + " está fuera de servicio: no se puede bloquear ni desbloquear.");
+                }
+                parametro.setManual(operarios.manual());
+                parametroChuteRepo.save(parametro);
+                cambiaBloqueo = true;
+              }
               if (operarios.buff() != null && operarios.buff() != parametro.isBuff()) {
                 // El buff decide dónde van las rutas más pesadas: se define al inicio.
                 if (buffBloqueado(ctx)) {
@@ -585,23 +611,21 @@ public class SimulacionConfiguracionService {
                       "El buff de los chutes se define antes de balancear: restablece los"
                           + " clusters ya balanceados para cambiarlo.");
                 }
-                if (bloqueado(ctx, operarios.chuteId())) {
+                if (bloqueado(ctx, chuteId)) {
                   throw new SolicitudInvalidaException(
-                      "El " + etiquetaChute(ctx, operarios.chuteId()) + " está bloqueado: no puede tener buff.");
-                }
-                if (manual(ctx, operarios.chuteId()) && Boolean.TRUE.equals(operarios.buff())) {
-                  throw new SolicitudInvalidaException(
-                      "El " + etiquetaChute(ctx, operarios.chuteId())
-                          + " es de uso manual: no puede tener buff (el balanceo no lo usa).");
+                      "El " + etiquetaChute(ctx, chuteId) + " está fuera de servicio: no puede tener buff.");
                 }
                 parametro.setBuff(operarios.buff());
                 parametroChuteRepo.save(parametro);
               }
-              if (ctx.chutesAgregados().contains(operarios.chuteId())) {
+              if (ctx.chutesAgregados().contains(chuteId)) {
                 // Chute del plano que el registro no tenía guardado: se persiste
                 // (si no, el cambio se perdería sin aviso).
                 parametroChuteRepo.save(parametro);
               }
+            }
+            if (cambiaBloqueo) {
+              exigirChuteAutomatico(ctx);
             }
           }
           validarOperarios(ctx);
@@ -725,6 +749,28 @@ public class SimulacionConfiguracionService {
       throw new ConflictoException(
           "La velocidad y los chutes con buff están bloqueados para todos los registros:"
               + " desbloquéalos para cambiarlos.");
+    }
+    boolean cambiaBloqueo =
+        req.chutes() != null
+            && req.chutes().stream()
+                .anyMatch(
+                    (c) ->
+                        c.manual() != null
+                            && ctx.parametrosChute().containsKey(c.chuteId())
+                            && c.manual() != manual(ctx, c.chuteId()));
+    if (cambiaBloqueo) {
+      throw new ConflictoException(
+          "Los chutes bloqueados tienen el candado puesto para todos los registros:"
+              + " pulsa «Desbloquear» para cambiarlos.");
+    }
+  }
+
+  /** El balanceo automático necesita al menos un chute donde repartir. */
+  private void exigirChuteAutomatico(Contexto ctx) {
+    boolean alguno = ctx.parametrosChute().keySet().stream().anyMatch((chute) -> !fueraDelAutomatico(ctx, chute));
+    if (!alguno) {
+      throw new SolicitudInvalidaException(
+          "Deja al menos un chute sin bloquear: el balanceo automático necesita dónde repartir.");
     }
   }
 
@@ -1475,7 +1521,7 @@ public class SimulacionConfiguracionService {
       throw new ConflictoException(
           nombre + " no tiene rutas " + balanceo.etiqueta() + ": no hay nada que balancear.");
     }
-    // Las rutas que se dejaron a mano en un chute de uso manual (19, 20, 21) quedan donde están: el
+    // Las rutas que se dejaron a mano en un chute bloqueado (la franja) quedan donde están: el
     // balanceo no las mueve ni cuenta su carga para nivelar los demás chutes.
     List<RutaProyeccion> todasClusterConManuales =
         rutaRepo.findByArchivoIdAndClusterIdOrderByIdAsc(archivoId, clusterId);
@@ -1585,7 +1631,7 @@ public class SimulacionConfiguracionService {
       mensaje
           .append(" ")
           .append(fijasAMano)
-          .append(" ruta(s) en chutes de uso manual: quedan donde las pusiste.");
+          .append(" ruta(s) en chutes bloqueados: quedan donde las pusiste.");
     }
     boolean mayorDicho = false;
     for (Map.Entry<Long, String> buff : plan.buffs().entrySet()) {
@@ -1862,7 +1908,7 @@ public class SimulacionConfiguracionService {
         : rutasPor.values().stream().mapToInt(Integer::intValue).max().orElse(0);
   }
 
-  /** Chutes que ya usan esas rutas (sin bloqueados ni manuales), en el orden de las columnas. */
+  /** Chutes que ya usan esas rutas (sin fuera de servicio ni bloqueados), en el orden de las columnas. */
   private List<Long> chutesQueUsan(Contexto ctx, List<RutaProyeccion> rutas) {
     return rutas.stream()
         .map(RutaProyeccion::getChuteId)
@@ -1899,7 +1945,7 @@ public class SimulacionConfiguracionService {
     return grupos.stream().sorted(ORDEN_NATURAL).toList();
   }
 
-  /** Chutes con buff del registro que se pueden usar (ni bloqueados ni manuales en el plano). */
+  /** Chutes con buff del registro que se pueden usar (ni fuera de servicio ni bloqueados). */
   private Set<Long> chutesConBuff(Contexto ctx) {
     return ctx.parametrosChute().entrySet().stream()
         .filter((e) -> e.getValue().isBuff() && !fueraDelAutomatico(ctx, e.getKey()))
@@ -1941,21 +1987,22 @@ public class SimulacionConfiguracionService {
       if (!ctx.parametrosChute().containsKey(chute) || fueraDelAutomatico(ctx, chute)) {
         if (pedido == null) {
           // El rango guardado ya no sirve (el chute salió del registro, se
-          // bloqueó o pasó a uso manual): se ignora.
+          // puso fuera de servicio o se bloqueó): se ignora.
           return null;
         }
         if (bloqueado(ctx, chute)) {
           throw new SolicitudInvalidaException(
-              "El " + etiquetaChute(ctx, chute) + " está bloqueado: elige otro chute para el rango.");
+              "El " + etiquetaChute(ctx, chute) + " está fuera de servicio: elige otro chute para el rango.");
         }
         if (manual(ctx, chute)) {
           throw new SolicitudInvalidaException(
-              "El " + etiquetaChute(ctx, chute) + " es de uso manual: elige otro chute para el rango.");
+              "El " + etiquetaChute(ctx, chute)
+                  + " está bloqueado (solo a mano): elige otro chute para el rango.");
         }
         throw new SolicitudInvalidaException("El chute " + chute + " no pertenece al registro.");
       }
     }
-    // Los bloqueados y los manuales no cuentan: «desde 18 hasta 22» reparte en 18 y 22.
+    // Los fuera de servicio y los bloqueados no cuentan: «desde 18 hasta 22» reparte en 18 y 22.
     List<Long> ordenados =
         ctx.parametrosChute().keySet().stream()
             .filter((chute) -> !fueraDelAutomatico(ctx, chute))
@@ -2584,19 +2631,26 @@ public class SimulacionConfiguracionService {
     return parametro;
   }
 
-  /** El chute está bloqueado en el plano: no recibe rutas (ni a mano). */
+  /** El chute está fuera de servicio en el plano: no recibe rutas (ni a mano). */
   boolean bloqueado(Contexto ctx, Long chuteId) {
     return plano.bloqueado(ctx.nombreChute(chuteId));
   }
 
-  /** Chute de uso manual (19, 20, 21): recibe rutas solo a mano; lo automático no lo usa. */
+  /**
+   * Chute bloqueado (la franja de peligro): recibe rutas solo a mano y lo automático no lo usa. Lo
+   * elige el escenario (su fila en parametros_chutes); sin fila, vale el plano (19, 20, 21).
+   */
   boolean manual(Contexto ctx, Long chuteId) {
-    return plano.manual(ctx.nombreChute(chuteId));
+    if (chuteId == null || bloqueado(ctx, chuteId)) {
+      return false;
+    }
+    ParametroChute parametro = ctx.parametrosChute().get(chuteId);
+    return parametro != null ? parametro.isManual() : plano.manual(ctx.nombreChute(chuteId));
   }
 
-  /** Lo automático (rango, nivelar, buff) no usa el chute: bloqueado o de uso manual. */
+  /** Lo automático (rango, nivelar, buff, reparto al azar) no usa el chute: fuera de servicio o bloqueado. */
   boolean fueraDelAutomatico(Contexto ctx, Long chuteId) {
-    return plano.fueraDelAutomatico(ctx.nombreChute(chuteId));
+    return bloqueado(ctx, chuteId) || manual(ctx, chuteId);
   }
 
   /** «CHUTE 20» para los mensajes, aunque el catálogo lo guarde como «20». */
@@ -2610,7 +2664,7 @@ public class SimulacionConfiguracionService {
   private void exigirNoBloqueado(Contexto ctx, Long chuteId) {
     if (bloqueado(ctx, chuteId)) {
       throw new ConflictoException(
-          "El " + etiquetaChute(ctx, chuteId) + " está bloqueado: no se pueden mover rutas ahí.");
+          "El " + etiquetaChute(ctx, chuteId) + " está fuera de servicio: no se pueden mover rutas ahí.");
     }
   }
 
@@ -3640,6 +3694,8 @@ public class SimulacionConfiguracionService {
               ParametroChute vacio = new ParametroChute();
               vacio.setId(new ParametroChuteId(archivoId, chuteId));
               vacio.setOperarios(ParametroChute.OPERARIOS_INICIALES);
+              // Sin fila guardada vale el bloqueo del plano (19, 20 y 21 nacen bloqueados).
+              vacio.setManual(plano.manual(numero));
               parametrosChute.put(chuteId, vacio);
               chutes.put(chuteId, plano.nombreCatalogo(numero));
               agregados.add(chuteId);
@@ -3804,9 +3860,9 @@ public class SimulacionConfiguracionService {
                 .add(fila.getClusterId());
           }
         });
-    // Los bloqueados no se muestran. Solo si un registro anterior al bloqueo aún
-    // tiene rutas en uno, va marcado (no recibe rutas; las suyas se pueden sacar).
-    // Los manuales (19, 20, 21) se ven siempre, marcados: reciben rutas solo a mano.
+    // Los fuera de servicio no se muestran. Solo si un registro anterior aún tiene
+    // rutas en uno, va marcado (no recibe rutas; las suyas se pueden sacar).
+    // Los bloqueados (la franja) se ven siempre, marcados: reciben rutas solo a mano.
     List<ChuteParametroResponse> chutes =
         ctx.parametrosChute().entrySet().stream()
             .filter((entrada) -> !bloqueado(ctx, entrada.getKey()) || clustersEnChute.containsKey(entrada.getKey()))

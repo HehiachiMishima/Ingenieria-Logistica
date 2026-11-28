@@ -193,14 +193,20 @@ con sus diarias): locales, bultos, unidades, operarios, rutas, líneas, diferenc
 sus chutes (en rojo si pasa 10 %) y cierre; el día que se mira va con borde azul y «Viendo», y el pie
 muestra el límite de cierre. Con cifras grandes o texto agrandado nada se corta: el título baja bajo
 la ficha, los totales pasan a dos columnas y las mini fichas, a nombre arriba y cifra abajo.
-Los chutes **19, 20 y 21 son de uso manual** (`simulacion.chutes.manuales`): se ven en DATA, en cada
-cluster y en el Dashboard con una cinta amarilla y negra, y solo reciben rutas que alguien arrastra
-ahí (esas rutas llevan un bloque amarillo con una mano). El balanceo automático, el reparto al azar
-de DATA y el Excel no los usan; no pueden tener buff ni abrir o cerrar un rango (un rango que los
-cruza reparte en los demás), y lo que se dejó ahí a mano **queda fijo al balancear**. No necesita
-migración: el plano los agrega aunque la base no los tenga. `simulacion.chutes.bloqueados` (vacía
-por defecto) sigue sirviendo para un chute que no debe recibir nada; si un número está en las dos
-listas, gana el bloqueo.
+**Chutes bloqueados**: en la tarjeta de parámetros, junto a «Chutes con buff», se eligen los chutes
+que el balanceo automático no usa (el 19, 20 y 21 al empezar). Se ven en DATA, en cada cluster y en
+el Dashboard con una cinta amarilla y negra (y en el Excel, «· BLOQUEADO»), y solo reciben rutas que
+alguien arrastra ahí; sus rutas llevan un bloque amarillo con una mano. El balanceo, el rango (uno
+que los cruza reparte en los demás) y el reparto al azar de DATA no los usan, y lo que está en ellos
+**queda fijo al balancear**. Se cambian en cualquier momento y valen para los balanceos siguientes;
+si un chute que se bloquea ya tiene rutas o es el borde de un rango guardado, se confirma antes de
+guardar. Un chute no puede tener buff y estar bloqueado, y siempre queda al menos uno para el
+balanceo. El candado «Bloquear» también los fija para todos los registros. Se guardan por chute
+(`parametros_chutes.manual`): antes de actualizar el backend aplica
+`backend/migracion_chutes_bloqueados.sql` (mantiene bloqueados el 19, 20 y 21 que ya existían). Un
+chute sin fila guardada nace bloqueado si está en `simulacion.chutes.manuales` (19, 20, 21).
+`simulacion.chutes.bloqueados` (vacía) es otra cosa: chutes **fuera de servicio**, que no se
+muestran ni reciben nada.
 Antes de actualizar el backend aplica `backend/migracion_registro_titan.sql`: crea los locales de las
 rutas, quita las tablas del Registro, prepara DATA y **borra los registros subidos por Excel** con
 todo lo que cuelga de ellos. Es una sola transacción y es re-ejecutable.
